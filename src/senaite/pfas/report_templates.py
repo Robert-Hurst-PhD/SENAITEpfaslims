@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""The certificate template as a controlled document (
-"Extraction UI, Data Review, reporting template").
+"""The certificate template as a controlled document.
 
 A revision freezes everything the Certificate of Analysis is drawn from:
 
     print_settings   the lab's Print Settings (identity, accreditation,
                      statements, sign-off, quality-system statement inputs)
     report_formats   each method's Reporting-tab format {method: {...}}
+    format_defaults  the built-in default of each format setting added after
+                     revisions were first issued (report_format
+                     .recorded_defaults); a revision without it prints by
+                     the rule in force before (issued_defaults). Bookkeeping
+                     of the code, like the layout hash: not fingerprinted
     layout           a hash of the certificate layout files
 
 A Manager issues a revision (number, who, when, note). Certificates are
@@ -35,13 +39,27 @@ KEY = "senaite.pfas.report_template_revisions"
 _STAMPS = ("updated_at", "updated_by")
 
 
+def _report_format():
+    from senaite.pfas import report_format
+    return report_format
+
+
+# not part of what a revision prints differently by: see the module docstring
+_NOT_FINGERPRINTED = ("format_defaults",)
+
+
 def snapshot(print_settings, report_formats, layout, designed=None):
     ps = copy.deepcopy(print_settings or {})
     for k in _STAMPS:
         ps.pop(k, None)
+    # no logo adds no fingerprint key, so such an install's fingerprint is
+    # unchanged
+    if not ps.get("logo_sha"):
+        ps.pop("logo_sha", None)
     snap = {"print_settings": ps,
             "report_formats": copy.deepcopy(report_formats or {}),
-            "layout": layout or u""}
+            "layout": layout or u"",
+            "format_defaults": _report_format().recorded_defaults()}
     if designed is not None:
         snap["designed_layout"] = copy.deepcopy(designed)
     return snap
@@ -53,8 +71,21 @@ def designed_layout(snap):
     return (snap or {}).get("designed_layout")
 
 
+# the owner's rule: a certificate is published only from an issued
+# certificate layout (the standard certificate is no fallback)
+LAYOUT_NEEDED = u"Issue a certificate layout in Reporting Setup first."
+
+
+def certificate_layout_problem(snap):
+    """Why no certificate can be published from the issued revision `snap`
+    (None when nothing is issued): it carries no certificate layout. None
+    when it does. A draft layout is not issued and does not count."""
+    return None if designed_layout(snap) is not None else LAYOUT_NEEDED
+
+
 def fingerprint(snap):
-    raw = json.dumps(snap or {}, sort_keys=True, default=lambda o: u"%s" % o)
+    snap = dict((k, v) for k, v in (snap or {}).items() if k not in _NOT_FINGERPRINTED)
+    raw = json.dumps(snap, sort_keys=True, default=lambda o: u"%s" % o)
     if not isinstance(raw, bytes):
         raw = raw.encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]
@@ -93,15 +124,15 @@ def printed_settings(snap, live):
 
 def lab_address_problem(snap, rev, live):
     """Why a certificate would print no laboratory address, or None. An
-    address entered in Print Settings reaches certificates only with the
-    next issued revision."""
+    address entered on the Laboratory page reaches certificates only with
+    the next issued revision."""
     if (printed_settings(snap, live).get("lab_address") or u"").strip():
         return None
     if snap is not None and ((live or {}).get("lab_address") or u"").strip():
         return (u"the laboratory address is not in the issued reporting template "
                 u"(revision %s): issue a new revision (Reporting Template) to carry "
-                u"the address entered in Print Settings" % rev)
-    return u"the laboratory address is not set (Print Settings)"
+                u"the address entered on the Laboratory page" % rev)
+    return u"the laboratory address is not set (Laboratory)"
 
 
 def next_number(records):
@@ -142,7 +173,34 @@ def issue(portal, snap, who, when, note):
            "note": note or u"", "fingerprint": fingerprint(snap), "snapshot": snap}
     recs.append(rec)
     _ann(portal)[KEY] = json.dumps(recs)
+    sha = (snap.get("print_settings") or {}).get("logo_sha")
+    if sha:
+        # the logo is kept with the revision: a later site logo does not
+        # change what it prints
+        from senaite.pfas import lab_identity
+        lab_identity.keep_logo_version(portal, sha)
     return rec
+
+
+def certificate_format(snap, method_id, profile, matrix, live_settings):
+    """(merged settings, method x matrix format) the certificate prints one
+    sample with: the issued revision's print settings and report formats when
+    one is issued, else the live settings and the profile's own format. An
+    issued revision prints as it did when issued: a setting it does not
+    record reads the rule in force then (report_format.issued_defaults)."""
+    report_format = _report_format()
+    defaults = None
+    if snap is not None:
+        settings = dict(snap.get("print_settings") or {})
+        source = {report_format.KEY: (snap.get("report_formats") or {}).get(method_id) or {}}
+        defaults = report_format.issued_defaults(snap.get("format_defaults"))
+    else:
+        settings, source = dict(live_settings or {}), profile
+    fmt = report_format.resolve(source, matrix, defaults)
+    merged = dict(settings)
+    merged.update(fmt)
+    merged.update(report_format.rules(defaults))
+    return merged, fmt
 
 
 def issued_snapshot(portal):

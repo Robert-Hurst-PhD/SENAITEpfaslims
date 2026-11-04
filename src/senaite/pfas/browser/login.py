@@ -37,14 +37,20 @@ def _iso(seconds_ago=0):
 
 def landing_wanted(came_from, portal_url):
     """False when `came_from` names no page of its own -- empty, the portal
-    root, core's dashboard or a sign-in / sign-out page -- so the role's
-    landing should be used instead."""
+    root, core's dashboard or a sign-in / sign-out / badge page -- so the
+    role's landing should be used instead. Plone fills the form's hidden
+    came_from from the Referer when the link carries none, so the badge page
+    (whose ?idle=1 signs the person out again at a terminal) and the sign-in
+    help would otherwise be where a password sign-in lands."""
     url = (came_from or u"").split("?")[0].split("#")[0].rstrip("/")
     if not url or url == portal_url.rstrip("/"):
         return False
     last = url.rsplit("/", 1)[-1]
-    return last not in ("senaite-dashboard", "login", "login_form", "logged_out",
-                        "logout", "require_login", "front-page", "senaite-frontpage")
+    if last.startswith("@@"):
+        last = last[2:]
+    return last not in ("senaite-dashboard", "login", "login_form", "logged_out", "logout",
+                        "require_login", "front-page", "senaite-frontpage", "login-help",
+                        "pfas-badge-signin")
 
 
 def tile_accounts(terminal):
@@ -118,6 +124,15 @@ class PFASLoginForm(CoreLoginForm):
         if not hasattr(self, "_terminal"):
             self._terminal = badges.terminal_from_request(self.request)
         return self._terminal
+
+    def lab_now(self):
+        """The laboratory's clock the sign-in clock runs on from,
+        "YYYY-MM-DDTHH:MM:SS"; None while the zone does not convert (the
+        clock is then the device's own)."""
+        from senaite.pfas import lab_time
+        if not lab_time.active():
+            return None
+        return lab_time.now().replace(microsecond=0).isoformat()
 
     def tiles(self):
         if not hasattr(self, "_tiles"):

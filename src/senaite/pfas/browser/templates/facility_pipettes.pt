@@ -57,6 +57,7 @@
       </div>
     </tal:force>
 
+    <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
     <div class="pfas-card">
       <h3>Record a calibration</h3>
       <p class="pfas-hint">An in-house check must name the balance and weight set used;
@@ -65,35 +66,89 @@
             tal:attributes="action string:${purl}/@@pfas-pipette-calibration">
         <input type="hidden" name="unit_id" tal:attributes="value unit/id" />
         <div class="pfas-form-row">
-          <div class="pfas-form-field"><label>Kind *</label>
+          <div class="pfas-form-field"><label>Kind</label>
             <select name="kind" id="kind" onchange="toggleKind()">
-              <option value="internal">In-house (quarterly gravimetric)</option>
-              <option value="external">External provider</option>
+              <option value="internal">In-house</option>
+              <option value="external">External</option>
             </select></div>
-          <div class="pfas-form-field"><label>Calibration date *</label>
+          <div class="pfas-form-field"><label>Calibration date</label>
             <input type="date" name="cal_date" required /></div>
-          <div class="pfas-form-field"><label>Next due *</label>
-            <input type="date" name="due_date" required /></div>
+          <div class="pfas-form-field" id="due-internal"><label>Next due <tal:h define="hid string:pipette-quarter"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
+            <output id="due-shown" class="pfas-shown-value">Set the calibration date</output></div>
+          <div class="pfas-form-field" id="due-external" hidden="hidden"><label>Next due</label>
+            <input type="date" name="due_date" /></div>
+          <div class="pfas-form-field"><label for="pp-op">Operator</label>
+            <input type="text" name="operator" id="pp-op" readonly="readonly" tal:attributes="value view/signed_in" /></div>
         </div>
 
         <div id="internal-fields">
           <div class="pfas-form-row">
-            <div class="pfas-form-field"><label>Operator</label>
-              <input type="text" name="operator" /></div>
-            <div class="pfas-form-field"><label>Balance used *</label>
-              <select name="balance_unit_id">
+            <div class="pfas-form-field is-centered"><label>Balance used</label>
+              <select name="balance_unit_id" id="pp-balance"
+                      tal:attributes="data-checks view/balance_checks_json">
                 <option value="">— select —</option>
                 <option tal:repeat="b view/balances"
-                        tal:attributes="value b/id"
+                        tal:attributes="value b/id; selected python:'selected' if request.form.get('balance_unit_id') == b['id'] else None"
                         tal:content="string:${b/name} (${b/serial_number})">Bal</option>
-              </select></div>
-            <div class="pfas-form-field"><label>Weight set used *</label>
+              </select>
+              <div class="pfas-inline" id="pp-bal-status" hidden="hidden">
+                <span class="badge" id="pp-bal-badge"></span>
+                <span class="pfas-hint" id="pp-bal-last"></span>
+                <a class="btn-sm btn-secondary" id="pp-bal-verify"
+                   tal:attributes="href string:${purl}/@@pfas-balance-log">Verify balance</a>
+              </div></div>
+            <div class="pfas-form-field"><label>Weight set used</label>
               <select name="weight_set_id">
                 <option value="">— select —</option>
                 <option tal:repeat="w view/weight_sets"
                         tal:attributes="value w/id"
                         tal:content="string:${w/set_id} (${w/weight_class})">WS</option>
               </select></div>
+            <div class="pfas-form-field"><label for="pp-wt">Water temperature (&deg;C)</label>
+              <input type="number" step="0.1" name="water_temp" id="pp-wt" class="no-stepper is-short" /></div>
+          </div>
+          <div class="pfas-rows section-gap" data-rows="data-rows" tal:define="lim view/limits">
+            <div class="pfas-between">
+              <strong>Measurements</strong>
+              <span class="pfas-hint">
+                PE &#177;<tal:a tal:replace="python:'%g' % lim[0] if lim[0] is not None else 'not set'">2</tal:a> %,
+                RSD <tal:c tal:replace="python:'%g' % lim[1] if lim[1] is not None else 'not set'">1</tal:c> %
+                <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment-settings?uid=${unit/id}">Equipment settings</a>
+              </span>
+            </div>
+            <table class="pfas-table pfas-table-form" data-col-resize="facility-pipettes-pp-meas" id="pp-meas"
+                   tal:attributes="data-acc python:lim[0]; data-cv python:lim[1]">
+              <thead><tr><th rowspan="2">Volume (&micro;L)</th><th colspan="5" class="is-center mass-group">Mass (g)</th>
+                <th rowspan="2">Average (&micro;L)</th><th rowspan="2">Accuracy (%)</th><th rowspan="2">SD (&micro;L)</th><th rowspan="2">RSD (%)</th>
+                <th rowspan="2" title="Systematic error, ISO 8655">PE (%)</th><th rowspan="2" class="is-center">Result</th><th rowspan="2" class="is-slim"></th></tr>
+                <tr><th class="is-center mass-group">1</th><th class="is-center mass-group">2</th><th class="is-center mass-group">3</th><th class="is-center mass-group">4</th><th class="is-center mass-group">5</th></tr></thead>
+              <tbody data-row-list="data-row-list">
+                <tr data-row="data-row" tal:define="i string:0">
+                  <td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_v.0" aria-label="Test volume, uL" /></td>
+                  <td><input type="number" step="any" min="0" class="pfas-input is-num"
+                    tal:attributes="name string:pm_w1.${i}; aria-label string:Weighing 1, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num"
+                    tal:attributes="name string:pm_w2.${i}; aria-label string:Weighing 2, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num"
+                    tal:attributes="name string:pm_w3.${i}; aria-label string:Weighing 3, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num"
+                    tal:attributes="name string:pm_w4.${i}; aria-label string:Weighing 4, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num"
+                    tal:attributes="name string:pm_w5.${i}; aria-label string:Weighing 5, g" /></td>
+                  <td class="pfas-mono" data-out="mean">&#8212;</td><td class="pfas-mono" data-out="acc">&#8212;</td>
+                  <td class="pfas-mono" data-out="sd">&#8212;</td><td class="pfas-mono" data-out="rsd">&#8212;</td>
+                  <td class="pfas-mono" data-out="pe">&#8212;</td><td class="is-center" data-out="res">&#8212;</td>
+                  <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove volume">&#215;</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <template data-row-template="data-row-template">
+              <tr data-row="data-row">
+                <td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_v.__i__" aria-label="Test volume, uL" /></td>
+                <td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w1.__i__" aria-label="Weighing 1, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w2.__i__" aria-label="Weighing 2, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w3.__i__" aria-label="Weighing 3, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w4.__i__" aria-label="Weighing 4, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w5.__i__" aria-label="Weighing 5, g" /></td>
+                <td class="pfas-mono" data-out="mean">&#8212;</td><td class="pfas-mono" data-out="acc">&#8212;</td>
+                  <td class="pfas-mono" data-out="sd">&#8212;</td><td class="pfas-mono" data-out="rsd">&#8212;</td>
+                  <td class="pfas-mono" data-out="pe">&#8212;</td><td class="is-center" data-out="res">&#8212;</td>
+                  <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove volume">&#215;</button></td>
+              </tr>
+            </template>
+            <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add">+ Add volume</button>
           </div>
           <p class="pfas-hint" tal:condition="not:view/weight_sets">
             No weight sets registered &mdash; an in-house check cannot be traced
@@ -103,33 +158,27 @@
 
         <div id="external-fields" hidden="hidden">
           <div class="pfas-form-row">
-            <div class="pfas-form-field"><label>Provider *</label>
+            <div class="pfas-form-field"><label>Provider</label>
               <input type="text" name="provider" /></div>
             <div class="pfas-form-field"><label>Its accreditation</label>
               <input type="text" name="provider_accreditation"
                      placeholder="ISO/IEC 17025" /></div>
-            <div class="pfas-form-field"><label>Certificate number *</label>
+            <div class="pfas-form-field"><label>Certificate number</label>
               <input type="text" name="cert_number" /></div>
           </div>
-        </div>
-
-        <div class="pfas-form-row">
-          <div class="pfas-form-field"><label>Worst as-found deviation (%)</label>
-            <input type="number" step="0.01" name="as_found_pct" /></div>
-          <div class="pfas-form-field"><label>Tolerance (%)</label>
-            <input type="number" step="0.01" name="tolerance_pct" /></div>
-        </div>
-        <div class="pfas-check">
-          <input type="checkbox" name="passed" value="1" checked="checked" id="pass" />
-          <label for="pass">Calibration passed</label>
+          <label class="pfas-switch">
+            <input type="checkbox" name="passed" value="1" checked="checked" />
+            <span class="pfas-switch-track"></span>
+            <span>Calibration passed</span>
+          </label>
         </div>
         <div class="pfas-form-field is-spaced"><label>Notes</label><input type="text" name="notes" /></div>
-        <button type="submit" class="btn btn-primary">Record calibration</button>
+        <button type="submit" class="btn btn-primary" id="pp-record">Record calibration</button>
       </form>
     </div>
 
     <h3 class="pfas-card-title">Calibration history</h3>
-    <table class="pfas-table log-table">
+    <table class="pfas-table log-table" data-col-resize="facility-pipettes-log-table">
       <thead><tr>
         <th>Date</th><th>Kind</th><th>Due</th><th>By / provider</th>
         <th>Certificate</th><th>Traced to</th><th>Result</th>
@@ -152,8 +201,7 @@
                (browser/facility_qc._weight_set_label), shared with the balance log. -->
           <td tal:content="python:('weight set ' + c['weight_set_label']) if c['kind']=='internal' and c.get('weight_set_label') else (c.get('provider_accreditation') if c['kind']=='external' else 'no weight set recorded') or '—'">—</td>
           <td>
-            <span tal:condition="c/passed" class="badge badge-ok">PASS</span>
-            <span tal:condition="not:c/passed" class="badge badge-fail">FAIL</span>
+            <tal:pf define="pf_ok python:bool(c['passed'])"><span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span></tal:pf>
           </td>
         </tr>
         </tal:rows>
@@ -171,6 +219,7 @@
 
 <tal:scripts metal:fill-slot="scripts">
 <script>
+//<![CDATA[
   /* The in-house and external branches ask for different evidence, so only the
      relevant fields are shown — a form that asks for a balance on an external
      certificate invites someone to invent one. */
@@ -182,8 +231,94 @@
     var e = document.getElementById('external-fields');
     if (i) i.hidden = !internal;
     if (e) e.hidden = internal;
+    var di = document.getElementById('due-internal'), de = document.getElementById('due-external');
+    if (di) di.hidden = !internal;
+    if (de) { de.hidden = internal; de.querySelector('input').required = !internal; }
   }
+  /* in house: due once in each calendar quarter, shown as it will be stored */
+  function showDue() {
+    var c = document.getElementsByName('cal_date')[0], out = document.getElementById('due-shown');
+    if (!c || !out) return;
+    var m = /^(\d{4})-(\d{2})-\d{2}$/.exec(c.value);
+    if (!m) { out.textContent = 'Set the calibration date'; return; }
+    var y = +m[1], q = Math.floor((+m[2] - 1) / 3) + 2;
+    if (q > 4) { q = 1; y += 1; }
+    var last = new Date(y, q * 3, 0).getDate();
+    out.textContent = 'Q' + q + ' ' + y + ' \u00b7 by ' + y + '-' + ('0' + q * 3).slice(-2) + '-' + last;
+  }
+  /* in house: the balance must have passed its verification on the
+     calibration date; Record stays off until it has */
+  function showBalance() {
+    var sel = document.getElementById('pp-balance'), box = document.getElementById('pp-bal-status');
+    var rec = document.getElementById('pp-record'), k = document.getElementById('kind');
+    var c = document.getElementsByName('cal_date')[0];
+    if (!sel || !box || !rec) return;
+    var internal = !k || k.value === 'internal';
+    var checks = {};
+    try { checks = JSON.parse(sel.getAttribute('data-checks') || '{}'); } catch (e) { checks = {}; }
+    var day = c ? c.value : '', mine = checks[sel.value];
+    if (!internal || !sel.value || !day) { box.hidden = true; rec.disabled = internal ? !(sel.value && day) : false; return; }
+    var ok = mine ? mine.passed.indexOf(day) !== -1 : false;
+    var failed = mine ? mine.failed.indexOf(day) !== -1 : false;
+    var badge = document.getElementById('pp-bal-badge');
+    badge.className = 'badge ' + (ok ? 'badge-ok' : 'badge-fail');
+    badge.textContent = ok ? 'Verified on ' + day : (failed ? 'Verification failed on ' + day : 'Not verified on ' + day);
+    var last = mine ? mine.passed.filter(function (d) { return d !== day; }).pop() : null;
+    document.getElementById('pp-bal-last').textContent = last ? 'Last verified ' + last : '';
+    var v = document.getElementById('pp-bal-verify');
+    v.href = v.href.split('?')[0] + '?unit_id=' + encodeURIComponent(sel.value);
+    v.hidden = ok;
+    box.hidden = false;
+    rec.disabled = !ok;
+  }
+  /* the measurements table worked out as typed (pipette_cal.py does the same
+     on save): volume = mass x Z at the water temperature; Z from the water
+     density (Kell 1975) with the ISO 8655-6 air buoyancy correction */
+  function zFor(t) {
+    if (isNaN(t) || t > 40 || 0 > t) return null;
+    var rho = (999.83952 + 16.945176 * t - 7.9870401e-3 * t * t - 46.170461e-6 * Math.pow(t, 3)
+               + 105.56302e-9 * Math.pow(t, 4) - 280.54253e-12 * Math.pow(t, 5)) / (1 + 16.879850e-3 * t) / 1000;
+    return (1 / (rho - 0.0012)) * (1 - 0.0012 / 8.0);
+  }
+  function mark(ok) {
+    if (ok === null) return '\u2014';
+    return '<span class="badge ' + (ok ? 'badge-ok' : 'badge-fail') + ' pfas-mark" role="img" title="' + (ok ? 'Pass' : 'Fail') +
+           '" aria-label="' + (ok ? 'Pass' : 'Fail') + '">' + (ok ? '\u2713' : '\u2717') + '</span>';
+  }
+  function workOut() {
+    var tbl = document.getElementById('pp-meas');
+    if (!tbl) return;
+    var z = zFor(parseFloat((document.getElementById('pp-wt') || {}).value));
+    var acc = parseFloat(tbl.getAttribute('data-acc')), cv = parseFloat(tbl.getAttribute('data-cv'));
+    Array.prototype.forEach.call(tbl.querySelectorAll('tr[data-row]'), function (tr) {
+      var ins = tr.querySelectorAll('input');
+      var vol = parseFloat(ins[0].value), m = [];
+      for (var k = 1; k !== ins.length; k++) m.push(parseFloat(ins[k].value) * 1000);   /* typed in g; worked in mg */
+      var out = function (n) { return tr.querySelector('[data-out="' + n + '"]'); };
+      var ready = z !== null && !isNaN(vol) && vol > 0 && m.every(function (x) { return !isNaN(x); });
+      if (!ready) { ['mean', 'acc', 'sd', 'rsd', 'pe'].forEach(function (n) { out(n).textContent = '\u2014'; }); out('res').innerHTML = mark(null); return; }
+      var v = m.map(function (x) { return x * z; });
+      var mean = v.reduce(function (a, b) { return a + b; }, 0) / v.length;
+      var sd = Math.sqrt(v.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / (v.length - 1));
+      var a = (mean - vol) / vol * 100, c = sd / mean * 100;
+      out('mean').textContent = mean.toFixed(2);
+      out('acc').textContent = (mean / vol * 100).toFixed(2);
+      out('sd').textContent = sd.toFixed(3);
+      out('rsd').textContent = c.toFixed(2);
+      out('pe').textContent = (a >= 0 ? '+' : '') + a.toFixed(2);
+      out('res').innerHTML = (isNaN(acc) || isNaN(cv)) ? mark(null) : mark(Math.abs(a) <= acc ? c <= cv : false);
+    });
+  }
+  document.addEventListener('input', workOut);
+  document.addEventListener('change', showBalance);
+  document.addEventListener('input', showBalance);
+  document.addEventListener('change', showDue);
+  document.addEventListener('input', showDue);
   toggleKind();
+  showDue();
+  showBalance();
+  workOut();
+//]]>
 </script>
 </tal:scripts>
 </body>

@@ -126,11 +126,7 @@ def receipt_problems(record, receipt, extra_flags=()):
     return blocking, flags
 
 
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _num
 
 
 def judge_temperatures(readings, on_ice):
@@ -174,8 +170,10 @@ def transcription_line(record):
     t = (record or {}).get("transcribed") or {}
     if (record or {}).get("origin") != PAPER or not t.get("by"):
         return u""
+    from senaite.pfas import print_doc
+    at = t.get("at") or u""
     return (u"Transcribed from paper CoC %s by %s on %s. Paper original retained."
-            % (record.get("number"), t["by"], (t.get("at") or u"")[:10]))
+            % (record.get("number"), t["by"], print_doc.lab_or(at, at[:10], u"%Y-%m-%d")))
 
 
 # ── storage (Plone): one annotation per record, and an index ──────────────

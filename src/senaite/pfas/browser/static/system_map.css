@@ -2,8 +2,13 @@
    Nodes reuse the tree component's states (pfas-components.css .pfas-tree-*);
    every colour is a token, so the dark theme follows. */
 
-.pfas-map-tools { margin-bottom: var(--sp-3); }
-.pfas-map-legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); color: var(--text-muted); font-size: var(--fs-sm); }
+/* the toolbar's controls stand on one line at control height, under their labels */
+.pfas-map-tools { margin-bottom: var(--sp-3); align-items: flex-end; }
+.pfas-map-tools .pfas-switch { min-height: var(--ctl-h); }
+.pfas-map-tools .pfas-input.is-find { width: 26ch; }
+/* the colour key: its own line, centred above the map */
+.pfas-map-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-3); margin-bottom: var(--sp-3);
+  color: var(--text-muted); font-size: var(--fs-sm); }
 .pfas-map-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .pfas-map-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
@@ -12,6 +17,7 @@
 .k-worksheet { background: var(--series-1); }
 .k-sample    { background: var(--series-5); }
 .k-lot       { background: var(--series-3); }
+.k-equipment { background: var(--series-6); }
 .k-lab, .k-more { background: var(--text-muted); }
 
 .pfas-map { display: flex; flex-wrap: wrap; min-height: 620px; border: 1px solid var(--line); border-radius: var(--radius-card); overflow: hidden; background: var(--surface); }
@@ -62,3 +68,10 @@
   .pfas-map-card { max-width: none; border-left: 0; border-top: 1px solid var(--line); }
 }
 @media print { .pfas-map-tools, .pfas-map-card .pfas-map-acts { display: none; } }
+
+/* the panel's parts (R5-40) */
+.pfas-map-part { margin-top: var(--sp-3); }
+.pfas-map-part h4 { font-size: var(--fs-xs); font-weight: var(--fw-strong); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .04em; margin: 0 0 6px; }
+.pfas-map-part ul { margin: 0; padding-left: 18px; font-size: var(--fs-sm); }
+.pfas-map-btns { display: flex; flex-wrap: wrap; gap: 6px; }

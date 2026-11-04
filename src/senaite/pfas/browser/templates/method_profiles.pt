@@ -17,10 +17,14 @@
     <ul class="bench-alerts" tal:define="probs view/matrix_problems" tal:condition="probs">
       <li tal:repeat="p probs" tal:content="p">matrix out of step</li>
     </ul>
-    <p class="pfas-lead">Each method&#8217;s QC criteria; a save is handed to the pipeline at once. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <div class="pfas-between">
+      <p class="pfas-lead">Each method&#8217;s QC criteria; a save is handed to the pipeline at once. <tal:h define="hid string:method-profile"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+      <a class="btn btn-primary" tal:condition="view/is_manager"
+         tal:attributes="href string:${context/portal_url}/@@pfas-method-wizard">+ New method</a>
+    </div>
 
     <div class="table-wrap">
-    <table class="pfas-table">
+    <table class="pfas-table" data-col-resize="method-profiles-1">
       <thead>
         <tr>
           <th>Method ID</th>
@@ -28,11 +32,13 @@
           <th class="hide-mobile">Description</th>
           <th>SENAITE Method</th>
           <th>Revision</th>
-          <th>Actions</th>
+          <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
         </tr>
       </thead>
       <tbody>
-        <tr tal:repeat="m view/methods">
+        <!-- the row opens the method's editor; the rest is in its "+" menu -->
+        <tr tal:repeat="m view/methods"
+            tal:attributes="data-href string:${view/portal_url}/@@pfas-method-profile-edit?method_id=${m/method_id}">
           <td>
             <span class="pfas-id" tal:content="m/method_id">FDA_32PFAS</span>
           </td>
@@ -57,14 +63,9 @@
             <span class="sur-tag sur-nocore" tal:condition="python:rv['rev'] and rv['unissued']"
                   title="Settings changed since this revision was issued">unissued changes</span>
           </td>
-          <!-- Edit, and More for the rest; Issue revision stays in view while
-               there are unissued changes. -->
-          <td class="row-actions-cell" tal:define="rv m/revision">
-           <div class="row-actions">
-            <a class="btn-sm btn-primary"
-               tal:attributes="href string:@@pfas-method-profile-edit?method_id=${m/method_id}">Edit</a>
+          <td class="row-plus-cell" tal:define="rv m/revision">
             <details class="row-more">
-              <summary class="btn-sm btn-secondary" title="Print the settings, open the SENAITE method">More &#9662;</summary>
+              <summary class="row-plus" aria-label="Actions for this method" title="Actions">+</summary>
               <div class="row-more-menu">
                 <a class="btn-sm btn-secondary" tal:condition="rv/rev"
                    tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;rev=${rv/rev}"
@@ -75,18 +76,16 @@
                 <a class="btn-sm btn-secondary" tal:condition="m/core_method_url"
                    tal:attributes="href m/core_method_url"
                    title="Open the core SENAITE Method record">SENAITE method</a>
+                <form method="post" class="mp-issue-form" tal:condition="m/revision/unissued"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
+                  <input type="hidden" name="action" value="issue_revision" />
+                  <input type="hidden" name="method_id" tal:attributes="value m/method_id" />
+                  <label class="mp-issue-label">Issue revision
+                    <input type="text" name="reason" placeholder="Reason" /></label>
+                  <button type="submit" class="btn-sm btn-primary">Issue</button>
+                </form>
               </div>
             </details>
-            <details class="mp-issue" tal:condition="m/revision/unissued">
-              <summary class="btn-sm btn-secondary">Issue revision</summary>
-              <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
-                <input type="hidden" name="action" value="issue_revision" />
-                <input type="hidden" name="method_id" tal:attributes="value m/method_id" />
-                <input type="text" name="reason" placeholder="Reason (optional)" />
-                <button type="submit" class="btn-sm btn-primary">Issue</button>
-              </form>
-            </details>
-           </div>
           </td>
         </tr>
       </tbody>

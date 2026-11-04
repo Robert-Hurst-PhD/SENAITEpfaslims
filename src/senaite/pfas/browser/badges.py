@@ -16,7 +16,7 @@
 Refused: an unregistered or revoked terminal, a terminal locked after 5 failed
 scans in 5 minutes, an unknown or revoked badge, a deleted account, and any
 Manager / site-admin account (administrators always
-use their password). Badges are issued and revoked on Lab Staff. Codes and
+use their password). Badges are issued and revoked on People & Roles. Codes and
 tokens are never stored or put in a URL. Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
@@ -29,6 +29,7 @@ from AccessControl import getSecurityManager
 from bika.lims import api
 from Products.CMFPlone.utils import safe_unicode
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import badge_store as bs
@@ -122,7 +123,7 @@ def enforce_terminal_idle(event):
     if not request.cookies.get(COOKIE):
         return
     url = request.get("ACTUAL_URL", "") or ""
-    if any(x in url for x in _IDLE_EXEMPT):
+    if bs.idle_exempt(url, _IDLE_EXEMPT):
         return
     user = getSecurityManager().getUser()
     if user is None or user.getUserName() == "Anonymous User":
@@ -150,7 +151,7 @@ def enforce_terminal_idle(event):
     raise Redirect(target)
 
 
-# ── issuing (called from Lab Staff, gated there) ───────────────────────────
+# ── issuing (called from People & Roles, gated there) ───────────────────────────
 
 def issue_badge(userid):
     """The new code (shown once), or raises ValueError with why not."""
@@ -185,7 +186,7 @@ def _track(userid):
 
 # ── terminals page ─────────────────────────────────────────────────────────
 
-class PFASTerminalsView(GateMixin, BrowserView):
+class PFASTerminalsView(ViewHelpers, GateMixin, BrowserView):
 
     template = ViewPageTemplateFile("templates/badge_terminals.pt")
 
@@ -230,9 +231,6 @@ class PFASTerminalsView(GateMixin, BrowserView):
             return refuse(req)
         return self.template()
 
-    def portal_url(self):
-        return api.get_portal().absolute_url()
-
     def message(self):
         f = self.request.form
         return safe_unicode(f.get("ok") or u""), safe_unicode(f.get("error") or u"")
@@ -266,7 +264,7 @@ class PFASTerminalsView(GateMixin, BrowserView):
 
 # ── sign-in ────────────────────────────────────────────────────────────────
 
-class PFASBadgeSigninView(BrowserView):
+class PFASBadgeSigninView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/badge_signin.pt")
 
@@ -287,9 +285,6 @@ class PFASBadgeSigninView(BrowserView):
         if req.method == "POST" and req.form.get("action") == "badge":
             return self._scan(safe_unicode(req.form.get("code") or u""))
         return self.template()
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def current_user(self):
         if self.signed_out:

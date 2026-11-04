@@ -14,6 +14,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import vocab_store as vs
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 GATES = {"save": TIER_CONFIG}
 
@@ -29,7 +30,7 @@ def rows_from_form(form):
              "active": by[i].get("active") == u"on"} for i in sorted(by)]
 
 
-class PFASVocabulariesView(GateMixin, BrowserView):
+class PFASVocabulariesView(ViewHelpers, GateMixin, BrowserView):
     template = ViewPageTemplateFile("templates/vocab_editor.pt")
 
     def __call__(self):
@@ -51,9 +52,6 @@ class PFASVocabulariesView(GateMixin, BrowserView):
                                           % (self.portal_url(), name))
                     return ""
         return self.template()
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def lists(self):
         return [(n, vs.LISTS[n][0]) for n in sorted(vs.LISTS, key=lambda n: vs.LISTS[n][0])]

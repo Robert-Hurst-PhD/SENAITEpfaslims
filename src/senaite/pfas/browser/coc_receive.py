@@ -21,9 +21,11 @@ from datetime import datetime
 from bika.lims import api
 from DateTime import DateTime
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import coc_records as cr
+from senaite.pfas import lab_time
 from senaite.pfas.browser.formutil import flatten_form
 
 
@@ -56,7 +58,7 @@ def _yesno(v):
     return True if v == u"yes" else (False if v == u"no" else None)
 
 
-class PFASCoCReceiveView(BrowserView):
+class PFASCoCReceiveView(ViewHelpers, BrowserView):
     template = ViewPageTemplateFile("templates/coc_receive.pt")
 
     def __call__(self):
@@ -72,9 +74,6 @@ class PFASCoCReceiveView(BrowserView):
             elif action == "receive":
                 self._receive()
         return self.template()
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def record(self):
         if not hasattr(self, "_rec"):
@@ -96,8 +95,9 @@ class PFASCoCReceiveView(BrowserView):
                 rng = self._range(s)
                 out.append({"uid": uid, "id": s.getId(), "csid": s.getClientSampleID() or u"",
                             "matrix": s.getSampleTypeTitle() or u"",
-                            "sampled": s.getDateSampled().strftime("%Y-%m-%d %H:%M")
+                            "sampled": self.lab_at(s.getDateSampled(), s.getDateSampled().strftime("%Y-%m-%d %H:%M"))
                             if s.getDateSampled() else u"",
+                            "sampled_at": s.getDateSampled(),
                             "state": api.get_review_status(s), "range": rng,
                             "range_text": self._range_text(rng)})
         self._samples = out
@@ -140,7 +140,8 @@ class PFASCoCReceiveView(BrowserView):
         return f.get(name, default) if self.errors else default
 
     def now_local(self):
-        return datetime.utcnow().strftime("%Y-%m-%dT%H:%M")
+        """The "Received at" pre-fill: now on the laboratory's clock."""
+        return lab_time.now().strftime("%Y-%m-%dT%H:%M")
 
     # ── scan (paper CoC) ──────────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ class PFASCoCReceiveView(BrowserView):
         therm = None
         uid = (f.get("thermometer") or u"").strip()
         if uid:
-            therm = rt.freeze(fq.get_unit(uid), fq.current_correction(uid, received_at[:10]),
+            therm = rt.freeze(fq.get_unit(uid), fq.calibration(uid, received_at[:10]),
                               received_at[:10])
         temps = []
         for s in self.samples():
@@ -194,7 +195,7 @@ class PFASCoCReceiveView(BrowserView):
             if obs:
                 temps.append({"sample_id": s["id"], "observed": obs,
                               "corrected": rt.corrected(obs, therm), "range": s["range"],
-                              "same_day": bool(s["sampled"]) and s["sampled"][:10] == received_at[:10]})
+                              "same_day": self._same_day(s.get("sampled_at"), received_at)})
         blank = (f.get("temp_blank") or u"").strip()
         if blank:
             temps.append({"sample_id": u"temperature blank", "observed": blank,
@@ -208,6 +209,15 @@ class PFASCoCReceiveView(BrowserView):
                 "compliant": _yesno(f.get("compliant")),
                 "on_ice": f.get("on_ice") == u"on",
                 "note": (f.get("note") or u"").strip()}
+
+    @staticmethod
+    def _same_day(sampled_at, received_at):
+        """Collected and received on the same laboratory day; the receipt
+        time is typed on the laboratory's clock."""
+        if not sampled_at:
+            return False
+        day = lab_time.lab_date(sampled_at)
+        return day is not None and day == lab_time.lab_date(received_at, "lab")
 
     def _receive(self):
         rec = self.record()
@@ -232,7 +242,8 @@ class PFASCoCReceiveView(BrowserView):
             return
         receipt["flags"] = flags
         from bika.lims.workflow import doActionFor
-        when = DateTime(receipt["received_at"])
+        # typed on the laboratory's clock
+        when = lab_time.typed(receipt["received_at"]) or DateTime(receipt["received_at"])
         for s in self.samples():
             sample = api.get_object_by_uid(s["uid"])
             if api.get_review_status(sample) in ("sample_due", "to_be_sampled", "scheduled_sampling"):
@@ -266,15 +277,34 @@ class PFASCoCReceiveView(BrowserView):
             rec["transcribed"] = {"by": by, "at": at}
         rec["log"].append({"at": at, "by": by, "what": u"received", "before": None,
                            "after": u"; ".join(flags) or u"compliant", "reason": receipt["note"]})
+        # a compliance sample received out of compliance with its method is
+        # held from publishing and resampled (receipt_compliance)
+        resample = self._resample_ids(flags)
+        if resample:
+            rec["resample"] = {"samples": resample, "requested_at": at, "by": by}
+            rec["log"].append({"at": at, "by": by, "what": u"resample requested", "before": None,
+                               "after": u", ".join(resample), "reason": u""})
         if flags:
-            told = self._tell_client(rec, flags, receipt["note"])
+            told = self._tell_client(rec, flags, receipt["note"], resample)
             rec["log"].append({"at": at, "by": by, "what": u"client told", "before": None,
                                "after": told, "reason": u""})
         cr.save(api.get_portal(), rec)
         self.done = ((u"Received, flagged: " + u"; ".join(flags)) if flags else u"Received.") + (
             (u" Not judged: " + u"; ".join(not_judged) + u".") if not_judged else u"")
 
-    def _tell_client(self, rec, flags, note):
+    def _resample_ids(self, flags):
+        """The compliance samples this receipt breaches the method for."""
+        from senaite.pfas import receipt_compliance as rc
+        out = []
+        for s in self.samples():
+            sample = api.get_object_by_uid(s["uid"])
+            fld = sample.getField("ComplianceSample")
+            found = rc.breaches(flags, (s["id"], sample.getClientSampleID()))
+            if rc.resample_required(fld.get(sample) if fld else False, found):
+                out.append(s["id"])
+        return out
+
+    def _tell_client(self, rec, flags, note, resample=()):
         """Email the samples' contact a non-compliant receipt, through
         SENAITE's mail settings. Returns what happened, for the log -- a
         failure is said, never hidden."""
@@ -290,6 +320,9 @@ class PFASCoCReceiveView(BrowserView):
                 u"compliant: %s.\n\n%s\n\nThe samples are held as received with this note."
                 % (rec["number"], (rec.get("receipt") or {}).get("received_at") or u"",
                    u"; ".join(flags), note))
+        if resample:
+            body += (u"\n\nThese compliance samples cannot be reported and must be resampled: %s."
+                     % u", ".join(resample))
         try:
             email = mail.compose_email(mail.to_email_address(sender, lab.getName()),
                                        mail.to_email_address(to, contact.getFullname()),

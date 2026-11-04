@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""What an instrument's software reads as its injection list ("Import Studio, per instrument"). Kept on the core Instrument
-beside Import Studio's import mappings, keyed by software version like them,
-so what the instrument reads and what it writes are kept together.
+"""What an instrument's software reads as its injection list, kept on the
+core Instrument beside Import Studio's import mappings and keyed by software
+version like them: what the instrument reads and writes is kept together.
 
     IAnnotations(instrument)[KEY] = {version: {"software", "columns": [[header,
                                      source]], "saved_by", "saved_at"}}
@@ -28,6 +28,9 @@ def load(instrument):
 
 def save(instrument, version, software, columns, by, at):
     from zope.annotation.interfaces import IAnnotations
+    from senaite.pfas import config_history
+    config_history.track(None, "instrument_export", instrument.UID(), lambda: load(instrument),
+                         label=u"Export layout %s" % version, action=u"save export layout")
     data = load(instrument)
     data[version] = {"software": software, "columns": columns, "saved_by": by, "saved_at": at}
     IAnnotations(instrument)[KEY] = json.dumps(data)
@@ -45,10 +48,7 @@ def current(data):
 def columns_for(instrument):
     """(columns, where): the instrument's saved columns, or the MassLynx
     starter. `where` names which, for the page and the file."""
-    try:
-        from senaite.pfas import run_plan
-    except ImportError:                                     # tests
-        import run_plan
+    from senaite.pfas import run_plan
     if instrument is not None:
         version, cfg = current(load(instrument))
         if cfg and cfg.get("columns"):
@@ -59,10 +59,7 @@ def columns_for(instrument):
 def parse_columns(text):
     """'HEADER = source' per line -> [[header, source]]; an unknown source is
     kept as fixed text so nothing typed is lost silently. Pure."""
-    try:
-        from senaite.pfas import run_plan
-    except ImportError:                                     # tests
-        import run_plan
+    from senaite.pfas import run_plan
     out = []
     for line in (text or u"").splitlines():
         if not line.strip():

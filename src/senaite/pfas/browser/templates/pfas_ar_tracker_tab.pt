@@ -15,7 +15,7 @@
     <!-- Has tracking number -->
     <tal:hasnum tal:condition="info/tracking_number">
       <div class="pfas-muted">Tracking number<tal:h tal:condition="info/held_by">
-        (the slip of <span tal:replace="info/held_by">DW-0012</span>, re-analysed here)</tal:h></div>
+        from the slip of <span tal:replace="info/held_by">DW-0012</span>, re-analysed here</tal:h></div>
       <div class="pfas-id pfas-tracking-number" tal:content="info/tracking_number">
         PF-260611-A3K9
       </div>

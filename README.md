@@ -39,7 +39,15 @@ docker compose up -d
 The stack starts ZEO, SENAITE (port 8080, bound to this machine), nginx (port
 80), the pipeline worker, the document renderer and the PDF text scanner. The
 `senaite` service mounts this folder at `/addon` and installs the add-on in
-development mode.
+development mode. The worker reads a Waters MassLynx raw folder itself, with
+no vendor licence. The raw-data converter (`pfas-convert`, compose profile
+`raw-data`), for another vendor's folder, starts only with
+`docker compose --profile raw-data up -d` after the vendor licences are
+accepted and `PFAS_PWIZ_IMAGE` is set in `.env`; `PFAS_CONVERTER=native` names
+a Windows PC's converter instead, in place of the reader for every folder of
+that worker. The instrument's data share is mounted into `pfas-worker` by
+hand. All of it is
+in `docs/RAW_DATA.md`.
 
 Then, signed in to SENAITE as the administrator:
 
@@ -63,6 +71,20 @@ Restart the instance and install the add-on from the Add-ons control panel.
 The worker (`run_worker.py`, `pfas_pipeline/`) runs separately with Python 3
 and reaches SENAITE over its JSON API.
 
+### Upgrading
+
+A restart loads the new code but does not migrate what the site has
+stored: the method profiles are brought to the current model by the
+add-on's install step (`setuphandlers.setup_handler`, the "senaite.pfas
+install" import step). It runs when the add-on is installed, and again when
+the senaite.pfas profile is imported in Site Setup → Management Interface →
+portal_setup → Import. Run it after every upgrade.
+
+What a page remembers for one person (column widths, which grid groups and
+sections are open, the theme) lives in that person's browser
+(localStorage), never on the site: an upgrade leaves it, and clearing the
+browser's site data resets it.
+
 ## How the pieces connect
 
 ```
@@ -72,18 +94,22 @@ method profiles (/data/qc)  ────────────▶ criteria per
 guided extraction + Run Builder ─ sidecar ▶ run parameters, extraction pedigree
 Import Studio profiles  ────────────────▶ importer (refuses unknown formats)
 Data Review release  ◀────── results ──── QC engine, SENAITE push
+Run Builder ─ .rawexpect.json ──────────▶ raw-data pull, conversion, .rawrun
+                                           (the pfas-raw-runs volume)
 ```
 
 QC results, facility monitoring and the inventory ledger are SQLite databases
 under `/data/qc/`; logbooks, extraction sessions and release checklists are
 ZODB annotations; instrument reports and certificates are files under
-`/data/`.
+`/data/`; a raw run's folders, any mzML files and checksums are in the
+`pfas-raw-runs` volume (`/data/raw_runs` in the worker).
 
 ## Layout
 
 ```
 setup.py              add-on package definition and dependencies
-docker-compose.yml    zeo, senaite, pfas-worker, nginx, pfas-render, pfas-scan
+docker-compose.yml    zeo, senaite, pfas-worker, nginx, pfas-render, pfas-scan,
+                      pfas-convert (profile raw-data)
 Dockerfile.senaite    SENAITE image
 Dockerfile.worker     worker image (requirements.txt)
 nginx.conf            reverse proxy for SENAITE
@@ -92,6 +118,8 @@ src/senaite/pfas/     the add-on
 pfas_pipeline/        the worker (import, QC engine, report, push)
 tools/pdfme/          document renderer service
 tools/pdfscan/        PDF text scanner service
+tools/convert/        the raw-data converter's loop, and the Windows fallback script
+docs/RAW_DATA.md      raw-data processing: install, modes, validation
 data/                 runtime folders (mounted volumes)
 ```
 

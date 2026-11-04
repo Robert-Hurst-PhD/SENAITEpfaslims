@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""The CoC entry sheet's rows: read from
-the form, checked, and turned into SENAITE sample values.
+"""The CoC entry sheet's rows: read from the form, checked, and turned into
+SENAITE sample values.
 
 A row is one sample as the sampler states it:
 
-    {"client_sid", "sampletype", "sampling_point", "sampled" (YYYY-MM-DDTHH:MM),
+    {"client_sid", "sampletype", "subtype" (a sample_subtypes id, optional),
+     "sampling_point", "sampled" (YYYY-MM-DDTHH:MM),
      "container", "preservation", "method", "homogenisation",
      "composite" (bool), "units", "description", "field_qc", "field_qc_of",
+     "compliance" (bool: a regulatory compliance sample, receipt_compliance),
      "sample_uid" (once the sample exists)}
 
 Form names: r__<n>__<key>, one field per box (flatten_form keeps only the
@@ -14,9 +16,11 @@ first value of a list). Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-ROW_KEYS = ("client_sid", "sampletype", "sampling_point", "sampled", "container",
+from senaite.pfas import lab_time
+
+ROW_KEYS = ("client_sid", "sampletype", "subtype", "sampling_point", "sampled", "container",
             "preservation", "method", "homogenisation", "composite", "units",
-            "description", "field_qc", "field_qc_of", "sample_uid")
+            "description", "field_qc", "field_qc_of", "compliance", "sample_uid")
 HEADER_KEYS = ("project", "project_number", "sampler", "carrier", "tracking", "seals")
 
 
@@ -34,8 +38,9 @@ def rows_from_form(form):
     for i in sorted(by):
         r = dict((k, by[i].get(k, u"")) for k in ROW_KEYS)
         r["composite"] = r["composite"] in (u"on", u"True", u"true", u"1")
+        r["compliance"] = r["compliance"] in (u"on", u"True", u"true", u"1")
         # a row not yet a sample can be taken off; a sample is cancelled in SENAITE
-        if (by[i].get("remove") and not r["sample_uid"]) or not any(r[k] for k in ROW_KEYS if k not in ("composite", "sample_uid")):
+        if (by[i].get("remove") and not r["sample_uid"]) or not any(r[k] for k in ROW_KEYS if k not in ("composite", "compliance", "sample_uid")):
             continue                     # an empty row added and left blank
         out.append(r)
     return out
@@ -85,17 +90,40 @@ def row_problems(rows, field_qc_types):
     return uniq
 
 
+def subtype_problems(rows, subtypes_by_type):
+    """A row's sub-type must be one of its matrix's and analysed by its
+    method (sample_subtypes). `subtypes_by_type`: {sample type uid: subtypes}."""
+    out = []
+    for n, r in enumerate(rows or [], 1):
+        sid = r.get("subtype")
+        if not sid:
+            continue
+        who = r.get("client_sid") or u"Row %d" % n
+        sub = dict((x["id"], x) for x in subtypes_by_type.get(r.get("sampletype")) or []).get(sid)
+        if sub is None:
+            out.append(u"%s: %s is not a sub-type of its matrix." % (who, sid))
+        elif r.get("method") in (sub.get("off") or []):
+            out.append(u"%s: %s is not analysed by this method; choose another sub-type or none." % (who, sub["name"]))
+    return out
+
+
 def sample_values(row, client_uid, contact_uid):
     """SENAITE create_analysisrequest values for a row (profile and CoC
     number are added by the caller)."""
     sampled = (row.get("sampled") or u"").replace(u"T", u" ")
+    # the collection time is typed on the laboratory's clock; unset, the
+    # text goes to SENAITE as before
+    if lab_time.active():
+        sampled = lab_time.typed(sampled) or sampled
     v = {"Client": client_uid, "Contact": contact_uid, "SampleType": row.get("sampletype"),
          "DateSampled": sampled, "ClientSampleID": row.get("client_sid"),
          "Composite": bool(row.get("composite")),
          "CompositeUnits": int(row["units"]) if (row.get("units") or u"").isdigit() else None,
          "CompositeDescription": row.get("description") or u"",
          "HomogenisationMethod": row.get("homogenisation") or u"",
-         "FieldQCType": row.get("field_qc") or u"", "FieldQCOf": row.get("field_qc_of") or u""}
+         "FieldQCType": row.get("field_qc") or u"", "FieldQCOf": row.get("field_qc_of") or u"",
+         "ComplianceSample": bool(row.get("compliance")),
+         "SampleSubtype": row.get("subtype") or u""}
     for key, field in (("sampling_point", "SamplePoint"), ("container", "Container"),
                        ("preservation", "Preservation")):
         if row.get(key):
@@ -104,7 +132,7 @@ def sample_values(row, client_uid, contact_uid):
 
 
 def changed_fields(old, new):
-    """{key: (old, new)} of a submitted row's edits (logged, CW2)."""
+    """{key: (old, new)} of a submitted row's edits (logged)."""
     out = {}
     for k in ROW_KEYS:
         if k == "sample_uid":

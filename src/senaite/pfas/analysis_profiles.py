@@ -2,9 +2,8 @@
 """Core Analysis Profiles generated from the method panel (core integration).
 
 What a sample is analysed for is decided at registration, in core SENAITE.
-The method's Analyte x Matrix table decided only what the worker judged, so
-the two could disagree. Every method
-profile save now writes one core Analysis Profile per method x matrix:
+So that it agrees with the method's Analyte x Matrix table, every method
+profile save writes one core Analysis Profile per method x matrix:
 
     title         "<method> - <matrix>"
     sample_types  that matrix's core Sample Type (core offers the profile only
@@ -80,8 +79,8 @@ def generated(portal, method_id):
 
 
 def _by_sampletype(api, mine):
-    """Re-key a stored map by Sample Type uid (maps written before 2026-10-05
-    were keyed by matrix title): read each profile's own Sample Type."""
+    """Re-key a stored map by Sample Type uid (older maps are keyed by
+    matrix title): read each profile's own Sample Type."""
     out = {}
     for key, puid in mine.items():
         obj = api.get_object_by_uid(puid, default=None)
@@ -149,7 +148,7 @@ def sync_method(portal, method_id, profile=None):
 # ── a sample registered with a generated profile is that method's ──────────
 # Analytes belong to several methods (PFOA to all three), so core gives an
 # analysis no default method; a sample registered with one of these profiles
-# names its method, and its analyses carry it (: the
+# names its method, and its analyses carry it (the
 # batch's method is read from its analyses first).
 
 def method_for_profile(portal, profile_uid):

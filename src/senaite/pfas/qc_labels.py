@@ -30,16 +30,13 @@ def get_qc_label_map(portal):
     out = {}
     try:
         folder = portal.bika_setup.bika_referencedefinitions
-    except Exception as exc:
+    except AttributeError as exc:
         logger.warning("qc label map: no reference definitions folder: %s", exc)
         return out
     for d in folder.objectValues():
-        try:
-            match = _QC_TAG_RE.search(d.Description() or "")
-            if match:
-                out[normalize_qc_type(match.group(1))] = d.Title()
-        except Exception:
-            continue
+        match = _QC_TAG_RE.search(d.Description() or "")
+        if match:
+            out[normalize_qc_type(match.group(1))] = d.Title()
     return out
 
 

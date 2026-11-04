@@ -13,7 +13,7 @@ Signs off via native SENAITE Worksheet DCWorkflow:
   Analyst: submit -> to_be_verified
   Manager: verify -> verified
 
-Audit trail via bika.lims.api.snapshot.take_snapshot(ws).
+Audit trail: each review act on the worksheet's own trail (records.log).
 
 Python 2.7 compatible.
 """
@@ -31,22 +31,28 @@ import re
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from senaite.pfas.logbook_schema import active_rows
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import (
-    ANALYST_ROLES, MANAGER_ROLES, has_role_at_portal)
+    ANALYST_ROLES, MANAGER_ROLES, disable_csrf, has_role_at_portal, refuse)
 from senaite.pfas.qc_qualification import format_remark_codes
-# Safe at module scope BECAUSE holding_time imports nothing from Plone -- there
-# is no import-order hazard. Most add-on helpers in this file are imported
+# Safe at module scope BECAUSE holding_time, lab_time and print_doc import
+# nothing from Plone at load -- there is no import-order hazard. Most add-on helpers in this file are imported
 # locally inside the method that needs them (see _bapi, analytes_for_failure,
 # get_batch); do not copy this pattern for a module that does touch Plone.
 from senaite.pfas import holding_time
+from senaite.pfas import lab_time
+from senaite.pfas import print_doc
 
 logger = logging.getLogger("senaite.pfas.browser.data_review")
 
 from senaite.pfas.study_runs import CHECKLIST_KEY  # noqa: E402  (one definition)
+# pure, like holding_time: the refusal while a raw run's edits wait is said once
+from senaite.pfas.raw_edit import FAILED_TEXT as RAW_FAILED_TEXT  # noqa: E402
+from senaite.pfas.raw_edit import WAITING_TEXT as RAW_WAITING_TEXT  # noqa: E402
 INSTRUMENT_REPORT_DIR = os.environ.get("PFAS_INSTRUMENT_REPORTS", "/data/instrument_reports")
 DEFAULT_DB_PATH       = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
@@ -147,6 +153,14 @@ def changed_after(change_at, written_at):
     return written < changed
 
 
+def _lab_day(at):
+    """"YYYY-MM-DD": the laboratory's day of a recorded UTC instant (a run's
+    build, a send-back); the stored text's first ten characters while the
+    zone does not convert."""
+    at = at or u""
+    return print_doc.lab_or(at, at[:10], u"%Y-%m-%d")
+
+
 def _actor_kind(user=None):
     """``"automated"`` if the acting user is a declared service account.
 
@@ -207,20 +221,35 @@ def lot_or_none(raw):
     return lot, u""
 
 
-class PFASDataReviewView(BrowserView):
+
+def _rejected_after(obj, used_on):
+    """The lot was rejected at review on or after the day it was used."""
+    from senaite.pfas import lot_status as ls
+    return ls.rejected_after_use(IAnnotations(obj).get(ls.QUARANTINE_KEY), used_on)
+
+
+
+def _run_order(rows):
+    """Injection rows in the order the run acquired them."""
+    return sorted(rows or [], key=lambda r: (r.get("acquired_at") or u"", r.get("id") or 0))
+
+class PFASDataReviewView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/data_review.pt")
 
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            if self.request.form.get("action", "") == "download_report":
+                return self._handle_download_report()
+            if not self.can_act():
+                return refuse(self.request)
+            disable_csrf(self.request)
             return self._handle_post()
+        if self.request.form.get("export") == "comparison":
+            return self._comparison_csv()
+        if self.request.form.get("raw_card"):
+            return self._raw_card_json()
         return self.template()
 
     # ── Context resolution ────────────────────────────────────────────────
@@ -241,9 +270,6 @@ class PFASDataReviewView(BrowserView):
             if brains:
                 return brains[0].getObject()
         return None
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
 
     # ── Identity accessors ────────────────────────────────────────────────
 
@@ -289,42 +315,45 @@ class PFASDataReviewView(BrowserView):
         return self._batch_method_cache
 
     def _batch_method_uncached(self):
+        from senaite.pfas import batch_method as bm
         ws = self._get_worksheet()
-        if not ws:
-            return u""
-        batch = self._worksheet_batch()
-        if batch is not None:
-            from senaite.pfas import batch_method as bm
-            mid = bm.resolve(batch)[0]
-            if mid:
-                return mid
-        from senaite.pfas.method_bridge import profile_id_for_method
-        try:
-            m = ws.getMethod()
-            if m:
-                return profile_id_for_method(m)
-        except Exception:
-            pass
-        try:
-            for analysis in (ws.getAnalyses() or []):
-                m = analysis.getMethod()
-                if m:
-                    return profile_id_for_method(m)
-        except Exception:
-            pass
-        # a study run: the study's method
-        return (self.study_run() or {}).get("method_id") or u""
+        return bm.for_worksheet(ws) if ws else u""
 
     def has_run(self):
-        """True once a run of this worksheet is on record: "no departure
-        detected" says nothing about a worksheet with no data."""
+        """True once a run of this worksheet is on record with its QC rows:
+        "no departure detected" says nothing about a worksheet with no data,
+        and a run registered with no QC row was not imported."""
         ws = self._get_worksheet()
         if ws is None or not self.db_available:
             return False
         try:
-            return self._store().get_batch(ws.getId()) is not None
+            store = self._store()
+            return store.get_batch(ws.getId()) is not None and store.has_qc_results(ws.getId())
         except Exception:                                   # noqa: BLE001
             return False
+
+    def _run_integration_mode(self):
+        """The results source this worksheet's run was built or uploaded
+        under, from its run record beside its file (the latest full run
+        uploaded, else the raw run's), or None when it carries none or its
+        records cannot be read (the method's mode is read then)."""
+        from senaite.pfas import raw_expect
+        from senaite.pfas.browser.run_builder import RUN_FILES_KEY, UPLOAD_DIR
+        ws = self._get_worksheet()
+        if ws is None:
+            return None
+        try:
+            files = json.loads(IAnnotations(ws).get(RUN_FILES_KEY) or u"[]")
+            full = [f for f in files if isinstance(f, dict) and f.get("kind") == u"full" and f.get("file")]
+            stems = [os.path.splitext(f["file"])[0]
+                     for f in sorted(full, key=lambda f: f.get("at") or u"", reverse=True)]
+            raw = (self._run_manifest(ws).get("raw_expectation") or {}).get("stem")
+            if raw:
+                stems.append(raw)
+            return raw_expect.run_mode([os.path.join(UPLOAD_DIR, s + u"_extraction.json") for s in stems])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("run mode of %s unread: %s", ws.getId(), exc)
+            return None
 
     def import_problems(self):
         """Run files delivered for this worksheet that the worker could not
@@ -358,13 +387,16 @@ class PFASDataReviewView(BrowserView):
             return False
 
     def active_tab(self):
-        return self.request.form.get("tab", "overview")
+        tab = self.request.form.get("tab", "overview")
+        # the Samples tab joined Final Data (each result shows its instrument
+        # result and RT): an old link lands there
+        return "final_data" if tab == "samples" else tab
 
     # the stage names the lab reads (sample_status keeps the five-stage model)
     _STAGE_WORDS = {1: u"Processing", 2: u"Extraction", 3: u"Analysis", 4: u"Review", 5: u"Reported"}
 
     def context_tree(self):
-        """Where this run sits (lab, 2026-10-11): client > chain of custody >
+        """Where this run sits: client > chain of custody >
         batch > this worksheet > its stage, with the samples and QC under it.
         Drawn by the shared tree; nothing here is new data."""
         ws = self._get_worksheet()
@@ -460,6 +492,10 @@ class PFASDataReviewView(BrowserView):
         "spike_saved":             u"Spike level recorded on the extraction log.",
         "request_sent":            u"Request sent to the bench.",
         "request_refused":         u"Request not sent.",
+        "lot_reviewed":            u"Lot reviewed.",
+        "lot_refused":             u"Lot not reviewed.",
+        "run_sent_back":           u"Lot rejected and quarantined. The run is sent back to be rebuilt.",
+        "lot_not_found":           u"The lot is not in the inventory.",
         "spike_saved_not_method":  (u"Spike level recorded on this batch. The "
                                     u"method's nominal level was not changed "
                                     u"\u2014 that needs a manager."),
@@ -477,10 +513,24 @@ class PFASDataReviewView(BrowserView):
         "calibration_rejected":    u"The run's calibration is rejected: release is held.",
         "calibration_note_required": u"Rejecting the calibration needs a note saying why — nothing was saved.",
         "calibration_not_own":     u"This run has no calibration of its own to approve — nothing was saved.",
+        "calibration_held":        u"The calibration is not approved, nothing was saved.",
         "run_plan_note_required":  u"Clearing a run plan item needs a note saying why — nothing was saved.",
         "run_plan_not_cleared":    u"That run plan item was not open — nothing was saved.",
         "correction_logged":       u"Correction saved and logged (initialed + dated).",
         "no_change":               u"New value is identical — no correction logged.",
+        "reintegrated":            u"Re-integrated and listed under Manual changes; the run is being processed again.",
+        "apex_chosen":             u"Apex chosen and listed under Manual changes; the run is being processed again.",
+        "peak_deleted":            u"Peak deleted and listed under Manual changes; the run is being processed again.",
+        "edit_reverted":           u"Edit undone; the run is being processed again with the automatic peak.",
+        "manual_changes_saved":    u"Manual changes saved.",
+        "manual_changes_refused":  u"Manual changes:",
+        "manual_changes_open":     u"Give each manual change a reason and your initials before submitting:",
+        "raw_countersign_refused": u"Not released:",
+        "raw_pull_asked":          u"The raw data is asked for again; the run waits until its folders are settled.",
+        "raw_pull_nothing":        u"No failed pull to ask for again.",
+        "raw_edit_refused":        u"Not changed:",
+        "raw_edits_waiting":       RAW_WAITING_TEXT,
+        "raw_run_failed":          RAW_FAILED_TEXT,
     }
 
     def save_message_text(self):
@@ -496,9 +546,6 @@ class PFASDataReviewView(BrowserView):
         if detail:
             return u"{0} {1}".format(text, detail)
         return text
-
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
 
     # ── Role helpers ──────────────────────────────────────────────────────
 
@@ -529,9 +576,9 @@ class PFASDataReviewView(BrowserView):
     def _method_profile(self):
         """What this worksheet's batch runs to: the method profile with its
         project's specs applied -- the criteria the pipeline used.
-        Resolved once per request (asked ~130 times); a copy each time, so no
-        caller changes another's."""
-        import copy
+        Resolved once per request (asked hundreds of times a page) and the
+        same dict returned to every caller: a reader never changes it, and
+        a caller that must change it copies it first."""
         if not hasattr(self, "_method_profile_cache"):
             try:
                 from senaite.pfas.project_specs import profile_for_batch
@@ -541,7 +588,7 @@ class PFASDataReviewView(BrowserView):
                     self._batch_matrix()) or {} if mid else {}
             except Exception:
                 self._method_profile_cache = {}
-        return copy.deepcopy(self._method_profile_cache)
+        return self._method_profile_cache
 
     def _fc(self, slug):
         """The lab's form number for a logbook (FM-ENV-003...), from the pool."""
@@ -560,19 +607,24 @@ class PFASDataReviewView(BrowserView):
         if batch is None:
             return []
         from senaite.pfas import batch_method as bm
-        return bm.resolve(batch)[1]
+        return bm.resolve(batch, home=self._get_worksheet())[1]
 
     def _worksheet_batch(self):
-        """The batch of this worksheet's samples (the project link lives there)."""
-        ws = self._get_worksheet()
-        try:
-            for analysis in (ws.getAnalyses() or []) if ws is not None else []:
-                batch = analysis.getRequest().getBatch()
-                if batch is not None:
-                    return batch
-        except Exception:                                   # noqa: BLE001
-            pass
-        return None
+        """The batch of this worksheet's samples (the project link lives
+        there). Its samples by the catalog, never each analysis woken; once
+        per view (the worker's scan of every open worksheet asked twice)."""
+        if not hasattr(self, "_worksheet_batch_cache"):
+            from senaite.pfas import extraction_batch
+            ws, found = self._get_worksheet(), None
+            try:
+                for sample in extraction_batch.samples_on(ws) if ws is not None else []:
+                    found = sample.getBatch()
+                    if found is not None:
+                        break
+            except Exception:                               # noqa: BLE001
+                found = None
+            self._worksheet_batch_cache = found
+        return self._worksheet_batch_cache
 
     def _injection_rows(self, qc_type=None, role=None):
         """Per-injection detail rows for this worksheet's batch."""
@@ -585,6 +637,476 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.warning("_injection_rows: %s", exc)
             return []
+
+    # ── Raw Data (a run imported from raw data) ─────────────────────
+    def _raw_connect(self):
+        """A connection to the QC store, or None without a batch or store."""
+        import sqlite3
+        if not self.batch_id() or not self.db_available:
+            return None
+        return sqlite3.connect(DEFAULT_DB_PATH)
+
+    def _raw_traces(self, injection=None, analytes=None, role=None):
+        """This worksheet's raw_traces rows (raw_traces.read), narrowed by the
+        filters given. Each distinct filter is read once per request and kept
+        under its own key."""
+        import sqlite3
+        from senaite.pfas import raw_traces
+        key = (injection, tuple(analytes) if analytes is not None else None, role)
+        cache = self.__dict__.setdefault("_raw_cache", {})
+        if key in cache:
+            return cache[key]
+        cache[key] = []
+        try:
+            conn = self._raw_connect()
+            if conn is None:
+                return cache[key]
+            try:
+                cache[key] = raw_traces.read(conn, self.batch_id(), injection=injection,
+                                             analytes=analytes, role=role)
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass                                            # no raw run stored (no table yet)
+        return cache[key]
+
+    def raw_available(self):
+        import sqlite3
+        from senaite.pfas import raw_traces
+        try:
+            conn = self._raw_connect()
+            if conn is None:
+                return False
+            try:
+                return raw_traces.exists(conn, self.batch_id())
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return False
+
+    # the Raw Data tab's overview: every analyte of one injection, or one
+    # analyte across every injection
+    RAW_MODES = (u"injection", u"compound")
+    # what the page says once an edit is made, by its kind
+    RAW_EDIT_DONE = {u"integrate": "reintegrated", u"apex": "apex_chosen", u"delete": "peak_deleted",
+                     u"revert": "edit_reverted"}
+    # the edit as posted, carried back on the redirect (posted_<field>) so
+    # the card opens on it again after a refusal
+    RAW_POSTED = ("transition", "kind", "start", "end", "apex", "baseline", "level_start", "level_end")
+    # a value longer than any edit's field is not carried: the address stays short
+    RAW_POSTED_MAX = 64
+
+    def _raw_library(self):
+        """The compound library as the services hold it now (the worker reads
+        the same export). Once per request."""
+        if not hasattr(self, "_raw_library_cache"):
+            from senaite.pfas import compound_library_store
+            self._raw_library_cache = compound_library_store.library()
+        return self._raw_library_cache
+
+    def _raw_rows(self):
+        """The result rows the Raw Data tab shows: the raw side, kept apart
+        under Validation, reported under LIMS integration. The worker names
+        a row by the compound library's display name and its traces and
+        edits by the keyword: each row's analyte is resolved to its keyword
+        through the library, its name kept as the label it is shown under
+        (raw_review.keyed_rows). Once per request."""
+        if not hasattr(self, "_raw_rows_cache"):
+            from senaite.pfas import raw_review
+            rows = self._sides()[1] or _run_order(self._injection_rows())
+            self._raw_rows_cache = raw_review.keyed_rows(
+                rows, raw_review.library_keyword_of(self._raw_library()))
+        return self._raw_rows_cache
+
+    def _raw_stem(self):
+        """The raw run's file stem in the upload folder, "" without one."""
+        return (self._run_manifest(self._get_worksheet()).get("raw_expectation") or {}).get("stem") or u""
+
+    def _raw_record(self):
+        """The raw run's record (<stem>.rawrun), {} when there is none."""
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        stem = self._raw_stem()
+        path = os.path.join(UPLOAD_DIR, stem + u".rawrun")
+        if not stem or not os.path.exists(path):
+            return {}
+        try:
+            with open(path) as fh:
+                return json.load(fh) or {}
+        except (IOError, OSError, ValueError) as exc:
+            logger.warning("raw run record %s unread: %s", path, exc)
+            return {}
+
+    def _raw_overrides(self):
+        """The run's edits, kept beside it (<stem>.overrides.json)."""
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        stem = self._raw_stem()
+        return raw_review.read_overrides(os.path.join(UPLOAD_DIR, stem + u".overrides.json")) if stem else {}
+
+    def _raw_imports(self):
+        """The import log's entries for the raw run's file, newest first;
+        None when the log cannot be read. Once per request."""
+        if not hasattr(self, "_raw_imports_cache"):
+            stem, got = self._raw_stem(), []
+            if stem and self.db_available:
+                try:
+                    got = [r for r in self._store().import_log(self.batch_id())
+                           if r.get("file") == stem + u".rawrun"]
+                except Exception as exc:                    # noqa: BLE001
+                    logger.warning("raw run: import log unread: %s", exc)
+                    got = None
+            self._raw_imports_cache = got
+        return self._raw_imports_cache
+
+    def _raw_edit_reads(self):
+        """(overrides, traces): the run's edits, and the stored traces that
+        show what the last processing made of them, the edited and the
+        undone ones, read by injection and analyte. Once per request."""
+        if not hasattr(self, "_raw_edit_reads_cache"):
+            from senaite.pfas import raw_edit
+            from senaite.pfas.browser import manual_integration_view as miv
+            overrides = self._raw_overrides()
+            dropped = [r for r in miv.load_state(self._get_worksheet()).get("raw_changes") or []
+                       if r.get("dropped")]
+            traces = []
+            for inj, analytes in sorted(raw_edit.edited_reads(overrides, dropped).items()):
+                traces.extend(self._raw_traces(injection=inj, analytes=analytes))
+            self._raw_edit_reads_cache = (overrides, traces)
+        return self._raw_edit_reads_cache
+
+    def _raw_no_effect(self):
+        """{(injection, analyte, transition): why} of the edits the last
+        processing kept but could not apply (raw_review.no_effect): the
+        Manual changes panel says so and asks nothing of them."""
+        from senaite.pfas import raw_review
+        if self._get_worksheet() is None or not self._raw_stem():
+            return {}
+        return raw_review.no_effect(*self._raw_edit_reads())
+
+    def raw_waiting(self):
+        """(waiting, edits): whether the raw run's edits wait for it to be
+        processed again (raw_edit.waiting: when <stem>.overrides.json was
+        written, the run's import log, and whether each edited or undone
+        trace's stored peak shows it), and how many traces are edited. An
+        import log that cannot be read leaves them waiting. Once per request."""
+        if hasattr(self, "_raw_waiting_cache"):
+            return self._raw_waiting_cache
+        from senaite.pfas import raw_edit, raw_review
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        stem = self._raw_stem()
+        path = os.path.join(UPLOAD_DIR, stem + u".overrides.json")
+        if not stem or not os.path.exists(path):
+            self._raw_waiting_cache = (False, 0)
+            return self._raw_waiting_cache
+        edited_at = datetime.datetime.utcfromtimestamp(int(os.path.getmtime(path))).strftime("%Y-%m-%dT%H:%M:%S")
+        imports = self._raw_imports()
+        overrides, traces = self._raw_edit_reads()
+        unshown = raw_review.pending(overrides, traces)
+        if imports is None:
+            self._raw_waiting_cache = (True, len(overrides))
+        else:
+            self._raw_waiting_cache = raw_edit.waiting(edited_at, imports, overrides, unshown)
+        return self._raw_waiting_cache
+
+    def _raw_submit_refusal(self):
+        """(message key, detail) why submit and release wait on the raw run
+        (raw_edit.submit_refusal: its failed processing, named, or its edits
+        waiting), or None."""
+        from senaite.pfas import raw_edit
+        return raw_edit.submit_refusal(self.raw_waiting()[0], self._raw_imports())
+
+    def _raw_failure(self):
+        """The raw run's last processing when it was refused or is being
+        tried again (the import log): {"status", "error", "attempts", "at"};
+        None when it imported or nothing is on record."""
+        mine = self._raw_imports()
+        if not mine or mine[0].get("status") not in (u"failed", u"retrying"):
+            return None
+        return {"status": mine[0]["status"], "error": mine[0].get("error") or u"",
+                "attempts": mine[0].get("attempts") or 0, "at": mine[0].get("updated_at") or u""}
+
+    def raw_can_edit(self):
+        """Whether this user may edit the run's peaks now: entry rights, and
+        the review record still open."""
+        return bool(self.can_act()) and self.ws_state() not in self.CLOSED_STATES
+
+    def raw_tab_json(self):
+        """The Raw Data tab's data, safe inside a <script>:
+        {"mode": "injection" | "compound", "list": the left column (the
+        injections, or the analytes), "selected", "thumbs" (raw_review.thumbs),
+        "pending" (edits not yet processed, of the traces read), "failure"
+        (_raw_failure), "waiting" and "edited" (raw_waiting: whether the
+        batch's edits wait for the run to be processed again; how many),
+        "cal_dropped" (by compound: the calibrators a deleted peak took
+        off the selected analyte's curve, when this worksheet's worker failed
+        the curve for them: read from its Calibration QC rows), "can_edit", "card_url"
+        (one card: add &injection=&analyte=), "injections"}. Only the traces
+        the mode shows are read. A card is not here: raw_data.js fetches the
+        one opened (raw_card=1), so the cards of a whole injection never
+        ride in the page."""
+        from senaite.pfas import raw_review
+        f = self.request.form
+        mode = f.get("mode") if f.get("mode") in self.RAW_MODES else u"injection"
+        results = self._raw_rows()
+        injections = raw_review.injections(results)
+        overrides = self._raw_overrides()
+        waiting, edited = self.raw_waiting()
+        data = {"mode": mode, "injections": injections, "cal_dropped": [], "failure": self._raw_failure(),
+                "waiting": waiting, "edited": edited, "can_edit": self.raw_can_edit(),
+                "card_url": self.ws_url() + u"/@@pfas-data-review?raw_card=1"}
+        if mode == u"injection":
+            listed = injections
+            chosen = f.get("injection") or u""
+        else:
+            listed = raw_review.analytes(results)
+            chosen = f.get("analyte") or u""
+        names = [i["name"] for i in listed]
+        chosen = chosen if chosen in names else (names[0] if names else u"")
+        traces = []
+        if chosen and mode == u"injection":
+            traces = self._raw_traces(injection=chosen)
+        elif chosen:
+            traces = self._raw_traces(analytes=[chosen])
+            levels = dict((i.get("name"), i.get("level")) for i in self._raw_record().get("injections") or [])
+            data["cal_dropped"] = raw_review.cal_dropped(results, chosen, levels, self.calibration_own_rule_rows())
+        data.update(list=listed, selected=chosen,
+                    thumbs=raw_review.thumbs(mode, chosen, traces, results, overrides) if chosen else [],
+                    pending=raw_review.pending(overrides, traces))
+        return raw_review.page_json(data)
+
+    def _raw_card_json(self):
+        """GET raw_card=1&injection=&analyte=: one analyte of one injection as
+        the Raw Data dialog draws it (raw_review.card, an edit not yet
+        processed reading as pending), with "injection", "can_edit", the
+        compound's "limits" on a manual change, its "rules" for a manual peak
+        (raw_edit.review_rules; "rules_problem" when they cannot be read), the
+        "method_baseline" its automatic peak was measured on, each waiting
+        edit named in the panel's words (raw_review.name_pending), the
+        "unit" its concentration is in (instrument_unit: the curve's) and
+        "is_standard" (an isotope standard, whose deletion the client
+        confirms in one step).
+        404 with {"error"} when the run holds no such card."""
+        from senaite.pfas import raw_edit, raw_preview, raw_review
+        f = self.request.form
+        inj, an = raw_edit.text(f, "injection"), raw_edit.text(f, "analyte")
+        resp = self.request.response
+        resp.setHeader("Content-Type", "application/json; charset=utf-8")
+        resp.setHeader("Cache-Control", "no-store")
+        traces = self._raw_traces(injection=inj) if inj and an else []
+        rows = self._raw_rows()
+        profile = self._method_profile()
+        # the calibrator lots are on the Calibration tab and in the
+        # traceability tree, not on the card: the run's manifest is not read
+        found = raw_review.card(inj, an, traces, rows, [], self._raw_overrides())
+        if found is None:
+            resp.setStatus(404)
+            return json.dumps({"error": u"%s / %s is not in this worksheet's raw run." % (inj, an)})
+        integration = profile.get("integration") or {}
+        try:
+            change, sn = raw_preview.manual_limits(integration, an)
+        except (TypeError, ValueError):
+            change, sn = None, None
+        quant = [t for t in traces if t["analyte"] == an and t["role"] == u"quant"][0]
+        grid = profile.get("labelled_standards")
+        rules, rules_problem = raw_edit.review_rules(integration, an)
+        found.update(injection=inj, can_edit=self.raw_can_edit(), rules=rules, rules_problem=rules_problem,
+                     is_standard=raw_edit.is_standard(rows, inj, an,
+                                                      sorted(grid) if isinstance(grid, dict) else ()),
+                     limits={"min_manual_change_pct": change, "min_manual_sn": sn},
+                     method_baseline=raw_edit.method_baseline(quant.get("peak"), integration),
+                     unit=self.instrument_unit())
+        raw_review.name_pending(found, found["method_baseline"])
+        return json.dumps(found, sort_keys=True)
+
+    def _handle_raw_edit(self):
+        """An analyst's edit of one raw trace, its quantifier or a qualifier:
+        re-integrate (edges, baseline), another apex (and baseline), delete
+        the peak, or undo the edit. No reason is asked. raw_edit.decide
+        refuses, before anything is written, what the trace or the method's
+        limits do not allow. Then the edit is kept beside the run and
+        replayed whenever it is processed, listed under Manual changes with
+        the automatic peak and the edit (its sample type from the side the tab
+        shows), and the run is processed again. The redirect opens the card
+        again with the edit as posted (posted_<field>, read after a refusal)
+        and the method's notes on the edit made (notes, one per line)."""
+        from six.moves.urllib.parse import quote
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import raw_edit, raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error")
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        f = self.request.form
+        inj, an = raw_edit.text(f, "injection"), raw_edit.text(f, "analyte")
+        mode = f.get("mode") if f.get("mode") in self.RAW_MODES else u"injection"
+        q = lambda s: quote(s.encode("utf-8"), safe="")
+        # back to the same view, its dialog open on the edited card, with the
+        # edit as posted: its trace, kind, edges, apex, line and levels
+        back = u"&mode=%s&injection=%s&analyte=%s&open=%s" % (mode, q(inj), q(an), q(inj + u"|" + an))
+        back += u"".join(u"&posted_%s=%s" % (k, q(raw_edit.text(f, k))) for k in self.RAW_POSTED
+                         if 0 < len(raw_edit.text(f, k)) <= self.RAW_POSTED_MAX)
+        stem = self._raw_stem()
+        rawrun = os.path.join(UPLOAD_DIR, stem + u".rawrun")
+        if not stem or not os.path.exists(rawrun):
+            return self._redirect_with_msg("raw_edit_refused", "error", tab="raw", extra=back,
+                                           detail=u"This worksheet has no raw run to edit.")
+        path = os.path.join(UPLOAD_DIR, stem + u".overrides.json")
+        overrides = raw_review.read_overrides(path)
+        traces = self._raw_traces(injection=inj, analytes=[an]) if inj and an else []
+        profile = self._method_profile()
+        grid = profile.get("labelled_standards")
+        state = miv.load_state(ws)
+        # an undo retried after its first try removed the edit from the run
+        # but its record was not saved: the open record lets it complete
+        problem, plan = raw_edit.decide(f, traces, self._raw_rows(), overrides, profile.get("integration") or {},
+                                        labelled=sorted(grid) if isinstance(grid, dict) else (),
+                                        open_changes=[mi.raw_key(r) for r in mi.raw_open(state)])
+        if problem:
+            return self._redirect_with_msg("raw_edit_refused", "error", tab="raw", detail=problem, extra=back)
+        who = getSecurityManager().getUser().getId()
+        when = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        inj, an, tr, qt = plan["injection"], plan["analyte"], plan["transition"], plan["quant_transition"]
+        if plan.get("gone"):
+            # the edit is already out of the run: only its record is closed
+            mi.drop_raw_edit(state, inj, an, tr, who, when, quant_transition=qt)
+            miv.save_state(ws, state)
+            self._audit(ws)
+            return self._redirect_with_msg(self.RAW_EDIT_DONE[plan["kind"]], "ok", tab="raw", extra=back)
+        try:
+            if plan["kind"] == u"revert":
+                overrides = raw_review.clear_edit(overrides, inj, an, tr, qt)[0]
+                mi.drop_raw_edit(state, inj, an, tr, who, when, quant_transition=qt)
+            else:
+                overrides = raw_review.set_edit(overrides, inj, an, tr, qt, plan["edit"], who, when)
+                mi.record_raw_edit(state, inj, an, tr, plan["kind"], plan["before"], plan["after"], who, when,
+                                   qc_type=plan["qc_type"], quant_transition=qt)
+        except ValueError as exc:
+            return self._redirect_with_msg("raw_edit_refused", "error", tab="raw", extra=back,
+                                           detail=exc.args[0] if exc.args else u"")
+        raw_review.write_overrides(path, overrides)
+        miv.save_state(ws, state)
+        os.utime(rawrun, None)                   # the worker processes the run again
+        self._audit(ws)
+        # what the method notes of the edit made, never a refusal: the card
+        # shows each as a chip, one per line
+        if plan.get("notes"):
+            back += u"&notes=" + q(u"\n".join(plan["notes"]))
+        return self._redirect_with_msg(self.RAW_EDIT_DONE[plan["kind"]], "ok", tab="raw", extra=back)
+
+    # ── Validation: the run imported both ways, compared ────────────
+    def _sides(self):
+        """(vendor rows, raw rows): the reported side from injection_results,
+        the other from the rows kept apart (raw_compare.alt_rows)."""
+        from senaite.pfas import raw_compare
+        bid = self.batch_id()
+        if not bid or not self.db_available:
+            return [], []
+        raw = raw_compare.alt_rows(DEFAULT_DB_PATH, bid, "raw")
+        if raw:
+            return _run_order(self._injection_rows()), _run_order(raw)
+        vendor = raw_compare.alt_rows(DEFAULT_DB_PATH, bid, "vendor")
+        return (_run_order(vendor), _run_order(self._injection_rows())) if vendor else ([], [])
+
+    def comparison_available(self):
+        return bool(self._sides()[1])
+
+    def comparison_empty(self):
+        """Why the Comparison tab has nothing, as the run stands: "no_run"
+        (no run imported yet), "not_integrated" (a Validation run whose raw
+        data were not integrated), "no_export" (a LIMS-integrated run whose
+        instrument export was not imported), else "vendor" (the method
+        reports the instrument software's results). The mode is the run's
+        own when its run record carries one, else the method's."""
+        if not self.has_run():
+            return u"no_run"
+        from senaite.pfas import raw_expect
+        mode = self._run_integration_mode() or raw_expect.mode(self._method_profile())
+        return {u"validation": u"not_integrated", u"lims": u"no_export"}.get(mode, u"vendor")
+
+    def comparison(self):
+        """{"lines", "summary"}: every peak's two areas, retention times,
+        concentrations and verdicts, names matched on their keyword."""
+        if hasattr(self, "_comparison"):
+            return self._comparison
+        from senaite.pfas import compound_library, raw_compare
+        from senaite.pfas.compound_library_store import library
+        from bika.lims import api
+        try:
+            n2k = compound_library.name_to_keyword(library(api.get_portal()))
+        except Exception:                                   # noqa: BLE001
+            n2k = {}
+        vendor, raw = self._sides()
+        lines = raw_compare.compare(vendor, raw, key=lambda name: n2k.get(name, name))
+        self._comparison = {"lines": lines, "summary": raw_compare.summary(lines)}
+        return self._comparison
+
+    def comparison_headings(self):
+        """The table's headings, the validation record's (raw_compare.COLUMNS)
+        but its last: a disagreement is marked on the raw verdict."""
+        from senaite.pfas import raw_compare
+        return [label for _k, label in raw_compare.COLUMNS[:-1]]
+
+    def _comparison_csv(self):
+        """The comparison as the validation record (CSV)."""
+        from senaite.pfas import raw_compare
+        ws = self._get_worksheet()
+        bid = self.batch_id()
+        method = (self._run_manifest(ws).get("method_id") if ws is not None else u"") or u""
+        text = raw_compare.to_csv(self.comparison()["lines"], run=bid, method=method)
+        resp = self.request.response
+        resp.setHeader("Content-Type", "text/csv; charset=utf-8")
+        resp.setHeader("Content-Disposition", 'attachment; filename="comparison_{0}.csv"'.format(
+            re.sub(r"[^A-Za-z0-9_-]", "_", bid or "run")))
+        return text.encode("utf-8")
+
+    def raw_run_status(self):
+        """The raw run this worksheet's run expects: waiting (naming what
+        for), failed (why) or pulled; {} when the run expects none."""
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        raw = self._run_manifest(self._get_worksheet()).get("raw_expectation") or {}
+        stem = raw.get("stem")
+        if not stem and not raw.get("error"):
+            return {}
+        return raw_review.run_status(os.path.join(UPLOAD_DIR, stem or u"none"), expect_error=raw.get("error"))
+
+    def _handle_raw_pull_again(self):
+        """A failed raw pull asked for again (its failure removed; the
+        worker's pull then waits for the folders afresh)."""
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error")
+        stem = (self._run_manifest(self._get_worksheet()).get("raw_expectation") or {}).get("stem")
+        if not stem or not raw_review.pull_again(os.path.join(UPLOAD_DIR, stem)):
+            return self._redirect_with_msg("raw_pull_nothing", "error", tab="instrument_report")
+        try:
+            import sqlite3
+            conn = sqlite3.connect(DEFAULT_DB_PATH)
+            try:                                 # off the bell while it is tried again
+                conn.execute("UPDATE run_imports SET status='retrying' WHERE file=?", (stem + ".rawrun",))
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            logger.warning("raw pull again: import log not updated: %s", exc)
+        self._audit(self._get_worksheet())
+        return self._redirect_with_msg("raw_pull_asked", "ok", tab="instrument_report")
+
+    def raw_run_files(self):
+        """The raw files, checksums and conversion of this worksheet's raw run
+        (its .rawrun record), or None."""
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        stem = (self._run_manifest(self._get_worksheet()).get("raw_expectation") or {}).get("stem")
+        path = os.path.join(UPLOAD_DIR, (stem or u"") + ".rawrun")
+        if not stem or not os.path.exists(path):
+            return None
+        with open(path) as fh:
+            return raw_review.run_files(json.load(fh))
 
     def sample_results_page(self):
         """Page 1 — field-sample results per analyte, with per-injection RT /
@@ -647,10 +1169,7 @@ class PFASDataReviewView(BrowserView):
             return out
         # the QC Summary's own cells (qc_cells), for the spike / recovery QC
         # types only, their criteria numbered for this page
-        try:
-            from senaite.pfas import qc_cells
-        except ImportError:                                  # loaded by path (tests)
-            import qc_cells
+        from senaite.pfas import qc_cells
         spike_types = [t for t in summary.get("qc_types", []) if qc_cells.is_spike(t)]
         shown = qc_cells.tables(summary.get("columns") or [], summary.get("rows") or [],
                                 keep=qc_cells.is_spike)
@@ -681,10 +1200,7 @@ class PFASDataReviewView(BrowserView):
         batch = self._extraction_home(ws) if ws else None
         if batch is None:
             return []
-        try:
-            from senaite.pfas.dilution_ref import get_spikes
-        except Exception:
-            return []
+        from senaite.pfas.dilution_ref import get_spikes
         spikes = get_spikes(batch)
         profile = self._method_profile() or {}
         matrix = self._batch_matrix()
@@ -745,23 +1261,30 @@ class PFASDataReviewView(BrowserView):
                         "unrecorded": bool(entry.get("from_run"))})
         return out
 
-    def _rounding_rule(self):
-        """The rounding rule this worksheet's results are judged and printed
-        with: the method x matrix format of the ISSUED reporting-template
-        revision, else the method profile's (as the worker's
-        export)."""
-        if not hasattr(self, "_rule_cache"):
-            from senaite.pfas import report_format
-            from senaite.pfas.report_templates import issued_snapshot
-            prof = self._method_profile() or {}
+    def _certificate_format(self, sample_type):
+        """The settings the certificate prints a sample of `sample_type` with
+        (report_templates.certificate_format): Final Data, the release checks
+        and the certificate round alike."""
+        from senaite.pfas.print_settings import get_print_settings
+        from senaite.pfas.report_limits import canonical_matrix
+        from senaite.pfas.report_templates import certificate_format, issued_snapshot
+        if not hasattr(self, "_cert_inputs"):
             try:
-                snap, _rev = issued_snapshot(self._portal())
+                snap = issued_snapshot(self._portal())[0]
             except Exception:                               # noqa: BLE001
                 snap = None
-            src = ({report_format.KEY: (snap.get("report_formats") or {}).get(
-                       prof.get("method_id") or self.batch_method()) or {}}
-                   if snap is not None else prof)
-            self._rule_cache = report_format.resolve(src, self._batch_matrix()).get("coa_rounding") or u"epa"
+            self._cert_inputs = (snap, self._method_profile() or {}, get_print_settings(self._portal()))
+        snap, profile, live = self._cert_inputs
+        method_id = profile.get("method_id") or self.batch_method()
+        return certificate_format(snap, method_id, profile, canonical_matrix(profile, sample_type), live)[0]
+
+    def _rounding_rule(self):
+        """The rounding rule this worksheet's results are judged and printed
+        with: the certificate's for the batch's matrix."""
+        if not hasattr(self, "_rule_cache"):
+            from senaite.pfas import rounding
+            self._rule_cache = (self._certificate_format(self._batch_matrix()).get("coa_rounding")
+                                or rounding.DEFAULT_RULE)
         return self._rule_cache
 
     def _batch_matrix(self):
@@ -834,14 +1357,22 @@ class PFASDataReviewView(BrowserView):
 
     def _save_checklist(self, ws, data):
         self._checklist_cache = None      # recomputed on the next read
+        # what a write in this request may change is read afresh after it
+        self._qc_summary_memo = None
+        self._analyses_index = None
+        self._sample_inputs = None
+        self._pushes_memo = None
+        self.__dict__.pop("_accred_disclosure", None)
         IAnnotations(ws)[CHECKLIST_KEY] = json.dumps(data)
 
     def _audit(self, ws):
-        try:
-            from bika.lims.api import snapshot as _snapshot
-            _snapshot.take_snapshot(ws)
-        except Exception as exc:
-            logger.warning("_audit snapshot failed: %s", exc)
+        """The review act on the worksheet's own trail: who, when, the action
+        posted and its reason (records.log). The act's content is in its own
+        record (sign-offs, corrections, the review log)."""
+        from senaite.pfas import records
+        form = self.request.form
+        records.log(ws, form.get("action") or u"review",
+                    reason=(form.get("reason") or form.get("note") or u"").strip())
 
     # ── Auto-check computation ────────────────────────────────────────────
 
@@ -862,6 +1393,58 @@ class PFASDataReviewView(BrowserView):
             if v:
                 return v[:10]
         return u""
+
+    def review_flags(self):
+        """Why this run is flagged for review (a corrected certificate behind a
+        lot it used; certificate_values.add_flag)."""
+        from senaite.pfas import certificate_values as cv
+        ws = self._get_worksheet()
+        return cv.flags_of(ws) if ws is not None else []
+
+    def trace_rows(self, t):
+        """The Traceability table: every reagent, consumable and standard the
+        extraction log names, one row each -- what it is, its lot, its
+        supplier ("Prepared in-house" for a prepared standard), its expiry and
+        its certificate (a reagent's CoA, a prepared standard's preparation
+        certificate). One supplier per row: the inventory's, else the log's."""
+        from senaite.pfas.browser.reagents import _effective_expiry
+        from senaite.pfas.browser import prepared_standards as _ps
+        from senaite.pfas.lot_links import lot_menu
+        portal = self._portal()
+        purl = self.portal_url()
+        reagent_by_lot, ps_by_lot = self._build_lot_indices(portal)
+        rows = []
+        for e in list(t.get("direct_reagents") or []) + list(t.get("direct_standards") or []):
+            res, lot = e.get("resolved") or {}, (e.get("lot") or u"").strip()
+            row = {"name": e.get("name") or res.get("title") or u"", "lot": lot,
+                   "supplier": u"", "expiry": u"", "cert_url": u"", "cert": u"",
+                   "found": bool(res), "kind": u""}
+            try:
+                if res.get("type") == "PreparedStandard" and lot in ps_by_lot:
+                    obj = ps_by_lot[lot]
+                    rec = _ps._obj_to_dict(obj) or {}
+                    row["supplier"] = u"Prepared in-house"
+                    row["expiry"] = _ps.effective_expiry_info(portal, rec).get("date") or u""
+                    row["cert_url"] = u"%s/@@pfas-prep-standards?action=cert&uid=%s" % (purl, obj.getId())
+                    row["cert"] = u"Preparation certificate"
+                    row["kind"] = u"prepared"
+                elif res and lot in reagent_by_lot:
+                    obj = reagent_by_lot[lot]
+                    rec = self._reagent_record(obj)
+                    row["supplier"] = res.get("supplier") or e.get("supplier") or u""
+                    row["expiry"] = _effective_expiry(rec) or u""
+                    if res.get("has_coa"):
+                        row["cert_url"] = u"%s/@@pfas-reagents?action=coa&uid=%s" % (purl, obj.UID())
+                        row["cert"] = u"Supplier's CoA"
+                    row["kind"] = u"purchased"
+                else:
+                    row["supplier"] = e.get("supplier") or u""
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("trace_rows %s: %s", lot, exc)
+            # the row's + menu: the lot, and its certificate when on file
+            row["menu"] = lot_menu(row["kind"], lot, purl, row["cert_url"])
+            rows.append(row)
+        return rows
 
     def _reagent_record(self, obj):
         """The FULL reagent record, for deciding expiry.
@@ -959,7 +1542,7 @@ class PFASDataReviewView(BrowserView):
     _QC_TYPE_TO_FAILURE = {
         "LFSM": "lfsm", "LFSMD": "lfsmd", "Dup": "duplicate",
         "MB": "blank", "MxB": "blank", "LRB": "blank", "CCB": "blank",
-        "LFB": "blank", "LCS": "blank",
+        "LFB": "lcs", "LCS": "lcs",
         "CCV": "ccv", "Calibration": "calibration", "RT": "rt",
         "IS": "is_response", "IS Response": "is_response",
         # per-injection flags on field samples (_injection_qc_rows)
@@ -982,11 +1565,7 @@ class PFASDataReviewView(BrowserView):
         Returns the dict `qc_qualification.qualifier_for` produces (which may
         carry `needs_config`), or None when the disposition is BLOCK.
         """
-        try:
-            from senaite.pfas.qc_qualification import qualifier_for, classify_failure
-        except Exception as exc:                            # noqa: BLE001
-            logger.error("qualifier library unavailable: %s", exc)
-            return None
+        from senaite.pfas.qc_qualification import qualifier_for
         failure = self._QC_TYPE_TO_FAILURE.get(qc_type)
         if failure == "is_response":
             # A qc_type of "IS" covers BOTH surrogates and the injection
@@ -994,8 +1573,7 @@ class PFASDataReviewView(BrowserView):
             # the sample so its recovery reflects the matrix, while the
             # injection standard is added at reconstitution so its response
             # reflects the instrument. The compound's ROLE in the method
-            # decides. classify_failure cannot help here — it matches on a
-            # source string, and "IS" on its own matches nothing.
+            # decides.
             from senaite.pfas.qc_qualification import _labelled_role
             role_kind = _labelled_role(analyte or u"",
                                        self._method_id_for_qualification())
@@ -1037,19 +1615,26 @@ class PFASDataReviewView(BrowserView):
                 keyword = analysis.getKeyword()
             except Exception:                               # noqa: BLE001
                 continue
-            codes = set(code for code, _reason in codes_for(analysis))
+            pairs = codes_for(analysis)
+            codes = set(code for code, _reason in pairs)
             if not codes:
                 continue
             marker = format_remark_codes(codes)
             if not marker:
                 continue
             try:
-                from senaite.pfas.qc_qualification import remarks_text
+                from senaite.pfas.qc_qualification import (
+                    HIGH_BIAS_CODE, remarks_text)
                 existing = remarks_text(analysis.getRemarks())
-                if marker in existing:
+                # the release note of a high-biased failure rides beside the codes
+                lines = [marker] + sorted(set(
+                    reason for code, reason in pairs if code == HIGH_BIAS_CODE and reason))
+                lines = [l for l in lines if l not in existing]
+                if not lines:
                     continue
+                added = u"\n".join(lines)
                 analysis.setRemarks(
-                    (existing + u"\n" + marker).strip() if existing else marker)
+                    (existing + u"\n" + added).strip() if existing else added)
                 stamped += 1
             except Exception as exc:                        # noqa: BLE001
                 logger.warning("could not stamp %s: %s", keyword, exc)
@@ -1123,11 +1708,66 @@ class PFASDataReviewView(BrowserView):
             return out
         return codes_for
 
+    def _respike_qualifiers(self, ws):
+        """The "respike" qualifier (QC Qualifiers) on each result the worker
+        reported from a re-spiked dilution its method qualifies."""
+        from senaite.pfas.qc_qualification import qualifier_for, remarks_text, respike_qualifier_rows
+        try:
+            qual = qualifier_for(self._portal(), "respike")
+            items = []
+            for a in (ws.getAnalyses() or []):
+                items.append({"sample_id": a.getRequest().getId(), "analyte": a.getKeyword(),
+                              "remarks": remarks_text(a.getRemarks())})
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("re-spike qualifier: %s", exc)
+            return []
+        return respike_qualifier_rows(items, qual)
+
+    def _receipt_qualifiers(self, ws):
+        """The receipt qualifier (qc_qualification "receipt") on every result
+        of each sample received out of compliance with its method: its own
+        receipt temperature, holding time or the shipment (receipt_compliance)."""
+        from senaite.pfas import coc_records as cr
+        from senaite.pfas import receipt_compliance as rc
+        from senaite.pfas.qc_qualification import qualifier_for
+        try:
+            qual = qualifier_for(self._portal(), "receipt")
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("receipt qualifier: %s", exc)
+            return []
+        if not qual or qual.get("needs_config"):
+            return []
+        out, seen, records = [], set(), {}
+        for a in (ws.getAnalyses() or []):
+            try:
+                s = a.getRequest()
+                if s.UID() in seen:
+                    continue
+                seen.add(s.UID())
+                fld = s.getField("CoCNumber")
+                num = (fld.get(s) if fld else u"") or u""
+                if not num:
+                    continue
+                if num not in records:
+                    records[num] = cr.load(self._portal(), num) or {}
+                flags = ((records[num].get("receipt") or {}).get("flags")) or []
+                found = rc.breaches(flags, (s.getId(), s.getClientSampleID()))
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("receipt qualifier for a sample: %s", exc)
+                continue
+            if found:
+                out.append({"qc_type": u"Receipt", "applies_to": s.getId(),
+                            "reason": u"; ".join(found), "analyte": self.ALL_ANALYTES,
+                            "code": qual.get("code") or u"", "statement": qual.get("statement") or u""})
+        return out
+
     def _injection_qc_rows(self, batch_key):
         """Failing per-injection flags on field samples (RT, ion ratio, S/N,
         surrogate recovery) as QC Summary rows scoped to their own sample.
         They qualify the result and do not hold release; they lived only in injection_results, which the gate
-        never read (synthetic runs)."""
+        never read (synthetic runs). A flag from a rule in the state
+        Evaluate carries the row's advisory mark: a warning, never a
+        failure (a database from before the column reads as Enforced)."""
         from senaite.pfas.qc_qualification import injection_flag_qc_types
         try:
             rows = self._store().get_injection_results(batch_id=batch_key, qc_type="Sample")
@@ -1149,6 +1789,7 @@ class PFASDataReviewView(BrowserView):
                             "applies_to": r.get("injection_name") or u"",
                             "value": None, "expected_value": None,
                             "flag": r.get("flag") or u"", "passed": 0,
+                            "advisory": 1 if r.get("advisory") else 0,
                             "limit_basis": u"Judged per injection: see the Samples tab",
                             "result_status": "active"})
         return out
@@ -1164,15 +1805,25 @@ class PFASDataReviewView(BrowserView):
                 (self._method_profile() or {}).get("surrogate_failure_scope") == "sample"):
             return [self.ALL_ANALYTES]
         try:
-            from senaite.pfas.qc_qualification import analytes_for_failure
+            from senaite.pfas.qc_qualification import MAPPED_FAILURES, analytes_for_failure
+            mapping = self._surrogate_map() if failure_type in MAPPED_FAILURES else None
             found = analytes_for_failure(
                 failure_type or u"", analyte or u"",
-                self._method_id_for_qualification())
+                self._method_id_for_qualification(), mapping=mapping)
             return found or ([analyte] if analyte else [])
         except Exception as exc:                            # noqa: BLE001
             logger.warning("analytes_for_failure(%s, %s): %s",
                            failure_type, analyte, exc)
             return [analyte] if analyte else []
+
+    def _surrogate_map(self):
+        """The method's native -> surrogate map (qc_qualification.surrogate_map),
+        loaded once per request: every surrogate or isotope-standard failure
+        reverses it."""
+        if not hasattr(self, "_surrogate_map_memo"):
+            from senaite.pfas.qc_qualification import surrogate_map
+            self._surrogate_map_memo = surrogate_map(self._method_id_for_qualification())
+        return self._surrogate_map_memo
 
     def _method_id_for_qualification(self):
         profile = self._method_profile() or {}
@@ -1285,8 +1936,8 @@ class PFASDataReviewView(BrowserView):
                     u"not in inventory.".format(len(unresolved)))
             if not (tree.get("prepared_standards") or tree.get("direct_reagents")):
                 return "blocked", (
-                    u"No reagent or standard lots recorded \u2014 fill in "
-                    u"{0} and {1}.".format(self._fc("251"), self._fc("252")))
+                    u"No reagent or standard lots recorded \u2014 choose the lots "
+                    u"loaded in the Run Builder and fill in {0}.".format(self._fc("252")))
             if not self._extraction_finalized():
                 return "blocked", (
                     u"The guided extraction is not finished: {0} must name the "
@@ -1297,74 +1948,50 @@ class PFASDataReviewView(BrowserView):
             if summary.get("error"):
                 return "blocked", (
                     u"QC results are not available: {0}".format(
-                        summary.get("error")))
+                        self._QC_ERRORS.get(summary["error"], summary["error"])))
             if self.import_problems():
                 return "blocked", u"A delivered run was not imported (see the top of the page)."
             if self.subtraction_change_pending():
                 return "blocked", (u"The subtraction blank was changed: reprocess the run "
                                    u"so its results use it.")
-            failing = []
-            unevaluated = []
-            qualified = []
-            study, study_required, study_judged = self.study_run(), None, set()
-            if study is not None:
-                from senaite.pfas.qc.qc_types import enabled_qc_types
-                from senaite.pfas.study_runs import gate_scope
-                from senaite.pfas.study_data import blank_role
-                study_required, study_judged = gate_scope(
-                    study, enabled_qc_types(self._method_profile() or {}),
-                    blank_role(self._method_profile() or {}))
-            for row in (summary.get("rows") or []):
-                for qc_type, cell in (row.get("cells") or {}).items():
-                    if not cell or qc_type in study_judged:
-                        continue
-                    if cell.get("status") == "fail":
-                        failing.append(qc_type)
-                    elif cell.get("status") == "unevaluated":
-                        unevaluated.append(qc_type)
-                    elif cell.get("status") == "qualified":
-                        qualified.append(qc_type)
+            gate = self._qc_gate(summary)
+            failing = [qt for qt, _a, _c in gate["failing"]]
+            unevaluated = [qt for qt, _a, _c in gate["unevaluated"]]
+            qualified = list(gate["qualified"])
+            # the whole-run flags that hold it: a failure, a QC type not
+            # judged, a blank whose own limit is not set
+            run_failed = [f["qc_type"] for f in gate["run"] if f.get("status") == "fail"]
+            # a whole-run failure no qualifier is mapped for is said as the
+            # strip and the Blanks verdict say it; any other not judged
+            run_unmapped = []
+            for f in gate["run"]:
+                if f.get("status") != "fail" and f.get("unmapped") and not f.get("unjudged") \
+                        and f["unmapped"] not in run_unmapped:
+                    run_unmapped.append(f["unmapped"])
+            run_unjudged = [f["qc_type"] for f in gate["run"] if f.get("status") != "fail"
+                            and (f.get("unjudged") or not f.get("unmapped"))]
             parts = []
-            # A qualified release is a PASS with something to say, not a
-            # failure. It must still be stated: releasing a failing result
-            # without the certificate saying so is the thing §7.8.4 forbids.
-            if qualified and not failing:
-                summary_q = summary.get("qualifiers") or []
-                codes = sorted({(q.get("code") or "?") for q in summary_q})
-                parts.append(
-                    u"released with {0} qualified result(s) [{1}] across "
-                    u"{2}".format(len(summary_q), u", ".join(codes),
-                                  u", ".join(sorted(set(qualified)))))
             if failing:
                 parts.append(u"{0} failing QC result(s) across {1}".format(
                     len(failing), u", ".join(sorted(set(failing)))))
+            if run_failed:
+                parts.append(u"{0} failed for the whole run".format(u", ".join(run_failed)))
+            if gate["unset"]:
+                parts.append(u"{0} {1} not set for {2}".format(
+                    u" and ".join(gate["unset"]), u"limit" if len(gate["unset"]) == 1 else u"limits",
+                    self.method_label()))
+            if run_unjudged:
+                parts.append(u"{0} not judged for the whole run".format(u", ".join(run_unjudged)))
+            if run_unmapped:
+                parts.append(u"no qualifier mapped for {0}".format(u", ".join(run_unmapped)))
             if unevaluated:
+                # a criterion never configured is also a deviation; it is
+                # raised when the run arrives (raise_unconfigured_deviation),
+                # never by a page, which only reads
                 parts.append(
-                    u"{0} result(s) could not be evaluated ({1})".format(
+                    u"{0} result(s) could not be evaluated, no {1}".format(
                         len(unevaluated), u", ".join(sorted(set(unevaluated)))))
-                # An unevaluated result means a criterion was never configured,
-                # which is an ISO 17025 deviation: the batch was measured
-                # against no standard. Raise it against the worksheet so the
-                # QAO is told and a reviewer has something to resolve, rather
-                # than a gate reason that disappears when the page is closed.
-                self._raise_unconfigured_deviation(ws, summary)
-            # A QC type the method requires every run, that produced no
-            # result at all, was not evaluated — silence here is how a batch
-            # reaches release with its matrix spike never checked.
-            profile = self._method_profile() or {}
-            # the QC types the method RUNS -- the same flags the engine reads
-            from senaite.pfas.qc.qc_types import enabled_qc_types
-            required = set(enabled_qc_types(profile)) if study_required is None \
-                else study_required
-            present = set(summary.get("qc_types") or [])
-            # a trip blank or field reagent blank comes with the samples that
-            # ask for one (Field QC on the CoC), not with every run
-            missing = sorted(r for r in required
-                             if r not in present and r not in ("Dup", "MxB", "FRB", "TB"))
-            if "LFSMD" in missing and "Dup" in present:
-                # a sample duplicate run instead of the LFSMD satisfies the
-                # batch's precision requirement
-                missing.remove("LFSMD")
+            missing = gate["missing"]
             if missing:
                 parts.append(
                     u"required QC not evaluated: {0}".format(
@@ -1374,21 +2001,101 @@ class PFASDataReviewView(BrowserView):
             cal_verdict, cal_reason = gate_reason(self.calibration_review())
             if cal_reason:
                 parts.append(cal_reason)
-            if failing or cal_verdict == "fail":
+            if failing or run_failed or cal_verdict == "fail":
                 return "fail", u"; ".join(parts)
-            if unevaluated or missing or cal_verdict == "blocked":
+            if unevaluated or run_unjudged or run_unmapped or gate["unset"] or missing \
+                    or cal_verdict == "blocked":
                 return "blocked", u"; ".join(parts)
             if qualified:
+                # A qualified release is a PASS with something to say, not a
+                # failure. It must still be stated: releasing a failing
+                # result without the certificate saying so is the thing
+                # §7.8.4 forbids. Said only for this verdict: beside a hold,
+                # the reason names the hold.
+                summary_q = summary.get("qualifiers") or []
+                codes = sorted({(q.get("code") or "?") for q in summary_q})
+                parts.insert(0, u"released with {0} qualified result(s) [{1}] across "
+                                u"{2}".format(len(summary_q), u", ".join(codes),
+                                              u", ".join(sorted(set(qualified)))))
                 return "qualified", u"; ".join(parts)
             return "fail", u""
         return "pending", u""
 
-    def _raise_unconfigured_deviation(self, ws, summary):
-        """File/refresh the deviation for criteria this method never set.
+    def _qc_gate(self, summary):
+        """What holds the QC Summary gate in the summary: one reading for
+        the gate's verdict (_auto_verdict), the Blanks verdict's reason
+        (overall_reason) and the warnings strip (_gate_rows), holding what
+        overall_pass holds. {"failing": [(qc_type, analyte, cell)],
+        "unevaluated": [(qc_type, analyte, cell)], "qualified": [qc_type],
+        "missing": [qc_type], "run": [flag] the whole-run flags that hold
+        it (failed or not judged), "unset": [qc_type] the blanks of those
+        not judged for want of their own limit}. A study run's own QC type
+        counts as overall_pass counts it; the study scopes only what the
+        run must carry (gate_scope)."""
+        failing, unevaluated, qualified = [], [], []
+        study, study_required = self.study_run(), None
+        if study is not None:
+            from senaite.pfas.qc.qc_types import enabled_qc_types
+            from senaite.pfas.study_runs import gate_scope
+            from senaite.pfas.study_data import blank_role
+            study_required = gate_scope(
+                study, enabled_qc_types(self._method_profile() or {}),
+                blank_role(self._method_profile() or {}))[0]
+        for row in (summary.get("rows") or []):
+            for qc_type, cell in sorted((row.get("cells") or {}).items()):
+                if not cell:
+                    continue
+                if cell.get("status") == "fail":
+                    failing.append((qc_type, row.get("analyte"), cell))
+                elif cell.get("status") == "unevaluated":
+                    unevaluated.append((qc_type, row.get("analyte"), cell))
+                elif cell.get("status") == "qualified":
+                    qualified.append(qc_type)
+        # A QC type the method requires every run, that produced no
+        # result at all, was not evaluated — silence here is how a batch
+        # reaches release with its matrix spike never checked.
+        profile = self._method_profile() or {}
+        # the QC types the method RUNS -- the same flags the engine reads
+        from senaite.pfas.qc.qc_types import enabled_qc_types
+        required = set(enabled_qc_types(profile)) if study_required is None \
+            else study_required
+        present = set(summary.get("qc_types") or [])
+        # a trip blank or field reagent blank comes with the samples that
+        # ask for one (Field QC on the CoC), not with every run
+        missing = sorted(r for r in required
+                         if r not in present and r not in ("Dup", "MxB", "FRB", "TB"))
+        if "LFSMD" in missing and "Dup" in present:
+            # a sample duplicate run instead of the LFSMD satisfies the
+            # batch's precision requirement
+            missing.remove("LFSMD")
+        run_flags = summary.get("run_flags") or []
+        unset = self._unset_blank_limits(run_flags)
+        run = [f for f in run_flags if f.get("status") in self._GATING and f.get("qc_type") not in unset]
+        return {"failing": failing, "unevaluated": unevaluated,
+                "qualified": qualified, "missing": missing, "run": run, "unset": unset}
 
-        Idempotent by gap signature, so rendering Data Review repeatedly does
-        not file duplicates. Never allowed to break the gate: a notification
-        problem must not stop a reviewer seeing why the batch is held.
+    def raise_unconfigured_deviation(self, ws):
+        """Raise the deviation for the criteria this run's method never set,
+        when the gate holds on a result not evaluated (_qc_gate): an ISO
+        17025 deviation, since the batch was measured against no standard,
+        raised against the worksheet so the QAO is told and a reviewer has
+        something to resolve. Asked by the worker once it has pushed the run
+        (@@pfas-unconfigured-deviation), never by a render: a page GET does
+        not write. The record, or None when there is nothing to raise."""
+        summary = self._get_qc_summary(ws) or {}
+        if summary.get("error"):
+            return None
+        if not self._qc_gate(summary)["unevaluated"]:
+            return None
+        return self._raise_unconfigured_deviation(ws, summary)
+
+    def _raise_unconfigured_deviation(self, ws, summary):
+        """File/refresh the deviation for criteria this method never set; the
+        record, or None.
+
+        Idempotent by gap signature, so a run pushed again does not file a
+        duplicate. A notification problem never stops the push: it is
+        logged, and the record says the QAO was not told.
         """
         try:
             from senaite.pfas.qc_deviation import ensure_deviation
@@ -1411,11 +2118,12 @@ class PFASDataReviewView(BrowserView):
                 # attempt, swallowed by the except below, so no deviation was
                 # ever filed. It only surfaced once the gap rows it depends on
                 # became visible at all.
-                ensure_deviation(self._portal(), ws.getId(), gaps,
-                                 filed_by=u"system (QC evaluation)")
+                return ensure_deviation(self._portal(), ws.getId(), gaps,
+                                        filed_by=u"system (QC evaluation)")
         except Exception as exc:                            # noqa: BLE001
             logger.error("could not raise the unconfigured-criteria "
                          "deviation: %s", exc)
+        return None
 
     def all_items_pass(self):
         """Every item checked, and every MANUAL item attested by a person.
@@ -1442,6 +2150,9 @@ class PFASDataReviewView(BrowserView):
         # manual integrations: justified, signed and stamped,
         # enforced here too -- a tick written any other way does not open it
         if not self.mi_gate()[0]:
+            return False
+        # the Raw Data changes: each with a reason and the analyst's initials
+        if not self.raw_changes_gate()[0]:
             return False
         return not self.machine_attested_items()
 
@@ -1471,6 +2182,148 @@ class PFASDataReviewView(BrowserView):
                     self._mi_gate = (False, [u"the manual-integration records could not be read: %s" % exc], 0, u"")
         return self._mi_gate
 
+    def raw_changes_gate(self):
+        """(ok, [missing]) for the changes made on the Raw Data tab: each open
+        change has a reason and the analyst's initials; once the worksheet is
+        verified, by whatever route, also the verifier's countersignature
+        (read when a certificate is issued). A change the run could not apply
+        asks nothing; an edit in the run's file with no record is missing.
+        Refused, never opened, on an error."""
+        if not hasattr(self, "_raw_gate"):
+            ws = self._get_worksheet()
+            if ws is None:
+                self._raw_gate = (True, [])
+            else:
+                try:
+                    from bika.lims import api as _rapi
+                    from senaite.pfas import manual_integration as mi
+                    from senaite.pfas.browser import manual_integration_view as miv
+                    phase = u"verify" if _rapi.get_review_status(ws) in self.VERIFIED_STATES else u"submit"
+                    self._raw_gate = mi.raw_gate(miv.load_state(ws), phase, self._raw_no_effect(),
+                                                 self._raw_overrides())
+                except Exception as exc:                    # noqa: BLE001
+                    logger.exception("manual changes gate")
+                    self._raw_gate = (False, [u"the manual changes could not be read: %s" % exc])
+        return self._raw_gate
+
+    def manual_changes(self):
+        """The Manual changes panel: every change made on the Raw Data tab
+        and not undone, with the active reasons to choose from. A change the
+        run could not apply says why ("no_effect") and asks no reason or
+        initials; "initialled" counts those that need them."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return {"rows": [], "ok": True, "missing": [], "verify_ok": True, "initialled": 0}
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas.browser import manual_integration_view as miv
+        state = miv.load_state(ws)
+        no_effect = self._raw_no_effect()
+        active = [r for r in miv.get_settings()["reasons"] if r.get("active", True)]
+        from six.moves.urllib.parse import quote
+        base = ws.absolute_url() + u"/@@pfas-data-review?tab=raw&injection="
+        from senaite.pfas import raw_review
+        # a record keeps the keyword its edit is keyed by; it is shown by name
+        label = raw_review.library_label(self._raw_library())
+        rows = []
+        for r in mi.raw_open(state):
+            choices = list(active)
+            if r.get("reason_id") and r["reason_id"] not in [c["id"] for c in active]:
+                # a reason since taken off the list stays shown as chosen
+                choices.append({"id": r["reason_id"], "text": r.get("reason") or r["reason_id"]})
+            rows.append({"id": r["id"], "injection": r["injection"], "analyte": label(r["analyte"]),
+                         "transition": r.get("transition") or u"quantifier",
+                         "kind": mi.RAW_KIND_TEXT.get(r.get("kind"), r.get("kind") or u""),
+                         "summary": mi.raw_summary(r), "reason_id": r.get("reason_id") or u"",
+                         "reason": r.get("reason") or u"",
+                         "detail": r.get("detail") or u"", "choices": choices,
+                         "analyst": r["analyst"] if mi.raw_signed(r, "analyst") else None,
+                         "verifier": r["verifier"] if mi.raw_signed(r, "verifier") else None,
+                         "no_effect": (u"No effect: " + no_effect[mi.raw_key(r)]
+                                       if mi.raw_key(r) in no_effect else u""),
+                         "href": base + quote(r["injection"].encode("utf-8"), safe="")})
+        overrides = self._raw_overrides()
+        ok, missing = mi.raw_gate(state, u"submit", no_effect, overrides)
+        return {"rows": rows, "ok": ok, "missing": missing,
+                "initialled": len([r for r in rows if not r["no_effect"]]),
+                "verify_ok": mi.raw_gate(state, u"verify", no_effect, overrides)[0]}
+
+    def _handle_manual_changes(self):
+        """The analyst gives each Raw Data change a reason from the lab's
+        active list, with any detail, and initials them all at once. A person,
+        never a service account, initials."""
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error")
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas.browser import manual_integration_view as miv
+        f = self.request.form
+        user = getSecurityManager().getUser()
+        who = user.getId()
+        when = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        initials = (f.get("initials") or u"").strip()
+        if initials and _actor_kind(user) == u"automated":
+            return self._redirect_with_msg("manual_changes_refused", "error",
+                                           detail=u"a service account does not initial manual changes.")
+        state = miv.load_state(ws)
+        no_effect = self._raw_no_effect()
+        active = dict((r["id"], r) for r in miv.get_settings()["reasons"] if r.get("active", True))
+        error = u""
+        for rec in mi.raw_open(state, no_effect):
+            rid = f.get("%s.reason_id" % rec["id"])
+            if rid is None:
+                continue
+            if rid == (rec.get("reason_id") or u""):
+                reason = rec.get("reason") or u""       # kept as chosen, even if since retired
+            elif rid in active:
+                reason = active[rid]["text"]
+            elif rid:
+                error = u"%s: choose a reason from the list." % mi.raw_label(rec)
+                continue
+            else:
+                reason = u""
+            mi.set_raw_reason(state, rec["id"], rid, reason, f.get("%s.detail" % rec["id"]), who, when)
+        if initials and not error:
+            # the analyst's sign right in People & Roles, as for the instrument
+            # report's records; a staff record that cannot be read signs nothing
+            try:
+                info = miv.staff_sign_info(who)
+                mi.initial_raw(state, initials, who, when, info["name"], no_effect, info["sign_as"])
+            except ValueError as exc:
+                error = u"%s" % exc
+        miv.save_state(ws, state)
+        self._audit(ws)
+        if error:
+            return self._redirect_with_msg("manual_changes_refused", "error", detail=error)
+        return self._redirect_with_msg("manual_changes_saved", "ok")
+
+    def _countersign_raw_changes(self, ws, save=False):
+        """At release the person who approves countersigns every open Raw
+        Data change; refused (the message) without the reviewer sign right
+        in People & Roles, or when they initialled or edited one. u"" when signed
+        or there is none. Unless `save`, the countersign is only tried, on a
+        copy: Approve Release saves it once the worksheet is verified, so the
+        record names the person who released."""
+        import copy
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas.browser import manual_integration_view as miv
+        state = miv.load_state(ws)
+        no_effect = self._raw_no_effect()
+        if not mi.raw_open(state, no_effect):
+            return u""
+        who = getSecurityManager().getUser().getId()
+        work = state if save else copy.deepcopy(state)
+        try:
+            info = miv.staff_sign_info(who)
+            mi.countersign_raw(work, who, datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"), info["name"],
+                               no_effect, info["sign_as"])
+        except ValueError as exc:
+            return u"%s" % exc
+        if save:
+            miv.save_state(ws, state)
+        return u""
+
     def machine_attested_items(self):
         """Manual items whose attestation was made by a service account.
 
@@ -1483,13 +2336,6 @@ class PFASDataReviewView(BrowserView):
                 and i.get("checked")
                 and i.get("checked_by_kind") == u"automated"]
 
-    def checklist_json(self):
-        """HTML-safe JSON of checklist status for JS use."""
-        try:
-            raw = json.dumps(self.checklist_status())
-            return raw.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-        except Exception:
-            return "[]"
 
     def submission_info(self):
         ws = self._get_worksheet()
@@ -1498,9 +2344,11 @@ class PFASDataReviewView(BrowserView):
         cl = self._get_checklist(ws)
         return {
             "submitted_by": cl.get("submitted_by") or u"",
-            "submitted_at": (cl.get("submitted_at") or u"")[:16],
+            "submitted_at": print_doc.lab_or(cl.get("submitted_at"), (cl.get("submitted_at") or u"")[:16],
+                                             u"%Y-%m-%dT%H:%M"),
             "approved_by":  cl.get("approved_by") or u"",
-            "approved_at":  (cl.get("approved_at") or u"")[:16],
+            "approved_at":  print_doc.lab_or(cl.get("approved_at"), (cl.get("approved_at") or u"")[:16],
+                                             u"%Y-%m-%dT%H:%M"),
         }
 
     # ── CoC summary (for CoC tab) ─────────────────────────────────────────
@@ -1671,10 +2519,22 @@ class PFASDataReviewView(BrowserView):
             ext = self._logbook_json(ws, u"senaite.pfas.logbook.252") or {}
             profile = self._method_profile() or {}
             limit = holding_time.limit_for(profile, self._batch_matrix())
+            samples = core_fields.samples_of(ws)
             judged = dict(
                 (s.getId(), holding_time.evaluate(core_fields.date_sampled(s),
                                                   ext.get("extraction_date"), limit))
-                for s in core_fields.samples_of(ws))
+                for s in samples)
+            # a homogenised sample's own clock, homogenisation complete to
+            # extraction, from the lab day of its UTC stamp; a sample not
+            # homogenised has none
+            from senaite.pfas import homogenisation as hg
+            from senaite.pfas import lab_time
+            proc_limit = holding_time.processed_limit_for(profile, self._batch_matrix())
+            for s in samples:
+                rec = hg.latest(hg.load_records(s)) or {}
+                if rec and rec.get("method") not in (None, u"", hg.NONE_ID):
+                    judged[holding_time.PROCESSED + s.getId()] = holding_time.evaluate_processed(
+                        lab_time.lab_date(rec.get("at"), "utc"), ext.get("extraction_date"), proc_limit)
             # the extract, extraction to analysis (EPA 537.1 §8.5: 28 days), where the method sets one
             ext_limit = holding_time.extract_limit_for(profile, self._batch_matrix())
             if ext_limit is not None:
@@ -1688,6 +2548,22 @@ class PFASDataReviewView(BrowserView):
         verdict["blocking"] = verdict["status"] in holding_time.BLOCKING
         return verdict
 
+    def holding_time_rows(self):
+        """The three clocks as dates: sample, processed sample, extract."""
+        return holding_time.clock_rows(self.holding_time_summary())
+
+    def my_initials(self):
+        """The signed-in person's initials from their Lab Contact, else u""
+        (then they are typed)."""
+        try:
+            from AccessControl import getSecurityManager
+            from senaite.pfas.browser.staff import contact_for
+            from senaite.pfas.staff import staff_record
+            contact = contact_for(getSecurityManager().getUser().getId())
+            return (staff_record(contact) or {}).get("initials") or u"" if contact is not None else u""
+        except Exception:                                   # noqa: BLE001
+            return u""
+
     # ── Traceability ──────────────────────────────────────────────────────
 
     def _build_lot_indices(self, portal):
@@ -1697,7 +2573,7 @@ class PFASDataReviewView(BrowserView):
         `objectValues()` raw, so a lot the lab had deliberately withdrawn still
         satisfied traceability — demonstrated live: archiving a parent left the
         gate reporting `resolved=True`. Every other consumer of reagent data
-        filters archived lots; this one did not, which is also §33.9's "three
+        filters archived lots; this one did not, which is also.9's "three
         resolvers, three answers".
         """
         from senaite.pfas.browser.reagents import _ANN_ARCHIVED_KEY
@@ -1804,7 +2680,7 @@ class PFASDataReviewView(BrowserView):
                 return max(counts, key=counts.get)
         except Exception:
             pass
-        # Legacy: a CoC that does carry a batch_id still resolves.
+        # A CoC that carries a batch_id still resolves.
         try:
             raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
             bid = (json.loads(raw).get("batch_id") or "").strip() if raw else ""
@@ -1838,12 +2714,11 @@ class PFASDataReviewView(BrowserView):
             return self._logbook_json(ws, key)
 
         lb252 = _load(u"senaite.pfas.logbook.252")
-        lb251 = _load(u"senaite.pfas.logbook.251")
         # FM-ENV-004 (sample processing / homogenisation). Its rows were traced
         # NOWHERE: the walk read 252 and 251 only, so a grinder-blade or sorbent
         # lot named here was neither resolved nor reported unresolved, and the
         # balance the samples were WEIGHED on had no calibration chain. Same
-        # structural gap as §33.12, in the one logbook the walk never learned to
+        # structural gap as, in the one logbook the walk never learned to
         # read.
         lb253 = _load(u"senaite.pfas.logbook.253")
         reagent_by_lot, ps_by_lot = self._build_lot_indices(portal)
@@ -1862,13 +2737,11 @@ class PFASDataReviewView(BrowserView):
 
         # Each logbook's own date, because its rows were used on ITS date.
         use_252 = self._use_date(lb252, "extraction_date")
-        use_251 = self._use_date(lb251, "prepared_date")
         use_253 = self._use_date(lb253, "processing_date")
         # Every logbook the walk reads appears here. A logbook left out would skip
-        # its expiry check SILENTLY, which is the failure §43.1 exists to prevent —
+        # its expiry check SILENTLY, which is the failure  exists to prevent —
         # an unenforceable check must not look like a satisfied one.
         for lb_name, lb_date in ((self._fc("252"), use_252),
-                                 (self._fc("251"), use_251),
                                  (self._fc("253"), use_253)):
             if not lb_date:
                 tree["warnings"].append(
@@ -1896,7 +2769,7 @@ class PFASDataReviewView(BrowserView):
                 # cat_number, lot, has_coa) and NO expiry at all, so
                 # _effective_expiry returned "" and this check could never fire.
                 # Caught by asking it to fail on a use date of 2030 and watching
-                # it pass -- the same way the root-URL guard in §41.6 was caught.
+                # it pass -- the same way the root-URL guard in  was caught.
                 reason = self._expired_at_use(
                     self._reagent_record(reagent_by_lot[lot]), lot, name,
                     use_252, portal)
@@ -1905,12 +2778,13 @@ class PFASDataReviewView(BrowserView):
                         "source": "252.reagents", "lot": lot, "name": name,
                         "reason": reason,
                     })
+                self._flag_pending(tree, reagent_by_lot[lot], u"reagent", "252.reagents", lot, name, use_252)
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.reagents", "lot": lot, "name": name,
                     # EVERY unresolved entry carries its own reason, so the
                     # Traceability tab needs no fallback branch and cannot give
-                    # the wrong advice. The expiry-at-use entries (§43) name a lot
+                    # the wrong advice. The expiry-at-use entries name a lot
                     # that IS in inventory, and the old blanket message sent the
                     # reviewer to fix something that was not wrong.
                     "reason": u"lot is not in the inventory — enter it to "
@@ -1931,11 +2805,14 @@ class PFASDataReviewView(BrowserView):
             }
             if lot and lot in ps_by_lot:
                 ps = ps_by_lot[lot]
+                self._flag_pending(tree, ps, u"prepared", "252.standards", lot, name, use_252)
+                self._walk_extraction_lot(tree, portal, ps, name, use_252)
                 entry["resolved"] = {"title": ps.Title(),
                                      "url": ps.absolute_url(),
                                      "uid": ps.getId(),
                                      "type": "PreparedStandard"}
             elif lot and lot in reagent_by_lot:
+                self._flag_pending(tree, reagent_by_lot[lot], u"reagent", "252.standards", lot, name, use_252)
                 entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
                 entry["resolved"]["type"] = "Reagent"
             elif lot:
@@ -1984,6 +2861,8 @@ class PFASDataReviewView(BrowserView):
                         "source": "252.extraction_materials", "lot": lot,
                         "name": name, "reason": reason,
                     })
+                self._flag_pending(tree, reagent_by_lot[lot], u"reagent",
+                                   "252.extraction_materials", lot, name, use_252)
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.extraction_materials", "lot": lot,
@@ -1994,7 +2873,7 @@ class PFASDataReviewView(BrowserView):
             tree["direct_reagents"].append(entry)
 
         # --- FM-ENV-004: processing_materials[] table ---
-        # Traced nowhere, exactly as extraction_materials was before §33.12: the
+        # Traced nowhere, exactly as extraction_materials was: the
         # rows carry lots, `processing_date` records when they were used, and
         # nothing read either. Grinder blades, dry ice and sorbents touch the
         # sample before extraction, so they belong in the chain.
@@ -2030,6 +2909,8 @@ class PFASDataReviewView(BrowserView):
                         "source": "253.processing_materials", "lot": lot,
                         "name": name, "reason": reason,
                     })
+                self._flag_pending(tree, reagent_by_lot[lot], u"reagent",
+                                   "253.processing_materials", lot, name, use_253)
             elif lot:
                 tree["unresolved"].append({
                     "source": "253.processing_materials", "lot": lot,
@@ -2042,7 +2923,7 @@ class PFASDataReviewView(BrowserView):
         # --- FM-ENV-004: the balance the samples were WEIGHED on ---
         # 253 records `balance_sn` as free text and nothing resolved it, so the
         # mass every result is calculated from rested on a balance with no
-        # calibration chain. Same defect §38 fixed for the extraction stages'
+        # calibration chain. Same defect  fixed for the extraction stages'
         # `equipment_sns`, and the same policy is reused rather than a third one
         # invented: an UNREGISTERED serial is a warning (we cannot tell what it
         # owed), a registered unit with no verification for the day is a problem.
@@ -2165,168 +3046,154 @@ class PFASDataReviewView(BrowserView):
                         u"%s lot %s was %s when the extraction used it (see the "
                         u"stage's deviation note)" % (row.get("name") or u"", row["lot"], why))
 
-        # --- FM-ENV-002: lot_ref fields ---
-        LOT_REF_FIELDS = [
-            ("pds_a_lot",         u"PDS-A"),
-            ("pds_b_lot",         u"PDS-B"),
-            ("analyte_pds_lot",   u"Analyte PDS"),
-            ("analyte_spike_lot", u"Surrogate Spike"),
-            ("cal_a_lot",         u"CAL-A"),
-        ]
-        for field_name, display_label in LOT_REF_FIELDS:
-            lot_ref = (lb251.get(field_name) or u"").strip()
-            if not lot_ref:
+        # --- The run: the lots the instrument was loaded with (Run Builder) ---
+        # Each is walked to full depth (build_parentage) and judged on the run
+        # date (parentage_checks): expired, a parent out of date when it was
+        # made, a lot that outlives a parent, pending verification,
+        # quarantined, no storage conditions. An unreviewed prep entry is
+        # reported, never a block.
+        from senaite.pfas import parentage_checks as pchk
+        from senaite.pfas import prep_entries
+        from senaite.pfas import run_lots as rl
+        from senaite.pfas.browser.prepared_standards import (
+            KIND_PREPARED, _obj_to_dict as _psdict, _resolve_lot, build_parentage,
+            equipment_gate_problems, parentage_problems)
+        from senaite.pfas import send_back as sb
+        manifest = self._run_manifest(ws) or {}
+        run_day = _lab_day(manifest.get("built_at"))
+        if sb.blocks_release(manifest):
+            back = manifest["sent_back"]
+            tree["unresolved"].append({
+                "source": u"run.sent_back", "lot": back.get("lot") or u"",
+                "reason": u"sent back %s on %s: %s" % (
+                    u"to the Run Builder" if back.get("stage") == sb.RUN else u"to the extraction",
+                    _lab_day(back.get("at")), back.get("reason") or u"")})
+        loaded = rl.run_loaded(manifest)
+        if manifest and not loaded:
+            tree["warnings"].append(u"The run records no lots loaded on the instrument (Run Builder).")
+        try:
+            entries = prep_entries.load(portal)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("prep entries unreadable: %s", exc)
+            entries = {}
+        warned = set()
+        for display_label, snap in loaded:
+            lot_ref = (snap.get("lot") or u"").strip()
+            ps_node = {"field": u"run", "label": display_label, "lot": lot_ref,
+                       "title": snap.get("name") or u"", "prepared_date": u"", "prepared_by": u"",
+                       "expiry_date": snap.get("expiry") or u"", "url": u"", "found": False,
+                       "parent_reagents": [], "parentage": []}
+            tree["prepared_standards"].append(ps_node)
+            obj, kind = _resolve_lot(portal, {"uid": snap.get("uid"), "lot": lot_ref})
+            if obj is None:
+                tree["unresolved"].append({"source": u"run", "lot": lot_ref, "label": display_label,
+                                           "reason": u"the lot loaded is not in the inventory"})
                 continue
-            ps_node = {
-                "field":           field_name,
-                "label":           display_label,
-                "lot":             lot_ref,
-                "title":           u"",
-                "prepared_date":   u"",
-                "prepared_by":     u"",
-                "expiry_date":     u"",
-                "url":             u"",
-                "found":           False,
-                "parent_reagents": [],
-            }
-            if lot_ref in ps_by_lot:
-                ps_obj = ps_by_lot[lot_ref]
-                ps_node["found"]        = True
-                ps_node["title"]        = ps_obj.Title()
-                ps_node["prepared_date"]= str(getattr(ps_obj, "prepared_date", "") or "")[:10]
-                ps_node["prepared_by"]  = getattr(ps_obj, "prepared_by", "") or u""
-                ps_node["expiry_date"]  = str(getattr(ps_obj, "expiry_date", "") or "")[:10]
-                ps_node["url"]          = ps_obj.absolute_url()
-
-                # Judged against the date FM-ENV-002 says these standards were
-                # used, not today. The parent-tightened expiry is the one that
-                # counts -- a prep whose source CRM expired first expired with it.
-                reason = self._expired_at_use(
-                    {"type": "PreparedStandard", "uid": ps_obj.getId(),
-                     "expiry_date": ps_node["expiry_date"]},
-                    lot_ref, ps_node["title"], use_251, portal)
-                if reason:
-                    tree["unresolved"].append({
-                        "source": field_name, "lot": lot_ref,
-                        "name": ps_node["title"], "label": display_label,
-                        "reason": reason,
-                    })
-
+            ps_node.update(found=True, title=obj.Title(), url=obj.absolute_url())
+            if kind == KIND_PREPARED:
+                rec = _psdict(obj)
+                ps_node.update(prepared_date=str(rec.get("prepared_date") or "")[:10],
+                               prepared_by=rec.get("prepared_by") or u"",
+                               expiry_date=str(rec.get("expiry_date") or "")[:10])
                 try:
-                    ps_ann  = IAnnotations(ps_obj)
-                    raw_par = ps_ann.get(u"senaite.pfas.prepstd.parent_reagents")
-                    parents = json.loads(raw_par) if raw_par else []
-                except Exception:
-                    parents = []
-
-                # LEVEL 1 IS NOW GATED. This loop was the only
-                # branch in this method with no `else` appending to
-                # tree["unresolved"], and _compute_traceability_status keys
-                # solely off that list — so a parent naming a reagent that does
-                # not exist PASSED the release gate while a nonexistent reagent
-                # named directly in the 252 FAILED it. Proven by that contrast
-                # on the live instance. The failure was rendered in the
-                # Traceability tab and gated nowhere: the ISO 17025 §6.6 leaf
-                # link was the one link in the chain with no enforcement.
-                # THE FULL HIERARCHY, not one level. A lot may be made from
-                # another lot made from a CRM, and every branch has to end at a
-                # manufacturer or at the Type 1 water QC log for the day the
-                # water was used.
-                #
-                # Same walk the Certificate of Preparation prints, deliberately:
-                # the document and the gate used to disagree, and §33.9 recorded
-                # three resolvers giving three different answers about whether a
-                # parent existed. One function, one answer.
-                try:
-                    from senaite.pfas.browser.prepared_standards import (
-                        _obj_to_dict as _psdict, build_parentage,
-                        equipment_gate_problems, parentage_problems)
-                    ps_rec = _psdict(ps_obj)
-                    ps_node["parentage"] = build_parentage(portal, ps_rec)
+                    ps_node["parentage"] = build_parentage(portal, rec)
                     for prob in parentage_problems(ps_node["parentage"]):
-                        tree["unresolved"].append({
-                            "source": "prepstd.parentage",
-                            "lot": prob.get("lot"),
-                            "name": prob.get("name"),
-                            "reason": prob.get("reason"),
-                        })
-                    # the equipment the lot was made with, as of its
-                    # preparation: an established problem blocks, as the
-                    # extraction's own equipment does
-                    for prob in equipment_gate_problems(portal, ps_rec):
+                        tree["unresolved"].append({"source": "prepstd.parentage", "lot": prob.get("lot"),
+                                                   "name": prob.get("name"), "reason": prob.get("reason")})
+                    # the equipment the lot was made with, as of its preparation
+                    for prob in equipment_gate_problems(portal, rec):
                         tree["unresolved"].append(dict(prob, source="prepstd.equipment"))
                 except Exception as exc:                    # noqa: BLE001
                     logger.error("parentage walk for %s: %s", lot_ref, exc)
-                    tree["unresolved"].append({
-                        "source": "prepstd.parentage", "lot": lot_ref,
-                        "name": ps_node["title"],
-                        "reason": u"parentage could not be resolved (%s)" % exc,
-                    })
-
-                if not parents:
-                    # Kept alongside the walk: build_parentage reports this too,
-                    # but the flat `parent_reagents` list below is what the
-                    # Traceability tab renders, and a zero-parent standard must
-                    # be unmistakable in both.
-                    tree["unresolved"].append({
-                        "source": "prepstd.parents", "lot": lot_ref,
-                        "name": ps_node["title"],
-                        "reason": u"no parent reagents recorded",
-                    })
-                for p in parents:
-                    p_lot = (p.get("lot") or u"").strip()
-                    p_entry = {
-                        "name":     p.get("name") or u"",
-                        "supplier": p.get("supplier") or u"",
-                        "lot":      p_lot,
-                        "qty":      p.get("qty") or u"",
-                        "unit":     p.get("unit") or u"",
-                        "resolved": None,
-                    }
-                    p_obj = self._resolve_parent(portal, p, reagent_by_lot)
-                    if p_obj is not None:
-                        p_entry["resolved"] = self._reagent_dict(p_obj)
-                        # A parent with NO recorded expiry is undocumented
-                        # provenance, not a clean lot.
-                        # `_is_expired` answers False for it -- correctly, since
-                        # an unrecorded date is not evidence of expiry -- so the
-                        # refusal has to happen here.
-                        #
-                        # Applied to PARENTS only, deliberately: the parent is
-                        # the manufacturer link, which is what
-                        # requires provenance for. Extending it to the direct
-                        # 252/251 rows is a wider behaviour change and is left
-                        # open rather than slipped in.
-                        try:
-                            from senaite.pfas.browser.reagents import (
-                                _expiry_unknown, _obj_to_dict as _rd)
-                            if _expiry_unknown(_rd(p_obj)):
-                                tree["unresolved"].append({
-                                    "source": "prepstd.parents",
-                                    "lot": p_lot or u"(blank)",
-                                    "name": p.get("name") or u"",
-                                    "reason": u"parent reagent has no recorded "
-                                              u"expiry",
-                                })
-                        except ImportError:
-                            pass
-                    else:
-                        tree["unresolved"].append({
-                            "source": "prepstd.parents",
-                            "lot": p_lot or u"(blank)",
-                            "name": p.get("name") or ps_node["title"],
-                            "reason": u"parent reagent not in inventory",
-                        })
-                    ps_node["parent_reagents"].append(p_entry)
+                    tree["unresolved"].append({"source": "prepstd.parentage", "lot": lot_ref,
+                                               "name": ps_node["title"],
+                                               "reason": u"parentage could not be resolved (%s)" % exc})
+                root = {"kind": KIND_PREPARED, "lot": lot_ref, "name": ps_node["title"], "uid": obj.getId(),
+                        "expiry": ps_node["expiry_date"], "prepared_date": ps_node["prepared_date"],
+                        "status": rec.get("status") or u"", "entry_id": rec.get("entry_id") or u"",
+                        "storage_conditions": rec.get("storage_conditions") or u"",
+                        "children": ps_node["parentage"]}
             else:
-                tree["unresolved"].append({
-                    "source": field_name, "lot": lot_ref, "label": display_label,
-                    "reason": u"no prepared standard with this lot number "
-                              u"exists in the inventory",
-                })
-            tree["prepared_standards"].append(ps_node)
+                # a purchased solvent loaded straight on the LC
+                from senaite.pfas.browser.reagents import (
+                    _obj_to_dict as _rd, _effective_expiry, get_expiry_defaults)
+                rd = _rd(obj)
+                ps_node["expiry_date"] = _effective_expiry(rd, get_expiry_defaults(portal))
+                root = {"kind": kind, "lot": lot_ref, "name": ps_node["title"], "uid": obj.getId(),
+                        "expiry": ps_node["expiry_date"], "status": rd.get("status") or u"",
+                        "storage_conditions": rd.get("storage_conditions") or u"", "children": []}
+            ps_node["parent_reagents"] = [
+                {"name": n.get("name") or u"", "lot": n.get("lot") or u"",
+                 "resolved": n.get("kind") != u"unresolved" or None}
+                for n in root["children"]]
+            for p in pchk.walk_problems([root], run_day):
+                tree["unresolved"].append({"source": u"run.parentage", "lot": p["lot"], "name": p["name"],
+                                           "label": display_label, "reason": p["reason"],
+                                           "pending": p["pending"], "uid": p["uid"], "kind": p["kind"]})
+            for eid in self._entry_ids([root]):
+                if eid in warned:
+                    continue
+                warned.add(eid)
+                if not (entries.get(eid) or {}).get("reviewed_by"):
+                    tree["warnings"].append(u"%s: prep entry %s not reviewed" % (display_label, eid))
+        # the run's last injection after a solvent lot expired (after import)
+        for late in rl.late_injections(self._run_date(ws), manifest.get("solvents")):
+            tree["unresolved"].append({"source": u"run.solvents", "lot": late["lot"],
+                                       "label": u"LC %s" % late["channel"], "reason": late["reason"]})
 
         return tree
+
+    @staticmethod
+    def _walk_extraction_lot(tree, portal, ps, label, use_date):
+        """A prepared lot the extraction used, walked to full depth as the
+        run's are (parentage_checks.walk_below: its own expiry and status
+        are judged above)."""
+        from senaite.pfas import parentage_checks as pchk
+        from senaite.pfas.browser.prepared_standards import (
+            KIND_PREPARED, _obj_to_dict as _psdict, build_parentage)
+        try:
+            rec = _psdict(ps)
+            root = {"kind": KIND_PREPARED, "lot": rec.get("lot_number") or u"", "name": ps.Title(),
+                    "uid": ps.getId(), "expiry": str(rec.get("expiry_date") or "")[:10],
+                    "prepared_date": str(rec.get("prepared_date") or "")[:10],
+                    "status": rec.get("status") or u"",
+                    "storage_conditions": rec.get("storage_conditions") or u"",
+                    "children": build_parentage(portal, rec)}
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("parentage walk for %s: %s", ps.getId(), exc)
+            tree["unresolved"].append({"source": u"252.parentage", "lot": ps.getId(), "name": label,
+                                       "reason": u"parentage could not be resolved (%s)" % exc})
+            return
+        for p in pchk.walk_below(root, use_date):
+            tree["unresolved"].append({"source": u"252.parentage", "lot": p["lot"], "name": p["name"],
+                                       "label": label, "reason": p["reason"], "pending": p["pending"],
+                                       "uid": p["uid"], "kind": p["kind"]})
+
+    @staticmethod
+    def _flag_pending(tree, obj, kind, source, lot, name, used_on=u""):
+        """A lot the extraction used that is pending verification: release
+        waits for the reviewer to approve it, or reject it and send the run
+        back (send_back.py). One rejected at review after it was used holds
+        release until the record no longer names it, so a rebuild alone never
+        clears a rejection (one quarantined before it was picked is a
+        warning, with the stage's deviation note)."""
+        status = getattr(obj, "status", None)
+        if status == u"pending":
+            tree["unresolved"].append({"source": source, "lot": lot, "name": name,
+                                       "reason": u"pending verification", "pending": True,
+                                       "uid": obj.getId(), "kind": kind})
+        elif status == u"quarantine" and _rejected_after(obj, used_on):
+            tree["unresolved"].append({"source": source, "lot": lot, "name": name,
+                                       "reason": u"rejected after use"})
+
+    def _entry_ids(self, nodes):
+        """Every prep entry named in a parentage tree, depth-first."""
+        out = []
+        for n in nodes or []:
+            if n.get("entry_id"):
+                out.append(n["entry_id"])
+            out.extend(self._entry_ids(n.get("children")))
+        return out
 
     def get_traceability_tree(self):
         ws = self._get_worksheet()
@@ -2341,6 +3208,24 @@ class PFASDataReviewView(BrowserView):
     # ── QC Summary ────────────────────────────────────────────────────────
 
     def _get_qc_summary(self, ws):
+        """The worksheet's QC Summary -- built once per request.
+
+        The gate's status, its verdict, the warnings strip and the QC tab
+        each ask for it, and each build judges every QC row (sample results
+        for every failing one): three builds were nearly all of a raw run's
+        page time. Keyed by the worksheet. Every caller gets the one shared
+        dict and only reads it; a caller that must change it copies it
+        first. The template's summary (get_qc_summary) is a copy of its own.
+        Saving the checklist drops it."""
+        memo = getattr(self, "_qc_summary_memo", None)
+        if memo is None:
+            memo = self._qc_summary_memo = {}
+        key = ws.getId()
+        if key not in memo:
+            memo[key] = self._get_qc_summary_uncached(ws)
+        return memo[key]
+
+    def _get_qc_summary_uncached(self, ws):
         if not self.db_available:
             return {"error": "db_unavailable", "rows": [], "qc_types": [], "overall_pass": False}
 
@@ -2398,17 +3283,120 @@ class PFASDataReviewView(BrowserView):
                 logger.warning("_get_qc_summary.get_profile: %s", exc)
 
         qc_results += self._injection_qc_rows(batch_key)
-        out = self._build_qc_matrix(qc_results, qc_acceptance, run_date)
+        out = self._build_qc_matrix(qc_results, qc_acceptance, run_date, ws=ws)
         if not out.get("result_count"):
             # a run on record with no QC row at all is a lost write, never a
             # pass (an empty matrix read overall_pass=True)
             return {"error": u"no QC results are stored for this run; reprocess it",
                     "rows": [], "qc_types": [], "overall_pass": False,
                     "batch_id": batch_key}
+        # a sample received out of compliance with its method: every result
+        # of that sample (receipt_compliance)
+        out["qualifiers"] = (list(out.get("qualifiers") or []) + self._receipt_qualifiers(ws)
+                             + self._respike_qualifiers(ws))
         return out
 
-    def _build_qc_matrix(self, qc_results, qc_acceptance, run_date=""):
-        """Group QC results into analyte x qc_type matrix with pass/warn/fail."""
+    def _sample_results_for(self, ws, keyword, applies_to=u""):
+        """[{"keyword", "nondetect", "undecidable"}] for the worksheet's
+        sample analyses of one analyte that a QC row covers, skipping the
+        samples the LIMS itself records as QC: a SENAITE reference analysis,
+        or a sample the worksheet's QC assignment (extraction_batch) gives a
+        QC role. A matrix spike is always detected. A sample it records as
+        a field sample counts; one it records nothing (or an unknown role)
+        for counts too, and its non-detect is "undecidable", which never
+        releases. A sample's ids are never read for its role.
+        `applies_to` is the row's own scope (a matrix spike's parent); empty
+        covers every sample of the run. Non-detect is the certificate's own
+        rule (coa_format.format_result: below the reporting limit, or a
+        non-detect text)."""
+        from senaite.pfas import coa_format, extraction_batch, report_limits
+        from senaite.pfas.browser.dilution_retests import dilution_fold
+        from senaite.pfas.print_settings import get_print_settings
+        from senaite.pfas.qc_qualification import applies_to_sample
+        from senaite.pfas.report_templates import (
+            certificate_format, issued_snapshot)
+        qc_roles = set(r.upper() for r in extraction_batch.QC_ROLES)
+        # the worksheet's QC assignment, the issued template and the print
+        # settings: read once per request (asked once per failing QC row),
+        # and only read here. An assignment that cannot be read leaves
+        # every answer unknown.
+        inputs = getattr(self, "_sample_inputs", None)
+        if inputs is None or inputs[0] != ws.getId():
+            try:
+                roles = dict((m.get("sample_uid"), (m.get("role") or u"").strip())
+                             for m in (extraction_batch.load(ws) or []) if m.get("sample_uid"))
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("sample roles for %s: %s", keyword, exc)
+                roles = None
+            snap = live = None
+            if roles is not None:
+                snap, _rev = issued_snapshot(self._portal())
+                live = get_print_settings(self._portal()) if snap is None else {}
+            inputs = self._sample_inputs = (ws.getId(), roles, snap, live)
+        _ws_id, roles, snap, live = inputs
+        if roles is None:
+            return []                                       # unknown: holds
+        profile = self._method_profile() or {}
+        method_id = self.batch_method()
+        pushed = {}
+        if applies_to:
+            # where the worker wrote each injection's results: the link that
+            # holds when injections are named otherwise than the samples
+            try:
+                for p in self._result_pushes(ws.getId()):
+                    if p.get("injection") and p.get("sample_uid"):
+                        pushed.setdefault(p["injection"], set()).add(p["sample_uid"])
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("sample results scope for %s: %s", keyword, exc)
+                return []                                   # unknown: holds
+        # the worksheet's analyses by keyword, in worksheet order: walked
+        # once per request (asked once per failing QC row). An analysis
+        # whose keyword cannot be read leaves every answer unknown.
+        index = getattr(self, "_analyses_index", None)
+        if index is None or index[0] != ws.getId():
+            analyses, by_keyword = ws.getAnalyses() or [], {}
+            try:
+                for analysis in analyses:
+                    by_keyword.setdefault(analysis.getKeyword(), []).append(analysis)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("worksheet analyses by keyword: %s", exc)
+                by_keyword = None
+            index = self._analyses_index = (ws.getId(), by_keyword)
+        if index[1] is None:
+            return []                                       # unknown: holds
+        out = []
+        for analysis in index[1].get(keyword, ()):
+            try:
+                if getattr(analysis, "portal_type", u"") == "ReferenceAnalysis":
+                    continue                                # SENAITE's own QC
+                sample = analysis.getRequest()
+                names = (sample.getId(), sample.getClientSampleID())
+                role = roles.get(sample.UID(), u"")
+                if role.upper() in qc_roles:
+                    continue
+                if not applies_to_sample(applies_to, sample.UID(), names, pushed):
+                    continue
+                matrix = report_limits.canonical_matrix(
+                    profile, sample.getSampleTypeTitle())
+                rl = report_limits.scaled_rl(
+                    report_limits.limits_for(profile, matrix, keyword)["rl"],
+                    dilution_fold(analysis))
+                # judged under the certificate's own format for this sample
+                merged, _fmt = certificate_format(snap, method_id, profile, matrix, live)
+                res = coa_format.format_for_settings(analysis.getResult(), rl, merged)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("sample result for %s: %s", keyword, exc)
+                return []                                   # unknown: holds
+            out.append({"keyword": keyword, "nondetect": res["detected"] is False,
+                        "undecidable": role != u"Sample"})
+        return out
+
+    def _build_qc_matrix(self, qc_results, qc_acceptance, run_date="", ws=None):
+        """Group QC results into analyte x qc_type matrix with pass/warn/fail.
+
+        An Evaluate (advisory) failure is a warning and never blocks. A
+        failure biased high on an analyte that is a non-detect in every
+        sample of ws is qualified with a note instead of failing."""
         by_analyte = {}
         qc_type_set = []
 
@@ -2439,7 +3427,7 @@ class PFASDataReviewView(BrowserView):
         # failures the QAO has not mapped. Both are surfaced: a qualified
         # release must be visible, and an unmapped one must be actionable.
         qualifiers = []
-        unmapped = []
+        unmapped_prompts = []
         rows = []
         for analyte in sorted(by_analyte.keys()):
             cells = {}
@@ -2451,6 +3439,10 @@ class PFASDataReviewView(BrowserView):
 
                 # For non-MB types: compute recovery
                 cell_status = "ok"
+                cell_note = u""
+                # why a cell was not judged: a criterion never set, or a
+                # failure no qualifier is mapped for (its library label)
+                unjudged, unmapped = False, u""
                 values = []
                 for rec in recs:
                     passed = bool(rec.get("passed", 1))
@@ -2470,17 +3462,51 @@ class PFASDataReviewView(BrowserView):
                     if rec.get("result_status") == "unevaluated":
                         # A criterion the method never configured. Distinct
                         # from a failure -- nothing was judged -- and it must
-                        # hold the report rather than read as a pass.
-                        cell_status = "unevaluated"
+                        # hold the report rather than read as a pass. A cell
+                        # with a failure among its records stays failed.
+                        if cell_status != "fail":
+                            cell_status = "unevaluated"
+                        unjudged = True
                         overall_pass = False
+                    elif not passed and rec.get("advisory"):
+                        # an Evaluate rule: shown, never blocking
+                        if cell_status == "ok":
+                            cell_status = "warn"
                     elif not passed:
                         # A failure the QAO's library says may be released is
                         # QUALIFIED, not a block: the result goes out with a
-                        # code and a statement on the certificate. Control
-                        # material can never reach this branch as qualifiable —
-                        # disposition_for blocks it regardless of the library.
+                        # code and a statement on the certificate. A recovery
+                        # check (a calibration verification or a spike) whose
+                        # recovery is biased high on an analyte that is a
+                        # non-detect in every sample is qualified with a
+                        # note, judged on the recovery as shown here. Control
+                        # material is otherwise never qualifiable by the
+                        # library (disposition_for blocks it).
                         qual = self._qualify_failure(qc_type, rec.get("analyte"))
-                        if qual and not qual.get("needs_config"):
+                        note = None
+                        if ws is not None:
+                            from senaite.pfas.qc_qualification import (
+                                HIGH_BIAS_CODE, high_bias_release)
+                            from senaite.pfas.rounding import judged_pct
+                            rule = self._rounding_rule()
+                            note = high_bias_release(
+                                rec, self._sample_results_for(
+                                    ws, rec.get("analyte"),
+                                    applies_to=rec.get("applies_to") or u""),
+                                judged=lambda pct: judged_pct(pct, rule))
+                        if note:
+                            if cell_status in ("ok", "warn"):
+                                cell_status = "qualified"
+                            cell_note = note
+                            qualifiers.append({
+                                "qc_type": qc_type,
+                                "applies_to": rec.get("applies_to") or u"",
+                                "reason": note,
+                                "analyte": rec.get("analyte") or u"",
+                                "code": HIGH_BIAS_CODE,
+                                "statement": note,
+                            })
+                        elif qual and not qual.get("needs_config"):
                             if cell_status in ("ok", "warn"):
                                 cell_status = "qualified"
                             # The NATIVES the failure actually affects, not the
@@ -2501,9 +3527,11 @@ class PFASDataReviewView(BrowserView):
                                     "statement": qual.get("statement") or u"",
                                 })
                         elif qual and qual.get("needs_config"):
-                            cell_status = "unevaluated"
+                            if cell_status != "fail":
+                                cell_status = "unevaluated"
                             overall_pass = False
-                            unmapped.append(qual.get("prompt") or u"")
+                            unmapped = qual.get("label") or qc_type
+                            unmapped_prompts.append(qual.get("prompt") or u"")
                         else:
                             cell_status = "fail"
                             overall_pass = False
@@ -2533,15 +3561,31 @@ class PFASDataReviewView(BrowserView):
                     "n":      len(values),
                     "values": values,
                 }
+                if cell_note:
+                    cells[qc_type]["note"] = cell_note
+                if unjudged:
+                    cells[qc_type]["unjudged"] = True
+                if unmapped:
+                    cells[qc_type]["unmapped"] = unmapped
 
             rows.append({"analyte": analyte, "cells": cells})
 
+        # A whole-run flag still holds the gate (overall_pass above) but is
+        # not an analyte: it leaves the table for the warnings box.
+        run_flags = []
+        for row in [r for r in rows if r["analyte"] == u"(whole run)"]:
+            for qt in qc_type_set:
+                c = row["cells"].get(qt)
+                if c and c["status"] != "ok":
+                    run_flags.append({"qc_type": qt, "status": c["status"],
+                                      "flags": [v["flag"] for v in c["values"] if v["flag"]],
+                                      "unjudged": bool(c.get("unjudged")),
+                                      "unmapped": c.get("unmapped") or u""})
+        rows = [r for r in rows if r["analyte"] != u"(whole run)"]
+
         # what each cell shows: the value, coloured by its verdict, and the
         # criteria cited once per column (qc_cells)
-        try:
-            from senaite.pfas import qc_cells
-        except ImportError:                                  # loaded by path (tests)
-            import qc_cells
+        from senaite.pfas import qc_cells
         display_cols, col_values = [], {}
         for row in rows:
             row["display"] = {}
@@ -2570,17 +3614,23 @@ class PFASDataReviewView(BrowserView):
             "rows":        rows,
             "overall_pass": overall_pass,
             "qualifiers":  qualifiers,
-            "unmapped":    unmapped,
+            "unmapped":    unmapped_prompts,
+            "run_flags":   run_flags,
             "result_count": sum(len(by_analyte[a].get(qt, []) or []) for a in by_analyte for qt in qc_type_set),
             "run_date":    run_date,
         }
 
-    def get_qc_summary(self):
+    def get_qc_summary(self, shared=False):
+        """The worksheet's QC Summary: a copy of the request's one (the
+        template's, and another view's), or with `shared` the request's own
+        dict, for a reader in this view that never changes it."""
+        import copy
         ws = self._get_worksheet()
         if not ws:
             return {"error": "no_worksheet", "rows": [], "qc_types": [], "overall_pass": False}
         try:
-            return self._get_qc_summary(ws)
+            summary = self._get_qc_summary(ws)
+            return summary if shared else copy.deepcopy(summary)
         except Exception as exc:
             logger.error("get_qc_summary: %s", exc)
             return {"error": str(exc), "rows": [], "qc_types": [], "overall_pass": False}
@@ -2607,16 +3657,20 @@ class PFASDataReviewView(BrowserView):
                          Deliberately NOT a preview: resolving live here and
                          showing it would describe what the lab would do now as
                          though it were what the lab did.
+
+        Once per request: the strip asks for it and for its lines
+        (disclosure_lines), and a preview resolves every criterion.
         """
+        if not hasattr(self, "_accred_disclosure"):
+            self._accred_disclosure = self._accreditation_disclosure_uncached()
+        return self._accred_disclosure
+
+    def _accreditation_disclosure_uncached(self):
         ws = self._get_worksheet()
         if ws is None:
             return None
-        try:
-            from senaite.pfas import disclosure
-            from senaite.pfas import worksheet_criteria_snapshot as wcs
-        except Exception as exc:
-            logger.error("accreditation_disclosure: import failed: %s", exc)
-            return None
+        from senaite.pfas import disclosure
+        from senaite.pfas import worksheet_criteria_snapshot as wcs
 
         verified = self.ws_state() == "verified"
         try:
@@ -2666,6 +3720,25 @@ class PFASDataReviewView(BrowserView):
             return []
 
     # ── Final Data Summary ────────────────────────────────────────────────
+
+    def qualifier_meanings(self):
+        """{qualifier: what it means} from the client's EDD profile's map:
+        a qualifier explains itself on hover (no legend)."""
+        return dict((q.get("our_qualifier"), q.get("description") or u"") for q in self.qualifier_legend() or [])
+
+    def instrument_unit(self):
+        """The unit the instrument's results are in: the method's calibration
+        unit (ng/mL in the extract), or the matrix's unit when the levels
+        state the concentration in the sample."""
+        try:
+            from senaite.pfas.calibration_levels import unit, EXTRACT
+            profile = self._method_profile() or {}
+            u = unit(profile)
+            if u == EXTRACT:
+                return u
+            return (profile.get("unit_map") or {}).get(self._batch_matrix()) or u
+        except Exception:                                   # noqa: BLE001
+            return u""
 
     def qualifier_legend(self):
         """The qualifier vocabulary the worksheet's results are exported
@@ -2752,6 +3825,16 @@ class PFASDataReviewView(BrowserView):
         return self._result_checks
 
     def _result_pushes(self, ws_id):
+        """The worker's push log of the worksheet (result_pushes): queried
+        once per worksheet a request; its readers only read it."""
+        memo = getattr(self, "_pushes_memo", None)
+        if memo is None:
+            memo = self._pushes_memo = {}
+        if ws_id not in memo:
+            memo[ws_id] = self._result_pushes_uncached(ws_id)
+        return memo[ws_id]
+
+    def _result_pushes_uncached(self, ws_id):
         import sqlite3
         from senaite.pfas.qc.store import DEFAULT_DB_PATH
         if not os.path.exists(DEFAULT_DB_PATH):
@@ -2771,16 +3854,13 @@ class PFASDataReviewView(BrowserView):
         method x matrix rule (rounding.py, report_format.py); the profile's
         unit when the analysis carries none. Non-numbers pass unchanged."""
         try:
-            from senaite.pfas import report_format, rounding
+            from senaite.pfas import rounding
             from senaite.pfas.report_limits import canonical_matrix
-            if not hasattr(self, "_reported_profile"):
-                self._reported_profile = self._method_profile() or {}
-            profile = self._reported_profile
-            matrix = canonical_matrix(profile, sample_type)
-            fmt = report_format.resolve(profile, matrix)
+            fmt = self._certificate_format(sample_type)
             text = rounding.round_sig(result, int(fmt.get("coa_sig_figs") or 3),
                                       fmt.get("coa_rounding") or rounding.DEFAULT_RULE)
-            unit = unit or (profile.get("unit_map") or {}).get(matrix) or u""
+            profile = self._cert_inputs[1]
+            unit = unit or (profile.get("unit_map") or {}).get(canonical_matrix(profile, sample_type)) or u""
             return (text if text is not None else result), unit
         except Exception:                                   # noqa: BLE001
             return result, unit
@@ -2823,7 +3903,7 @@ class PFASDataReviewView(BrowserView):
           1. ARs assigned via the worksheet's own analyses (SENAITE-native);
           2. the SENAITE Batch named by this worksheet's CoC (`batch_id`) —
              the CoC accompanies the worksheet, so it carries the link;
-          3. legacy: ARs whose Batch UID equals this worksheet's UID."""
+          3. ARs whose Batch UID is this worksheet's UID."""
         ws = self._get_worksheet()
         if ws is None:
             return []
@@ -2946,27 +4026,49 @@ class PFASDataReviewView(BrowserView):
                 # the lab's rounding for the method x matrix, and the unit
                 # from the profile when core holds none (runs before then)
                 result, unit = self._as_reported(result, unit, ar_map[ar_uid]["sample_type"])
+                pairs = codes_for(analysis)
                 ar_map[ar_uid]["analyses"].append({
                     "analyte":      keyword,
+                    "title":        analysis.Title() or u"",
                     "result":       result,
                     "unit":         unit,
                     "qualifier":    qualifier,
-                    "qc_codes":     u", ".join(sorted(set(c for c, _r in codes_for(analysis)))),
-                    "qc_reasons":   u"; ".join(r for _c, r in codes_for(analysis) if r),
+                    "qc_pairs":     pairs,
+                    "qc_codes":     u", ".join(sorted(set(c for c, _r in pairs))),
+                    "qc_reasons":   u"; ".join(r for _c, r in pairs if r),
                     "review_state": state,
                     "reported":     reported,
                 })
             except Exception as exc:
                 logger.error("get_final_data analysis loop: %s", exc)
 
+        from senaite.pfas import qc_cells
+        from senaite.pfas import final_data
+        # the instrument's result and RT behind each reported result (the
+        # injection rows the Samples tab used to show)
         try:
-            from senaite.pfas import qc_cells
-        except ImportError:                                  # loaded by path (tests)
-            import qc_cells
+            inj = dict((s["sample_id"], s["analytes"]) for s in self.sample_results_page())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("get_final_data instrument rows: %s", exc)
+            inj = {}
         for ar_uid in sorted(ar_map.keys(), key=lambda u: ar_map[u]["sample_id"]):
             ar_data = ar_map[ar_uid]
             for a in sorted(ar_data["analyses"], key=lambda x: x["analyte"]):
+                ps = final_data.parts(inj.get(ar_data["sample_id"]) or [], a["analyte"], a.get("title"))
+                instrument, instrument_parts = final_data.text(ps)
+                rt, rt_parts = final_data.rt_text(ps)
                 rows.append({
+                    # the value in the number column, an isomer sum's parts
+                    # on the muted line under it
+                    "instrument":       instrument,
+                    "instrument_parts": instrument_parts,
+                    "rt":               rt,
+                    "rt_parts":         rt_parts,
+                    # the injection a request to the preparer names
+                    "injection":        next((p["injection"] for p in ps if p.get("injection")), u""),
+                    "instrument_prov":  ps[0].get("prov") if len(ps) == 1 else None,
+                    # the reported result's own record
+                    "result_prov":      final_data.result_key(ps, a["analyte"]),
                     "sample_id":        ar_data["sample_id"],
                     "client_sample_id": ar_data["client_sample_id"],
                     "sample_type":      ar_data["sample_type"],
@@ -2976,17 +4078,31 @@ class PFASDataReviewView(BrowserView):
                     "qualifier":        a["qualifier"],
                     "qc_codes":         a.get("qc_codes") or u"",
                     "qc_reasons":       a.get("qc_reasons") or u"",
+                    "qc_pairs":         a.get("qc_pairs") or [],
                     # the codes drawn as the QC Summary draws a qualified cell
                     "qc_cell":          qc_cells.code_cell(a.get("qc_codes"), a.get("qc_reasons")),
                     "review_state":     a["review_state"],
                     "reported":         a.get("reported") or u"",
                 })
+        return self._beyond_common_codes(rows, qc_cells)
+
+    def _beyond_common_codes(self, rows, qc_cells):
+        """A code every result carries is stated once above the table
+        (common_codes_line): each row's chip keeps the codes beyond it, and
+        a row with a chip is marked for review on its edge."""
+        common = set(self.common_codes(rows))
+        for r in rows:
+            if common:
+                extra = [(c, why) for c, why in r.get("qc_pairs") or [] if c not in common]
+                r["qc_cell"] = qc_cells.code_cell(
+                    u", ".join(sorted(set(c for c, _w in extra))),
+                    u"; ".join(why for _c, why in extra if why))
+            r["state"] = u"review" if (r.get("qc_cell") and not r.get("qualifier")) else u""
         return rows
 
     # ── Extraction record ──────
 
-    _SOURCE_LABELS = {"252": (u"252", u"Extraction Log"), "253": (u"253", u"Sample Processing Log"),
-                      "251": (u"251", u"Calibration Curve Prep Log")}
+    _SOURCE_LABELS = {"252": (u"252", u"Extraction Log"), "253": (u"253", u"Sample Processing Log")}
 
     def source_label(self, source):
         """A traceability source as the reader knows it: "252.standards" ->
@@ -2998,6 +4114,10 @@ class PFASDataReviewView(BrowserView):
                                    u", " + part.replace(u"_", u" ") if part else u"")
         if slug == u"prepstd":
             return u"prepared standard parents"
+        if source == u"run.sent_back":
+            return u"run sent back"
+        if slug == u"run":
+            return u"loaded on the instrument" + (u", " + part if part else u"")
         return (source or u"").replace(u"_", u" ")
 
     def extraction_record(self):
@@ -3094,7 +4214,7 @@ class PFASDataReviewView(BrowserView):
             files.append({
                 "filename":    fname,
                 "size_kb":     max(1, stat.st_size // 1024),
-                "uploaded_at": datetime.datetime.utcfromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                "uploaded_at": lab_time.show(datetime.datetime.utcfromtimestamp(stat.st_mtime)),
                 "is_csv":      fname.lower().endswith((".csv", ".tsv")),
             })
         return files
@@ -3124,26 +4244,6 @@ class PFASDataReviewView(BrowserView):
                 except Exception as exc:
                     logger.error("get_csv_preview: %s", exc)
         return []
-
-    # ── Recent worksheets for selector ───────────────────────────────────
-
-    def recent_worksheets_debug(self):
-        """Debug method — returns HTML string describing what the catalog query returns."""
-        lines = []
-        try:
-            cat = getToolByName(self.context, "senaite_catalog_worksheet")
-            lines.append("cat=%r ctx_type=%s" % (cat, type(self.context).__name__))
-            if cat is None:
-                lines.append("CAT IS NONE - trying portal")
-                cat = getToolByName(self._portal(), "senaite_catalog_worksheet")
-                lines.append("portal cat=%r" % cat)
-            brains = cat(portal_type="Worksheet", review_state=["open", "to_be_verified"])
-            lines.append("brains=%d" % len(brains))
-            for b in brains[:5]:
-                lines.append("  id=%s state=%s" % (b.getId, b.review_state))
-        except Exception as exc:
-            lines.append("ERROR: %s" % exc)
-        return " | ".join(lines)
 
     # ── Pending-review worklist helpers ───────────────────────────────────
     # All age arithmetic is done in naive-UTC: extraction logs store
@@ -3215,7 +4315,8 @@ class PFASDataReviewView(BrowserView):
         """Pending data-review worklist: worksheets in open/to_be_verified,
         enriched per row with the responsible analyst, whether it is under
         peer review, how long the case has been open since extraction, and
-        (once submitted) how long it has been in review."""
+        (once submitted) how long it has been in review: u"" until then,
+        which the queue reads "not yet"."""
         from senaite.pfas.browser.sample_status import (
             _fullname, _load_extraction_log)
         try:
@@ -3274,11 +4375,425 @@ class PFASDataReviewView(BrowserView):
                                     else u"With analyst",
                     "open_age":     self._fmt_age(now, started),
                     "review_age":   self._fmt_age(now, submitted)
-                                    if under_review else u"—",
+                                    if under_review else u"",
                 })
             except Exception as exc:
                 logger.error("recent_worksheets brain: %s", exc)
         return result
+
+    def blanks_table(self, qc=None):
+        """The Blanks tab: every extracted blank against its limit
+        (qc_cells.blank_table)."""
+        from senaite.pfas import qc_cells
+        qc = qc if qc is not None else self.get_qc_summary()
+        return qc_cells.blank_table(qc.get("rows") or [], qc.get("qc_types") or [])
+
+    def run_level_flags(self, flags=None):
+        """The run's whole-run QC flags (a field reagent blank, a run not
+        closed by a CCV) as warnings: they hold the gate, but belong to no
+        analyte. [{"qc_type", "status", "title", "text", "unjudged",
+        "unmapped"}]; `flags` the QC Summary's run_flags when the caller has
+        them."""
+        out = []
+        if flags is None:
+            try:
+                flags = self.get_qc_summary(shared=True).get("run_flags") or []
+            except Exception:                               # noqa: BLE001
+                flags = []
+        if not flags:
+            return out
+        from senaite.pfas.qc_labels import qc_label
+        from bika.lims import api as _api
+        for f in flags:
+            name = qc_label(_api.get_portal(), f["qc_type"])
+            verb = u"not judged" if f["status"] == "unevaluated" else u"flagged"
+            detail = u"; ".join(f.get("flags") or [])
+            out.append({"qc_type": f["qc_type"], "status": f["status"], "title": u"%s %s" % (name, verb),
+                        "text": u"for the whole run" + (u": %s" % detail if detail else u"."),
+                        "unjudged": bool(f.get("unjudged")), "unmapped": f.get("unmapped") or u""})
+        return out
+
+    def limits_not_set(self):
+        """The analytes of this run with no RL or no MDL for their matrix:
+        a blank or a result cannot be compared with a limit that is not set
+        (one warning, with a button to the method's Reporting Limits), or None."""
+        ws = self._get_worksheet()
+        mid = self.batch_method()
+        if ws is None or not mid:
+            return None
+        try:
+            from senaite.pfas.report_limits import canonical_matrix, limits_for
+            from senaite.pfas.core_fields import samples_of
+            profile = self._method_profile() or {}
+            keywords = list(profile.get("master_analyte_set") or [])
+            matrices = sorted(set(canonical_matrix(profile, s.getSampleTypeTitle())
+                                  for s in samples_of(ws) if s is not None))
+            missing, where, no_rl, no_mdl = set(), [], set(), set()
+            for m in matrices:
+                lim = dict((kw, limits_for(profile, m, kw)) for kw in keywords)
+                rl = set(kw for kw in keywords if lim[kw]["rl"] is None)
+                mdl = set(kw for kw in keywords if lim[kw]["mdl"] is None)
+                if rl or mdl:
+                    missing.update(rl | mdl)
+                    no_rl.update(rl)
+                    no_mdl.update(mdl)
+                    where.append(m)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("limits_not_set: %s", exc)
+            return None
+        if not missing:
+            return None
+        what = u"RL or MDL" if (no_rl and no_mdl) else (u"RL" if no_rl else u"MDL")
+        return {"n": len(missing), "matrix": u", ".join(where), "what": what,
+                "url": u"%s/@@pfas-method-profile-edit?method_id=%s#pane-analytes" % (self.portal_url(), mid)}
+
+    # ── Warnings by severity: one strip under the title ──────────────────
+
+    # a blank judged for the whole run against its own limit: none set is
+    # "not judged" for the whole run (the worker files no analyte for it)
+    _RUN_BLANKS = (u"FRB", u"TB")
+    BLOCKS, NOTE = u"blocks", u"note"
+    # a whole-run flag in one of these holds the QC gate (overall_pass)
+    _GATING = (u"fail", u"unevaluated")
+    # the words for a QC Summary that could not be read
+    _QC_ERRORS = {u"db_unavailable": u"the QC database is not available",
+                  u"db_error": u"the QC database could not be read",
+                  u"no_batch_record": u"no run is on record",
+                  u"no_worksheet": u"no worksheet is open"}
+
+    def method_label(self):
+        """The batch's method as the lab names it (its profile's display
+        name), else its id."""
+        from senaite.pfas.configured_methods import method_label
+        return method_label(self._method_profile(), self.batch_method())
+
+    def editor_url(self, pane):
+        """The batch method's editor, opened on `pane`; u"" with no method."""
+        mid = self.batch_method()
+        if not mid:
+            return u""
+        return u"%s/@@pfas-method-profile-edit?method_id=%s#%s" % (self.portal_url(), mid, pane)
+
+    def review_url(self, tab):
+        """This worksheet's Data Review on `tab`."""
+        return u"%s/@@pfas-data-review?tab=%s" % (self.batch_url(), tab)
+
+    # the tab a QC type's values are shown on: (tab, its name)
+    _QC_TABS = {"spike": (u"spike_qc", u"Spike QC"), "blank": (u"qc_summary", u"Blanks"),
+                "instrument": (u"calibration", u"Calibration")}
+
+    def _qc_tab(self, qc_type):
+        """(tab, its name) that shows `qc_type`'s values, or None."""
+        from senaite.pfas import qc_cells
+        if qc_cells.is_spike(qc_type):
+            kind = "spike"
+        elif qc_type.split(u" ")[0] in qc_cells.BLANK_COLUMNS:
+            kind = "blank"
+        elif qc_cells.group_of(qc_type) == u"instrument":
+            kind = "instrument"
+        else:
+            return None
+        return self._QC_TABS[kind]
+
+    def _unset_blank_limits(self, run_flags):
+        """The run's blanks judged against their own limit that were not
+        judged for want of one (FRB, TB), in the order filed."""
+        out = []
+        for f in run_flags or []:
+            if f.get("status") == "unevaluated" and f.get("qc_type") in self._RUN_BLANKS \
+                    and f["qc_type"] not in out:
+                out.append(f["qc_type"])
+        return out
+
+    @staticmethod
+    def _analytes(n):
+        return u"%d analyte%s" % (n, u"" if n == 1 else u"s")
+
+    def _gate_rows(self, summary):
+        """The QC Summary gate's reasons while it does not pass (its verdict
+        on the checklist): [(text, fix_label, fix_url)], one per QC kind
+        and one per whole-run flag that holds it, each with the button the
+        Blanks verdict gives the same cause. Read from the one reading the
+        verdict reads (_qc_gate), so the strip and the verdicts agree. An
+        import not done is its own warning."""
+        item = [i for i in self.checklist_status() or [] if i.get("key") == u"qc_summary"]
+        if item and item[0].get("verdict") in (u"pass", u"qualified"):
+            return []
+        if summary.get("error"):
+            err = summary["error"]
+            if err != u"db_unavailable" and not self.has_run():
+                return [(u"No run imported yet.", u"", u"")]
+            return [(u"QC results are not available: %s." % self._QC_ERRORS.get(err, err), u"", u"")]
+        out = []
+        if self.subtraction_change_pending():
+            out.append((u"The subtraction blank was changed: reprocess the run so its results "
+                        u"use it.", u"", u""))
+        gate = self._qc_gate(summary)
+        from senaite.pfas import qc_cells
+        names = self._qc_names(set(qt for qt, _a, _c in gate["failing"] + gate["unevaluated"])
+                               | set(gate["missing"]) | set(f["qc_type"] for f in gate["run"]))
+        criteria = self.editor_url(u"pane-qc")
+        qualifiers = u"%s/@@pfas-qc-qualifiers" % self.portal_url()
+
+        def failed_fix(qt):
+            tab = self._qc_tab(qt)
+            return (tab[1], self.review_url(tab[0])) if tab else (u"", u"")
+
+        def by_kind(entries):
+            kinds = {}
+            for qt, analyte, _cell in entries:
+                kinds.setdefault(qt, set()).add(analyte)
+            return [(qt, kinds[qt]) for qt in sorted(kinds, key=qc_cells.column_order)]
+        for qt, analytes in by_kind(gate["failing"]):
+            out.append((u"%s failed for %s." % (names.get(qt, qt), self._analytes(len(analytes))),)
+                       + failed_fix(qt))
+        unmapped = []
+        for _qt, _a, cell in gate["unevaluated"]:
+            if cell.get("unmapped") and cell["unmapped"] not in unmapped:
+                unmapped.append(cell["unmapped"])
+        for qt, analytes in by_kind([e for e in gate["unevaluated"]
+                                     if e[2].get("unjudged") or not e[2].get("unmapped")]):
+            out.append((u"%s not judged for %s: its criterion is not set." % (
+                names.get(qt, qt), self._analytes(len(analytes))),
+                u"QC criteria" if criteria else u"", criteria))
+        # the whole-run flags: a blank whose own limit is not set is said
+        # from its state, never from the worker's prose
+        for qt in gate["unset"]:
+            out.append((u"%s limit not set for %s: the blank is not judged for this run." % (
+                qt, self.method_label()), u"QC criteria" if criteria else u"", criteria))
+        for f in self.run_level_flags(gate["run"]):
+            if f["status"] == u"fail":
+                fix = failed_fix(f["qc_type"])
+            elif f.get("unmapped") and not f.get("unjudged"):
+                # said as a cell's is, once (below)
+                if f["unmapped"] not in unmapped:
+                    unmapped.append(f["unmapped"])
+                continue
+            else:
+                fix = (u"QC criteria" if criteria else u"", criteria)
+            out.append((u"%s %s" % (f["title"], f["text"]),) + fix)
+        for label in unmapped:
+            out.append((u"No qualifier mapped for %s failures." % label, u"QC Qualifiers", qualifiers))
+        for qt in gate["missing"]:
+            out.append((u"%s not run: the method requires it every run." % names.get(qt, qt),
+                        u"Batch QC", self.extraction_guide_url()))
+        from senaite.pfas import run_calibration as rc
+        cal = self.calibration_review() or {}
+        st = cal.get("status")
+        if st != rc.APPROVED:
+            if st == rc.REJECTED:
+                text = u"The run's calibration was rejected%s." % (
+                    (u": %s" % cal["note"]) if cal.get("note") else u"")
+            elif st == rc.MISSING:
+                text = u"No calibration was found for this run."
+            else:
+                text = u"The run's calibration is not approved yet."
+            out.append((text, u"Calibration", self.review_url(u"calibration")))
+        return out
+
+    def _qc_names(self, qc_types):
+        """{qc_type: the lab's name for it} (qc_labels), the code itself
+        where none is found."""
+        if not qc_types:
+            return {}
+        try:
+            from senaite.pfas.qc_labels import qc_label
+            from bika.lims import api as _api
+            portal = _api.get_portal()
+            return dict((qt, qc_label(portal, qt)) for qt in qc_types)
+        except Exception:                                   # noqa: BLE001
+            return {}
+
+    def warnings(self):
+        """Everything a reviewer must read before release, as one list:
+        [{"severity": "blocks" | "note", "text", "fix_label", "fix_url",
+        "lines"}], what blocks first (a stable sort). "blocks" is whatever
+        holds the QC gate or the release: an open non-conformance, a run
+        not imported, each QC kind the gate fails on, a whole-run flag that
+        failed or was not judged, a blank's limit not set. "note" is the
+        rest: an advisory flag, a method disagreement, accreditation, a
+        reporting limit not set. A fix is the button to the page where it
+        is made (u"" when there is none to make); "lines" lists a warning's
+        items (the departures from a published method). The accreditation
+        notes are always here, so no reviewer must open a particular tab to
+        learn a report is outside accreditation; the mode is always stated,
+        because "what would be recorded if you approve now" and "what was
+        recorded" are different claims (see accreditation_disclosure).
+        Once per request."""
+        if hasattr(self, "_warnings"):
+            return self._warnings
+        out = []
+
+        def add(severity, text, fix_label=u"", fix_url=u"", lines=None):
+            out.append({"severity": severity, "text": text, "fix_label": fix_label if fix_url else u"",
+                        "fix_url": fix_url or u"", "lines": list(lines or [])})
+
+        portal = self.portal_url()
+        for dev in self.active_deviations_for_worksheet() or []:
+            did = dev.get("dev_id") or u""
+            status = (dev.get("status") or u"").replace(u"_", u" ").lower()
+            add(self.BLOCKS, u"Non-conformance %s is %s and references this worksheet: "
+                u"review it before releasing data." % (did, status or u"open"),
+                u"Open %s" % did, u"%s/@@pfas-deviations?dev_id=%s" % (portal, did))
+        # a delivered run not imported holds release (the QC Summary gate)
+        for ip in self.import_problems() or []:
+            if ip.get("status") == "failed":
+                add(self.BLOCKS, u"Import failed for %s after %s attempts: %s. Check its layout "
+                    u"in Import Studio, then deliver the run again from the Run Builder." % (
+                        ip.get("file"), ip.get("attempts"), ip.get("error") or u"no reason given"),
+                    u"Import Studio", u"%s/@@pfas-import-studio" % portal)
+            else:
+                add(self.BLOCKS, u"Import of %s is retrying after %s attempts: %s. The worker "
+                    u"tries again shortly." % (ip.get("file"), ip.get("attempts"),
+                                               ip.get("error") or u"no reason given"))
+        accred = self.accreditation_disclosure() or {}
+        mode = accred.get("mode")
+        if accred.get("out_of_scope"):
+            when = {u"preview": u" if approved now, not yet recorded",
+                    u"recorded": u", recorded at verification"}.get(mode, u"")
+            if mode == u"recorded" and accred.get("frozen_at"):
+                when += u" on %s" % self.lab_at(accred["frozen_at"], accred["frozen_at"])
+            add(self.NOTE, u"Outside accreditation scope%s. This sample departs from a published "
+                u"method requirement and is not covered by the laboratory's accreditation; the "
+                u"certificate must state each departure." % when,
+                lines=self.disclosure_lines())
+        if accred and mode == u"not_recorded":
+            add(self.NOTE, u"Governing criteria not recorded: this worksheet was verified before "
+                u"the criteria were frozen at review, so what it was judged against cannot be "
+                u"stated. No accreditation claim is made either way.")
+        elif accred and not accred.get("out_of_scope") and accred.get("uncompared") and self.has_run():
+            n = accred.get("uncompared", 0)
+            add(self.NOTE, u"No departure detected, but %d of %d criteria have no published-method "
+                u"baseline to compare against, so conformance is not established for those. This "
+                u"is not a statement that the sample conforms." % (n, n + accred.get("compared", 0)))
+        for source, method in self.batch_method_conflicts() or []:
+            add(self.NOTE, u"Method disagrees: %s says %s; this batch is %s." % (
+                source, method, self.batch_method()))
+        try:
+            summary = self.get_qc_summary(shared=True) or {}
+        except Exception:                                   # noqa: BLE001
+            summary = {}
+        # the gate's own reasons, so the strip and its verdicts agree: each
+        # QC kind and each whole-run flag that holds it (_gate_rows)
+        for text, fix_label, fix_url in self._gate_rows(summary):
+            add(self.BLOCKS, text, fix_label, fix_url)
+        # a whole-run flag that holds nothing (advisory) is a note
+        for f in self.run_level_flags(summary.get("run_flags") or []):
+            if f.get("status") not in self._GATING:
+                add(self.NOTE, u"%s %s" % (f["title"], f["text"]))
+        nl = self.limits_not_set()
+        if nl:
+            add(self.NOTE, u"No %s set for %d analytes in %s, so blanks and results cannot be "
+                u"compared with them." % (nl["what"], nl["n"], nl["matrix"]),
+                u"Reporting limits", nl.get("url"))
+        out.sort(key=lambda w: 0 if w["severity"] == self.BLOCKS else 1)
+        self._warnings = out
+        return out
+
+    @staticmethod
+    def warning_counts(warns):
+        """The strip's count line: {"blocks", "notes", "blocks_text",
+        "notes_text"} ("1 blocks release", "0 block release", "3 notes")."""
+        b = len([w for w in warns or [] if w.get("severity") == u"blocks"])
+        n = len(warns or []) - b
+        return {"blocks": b, "notes": n,
+                "blocks_text": u"%d %s release" % (b, u"blocks" if b == 1 else u"block"),
+                "notes_text": u"%d %s" % (n, u"note" if n == 1 else u"notes")}
+
+    def overall_reason(self, qc):
+        """Why the run's QC does not pass, said beside the verdict, with the
+        button to where it is fixed: {"text", "fix_label", "fix_url"}, or
+        None when it passes. Read from the gate's one reading (_qc_gate).
+        A blank limit not set and a QC type not judged link the method's
+        QC criteria; a failure no qualifier is mapped for links the QC
+        Qualifiers; a failure alone names its QC types and links the tab
+        that shows them, never the limits. A cell with a failure among its
+        records reads failed."""
+        qc = qc or {}
+        if qc.get("error") or qc.get("overall_pass"):
+            return None
+        gate = self._qc_gate(qc)
+        unset = gate["unset"]
+        criteria = self.editor_url(u"pane-qc")
+        failing, unjudged, unmapped = [], [], []
+        cells = [(qt, c) for qt, _a, c in gate["failing"] + gate["unevaluated"]]
+        cells += [(f.get("qc_type"), f) for f in gate["run"]]
+        for qt, c in cells:
+            if not qt:
+                continue
+            if c.get("status") == "fail":
+                if qt not in failing:
+                    failing.append(qt)
+                continue
+            if c.get("unmapped") and c["unmapped"] not in unmapped:
+                unmapped.append(c["unmapped"])
+            if (c.get("unjudged") or not c.get("unmapped")) and qt not in unjudged:
+                unjudged.append(qt)
+        parts = []
+        if unset:
+            parts.append(u"%s %s not set for %s" % (u" and ".join(unset),
+                         u"limit" if len(unset) == 1 else u"limits", self.method_label()))
+        if failing:
+            parts.append(u"%s failed" % u", ".join(failing))
+        if unjudged:
+            parts.append(u"%s not judged" % u", ".join(unjudged))
+        if unmapped:
+            parts.append(u"no qualifier mapped for %s" % u", ".join(unmapped))
+        if not parts:
+            return None
+        if unset or unjudged:
+            fix_label, fix_url = (u"QC criteria" if criteria else u""), criteria
+        elif unmapped:
+            fix_label, fix_url = u"QC Qualifiers", u"%s/@@pfas-qc-qualifiers" % self.portal_url()
+        else:
+            # the tab that shows the failure; a blank's is the one the
+            # verdict is on, so no button
+            tabs = [t for t in (self._qc_tab(qt) for qt in failing) if t and t[0] != u"qc_summary"]
+            fix_url, fix_label = (self.review_url(tabs[0][0]), tabs[0][1]) if tabs else (u"", u"")
+        return {"text": u"; ".join(parts), "fix_label": fix_label, "fix_url": fix_url}
+
+    # ── Final Data: a qualifier the whole table carries, said once ───────
+
+    @staticmethod
+    def _codes(row):
+        return [c.strip() for c in (row.get("qc_codes") or u"").split(u",") if c.strip()]
+
+    def common_codes(self, rows):
+        """The QC qualifier codes every result of the table carries (a table
+        of two or more), stated once above it; the rows show a chip only for
+        the codes beyond these. [] otherwise."""
+        rows = list(rows or [])
+        if len(rows) < 2:
+            return []
+        common = set(self._codes(rows[0]))
+        for r in rows[1:]:
+            common &= set(self._codes(r))
+        return sorted(common)
+
+    def code_label(self, code):
+        """What a qualifier code stands for: the label of the qualifier
+        library's entries that carry it ("or" between several)."""
+        try:
+            from senaite.pfas.qc_qualification import get_library
+            labels = []
+            for _k, entry in sorted(get_library(self._portal()).items()):
+                if entry.get("code") == code and entry.get("label") not in labels:
+                    labels.append(entry.get("label"))
+            return u" or ".join(labels)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("code_label: %s", exc)
+            return u""
+
+    def common_codes_line(self, rows):
+        """"All 12 results carry H (Sample receipt not compliant)", or u""."""
+        codes = self.common_codes(rows)
+        if not codes:
+            return u""
+        named = []
+        for code in codes:
+            label = self.code_label(code)
+            named.append(u"%s (%s)" % (code, label) if label else code)
+        return u"All %d results carry %s" % (len(rows), u" and ".join(named))
 
     def active_deviations_for_worksheet(self):
         """Return open deviations/CARs that reference the current worksheet."""
@@ -3300,7 +4815,7 @@ class PFASDataReviewView(BrowserView):
 
     # ── POST dispatch ─────────────────────────────────────────────────────
 
-    def _redirect_with_msg(self, msg, msg_type="ok", tab=None, detail=None):
+    def _redirect_with_msg(self, msg, msg_type="ok", tab=None, detail=None, extra=u""):
         ws = self._get_worksheet()
         if ws:
             base = ws.absolute_url() + "/@@pfas-data-review"
@@ -3312,7 +4827,7 @@ class PFASDataReviewView(BrowserView):
         if detail:
             from six.moves.urllib.parse import quote
             url += "&detail={0}".format(quote(detail.encode("utf-8"), safe=""))
-        self.request.response.redirect(url)
+        self.request.response.redirect(url + extra)
         return u""
 
     # ── Corrections (ISO 17025: traceable, initialed + dated) ─────────────
@@ -3353,6 +4868,18 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:                            # noqa: BLE001
             logger.warning("template_status: %s", exc)
             return None
+
+    def certificate_layout_problem(self):
+        """Why no certificate can be issued now (no certificate layout
+        issued), or None. Read as the publish guard and the certificate
+        storage read it."""
+        try:
+            from senaite.pfas import report_templates as rt
+            return rt.certificate_layout_problem(rt.issued_snapshot(self._portal())[0])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("certificate_layout_problem: %s", exc)
+            from senaite.pfas.report_templates import LAYOUT_NEEDED
+            return LAYOUT_NEEDED
 
     def reissue_ars(self):
         """ARs in this worksheet's batch that are already published — issuing a
@@ -3497,6 +5024,14 @@ class PFASDataReviewView(BrowserView):
             "choose_subtraction_blank": self._handle_choose_subtraction_blank,
             "approve_calibration":      self._handle_approve_calibration,
             "reject_calibration":       self._handle_reject_calibration,
+            # a lot pending verification, on its traceability node
+            "approve_lot":              self._handle_lot_review,
+            "reject_lot":               self._handle_lot_review,
+            # a raw run's peak edited by hand (the Raw Data tab)
+            "raw_edit":                 self._handle_raw_edit,
+            "raw_pull_again":           self._handle_raw_pull_again,
+            # the Raw Data changes' reasons and the analyst's initials
+            "save_manual_changes":      self._handle_manual_changes,
         }
         handler = dispatch.get(action)
         if handler and action in self.RECORD_ACTIONS and self.ws_state() in self.CLOSED_STATES:
@@ -3515,8 +5050,11 @@ class PFASDataReviewView(BrowserView):
         "assign_batch_samples", "check_item", "submit_for_review",
         "upload_instrument_report", "record_spike_level", "request_run",
         "clear_run_plan", "choose_subtraction_blank", "approve_calibration",
-        "reject_calibration"))
+        "reject_calibration", "approve_lot", "reject_lot", "raw_edit",
+        "save_manual_changes"))
     CLOSED_STATES = frozenset(("to_be_verified", "verified", "published"))
+    # past release: the Raw Data changes must carry the verifier's countersignature
+    VERIFIED_STATES = frozenset(("verified", "published"))
 
     # ── The run's calibration ─────────────────────
 
@@ -3530,14 +5068,16 @@ class PFASDataReviewView(BrowserView):
 
     def calibration_review(self):
         """The calibration this run is reviewed on: its own curves, or the
-        earlier approved curve it reused (run_calibration.review_state), with
-        the curve cards' data. Once per request."""
+        earlier approved curve it reused (run_calibration.review_state): its
+        status, source and run date. The gate and the warnings strip read
+        only these, on every tab; the curve cards are the Calibration tab's
+        own (calibration_cards_json). Once per request."""
         if hasattr(self, "_cal_review"):
             return self._cal_review
         from senaite.pfas import run_calibration as rc
-        state = rc.review_state([], {}, [])
-        state["runs_json"] = u"[]"
+        state, scope = rc.review_state([], {}, []), None
         ws = self._get_worksheet()
+        self._cal_batches = [ws.getId()] if ws is not None else []
         if ws is not None and self.db_available:
             try:
                 store = self._store()
@@ -3547,20 +5087,83 @@ class PFASDataReviewView(BrowserView):
                 reused = (store.get_calibrations_for_run(rd, method=self.batch_method())
                           if (rd and not own) else [])
                 state = rc.review_state(own, manifest, reused, ws.getId())
-                from senaite.pfas.browser.calibrations import PFASCalibrationsView
-                cv = PFASCalibrationsView(self._portal(), self.request)
+                # the worksheets whose worker judged a curve this worksheet
+                # used: its own and those that ran the curves it re-used. An
+                # earlier curve only the Run Builder names is read by none
+                self._cal_batches = sorted(set(self._cal_batches) | set(
+                    r.get("batch_id") for r in own if r.get("batch_id")))
+                # the curves the cards draw: the worksheet's own on record
+                # (one re-used from another worksheet among them), else the
+                # earlier curve the manifest names
                 if own:
-                    state["runs_json"] = cv.calibration_runs_json(batch_id=ws.getId())
+                    scope = {"batch_id": ws.getId()}
                 elif state["source"] == u"reused":
-                    state["runs_json"] = cv.calibration_runs_json(run_date=rd,
-                                                                  method=self.batch_method())
-                else:
-                    state["runs_json"] = u"[]"
+                    scope = {"run_date": rd, "method": self.batch_method()}
             except Exception as exc:                        # noqa: BLE001
                 logger.warning("calibration_review: %s", exc)
-                state["runs_json"] = u"[]"
-        self._cal_review = state
+        self._cal_review, self._cal_cards_scope = state, scope
         return state
+
+    def calibration_rule_rows(self):
+        """The failing Calibration QC rows that name calibrators dropped by
+        hand, for the curves this run is reviewed on (run_calibration.
+        failed_rule_rows): the worker's verdict on its most-calibrators-
+        dropped rule, which the pages read and never count again. Once per
+        request."""
+        if hasattr(self, "_cal_rule_rows"):
+            return self._cal_rule_rows
+        from senaite.pfas import run_calibration as rc
+        from senaite.pfas.browser.calibrations import calibration_qc_rows
+        self.calibration_review()
+        rows = []
+        if self.db_available:
+            for bid in self._cal_batches:
+                try:
+                    rows += calibration_qc_rows(self._store(), bid)
+                except Exception as exc:                    # noqa: BLE001
+                    logger.warning("calibration rule rows %s: %s", bid, exc)
+        self._cal_rule_rows = rc.failed_rule_rows(rows)
+        return self._cal_rule_rows
+
+    def calibration_own_rule_rows(self):
+        """calibration_rule_rows of this worksheet's own worker only: the
+        Raw tab lists calibrators of the run it shows, never another
+        worksheet's."""
+        ws = self._get_worksheet()
+        wid = ws.getId() if ws is not None else None
+        return [r for r in self.calibration_rule_rows() if r.get("batch_id") == wid]
+
+    def calibration_hold(self):
+        """Why the run's calibration cannot be approved while a curve fails
+        its dropped-by-hand rule, u"" when none does. The Approve button and
+        the refused post say this one sentence."""
+        from senaite.pfas import run_calibration as rc
+        return rc.hold_reason(rc.dropped_rules(self.calibration_rule_rows()))
+
+    def calibration_cards_json(self):
+        """The Calibration tab's curve cards (the calibrations view's
+        calibration_runs_json) for the curves calibration_review found;
+        "[]" when there are none. Built only by the tab that draws them."""
+        self.calibration_review()
+        scope = getattr(self, "_cal_cards_scope", None)
+        if not scope:
+            return u"[]"
+        try:
+            from senaite.pfas.browser.calibrations import PFASCalibrationsView
+            cv = PFASCalibrationsView(self._portal(), self.request)
+            try:
+                from senaite.pfas import raw_review
+                levels = dict((i.get("name"), i.get("level")) for i in self._raw_record().get("injections") or [])
+                rows = self._raw_rows()
+                cv.excluded_by_hand = dict(
+                    (label, raw_review.manual_excluded(rows, key, levels))
+                    for key, label in set((r.get("analyte"), r.get("label")) for r in rows))
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("calibrators dropped by hand: %s", exc)
+            return cv.calibration_runs_json(**scope)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("calibration cards: %s", exc)
+            return u"[]"
 
     def calibration_approve_json(self):
         """The approve / reject bar's settings for the shared curve script."""
@@ -3569,7 +5172,7 @@ class PFASDataReviewView(BrowserView):
         return json.dumps({"url": (ws.absolute_url() if ws is not None else u"") + u"/@@pfas-data-review",
                            "can": bool(self.can_act()), "reused": st.get("source") == u"reused",
                            "from": st.get("from") if st.get("source") == u"reused" else u"",
-                           "state": st.get("status")})
+                           "state": st.get("status"), "hold": self.calibration_hold()})
 
     def _handle_approve_calibration(self):
         """The analyst approves the run's calibration at review: release waits
@@ -3586,6 +5189,9 @@ class PFASDataReviewView(BrowserView):
         if _actor_kind(user) == u"automated":
             return self._redirect_with_msg("permission_denied", "error")
         state = self.calibration_review()
+        hold = self.calibration_hold()
+        if hold:
+            return self._redirect_with_msg("calibration_held", "error", tab="calibration", detail=hold)
         # a curve this worksheet used, its own or re-used: approved once;
         # one only named by the Run Builder is not
         # on record here and cannot be approved from this worksheet
@@ -3613,24 +5219,6 @@ class PFASDataReviewView(BrowserView):
         self._audit(ws)
         return self._redirect_with_msg("calibration_rejected" if ok else "calibration_not_own",
                                        "ok" if ok else "error", tab="calibration")
-
-    def blank_comparisons(self):
-        """This run's blanks, each against the previous comparable blank
-        (same kind, method, matrix): what rose and the lots that differ
-        (blank_history)."""
-        ws = self._get_worksheet()
-        if ws is None or not self.db_available:
-            return []
-        try:
-            from senaite.pfas.browser.blank_history import blank_data, compare, previous_blank
-            runs = blank_data(self.batch_method() or None)
-            out, cache = [], {}
-            for cur in [r for r in runs if r["batch_id"] == ws.getId()]:
-                out.append(compare(self._portal(), cur, previous_blank(runs, cur, cache), cache))
-            return out
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("blank_comparisons: %s", exc)
-            return []
 
     def run_plan_items(self):
         """The run compared with its plan: each
@@ -3830,6 +5418,13 @@ class PFASDataReviewView(BrowserView):
             # by a machine. Saying "incomplete" would send the reviewer looking
             # for an empty box that does not exist.
             return self._redirect_with_msg("checklist_machine_attested", "error")
+        # the review is of the run as processed with every edit
+        held = self._raw_submit_refusal()
+        if held:
+            return self._redirect_with_msg(held[0], "error", detail=held[1])
+        raw_ok, raw_need = self.raw_changes_gate()
+        if not raw_ok:
+            return self._redirect_with_msg("manual_changes_open", "error", detail=u"; ".join(raw_need))
         if not self.all_items_pass():
             return self._redirect_with_msg("checklist_incomplete", "error")
         if self._study_review(ws):
@@ -3893,6 +5488,10 @@ class PFASDataReviewView(BrowserView):
             return self._redirect_with_msg("no_worksheet", "error")
         if self.ws_state() != "to_be_verified":
             return self._redirect_with_msg("wrong_state", "error")
+        # the review is of the run as processed with every edit
+        held = self._raw_submit_refusal()
+        if held:
+            return self._redirect_with_msg(held[0], "error", detail=held[1])
         if not self.all_items_pass():
             # The checklist is computed afresh: a run reprocessed after
             # submission (or a QC record written later) can fail it. The
@@ -3900,7 +5499,13 @@ class PFASDataReviewView(BrowserView):
             # (a reprocess held a submitted worksheet's QC and Approve Release
             # still verified it).
             return self._redirect_with_msg("checklist_changed", "error")
+        # the verifier countersigns the Raw Data changes, and is never the
+        # person who initialled them: tried here, saved once released
+        refused = self._countersign_raw_changes(ws)
+        if refused:
+            return self._redirect_with_msg("raw_countersign_refused", "error", detail=refused)
         if self._study_review(ws):
+            self._countersign_raw_changes(ws, save=True)
             return self._sign_study_review(ws, "approved")
         wf_tool = getToolByName(self.context, "portal_workflow")
         # Verify the RESULTS, and the worksheet follows. `verify` is available
@@ -3928,6 +5533,13 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.error("approve_release: %s", exc)
             return self._redirect_with_msg("workflow_error", "error")
+        # the countersign is the release: saved only once the worksheet is
+        # verified, naming the person who released it
+        if _bapi.get_review_status(ws) in self.VERIFIED_STATES:
+            refused = self._countersign_raw_changes(ws, save=True)
+            if refused:
+                logger.error("approve_release: %s verified, its manual changes not countersigned: %s",
+                             ws.getId(), refused)
         # NO freeze call here. The resolved-criteria freeze now
         # hangs on the Worksheet `verify` TRANSITION -- see module-level
         # on_after_transition() above -- so it happens whatever route verifies
@@ -4001,11 +5613,89 @@ class PFASDataReviewView(BrowserView):
         return extraction_batch.load_requests(ws) if ws is not None else []
 
     def request_targets(self):
-        """The batch's injections a request may name (members)."""
+        """The batch's injections a request may name (members). Once per
+        request."""
+        if hasattr(self, "_request_targets"):
+            return self._request_targets
         from senaite.pfas import extraction_batch
         ws = self._get_worksheet()
-        return [m.get("injection") for m in (extraction_batch.load(ws) if ws is not None else [])
-                if m.get("injection")]
+        self._request_targets = [m.get("injection") for m in (extraction_batch.load(ws) if ws is not None else [])
+                                 if m.get("injection")]
+        return self._request_targets
+
+    def ask_target(self, injection):
+        """The request target a Final Data row's injection names (matched on
+        letters and digits), u"" when none does: the dialog then asks for
+        the injection rather than choosing one."""
+        from senaite.pfas import final_data
+        return final_data.target_of(injection, self.request_targets())
+
+    def _handle_lot_review(self):
+        """Approve (verified for use: active) or reject (quarantined) a lot
+        pending verification, from its node in the traceability check."""
+        from senaite.pfas import lot_status as ls
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error", tab="traceability")
+        f = self.request.form
+        ws = self._get_worksheet()
+        # only a lot this run's check names as pending (a forged form names any)
+        if ws is None or not ls.reviewable((self._build_traceability_tree(ws) or {}).get("unresolved"),
+                                           f.get("uid"), f.get("kind")):
+            return self._redirect_with_msg("lot_not_found", "error", tab="traceability")
+        folder = self._portal().get("pfas_prepared_standards" if f.get("kind") == u"prepared"
+                                    else "pfas_reagents")
+        obj = folder.get(f.get("uid") or u"") if folder is not None else None
+        if obj is None:
+            return self._redirect_with_msg("lot_not_found", "error", tab="traceability")
+        user = getSecurityManager().getUser()
+        try:
+            status, key, rec = ls.review_lot(getattr(obj, "status", None) or u"", f.get("action"),
+                                             user.getId(), datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M"), f)
+        except ValueError as exc:
+            return self._redirect_with_msg("lot_refused", "error", tab="traceability", detail=u"%s" % exc)
+        obj.status = status
+        IAnnotations(obj)[key] = json.dumps(rec)
+        try:
+            obj.reindexObject()
+        except Exception:                                   # noqa: BLE001
+            pass
+        if f.get("action") == u"reject_lot":
+            self._send_back(ws, f, rec, user.getId())
+            self._audit(ws)
+            return self._redirect_with_msg("run_sent_back", "ok", tab="traceability")
+        self._audit(ws)
+        return self._redirect_with_msg("lot_reviewed", "ok", tab="traceability")
+
+    def _send_back(self, ws, f, rec, who):
+        """A rejected lot sends the run back to the stage that can fix it
+        (send_back.py): the Run Builder, or the extraction stage that used it."""
+        from senaite.pfas import extraction_batch
+        from senaite.pfas import send_back as sb
+        from senaite.pfas.browser.extraction_guide import _load_session, _save_session
+        from senaite.pfas.browser.run_builder import RUN_MANIFEST_KEY
+        stage = sb.stage_for(f.get("source"))
+        lot = (f.get("lot") or u"").strip()
+        reason = u"%s lot %s rejected: %s" % (f.get("label") or f.get("name") or u"", lot, rec.get("why") or u"")
+        home = extraction_batch.home(ws)
+        before = _load_session(home)
+        built = self._run_manifest(ws)
+        manifest, session = sb.apply(built, before, stage, reason.strip(),
+                                     lot, who, rec.get("at") or u"", uid=f.get("uid"))
+        if manifest != built:
+            IAnnotations(ws)[RUN_MANIFEST_KEY] = json.dumps(manifest)
+        reopened = session.get("reopened") is not None and session != before
+        if reopened:
+            _save_session(home, session)
+        if manifest == built and not reopened:
+            return                      # nothing built and nothing to reopen
+        # the analyst responsible: who built the run, or finalized the extraction
+        from senaite.pfas import notices as nt
+        portal = self._portal()
+        initials = built.get("built_by") if stage == sb.RUN else before.get("finalized_by")
+        store = nt.load(portal)
+        nt.raise_(store, "run_sent_back", nt.userid_for_initials(portal, initials), ws.getId(),
+                  stage, lot, reason.strip(), nt.now())
+        nt.save(portal, store)
 
     def _handle_request_run(self):
         from senaite.pfas import extraction_batch

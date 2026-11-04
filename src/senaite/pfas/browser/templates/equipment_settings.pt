@@ -20,7 +20,7 @@
       <strong tal:content="u/name">Balance 1</strong>
       &middot; type <span tal:replace="u/type_title">Balance</span>
       <tal:s condition="u/serial_number">&middot; SN <span tal:replace="u/serial_number">123</span></tal:s>.
-      Identity and certificates live in SENAITE; the PFAS check settings live here. <tal:h define="hid string:equipment-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+      Identity and certificates live in SENAITE; the PFAS check settings live here. <tal:h define="hid string:equipment-types"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
     </p>
 
     <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-equipment-settings?uid=${u/id}">
@@ -28,14 +28,17 @@
 
       <tal:study condition="python:kind in ('thermometer', 'ir_gun', 'nitrogen_evaporator')">
         <div class="section-group-hdr">Temperature study</div>
-        <p class="form-note">Corrected to the NIST reference by its quarterly study; the factor in force applies wherever its readings are used. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+        <p class="form-note">Corrected to the NIST reference by its quarterly study; the factor in force applies wherever its readings are used. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
         <div class="field-row"><label>Study tolerance per reading pair (&deg;C)</label>
           <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+        <div class="field-row" tal:condition="view/multi_point"><label for="es-wt">Working temperatures (&deg;C)</label>
+          <input type="text" name="working_temps" id="es-wt" data-chips="list" placeholder="-20, 4, 20"
+                 tal:attributes="value view/working_temps_text" /></div>
       </tal:study>
       <p class="form-note" tal:condition="python:kind == 'reference_thermometer'">
-        Verified externally: record its certificate in SENAITE; the certificate&rsquo;s valid-to date is its due date. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+        Verified externally: record its certificate in SENAITE; the certificate&rsquo;s valid-to date is its due date. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
-      <tal:temp condition="python:kind in ('refrigerator', 'freezer', 'room_sensor')">
+      <tal:temp condition="python:kind in ('refrigerator', 'freezer', 'water_bath', 'room_sensor')">
         <div class="section-group-hdr">Temperature monitoring</div>
         <div class="field-row"><label>Sensor id</label>
           <input type="text" name="sensor_id" tal:attributes="value u/sensor_id" /></div>
@@ -49,6 +52,14 @@
             <input type="number" step="0.1" name="humidity_max" aria-label="Humidity maximum" tal:attributes="value u/humidity_max" /></div></div>
         <div class="field-row"><label>Mapping study tolerance (&deg;C)</label>
           <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+        <div class="alert alert-warning" tal:define="hc view/hold_conflict" tal:condition="hc" tal:content="hc">ranges do not overlap</div>
+        <div class="field-row" tal:repeat="m view/kept_choices">
+          <span class="pfas-label" tal:content="string:Holds, ${m/mid}">Holds, EPA_537_1</span>
+          <div class="cf-chips">
+            <label class="pfas-switch cf-chip" tal:repeat="k m/items">
+              <input type="checkbox" value="on" tal:attributes="name k/name; checked python:'checked' if k['on'] else None" /><span class="pfas-switch-track"></span>
+              <span tal:replace="k/label">Samples</span></label>
+          </div></div>
       </tal:temp>
 
       <tal:bal condition="python:kind in ('balance_analytical', 'balance_prep')">
@@ -57,7 +68,7 @@
           Acceptance is the type&rsquo;s tolerance:
           <strong tal:content="python:'%g %% of nominal' % u['tolerance_pct'] if u['tolerance_pct'] else 'not set'">0.2 % of nominal</strong>.
         </p>
-        <table class="pfas-table pfas-table-form">
+        <table class="pfas-table pfas-table-form" data-col-resize="equipment-settings-1">
           <thead><tr><th>Nominal (g)</th><th>Label</th></tr></thead>
           <tbody>
             <tr tal:repeat="wp python:list(view.weight_points()) + [[None, u''], [None, u'']]">
@@ -78,7 +89,15 @@
           <input type="number" step="1" name="toc_max" tal:attributes="value view/extra/toc_max|nothing" /></div>
       </tal:water>
 
-      <p class="form-note" tal:condition="python:kind in ('analytical', 'pipette', 'eyewash', 'other')">
+      <tal:pip condition="python:kind == 'pipette'">
+        <div class="section-group-hdr">Calibration limits</div>
+        <div class="field-row"><label for="es-acc">Systematic error limit (&#177; %)</label>
+          <input type="number" step="any" min="0" name="pipette_accuracy_pct" id="es-acc" tal:attributes="value u/pipette_accuracy_pct" /></div>
+        <div class="field-row"><label for="es-cv">Random error limit (RSD %)</label>
+          <input type="number" step="any" min="0" name="pipette_precision_cv" id="es-cv" tal:attributes="value u/pipette_precision_cv" /></div>
+      </tal:pip>
+
+      <p class="form-note" tal:condition="python:kind in ('analytical', 'eyewash', 'other')">
         Nothing to set here for this kind; its type and certificates are in SENAITE.
       </p>
 

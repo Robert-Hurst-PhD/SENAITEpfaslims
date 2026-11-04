@@ -13,9 +13,12 @@ This module turns that into something a reviewer can act on and a QAO is told
 about: an open Deviation against the worksheet, carrying the exact criterion,
 the method it belongs to and where to set it.
 
-Reuse rather than a new subsystem: deviations already carry a worksheet link,
-a risk score and a sign-off workflow, and the QAO is already named once in
-Print Settings for CoA attestation. Neither needed inventing.
+It is raised where the run arrives: the worker, after pushing a run's
+results, asks @@pfas-unconfigured-deviation, which reads the QC Summary as
+Data Review's gate reads it. A page never raises it: rendering is a read.
+
+Reuses the deviation registry (worksheet link, risk score, sign-off workflow)
+and the QAO named once in Print Settings for CoA attestation.
 
 Python 2.7 (in-Plone add-on).
 """
@@ -29,18 +32,12 @@ from zope.annotation.interfaces import IAnnotations
 logger = logging.getLogger("senaite.pfas.qc_deviation")
 
 # THE key for the deviation/CAR registry, defined here and imported everywhere
-# else: browser/deviations.py (the workspace) declared its own copy of the
-# string and its own accessor pair, and data_review inlined the literal a third
-# time.
-#
-# That is not a tidiness point. This module once wrote
-# "senaite.pfas.deviations" while both readers used "...registry", so a
-# successfully filed deviation was invisible in every view that should have
-# shown it -- a defect only reachable because the string existed more than once.
+# else (browser/deviations.py, data_review): a second copy of the string can
+# drift, and a deviation filed under it is invisible to every reader.
 ANN_REGISTRY_KEY = u"senaite.pfas.deviations.registry"
 
-# Marks the deviations this module owns, so re-opening Data Review updates the
-# existing record rather than filing a duplicate on every page load.
+# Marks the deviations this module owns, so a run delivered again updates the
+# existing record rather than filing a duplicate.
 SIGNATURE_KEY = "pfas_unconfigured_signature"
 
 EVENT_TYPE = "QC criterion not configured"
@@ -58,8 +55,8 @@ def save_registry(portal, data):
 
 
 def _next_id(registry):
-    from datetime import date
-    year = date.today().year
+    from senaite.pfas import lab_time
+    year = lab_time.today().year
     prefix = "DEV-{0}-".format(year)
     seq = len([e for e in registry
                if str(e.get("dev_id", "")).startswith(prefix)]) + 1
@@ -89,7 +86,7 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
     """Open (or refresh) a deviation for unconfigured criteria on a worksheet.
 
     Idempotent: returns the existing record when the same gaps are already
-    filed, so Data Review can call it on every render.
+    filed, so each push of the same run finds the one record.
     """
     if not gaps or not worksheet_id:
         return None
@@ -99,11 +96,8 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
     for dev in registry:
         if dev.get(SIGNATURE_KEY) == signature and dev.get("status") != "closed":
             # Already filed. Retry the notification if it never got through:
-            # a deviation raised while no QAO address existed would otherwise
-            # stay un-notified forever, because this early return happens
-            # before _notify_qao. Configuring the QAO afterwards has to be
-            # enough to close the loop, or "we'll tell the QAO" is a promise
-            # the system only keeps if the QAO happened to be set up first.
+            # this early return happens before _notify_qao, and configuring
+            # the QAO afterwards must be enough to close the loop.
             if not dev.get("qao_notified"):
                 if _notify_qao(portal, dev, worksheet_id, gaps):
                     dev["qao_notified"] = True
@@ -114,8 +108,8 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
             return dev
 
     dev_id = _next_id(registry)
-    from datetime import date
-    today = date.today().isoformat()
+    from senaite.pfas import lab_time
+    today = lab_time.today().isoformat()
     record = {
         "dev_id":      dev_id,
         "type":        "deviation",
@@ -147,17 +141,15 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
                    dev_id, worksheet_id)
     # Whether the QAO was actually reached is part of the record. A
     # notification that silently did not send is worse than none: the
-    # deviation would look attended to. On this system the QAO resolves to a
-    # PLACEHOLDER contact with no address, so it will read "not notified"
-    # until a real contact is set — which is the honest state, not a bug.
+    # deviation would look attended to. A QAO contact with no address reads
+    # "not notified" until a real address is set.
     notified = _notify_qao(portal, record, worksheet_id, gaps)
     record["qao_notified"] = bool(notified)
     if not notified:
         record["closure_notes"] = (
             u"QAO was NOT notified automatically: {0} Tell them directly. "
-            u"Once it is configured the notification is retried the next time "
-            u"Data Review renders this worksheet — no need to re-file "
-            u"this deviation.".format(
+            u"Once it is configured the notification is retried "
+            u"automatically; there is no need to re-file this deviation.".format(
                 record.get("qao_notify_error") or u"reason unrecorded."))
     registry.append(record)
     save_registry(portal, registry)
@@ -166,8 +158,8 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
 
 def qao_email(portal):
     """The QAO's address, from the single place the QAO is already named."""
+    from senaite.pfas.print_settings import get_signoff_signers
     try:
-        from senaite.pfas.print_settings import get_signoff_signers
         qao = (get_signoff_signers(portal) or {}).get("qao")
         return (qao or {}).get("email") or u""
     except Exception as exc:                                # noqa: BLE001
@@ -180,9 +172,9 @@ def _notify_qao(portal, record, worksheet_id, gaps):
     address = qao_email(portal)
     if not address:
         logger.warning(
-            "%s: no QAO email — set the QAO's initials in Print Settings and "
-            "an email address on that LabContact. The notification is retried "
-            "the next time Data Review renders.", record["dev_id"])
+            u"%s: no QAO email: set the QAO's initials in Print Settings and "
+            u"an email address on that LabContact. The notification is retried "
+            u"once one is set.", record["dev_id"])
         record["qao_notify_error"] = (
             u"No email address on the QAO LabContact "
             u"(Print Settings \u2192 QAO initials).")
@@ -191,25 +183,31 @@ def _notify_qao(portal, record, worksheet_id, gaps):
     # A MailHost with no SMTP host silently accepts nothing. Say so up front
     # rather than reporting a generic send failure.
     if not (getattr(getattr(portal, "MailHost", None), "smtp_host", "") or ""):
-        logger.warning("%s: QAO is %s but no SMTP host is configured in "
-                       "MailHost — nothing can be sent.",
+        logger.warning(u"%s: QAO is %s but no SMTP host is configured in "
+                       u"MailHost, so nothing can be sent.",
                        record["dev_id"], address)
         record["qao_notify_error"] = (
             u"No SMTP host configured in MailHost; "
             u"the QAO address ({0}) is set.".format(address))
         return False
 
-    subject = "[PFAS LIMS] {0}: QC criteria not configured on {1}".format(
-        record["dev_id"], worksheet_id)
+    try:
+        from senaite.pfas import lab_identity
+        prefix = lab_identity.mail_prefix(portal)
+    except Exception:                                       # noqa: BLE001
+        prefix = u"[LIMS]"
+    subject = u"{0} {1}: QC criteria not configured on {2}".format(
+        prefix, record["dev_id"], worksheet_id)
     body = u"{0}\n\n{1}\n\nWorksheet: {2}/worksheets/{3}\nMethod Profiles: " \
            u"{2}/@@pfas-method-profiles\n".format(
                subject, record["description"],
                portal.absolute_url(), worksheet_id)
     try:
-        message = u"From: {0}\nTo: {1}\nSubject: {2}\n\n{3}".format(
+        from senaite.pfas import mail_text
+        message = mail_text.message(
             portal.getProperty("email_from_address", "lims@localhost"),
             address, subject, body)
-        portal.MailHost.send(message.encode("utf-8"), immediate=True)
+        portal.MailHost.send(message, immediate=True)
         logger.info("Notified the QAO (%s) of %s", address, record["dev_id"])
         return True
     except Exception as exc:                                # noqa: BLE001
@@ -217,3 +215,29 @@ def _notify_qao(portal, record, worksheet_id, gaps):
                      record["dev_id"], exc)
         record["qao_notify_error"] = u"Send failed: {0}".format(exc)
         return False
+
+
+def retry_notifications(portal):
+    """E-mail the QAO each open deviation this module filed that never
+    reached the QAO; returns how many went. Asked on a POST (the worker's
+    notice tick), never by a page. Nothing is tried, and nothing logged,
+    while there is no QAO address or no SMTP host to send it with."""
+    if not qao_email(portal):
+        return 0
+    if not (getattr(getattr(portal, "MailHost", None), "smtp_host", "") or ""):
+        return 0
+    registry = get_registry(portal)
+    sent = 0
+    for dev in registry:
+        if not dev.get(SIGNATURE_KEY) or dev.get("status") == "closed" \
+                or dev.get("qao_notified"):
+            continue
+        worksheet_id = (dev.get("affected_worksheets") or [u""])[0]
+        if _notify_qao(portal, dev, worksheet_id, []):
+            dev["qao_notified"] = True
+            dev["closure_notes"] = u""
+            sent += 1
+            logger.info("QAO notified retrospectively for %s", dev.get("dev_id"))
+    if sent:
+        save_registry(portal, registry)
+    return sent

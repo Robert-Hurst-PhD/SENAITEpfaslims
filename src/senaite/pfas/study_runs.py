@@ -22,12 +22,13 @@ stands in its place is the study's matrix SOURCE, chosen per part:
 Data Review's chain-of-custody item reads the worksheet's study run record
 (STUDY_RUN_KEY) and states the source instead.
 
+    day_elements(rec) -> a planned study's days, one part each
     new_part(rec, ...)               -> (part, problem)
     plan(part, method_id)            -> {extraction-batch role: count}
     run_record(rec, part)            -> what the study worksheet carries
     source_problems(...)             -> why the source cannot stand in for a CoC
     coc_item(run, problems)          -> (label, verdict, reason) for Data Review
-    new_receipt(form, by, at)        -> (receipt, problem)
+    new_receipt(form, previous, by, at) -> (receipt, problem)
 
 Pure helpers + the annotation shell. Python 2.7 and 3.
 """
@@ -67,17 +68,45 @@ SOURCE_LABELS = dict(SOURCES)
 
 
 def _cells(rec):
-    try:
-        from senaite.pfas import study_templates as st
-    except ImportError:                                     # tests: by path
-        import study_templates as st
+    from senaite.pfas import study_templates as st
     return st.cells((rec or {}).get("design")) if (rec or {}).get("design") else []
+
+
+def _preparations():
+    from senaite.pfas import study_data as sd
+    return sd.PREPARATIONS, sd.BLANK_PREPARATIONS
+
+
+def _plan(rec):
+    plan = (rec or {}).get("plan") or {}
+    try:
+        days, reps = int(plan.get("days") or 0), int(plan.get("replicates") or 0)
+    except (TypeError, ValueError):
+        return None
+    return plan if days > 0 and reps > 0 and plan.get("preparations") else None
+
+
+def day_elements(rec):
+    """A planned study's parts: one per day, each holding the day's
+    preparations x replicates."""
+    plan = _plan(rec)
+    if plan is None:
+        return []
+    preps, _blanks = _preparations()
+    labels = [l for c, l in preps if c in plan["preparations"]]
+    per_day = int(plan["replicates"]) * len(labels)
+    return [(u"day%d" % d, u"Day %d: %s \u00d7 %d" % (d, u", ".join(labels), int(plan["replicates"])), None, per_day)
+            for d in range(1, int(plan["days"]) + 1)]
 
 
 def elements_for(kind, rec=None):
     """[(id, label, role, default replicates)]: a designed study's cells
-    (study_templates.cells), else the kind's fixed parts."""
+    (study_templates.cells), else a planned study's days, else the kind's
+    fixed parts."""
+    days = day_elements(rec)
     cells = _cells(rec)
+    if days and not cells:
+        return days
     if cells:
         return [(c["key"], u"%s: %s%s" % (c["name"], u"%s, " % c["source"] if c["source"] else u"",
                                          c["level"] or u"all"), c["role"], c.get("replicates"))
@@ -104,6 +133,8 @@ def new_part(rec, element, analyst, analyst_name, level, replicates, source, by,
     if rec.get("status") != u"draft":
         return None, u"An approved study is not changed."
     cells = dict((c["key"], c) for c in _cells(rec))
+    if not cells and day_elements(rec):
+        return _new_day_part(rec, element, analyst, analyst_name, source, by, at, blank)
     if cells:
         return _new_cell_part(rec, cells.get(element), analyst, analyst_name, replicates,
                               source, by, at)
@@ -145,6 +176,46 @@ def new_part(rec, element, analyst, analyst_name, level, replicates, source, by,
     return part, u""
 
 
+def _new_day_part(rec, element, analyst, analyst_name, source, by, at, blank):
+    """One day of a planned study: its preparations, each `replicates`
+    times -- the blanks in the method's blank role and the matrix blank's,
+    the levels in the study's spiked role."""
+    days = dict((e[0], e) for e in day_elements(rec))
+    if element not in days:
+        return None, u"This study has no such part."
+    day = int(element[3:])
+    given = [p for p in rec.get("parts") or [] if p.get("day") == day]
+    if given:
+        return None, u"Day %d is already given to %s." % (day, given[0].get("analyst_name") or u"an analyst")
+    if not analyst:
+        return None, u"Choose the analyst who performs it."
+    kind = (source or {}).get("kind")
+    if kind not in SOURCE_LABELS:
+        return None, u"Choose where the study's matrix comes from."
+    if kind != WATER_SYSTEM and not source.get("uid"):
+        return None, u"Choose the lot the replicates are made in."
+    plan = _plan(rec)
+    preps, blanks = _preparations()
+    n = int(plan["replicates"])
+    mix = []
+    for code, _label in preps:
+        if code not in plan["preparations"]:
+            continue
+        if code == u"MB":
+            if not blank:
+                return None, (u"The method profile of %s names no method blank (MB or LRB "
+                              u"among its QC types)." % (rec.get("method") or u"this study"))
+            mix.append({"role": blank, "level": u"", "count": n})
+        elif code in blanks:
+            mix.append({"role": code, "level": u"", "count": n})
+        else:
+            mix.append({"role": rec.get("spike_role") or LFB, "level": code, "count": n})
+    part = {"id": next_part_id(rec.get("parts")), "element": element, "day": day, "analyst": analyst,
+            "analyst_name": analyst_name or analyst, "level": u"", "replicates": n * len(mix),
+            "role": u"", "mix": mix, "source": dict(source), "worksheets": [], "by": by, "at": at}
+    return part, u""
+
+
 def _new_cell_part(rec, cell, analyst, analyst_name, replicates, source, by, at):
     """A part of a designed study: one cell (element x standard source x
     level) with the cell's role and level."""
@@ -183,9 +254,24 @@ def add_reference(rec, source):
                     "lot_number": source.get("lot_number") or u""})
 
 
+def extraction_role(run):
+    """The lot a study part's worksheet asks the guided extraction for: a
+    part made in a reference sample names that lot, offered and preselected
+    under its own role, so its use goes to the usage ledger."""
+    src = (run or {}).get("source") or {}
+    if src.get("kind") != REFERENCE_LOT or not src.get("uid"):
+        return None
+    return {"role": u"Reference sample", "key": u"reagent:%s" % src["uid"]}
+
+
 def plan(part, blank=None):
     """{extraction-batch role: count} for one assignment of the part (its
     own role; `blank` = the method's blank role, for a part without one)."""
+    if part.get("mix"):
+        out = {}
+        for m in part["mix"]:
+            out[m["role"]] = out.get(m["role"], 0) + int(m["count"])
+        return out
     return {part.get("role") or role_for(part["element"], blank): part["replicates"]}
 
 
@@ -193,9 +279,16 @@ def set_levels(members, part):
     """The part's spiking level on its spiked members (they are created
     without one)."""
     out = []
+    # a day part: each spiked role's levels dealt out in the design's order
+    queue = {}
+    for x in part.get("mix") or []:
+        if x.get("level"):
+            queue.setdefault(x["role"], []).extend([x["level"]] * int(x["count"]))
     for m in members:
         m = dict(m)
-        if part.get("level") and m.get("role") == (part.get("role") or LFB) and not m.get("level"):
+        if queue.get(m.get("role")) and not m.get("level"):
+            m["level"] = queue[m["role"]].pop(0)
+        elif part.get("level") and m.get("role") == (part.get("role") or LFB) and not m.get("level"):
             m["level"] = part["level"]
         out.append(m)
     return out
@@ -212,8 +305,8 @@ def study_worksheets(rec):
 
 
 def gate_scope(run, enabled_types, blank=None):
-    """(required, judged_by_study) for a study run's QC Summary gate (lab,
-    2026-10-09): the run must carry its part's own role, and the CCVs where the
+    """(required, judged_by_study) for a study run's QC Summary gate: the
+    run must carry its part's own role, and the CCVs where the
     method runs them; calibration is gated as for any run. The part's
     replicates are judged by the study, not by the routine recovery or blank
     limits, so their routine verdicts do not hold the run."""
@@ -227,7 +320,7 @@ def run_record(rec, part):
     return {"study": rec["id"], "part": part["id"], "element": part["element"],
             "role": part.get("role") or u"", "std_source": part.get("std_source") or u"",
             "method_id": rec["method"], "matrix": rec["matrix"], "source": part["source"],
-            "analyst": part["analyst"], "level": part.get("level") or u""}
+            "analyst": part["analyst"], "level": part.get("level") or u"", "day": part.get("day")}
 
 
 def lot_choices(items, kind, reference_category, water_category):
@@ -337,7 +430,7 @@ def new_receipt(form, previous, by, at):
 def checklist_review_state(core_state, has_analyses, checklist):
     """A study worksheet holds no analyses, and core refuses to submit or
     verify an empty worksheet. Its technical review is the Data Review
-    checklist itself (lab, 2026-10-09): submitted -> to_be_verified,
+    checklist itself: submitted -> to_be_verified,
     approved -> verified. A worksheet with analyses keeps core's state."""
     if has_analyses:
         return core_state

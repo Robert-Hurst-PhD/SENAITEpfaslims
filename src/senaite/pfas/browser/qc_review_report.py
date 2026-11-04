@@ -34,12 +34,22 @@ import logging
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 
+from senaite.pfas import print_doc
 from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.qc_review_report")
+
+
+def _shown(row, key):
+    """A copy of `row` with its stamp `key` (UTC) on the laboratory's clock;
+    the row as it is while no zone converts."""
+    if not row.get(key):
+        return row
+    return dict(row, **{key: print_doc.lab_or(row[key], row[key])})
 
 SNAPSHOT_KEY = u"senaite.pfas.qc_review_snapshots"
 
@@ -87,7 +97,7 @@ def _worksheet_for(obj):
     return None
 
 
-class PFASQCReviewReportView(BrowserView):
+class PFASQCReviewReportView(ViewHelpers, BrowserView):
     """Assembles the reviewer report. Every section delegates."""
 
     template = ViewPageTemplateFile("templates/qc_review_report.pt")
@@ -103,9 +113,6 @@ class PFASQCReviewReportView(BrowserView):
         return self.template()
 
     # ── context ──────────────────────────────────────────────────────────
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
 
     def worksheet(self):
         if not hasattr(self, "_ws"):
@@ -234,8 +241,11 @@ class PFASQCReviewReportView(BrowserView):
     # ── 3-6, 9. delegated sections ───────────────────────────────────────
 
     def gates(self):
-        review = self._review()
-        return review.checklist_status() if review else []
+        if getattr(self, "_gates", None) is None:
+            review = self._review()
+            self._gates = [_shown(g, "checked_at")
+                           for g in (review.checklist_status() if review else [])]
+        return self._gates
 
     def qc_summary(self):
         review = self._review()
@@ -245,9 +255,6 @@ class PFASQCReviewReportView(BrowserView):
         review = self._review()
         return review.spike_qc_page() if review else {}
 
-    def sample_results(self):
-        review = self._review()
-        return review.sample_results_page() if review else []
 
     def traceability(self):
         review = self._review()
@@ -357,18 +364,25 @@ class PFASQCReviewReportView(BrowserView):
     # ── publication history ──────────────────────────────────────────────
 
     def publications(self):
+        if getattr(self, "_publications", None) is not None:
+            return self._publications
         out = []
-        try:
-            from senaite.pfas.browser.controlled_publications import (
-                get_publication_log)
-        except Exception:
-            return out
+        from senaite.pfas.browser.controlled_publications import (
+            get_publication_log)
         for sample in self._samples():
             for entry in get_publication_log(sample):
-                row = dict(entry)
+                row = _shown(dict(entry), "issued_at")
                 row["sample"] = sample.getId()
                 out.append(row)
+        self._publications = out
         return out
+
+    def times_line(self):
+        """"Times are <zone>." under the report when it shows a time: a
+        signed check's or a publication's."""
+        shown = [g.get("checked_at") for g in self.gates() if g.get("checked_by")]
+        shown += [p.get("issued_at") for p in self.publications()]
+        return print_doc.times_line(*shown)
 
     def _samples(self):
         worksheet = self.worksheet()
@@ -439,7 +453,3 @@ def snapshot_for_publication(ar, revision):
     return html
 
 
-def get_snapshot(ar, revision):
-    """The frozen reviewer report for a revision, or None."""
-    store = IAnnotations(ar).get(SNAPSHOT_KEY) or {}
-    return store.get(str(revision))

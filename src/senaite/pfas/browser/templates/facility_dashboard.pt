@@ -14,7 +14,7 @@
     purl     view/portal_url;
   ">
   <p class="pfas-lead">
-    ISO 17025 daily instrument and environmental verifications.
+    Daily instrument and environmental verifications.
     <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
       >Equipment</a>
   </p>
@@ -31,7 +31,7 @@
 
     <!-- Temperature units -->
     <tal:temp-units tal:define="
-      temp_units python:[u for u in summary if u['unit_type'] in ('refrigerator','freezer','room_sensor')]">
+      temp_units python:[u for u in summary if u['unit_type'] in ('refrigerator','freezer','water_bath','room_sensor')]">
       <tal:show tal:condition="python:bool(temp_units)">
         <div class="pfas-section-head">Temperature &amp; Humidity</div>
         <div class="pfas-tiles">
@@ -60,7 +60,7 @@
                   <div class="pfas-tile-meta">
                     Range:
                     <tal:mn tal:replace="python:unit.get('temp_min','—')"/>–<tal:mx tal:replace="python:unit.get('temp_max','—')"/>&deg;C
-                    &bull; Last: <tal:ts tal:replace="python:r['ts'][:16].replace('T',' ')"/>
+                    &bull; Last: <tal:ts tal:replace="python:view.lab_at(r['ts'], r['ts'][:16].replace('T',' '))"/>
                   </div>
                 </tal:has-reading>
                 <tal:no-reading tal:condition="python:not r">
@@ -115,9 +115,65 @@
       </tal:show>
     </tal:bal-units>
 
+    <!-- Eye wash stations: due once the type's frequency has passed since the
+         last check; Enter check opens the check over the checklist -->
+    <tal:ew-units tal:define="ew_units python:[u for u in summary if u['unit_type'] == 'eyewash']">
+      <tal:show tal:condition="ew_units">
+        <div class="pfas-section-head">Eye wash stations</div>
+        <div class="pfas-tiles">
+          <tal:each tal:repeat="unit ew_units">
+            <div class="pfas-tile is-static is-left">
+              <div class="pfas-tile-head">
+                <span class="pfas-tile-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <div>
+                  <div class="pfas-tile-title" tal:content="unit/name">Unit</div>
+                  <div class="pfas-sub" tal:content="python:unit.get('location','')"></div>
+                </div>
+              </div>
+              <div class="pfas-tile-meta" tal:define="ew python:unit.get('last_eyewash')">
+                <tal:has tal:condition="ew">Last checked <tal:d tal:replace="ew/log_date"/></tal:has>
+                <tal:none tal:condition="not:ew">Not checked yet</tal:none>
+              </div>
+              <span tal:attributes="class python:'badge '+view.status_class(unit['status']).replace('fqc-','badge-')"
+                    tal:content="python:view.status_label(unit['status'])"></span>
+              <div class="pfas-tile-foot">
+                <button type="button" class="btn-sm btn-secondary"
+                        tal:attributes="data-modal-open string:ew-modal-${unit/id}">Enter check</button>
+              </div>
+            </div>
+            <div class="pfas-modal" tal:attributes="id string:ew-modal-${unit/id}">
+              <div class="pfas-modal-box is-md" role="dialog" aria-modal="true"
+                   tal:attributes="aria-labelledby string:ew-title-${unit/id}">
+                <h2 tal:attributes="id string:ew-title-${unit/id}">Eye wash check <span tal:replace="unit/name">EW-1</span></h2>
+                <form method="post" tal:attributes="action string:${purl}/@@pfas-eyewash-log">
+                  <input type="hidden" name="unit_id" tal:attributes="value unit/id" />
+                  <input type="hidden" name="return_to" value="checklist" />
+                  <input type="hidden" name="log_date" tal:attributes="value view/today" />
+                  <div class="field-row"><span class="pfas-label">Operator</span>
+                    <span tal:content="view/signed_in">Operator</span></div>
+                  <div class="field-row"><span class="pfas-label">Working order</span>
+                    <div class="pfas-radios">
+                      <label class="pfas-check"><input type="radio" name="working" value="yes" checked="checked" /> &#10003; Operational</label>
+                      <label class="pfas-check"><input type="radio" name="working" value="no" /> &#10007; Fault noted</label>
+                    </div></div>
+                  <label class="field-row">Flush water temp (&deg;C)
+                    <input type="number" step="0.1" name="temperature" class="is-short" required="required" /></label>
+                  <label class="field-row">Notes <input type="text" name="notes" /></label>
+                  <div class="form-actions">
+                    <button class="btn btn-primary" type="submit">Save check</button>
+                    <button class="btn btn-secondary" type="button" data-modal-close="data-modal-close">Cancel</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </tal:each>
+        </div>
+      </tal:show>
+    </tal:ew-units>
+
     <!-- Water / Waste / Eye wash -->
     <tal:other-units tal:define="
-      other_units python:[u for u in summary if u['unit_type'] in ('water_system','eyewash')]">
+      other_units python:[u for u in summary if u['unit_type'] == 'water_system']">
       <tal:show tal:condition="python:bool(other_units)">
         <div class="pfas-section-head">Other Daily Checks</div>
         <div class="pfas-tiles">
@@ -135,8 +191,6 @@
               <div class="pfas-tile-foot">
                 <a class="btn-sm btn-secondary" tal:condition="python:unit['unit_type']=='water_system'"
                    tal:attributes="href string:${purl}/@@pfas-water-log">Enter reading</a>
-                <a class="btn-sm btn-secondary" tal:condition="python:unit['unit_type']=='eyewash'"
-                   tal:attributes="href string:${purl}/@@pfas-eyewash-log?unit_id=${unit/id}">Enter check</a>
               </div>
             </div>
           </tal:each>

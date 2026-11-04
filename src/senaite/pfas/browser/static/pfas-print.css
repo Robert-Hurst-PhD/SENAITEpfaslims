@@ -15,14 +15,17 @@
  * A flag (amber, coral) is never colour alone: it is a text label with a shape
  * beside it, so a greyscale copy reads the same.
  * ========================================================================== */
-/* every page: margins and the footer boxes; the text of the left one (document,
-   revision, who printed it and when) is set per document beside this sheet */
+/* every page: margins and the document line. Left: the document with its revision,
+   and under it who printed it and when (set per document beside this sheet);
+   centre: Page x of y; right: "Issued: <date>" when the document has one */
 @page { margin: 16mm 15mm 18mm;
-        @bottom-left { width: 80%; font-family: var(--font-sans); font-size: 9px;
+        @bottom-left { width: 45%; font-family: var(--font-sans); font-size: 9px; white-space: pre;
                        color: var(--s-secondary); vertical-align: top; padding-top: 6px; }
-        @bottom-right { font-family: var(--font-sans); font-size: 9px; font-weight: 700;
-                        color: var(--s-secondary); vertical-align: top; padding-top: 6px;
-                        content: "Page " counter(page) " of " counter(pages); } }
+        @bottom-center { font-family: var(--font-sans); font-size: 9px; font-weight: 700;
+                         color: var(--s-secondary); vertical-align: top; padding-top: 6px;
+                         content: "Page " counter(page) " of " counter(pages); }
+        @bottom-right { font-family: var(--font-sans); font-size: 9px;
+                        color: var(--s-secondary); vertical-align: top; padding-top: 6px; } }
 
 .pd { font-family: var(--font-sans); font-size: 12px; line-height: 17px; color: var(--s-body);
       font-feature-settings: "tnum"; }

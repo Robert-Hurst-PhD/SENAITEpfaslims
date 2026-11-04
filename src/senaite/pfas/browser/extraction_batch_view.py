@@ -19,17 +19,21 @@ from datetime import datetime
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import extraction_batch as eb
+from senaite.pfas import lab_time
+from senaite.pfas import print_doc
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.view_helpers import send_pdf
 
 logger = logging.getLogger("senaite.pfas.extraction_batch_view")
 
 EDIT_ROLES = ("LabClerk", "Analyst", "LabManager", "Manager")
 
 
-class PFASExtractionBatchView(BrowserView):
+class PFASExtractionBatchView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/extraction_batch.pt")
 
@@ -40,10 +44,6 @@ class PFASExtractionBatchView(BrowserView):
         return self.template()
 
     # ── what the page shows ──────────────────────────────────────────────────
-
-    def portal_url(self):
-        from bika.lims import api
-        return api.get_portal().absolute_url()
 
     def ws(self):
         return self.context
@@ -158,12 +158,12 @@ class PFASExtractionBatchView(BrowserView):
         """The reference-material lots usable today: what a matrix blank is
         made from (matrix_blank.py; their assigned levels sit on the lot)."""
         if not hasattr(self, "_bm_lots"):
-            from datetime import date
+            from senaite.pfas import lab_time
             from senaite.pfas.browser.bench_inventory import REAGENT, usable_lots
             from senaite.pfas.content.reagent import CATEGORY_REFERENCE
             portal = getToolByName(self.context, "portal_url").getPortalObject()
             try:
-                lots = usable_lots(portal, date.today().isoformat())
+                lots = usable_lots(portal, lab_time.today().isoformat())
             except Exception:                                # noqa: BLE001
                 lots = []
             self._bm_lots = [l for l in lots if l.get("kind") == REAGENT
@@ -213,7 +213,7 @@ class PFASExtractionBatchView(BrowserView):
                 "batch": client.getId() if client is not None else u"",
                 "method": self.profile().get("display_name") or self.method_id(),
                 "matrix": self.matrix(),
-                "date": datetime.utcnow().strftime("%Y-%m-%d"), "analyst": self._user()}
+                "date": lab_time.today().isoformat(), "analyst": self._user()}
 
     def label_rows(self):
         return eb.label_rows(self.members(), self.label_containers(), self.label_meta())
@@ -224,15 +224,15 @@ class PFASExtractionBatchView(BrowserView):
         issues = eb.label_issues(self.context)
         last = issues[-1] if issues else None
         current = bool(last) and last.get("signature") == [list(r) for r in eb.labels_signature(self.members())]
-        return {"issued": bool(last), "current": current, "last": last, "count": len(issues)}
+        at = (last or {}).get("at") or u""
+        return {"issued": bool(last), "current": current, "last": last, "count": len(issues),
+                "at": print_doc.lab_or(at, at[:16].replace("T", " "))}
 
     # ── 5. requests from review ─────────────────────────────────────────
 
     def requests(self):
         return eb.load_requests(self.context)
 
-    def open_requests(self):
-        return [r for r in self.requests() if r.get("status") == u"open"]
 
     def print_url(self):
         return u"%s/@@pfas-extraction-labels" % self.context.absolute_url()
@@ -315,6 +315,21 @@ class PFASExtractionBatchView(BrowserView):
                 return self._back(error=u"The labels issued are current; print them again instead.")
             if state["issued"] and not reason:
                 return self._back(error=u"Say why the labels are issued again.")
+            # the injection names (injection_names.py): a batch issued for the
+            # first time takes its number for the day and every member its
+            # name by the scheme; a batch issued before the scheme keeps its
+            # names, a scheme batch names only members added since
+            code = eb.batch_code_of(self.context)
+            if not code and not state["issued"]:
+                from bika.lims import api
+                code = eb.issue_batch_code(api.get_portal(), self.context, at[:10])
+            if code:
+                from senaite.pfas import injection_names as nm
+                prof = self.profile() or {}
+                members = eb.name_members(members, nm.method_code(prof, self.method_id()),
+                                          lambda mx: nm.matrix_code(prof, mx), code)
+                eb.save(self.context, eb.follow_lfsm(members))
+                self._members = members
             eb.record_label_issue(self.context, {
                 "at": at, "by": who, "labels": len(self.label_rows()), "reason": reason,
                 "signature": [list(r) for r in eb.labels_signature(members)]})
@@ -382,10 +397,7 @@ class PFASExtractionLabelsView(PFASExtractionBatchView):
         if self.request.form.get("format") != "sheet":
             pdf = self._designed_pdf()
             if pdf:
-                self.request.response.setHeader("Content-Type", "application/pdf")
-                self.request.response.setHeader(
-                    "Content-Disposition", 'inline; filename="%s-labels.pdf"' % self.context.getId())
-                return pdf
+                return send_pdf(self.request.response, pdf, "%s-labels.pdf" % self.context.getId())
         return self.template()
 
     def _designed_pdf(self):

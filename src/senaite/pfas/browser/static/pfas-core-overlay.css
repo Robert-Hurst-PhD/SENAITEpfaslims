@@ -73,13 +73,16 @@ body:not(.pfas-app) .nav-tabs .nav-link.active { background: var(--surface); bor
 body:not(.pfas-app) .close { color: var(--text); text-shadow: none; }
 body:not(.pfas-app) .table-hover > tbody > tr:hover { color: var(--text); }
 body:not(.pfas-app) .progress { background-color: var(--surface-2); }
-/* the sidebar's own rule (pfas_sidebar.pt) loses to a core nav background on core pages */
-body:not(.pfas-app) #sidebar.pfas-sidebar { background: var(--s-light) !important; }
-/* ... and core's "#sidebar a" colour beats .pfas-si: the labels take the sidebar's own colours, as on PFAS pages */
-body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-si,
-body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-sb-dash { color: var(--s-input-text); }
-body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-si.si-active,
-body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-sb-dash.si-active { color: var(--s-primary-dk); }
+/* The rail and panel (pfas_sidebar.pt) on core pages: core's own #sidebar
+   rules (a light ground with !important, "#sidebar a" colours, padding and
+   block display on "#sidebar ul li a", a hover colour) outrank the
+   navigation tree's classes, and core's "transition: all" would animate the
+   fold and the opening. The frame, the tree's own values and no motion. */
+body:not(.pfas-app) #sidebar.pfas-nav { background: var(--frame) !important; transition: none; }
+body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-nav-row {
+  display: flex; padding: 0 var(--sp-2); color: var(--on-frame-muted); text-decoration: none; }
+body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-nav-row:hover,
+body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-nav-row[aria-current="page"] { color: var(--on-frame); }
 /* icons core draws as black SVG images (the Samples filter's assigned / late) */
 html[data-theme="dark"] body:not(.pfas-app) .ajax-contents-table .filterbar img { filter: invert(.85); }
 
@@ -271,6 +274,11 @@ body:not(.pfas-app) #content .required,
 body:not(.pfas-app) #content .required::after,
 body:not(.pfas-app) #content label.required,
 body:not(.pfas-app) #content .fieldRequired { color: var(--s-danger-dk); }
+/* a listing's required column header: the header colour, no marker (red is for failures) */
+body:not(.pfas-app) #content th.required,
+body:not(.pfas-app) #content th .required { color: inherit; }
+body:not(.pfas-app) #content th.required::after,
+body:not(.pfas-app) #content th .required::after { content: none; }
 body:not(.pfas-app) #content .fieldErrorBox,
 body:not(.pfas-app) #content .fieldErrorBox .error { color: var(--s-danger-dk); font-size: var(--fs-sm); }
 body:not(.pfas-app) #content .field.error :is(input, select, textarea) { border-color: var(--s-danger) !important; }
@@ -493,3 +501,29 @@ body:not(.pfas-app) #lims-controlpanel .pfas-filterbar[hidden] { display: none; 
    container may shrink, and the content scrolls inside it. */
 body:not(.pfas-app) .wrapper > .container-fluid { min-width: 0; }
 body:not(.pfas-app) #content { min-width: 0; overflow-x: auto; }
+
+/* ── Worksheets: "Create new worksheet" is one joined bar ──────────────────
+   The pickers sat in core's form-control wrapper (a double border, clipped,
+   narrower) and the corners mixed. One bar: the label, three pickers of one
+   width and height, then Add; rounded only at the two outer ends. */
+form[name="worksheet-add-form"] .input-group > .input-group-append,
+form[name="worksheet-add-form"] .input-group > .input-group { margin: 0; flex: 0 0 auto; }
+form[name="worksheet-add-form"] .input-group-text {
+  height: var(--ctl-h); border-radius: var(--radius) 0 0 var(--radius); }
+form[name="worksheet-add-form"] .bootstrap-select > .dropdown-toggle {
+  width: 220px; height: var(--ctl-h); border-radius: 0 !important; margin-left: -1px; }
+form[name="worksheet-add-form"] .bootstrap-select { width: auto !important; }
+/* core gives the instrument picker form-control classes: its own border and height */
+form[name="worksheet-add-form"] .bootstrap-select.form-control { height: auto; padding: 0; border: 0; background: none; box-shadow: none; }
+form[name="worksheet-add-form"] input[name="Add"] {
+  height: var(--ctl-h); border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+
+/* Core listings: the column menu lives in the filter row (pfas-components.js);
+   core's own link above the table is hidden once the button is in place. */
+body .listing-container.pfas-cols-moved .table-responsive > a.pull-right[aria-label="Configure table columns"] { display: none; }
+
+/* a smaller screen (below 1280 px wide): a core listing's rows take the
+   stepped-down body size, as PFAS pages do (pfas-tokens.css) */
+@media screen and (max-width: 1279.98px) {
+  body:not(.pfas-app) table.contentstable tbody td { font-size: var(--fs-base); }
+}

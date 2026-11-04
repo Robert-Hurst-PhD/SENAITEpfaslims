@@ -2,18 +2,17 @@
 """What a core analysis shows: the method x matrix reporting unit and the
 decimals the lab's rounding leaves (one owner per fact).
 
-Core formats a result with the analysis's own Unit and Precision, which every
-PFAS service left blank / 3. The method profile owns both, so they are set on
-the analysis inside SENAITE whenever it changes -- the worker's result, a
-result typed on Manage Results, a submission -- and once for the analyses
-written before (migrations/backfill_units_precision.py). The stored result is
-not changed. (The worker cannot send them: senaite.jsonapi refuses Precision,
+Core formats a result with the analysis's own Unit and Precision. The method
+profile owns both, so they are set on the analysis inside SENAITE whenever
+it changes -- the worker's result, a
+result typed on Manage Results, a submission. The stored result is not
+changed. (The worker cannot send them: senaite.jsonapi refuses Precision,
 and the refusal sinks the whole update.)
 
 Core expresses decimals, not significant figures, so for a value of 1000 or
 more Precision alone would show more digits than the certificate. Core's
 analysis listings (sample view, worksheet) therefore show the result as the
-certificate states it, rounded by the lab's rule (PFASResultListingAdapter; 2026-10-05: core must follow the rounding rules).
+certificate states it, rounded by the lab's rule (PFASResultListingAdapter).
 
     apply(analysis)               set Unit / Precision; True when changed
     on_analysis_changed(...)      IObjectModifiedEvent / IAfterTransitionEvent
@@ -29,10 +28,7 @@ logger = logging.getLogger("senaite.pfas.analysis_display")
 def precision_for(result, sig_figs, rule):
     """Decimals `result` keeps rounded to `sig_figs` by `rule` ("40.3" -> 1),
     or None for a result that is not a number."""
-    try:
-        from senaite.pfas import rounding
-    except ImportError:                                     # tests, outside Plone
-        import rounding
+    from senaite.pfas import rounding
     text = rounding.round_sig(result, sig_figs, rule)
     if text is None:
         return None
@@ -56,12 +52,9 @@ def _profile_for(analysis):
 
 
 def _is_analyte(analysis):
-    try:
-        svc = analysis.getAnalysisService()
-        field = svc.getField("pfas_role") if svc is not None else None
-        return bool(field is not None and field.get(svc) == u"analyte")
-    except Exception:                                       # noqa: BLE001
-        return False
+    svc = analysis.getAnalysisService()
+    field = svc.getField("pfas_role") if svc is not None else None
+    return bool(field is not None and field.get(svc) == u"analyte")
 
 
 def apply(analysis):
@@ -121,19 +114,18 @@ class PFASApplyDisplayView(object):
         except (TypeError, ValueError):
             resp.setStatus(400)
             return json.dumps({"ok": False, "error": u"not JSON"})
-        try:
-            from plone.protect.interfaces import IDisableCSRFProtection
-            from zope.interface import alsoProvides
-            alsoProvides(self.request, IDisableCSRFProtection)
-        except ImportError:
-            pass
         done = refused = 0
         sm = getSecurityManager()
+        allowed = []
         for uid in body.get("analysis_uids") or []:
             an = api.get_object_by_uid(uid, default=None)
             if an is None or not sm.checkPermission(self.EDIT_RESULT, an):
                 refused += 1
                 continue
+            allowed.append(an)
+        from senaite.pfas.browser.perms import disable_csrf
+        disable_csrf(self.request)
+        for an in allowed:
             if apply(an):
                 done += 1
         return json.dumps({"ok": True, "changed": done, "refused": refused})
@@ -181,11 +173,10 @@ class PFASResultListingAdapter(object):
             an = api.get_object(obj)
             if not _is_analyte(an):
                 return item
-            # The method is the batch's (the generated method x matrix
-            # profile sets it; batch_method.resolve reads the analyses
-            # first), so it is shown, not chosen per analysis: the shared
-            # PFAS services allow all three methods, and picking another one
-            # on a worksheet row moved the batch's method.
+            # The method is the batch's (batch_method.resolve reads the
+            # analyses first), so it is shown, not chosen per analysis: the
+            # shared PFAS services allow every method, and another one picked
+            # on a worksheet row would move the batch's method.
             if "Method" in (item.get("allow_edit") or []):
                 item["allow_edit"] = [k for k in item["allow_edit"] if k != "Method"]
                 # drawn as core draws a method it does not offer to change
@@ -204,4 +195,68 @@ class PFASResultListingAdapter(object):
                 item["formatted_result"] = text
         except Exception:                                   # noqa: BLE001
             logger.warning("listing result not rounded", exc_info=True)
+        return item
+
+
+class _AlwaysShown(dict):
+    """A column whose default visibility stays on: core's analyses listing
+    turns its Unit column off after the rows are built (when no unit can be
+    chosen), which a subscriber cannot follow."""
+
+    def __setitem__(self, key, value):
+        dict.__setitem__(self, key, True if key == "toggle" else value)
+
+
+SAMPLE_HIDDEN_COLUMNS = ("SubmittedBy", "Attachments")
+
+
+class SampleAnalysesColumnsAdapter(object):
+    """senaite.app.listing subscriber on a sample's analyses: the unit in its
+    own column after Result instead of appended to the result, no
+    Submitter or Attachments column, and read-only rows without selection
+    for anyone but a manager."""
+
+    priority_order = 1110
+
+    def __init__(self, listing, context):
+        self.listing, self.context = listing, context
+
+    def _on_sample(self):
+        try:
+            from bika.lims.interfaces import IAnalysisRequest
+            return IAnalysisRequest.providedBy(self.context)
+        except ImportError:
+            return False
+
+    def _is_manager(self):
+        from senaite.pfas.browser.perms import MANAGER_ROLES, _has_any_role
+        return _has_any_role(self.context, MANAGER_ROLES)
+
+    def before_render(self):
+        if not self._on_sample():
+            return
+        # results are entered and reviewed on the worksheet and Data Review:
+        # on the sample, the selection and its action buttons are a manager's
+        # (retract, reject), the rows read-only for everyone else
+        if not self._is_manager():
+            self.listing.show_select_column = False
+        cols = self.listing.columns
+        if "Unit" in cols and not isinstance(cols["Unit"], _AlwaysShown):
+            cols["Unit"] = _AlwaysShown(cols["Unit"])
+            cols["Unit"]["toggle"] = True
+        for rs in self.listing.review_states or []:
+            if rs.get("columns"):
+                rs["columns"] = [c for c in rs["columns"] if c not in SAMPLE_HIDDEN_COLUMNS]
+
+    def folder_item(self, obj, item, index):
+        if not item or not self._on_sample():
+            return item
+        if not self._is_manager():
+            item["allow_edit"] = []
+        unit = item.get("Unit")
+        after = (item.get("after") or {}).get("Result") or u""
+        if unit:
+            shown = self.listing.render_unit(unit)
+            if after.startswith(shown):
+                item["after"]["Result"] = after[len(shown):]
         return item

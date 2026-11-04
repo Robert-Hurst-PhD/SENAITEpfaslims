@@ -1,0 +1,50 @@
+<section class="help-entry"
+         tal:define="e options/entry; bare options/bare|nothing"
+         tal:attributes="id e/id">
+  <!-- One Help entry: drawn on the Help page beside its tab's list, and alone
+       (@@pfas-help with entry and bare=1) in the panel a page opens beside itself -->
+  <h3 tal:content="e/term"></h3>
+  <p tal:content="e/text"></p>
+  <!-- the page as captured at the release, its parts numbered (help_figures) -->
+  <figure class="help-figure" tal:define="f e/figure" tal:condition="f">
+    <svg role="img" tal:attributes="viewBox string:0 0 ${f/width} ${f/height}; aria-label f/title">
+      <image tal:attributes="href f/src; width f/width; height f/height" />
+      <g tal:repeat="b f/boxes" class="help-mark">
+        <rect tal:attributes="x b/x; y b/y; width b/w; height b/h" rx="4" />
+        <circle tal:attributes="cx b/x; cy b/y" r="14" />
+        <text tal:attributes="x b/x; y python:b['y'] + 5" text-anchor="middle" tal:content="b/n"></text>
+      </g>
+    </svg>
+    <figcaption><strong tal:content="f/title"></strong>
+      <ol class="help-caption"><li tal:repeat="c f/caption" tal:attributes="value python:c[0]" tal:content="python:c[1]"></li></ol>
+    </figcaption>
+  </figure>
+  <dl class="help-facts">
+    <dt>Set on</dt>
+    <dd><a tal:repeat="w e/where" class="btn-sm btn-secondary"
+           tal:attributes="href w/url" tal:content="w/label"></a></dd>
+    <dt>Who may change it</dt>
+    <dd tal:content="e/who"></dd>
+    <dt>Affects</dt>
+    <dd><ul class="help-effects"><li tal:repeat="x e/effects" tal:content="x"></li></ul></dd>
+  </dl>
+  <table class="pfas-table help-list" tal:repeat="lst e/lists">
+    <tbody>
+      <tr tal:repeat="row lst">
+        <td tal:content="python:row[0]"></td>
+        <td class="cf-hint" tal:content="python:row[1]"></td>
+      </tr>
+    </tbody>
+  </table>
+  <!-- in the panel: the entries this one leads on to, each opening in the
+       same panel, then the entry on the Help page -->
+  <div class="help-related" tal:condition="python:bare and e.get('related')">
+    <span class="help-related-l">Related</span>
+    <button tal:repeat="r e/related" type="button" class="btn-help is-term" aria-haspopup="dialog"
+            tal:attributes="data-help-entry r/id; aria-label string:Help: ${r/term}"
+            tal:content="r/term"></button>
+  </div>
+  <div class="help-open" tal:condition="bare">
+    <a class="btn-sm btn-secondary" tal:attributes="href e/url">Open in Help</a>
+  </div>
+</section>

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """The certificate's surrogate / internal-standard sub-table.
 
-surrogates and internal standards print as a separate
+Surrogates and internal standards print as a separate
 sub-table, with a note that this is quality control data used to account for
 sample concentrations or verify recovery efficiencies. A surrogate shows its
 % recovery, an internal standard its area as % of the calibration average;
 each with the window and the status the worker's check decided (stored per
-injection in injection_results, qc_schema migrations 10-18). The status is
-never recomputed here: "no criterion" stays "No criterion set", never a pass.
+injection in injection_results). The status is never recomputed here: "no
+criterion" stays "No criterion set", never a pass.
 
 Which injections: the NEAT injection only -- the one the
 worker binds to the sample (its name is the sample's Client Sample ID;
@@ -22,7 +22,7 @@ dilution.
     none      no injection of this sample in its worksheets' runs
     legacy    the run was stored before the verdicts were (no std_role)
     unrounded the run was judged before checks used the rounded value
-              (: no judged_rule recorded)
+              (no judged_rule recorded)
     rule_changed  judged with another rule / precision than this
               certificate prints with
     unjudged  the run carries its labelled standards, but no check judged
@@ -32,14 +32,8 @@ Pure: Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas.rounding import PCT_PLACES, judged_rule, round_places
-    from senaite.pfas.report_format import QC_NOTE
-except ImportError:                                         # loaded by path (tests)
-    import os, sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from rounding import PCT_PLACES, judged_rule, round_places
-    from report_format import QC_NOTE
+from senaite.pfas.rounding import PCT_PLACES, judged_rule, round_places
+from senaite.pfas.report_format import QC_NOTE
 
 DEFAULT_NOTE = QC_NOTE
 NO_DATA = "No surrogate or internal-standard results are recorded for this sample."
@@ -62,7 +56,7 @@ BLOCKS_PUBLISHING = ("legacy", "unrounded", "rule_changed", "unjudged")
 # (column key, title, example)
 COLUMNS = [
     ("injection", "Injection", "DEMO-0001"),
-    ("standard", "Labelled standard", "13C2-PFDA"),
+    ("standard", "Isotope standard", "13C2-PFDA"),
     ("role", "Role", "Surrogate (SUR)"),
     ("measure", "Measured as", "% recovery"),
     ("value", "Value (%)", "98.4"),
@@ -72,7 +66,9 @@ COLUMNS = [
 REQUIRED = ("standard", "role", "value", "window", "status")
 
 MEASURES = {"surrogate": "% recovery", "injection_is": "% of calibration average"}
-STATUS = {"within": "Within", "outside": "Outside", "no criterion": "No criterion set"}
+# a missing window and a class the lab chose not to assess are different facts
+STATUS = {"within": "Within", "outside": "Outside", "no criterion": "No criterion set",
+          "not assessed": "Not assessed"}
 _ROLE_ORDER = {"surrogate": 0, "injection_is": 1}
 
 

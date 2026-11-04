@@ -18,6 +18,7 @@ instrument_id : filter by instrument ID (optional)
 limit         : number of data points; default 20, max 300
 show_history  : 1 = include superseded results for analyst review
 format        : json = return raw JSON instead of HTML
+export        : points = the plotted points as CSV, with the page's filters
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
@@ -30,7 +31,9 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.qc_lists import StoreListsMixin
 from senaite.pfas.browser.perms import refuse
+from senaite.pfas.browser.view_helpers import LabTime
 from senaite.pfas.document_templates import script_json
 from plone.memoize.instance import memoize
 
@@ -57,16 +60,17 @@ QC_TYPE_TARGETS = {
     "SUR":   100.0,
 }
 
+# the quantity, then its unit in brackets (an axis title, and "Mean recovery (%)")
 QC_TYPE_UNITS = {
-    "CCV":   "% Recovery",
-    "ICV":   "% Recovery",
-    "LFB":   "% Recovery",
+    "CCV":   "Recovery (%)",
+    "ICV":   "Recovery (%)",
+    "LFB":   "Recovery (%)",
     "MB":    "Concentration (ng/mL)",
     "MxB":   "Concentration (ng/mL)",
     "LRB":   "Concentration (ng/mL)",
-    "LFSM":  "% Recovery",
-    "LFSMD": "% Recovery",
-    "SUR":   "% Recovery",
+    "LFSM":  "Recovery (%)",
+    "LFSMD": "Recovery (%)",
+    "SUR":   "Recovery (%)",
 }
 
 
@@ -75,6 +79,29 @@ QC_TYPE_UNITS = {
 # list is the one Blank History's rules keep (blanks mode, 2026-10-11).
 from senaite.pfas.blank_history import BLANK_TYPES   # noqa: E402
 RECOVERY_TYPES = ("CCV", "ICV")
+# the Removed panel lists this many, then counts the rest
+REMOVED_SHOWN = 50
+
+
+def chart_unit(qc_type):
+    """The charted value's unit: "%" for a recovery, "ng/mL" for a blank."""
+    m = re.search(r"\(([^)]*)\)\s*$", QC_TYPE_UNITS.get(qc_type, ""))
+    return m.group(1) if m else ""
+
+
+def drawn_kind(qc_type):
+    """What a row needs to be drawn (chart_value), as the store counts it:
+    a blank's non-detect is drawn with no value, a recovery needs its
+    expected value, any other a value."""
+    if qc_type in BLANK_TYPES:
+        return None
+    return "recovery" if qc_type in RECOVERY_TYPES else "value"
+
+
+def injection_of(qc_level):
+    """A check standard's qc_level is its injection's key ("<injection>|<acquired>"):
+    the injection's name; another type's level as stored."""
+    return (qc_level or "").split("|")[0]
 
 
 def chart_value(qc_type, row):
@@ -95,7 +122,7 @@ def chart_value(qc_type, row):
     return fv, False
 
 
-class PFASControlChartView(BrowserView):
+class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
     """
     Browser view serving the PFAS QC control chart.
 
@@ -111,6 +138,8 @@ class PFASControlChartView(BrowserView):
         req = self.request
         if req.get("REQUEST_METHOD", "GET") == "POST":
             return self._handle_post()
+        if req.form.get("export") == "points":
+            return self.export_points()
         fmt = req.get("format", "").lower()
         accept = req.getHeader("Accept", "")
         if fmt == "json" or "application/json" in accept:
@@ -192,6 +221,7 @@ class PFASControlChartView(BrowserView):
         order = sorted(keys)
         return script_json({
             "lot_markers": self._lot_markers([k[1] for k in order]),
+            "overlay": self.overlay_series([u"%s %s" % k for k in order]),
             "labels": [u"%s %s" % k for k in order],
             "series": [{"analyte": a, "values": [cells.get((a, k)) for k in order],
                         "nd": [(a, k) in nds for k in order]}
@@ -202,7 +232,7 @@ class PFASControlChartView(BrowserView):
     def selected_level(self):
         return self.request.get("qc_level", "")
 
-    # ── Blanks mode: Blank History's features on the chart page (lab, 2026-10-11) ──
+    # ── Blanks mode: Blank History's features on the chart page ──
     def blanks_mode(self):
         """A blank kind is selected: the page adds what rose, the lots that
         differ, the compare-two form and lot-change markers on the chart."""
@@ -210,10 +240,10 @@ class PFASControlChartView(BrowserView):
 
     @memoize
     def blank_view(self):
-        """Blank History's view on this same request (its ?method=, ?qc_type=,
-        an.*, ?a=, ?b=, ?matrix= are the ones this page uses)."""
-        from senaite.pfas.browser.blank_history import PFASBlankHistoryView
-        return PFASBlankHistoryView(self.context, self.request)
+        """The blank runs this same request selects (its ?method=, ?qc_type=,
+        ?a=, ?b=, ?matrix= are the ones this page uses)."""
+        from senaite.pfas.browser.blank_history import BlankSelection
+        return BlankSelection(self.context, self.request)
 
     def blank_runs(self):
         return self.blank_view().runs() if self.blanks_mode() else []
@@ -340,31 +370,99 @@ class PFASControlChartView(BrowserView):
             return []
 
     def qc_levels(self, qc_type=None, analyte=None):
+        """[(value, label)]: one option per level, never one per injection."""
         if not self.db_available:
             return []
         try:
-            return self._store().get_qc_levels(qc_type=qc_type, analyte=analyte)
+            return self._store().get_level_options(
+                qc_type=qc_type, analyte=analyte, method=self.selected_method() or None)
         except Exception as e:
             logger.error("qc_levels: %s", e)
             return []
 
-    def analysts(self):
-        if not self.db_available:
-            return []
+    # ── Overlay: an environmental reading on a second axis ─────────────────
+    def overlay_options(self):
+        """[(value, label)]: each monitored unit's temperature, and a room's
+        humidity, as "<unit id>:<field>"."""
         try:
-            return self._store().get_analysts()
-        except Exception as e:
-            logger.error("analysts: %s", e)
+            from senaite.pfas import facility_qc
+            units = [u for u in facility_qc.list_units()
+                     if u.get("unit_type") in facility_qc.READING_KINDS]
+        except Exception as e:                              # noqa: BLE001
+            logger.error("overlay_options: %s", e)
             return []
+        out = []
+        for u in units:
+            name = u.get("name") or u"%s" % u.get("id")
+            if u.get("unit_type") == "room_sensor":
+                out.append((u"%s:humidity" % u["id"], u"%s humidity" % name))
+            out.append((u"%s:temperature" % u["id"], u"%s temperature" % name))
+        return out
 
-    def instruments(self):
-        if not self.db_available:
-            return []
+    def selected_overlays(self):
+        """The readings chosen (chart_overlay.selected: switches ov.<value>)."""
+        from senaite.pfas import chart_overlay
+        return chart_overlay.selected(self.request.form, [o[0] for o in self.overlay_options()])
+
+    def selected_overlay(self):
+        chosen = self.selected_overlays()
+        return chosen[0] if chosen else ""
+
+    def show(self):
+        from senaite.pfas import chart_overlay
+        return chart_overlay.show(self.request.form)
+
+    def _page_url(self, **changes):
+        """The page as it is (its filters), with `changes` set."""
+        from six.moves.urllib.parse import urlencode
+        form = dict((k, v) for k, v in self.request.form.items()
+                    if k not in changes and isinstance(v, (str, type(u""))))
+        q = dict(form, **changes)
+        base = u"%s/@@pfas-control-chart" % self.context.absolute_url()
+        return base + u"?" + urlencode(sorted((k, (v.encode("utf-8") if not isinstance(v, bytes) else v))
+                                              for k, v in q.items()))
+
+    def show_links(self):
+        """Stacked | Relative overlay, each the page as it is with show= set."""
+        return [{"label": label, "on": self.show() == key, "url": self._page_url(show=key)}
+                for key, label in ((u"stacked", u"Stacked"), (u"relative", u"Relative overlay"))]
+
+    def points_url(self):
+        """The Download: the plotted points as CSV, with the page's filters."""
+        return self._page_url(export=u"points")
+
+    def overlays_series(self, labels):
+        return [x for x in (self.overlay_series(labels, v) for v in self.selected_overlays()) if x]
+
+    def overlay_series(self, labels, sel=None):
+        """A chosen reading at each point: the mean of that run day's
+        readings, None where there are none. None when no overlay is chosen."""
+        sel = sel if sel is not None else self.selected_overlay()
+        label = dict(self.overlay_options()).get(sel)
+        if not label:
+            return None
+        unit_id, field = sel.rsplit(u":", 1)
+        days = sorted(set((l or u"")[:10] for l in labels if l))
         try:
-            return self._store().get_instruments()
-        except Exception as e:
-            logger.error("instruments: %s", e)
-            return []
+            from senaite.pfas import facility_qc
+            means = facility_qc.daily_means(unit_id, field, days[0] if days else None,
+                                            days[-1] if days else None)
+        except Exception as e:                              # noqa: BLE001
+            logger.error("overlay_series: %s", e)
+            means = {}
+        values = [means.get((l or u"")[:10]) for l in labels]
+        return {"label": label, "unit": u"\u00b0C" if field == "temperature" else u"% RH",
+                "values": [None if v is None else round(v, 2) for v in values],
+                "empty": not [v for v in values if v is not None]}
+
+    def level_label(self, value):
+        """How the chosen level reads in the chart's subtitle."""
+        for v, label in self.qc_levels(self.selected_qc_type(), self.selected_analyte()):
+            if v == value:
+                return label.split(u" \u00b7 ")[0]
+        return value
+
+
 
     def summary(self):
         if not self.db_available:
@@ -400,12 +498,6 @@ class PFASControlChartView(BrowserView):
     def has_data(self):
         return bool(self._cached_chart_dict().get("n_points", 0))
 
-    def has_stack(self):
-        try:
-            d = json.loads(self.stack_json()) or {}
-        except (TypeError, ValueError):
-            return False
-        return any(v is not None for s in d.get("series") or [] for v in s["values"])
 
     def chart_json(self):
         try:
@@ -439,12 +531,9 @@ class PFASControlChartView(BrowserView):
             self.context.absolute_url() + "/@@pfas-control-chart")
         if not self.can_review():
             return refuse(self.request, "Forbidden")
-        try:   # only after the role check, as every PFAS POST view does
-            from plone.protect.interfaces import IDisableCSRFProtection
-            from zope.interface import alsoProvides
-            alsoProvides(self.request, IDisableCSRFProtection)
-        except ImportError:
-            pass
+        # only after the role check, as every PFAS POST view does
+        from senaite.pfas.browser.perms import disable_csrf
+        disable_csrf(self.request)
         if action not in self._ACTIONS:
             self.request.response.setStatus(400)
             return "Unknown action"
@@ -456,12 +545,12 @@ class PFASControlChartView(BrowserView):
             return "result_id required"
         rule = form.get("rule", u"") or u""
         try:
+            user = self.request.get("AUTHENTICATED_USER")
+            who = user.getId() if user is not None else u""
             if add:
-                user = self.request.get("AUTHENTICATED_USER")
-                who = user.getId() if user is not None else u""
                 self._store().annotate(rid, kind, form.get("reason"), who, rule=rule)
             else:
-                self._store().unannotate(rid, kind, rule=rule)
+                self._store().unannotate(rid, kind, rule=rule, by_user=who)
         except ValueError as exc:
             sep = "&" if "?" in back else "?"
             self.request.response.redirect("%s%schart_error=%s" % (
@@ -480,7 +569,78 @@ class PFASControlChartView(BrowserView):
         except (TypeError, ValueError) as e:
             return json.dumps({"error": str(e)})
 
+    # ── Points download (CSV) ────────────────────────────────────────────
+
+    def export_points(self):
+        """The points the chart draws, read from the chart's own dict so the
+        download and the page cannot disagree: date, run, injection, analyte,
+        value, unit, verdict, rule."""
+        from senaite.pfas import control_chart as cc
+        d = self._cached_chart_dict()
+        name = u"control-chart-%s-%s.csv" % tuple(
+            re.sub(r"[^A-Za-z0-9_-]", "_", x or u"none") for x in (d.get("analyte"), d.get("qc_type")))
+        resp = self.request.response
+        resp.setHeader("Content-Type", "text/csv; charset=utf-8")
+        resp.setHeader("Content-Disposition", 'attachment; filename="%s"' % name)
+        return cc.points_csv(cc.point_rows(d)).encode("utf-8")
+
+    # ── The y axis while there are too few points for limits ─────────────
+
+    @memoize
+    def _calibrations(self):
+        """The Calibration Archive's view: its method_limits read a method's
+        check-standard windows as the worker judges them."""
+        from senaite.pfas.browser.calibrations import PFASCalibrationsView
+        return PFASCalibrationsView(self.context, self.request)
+
+    def qc_window(self, qc_type, method):
+        """(low, high) the method judges this QC type in, or None: no method,
+        no whole window, a low-level window that may apply instead, or a
+        type judged per matrix tier."""
+        from senaite.pfas import control_chart as cc
+        if not method:
+            return None
+        try:
+            lim = self._calibrations().method_limits(method)
+        except Exception as e:                              # noqa: BLE001
+            logger.warning("chart window %s: %s", method, e)
+            return None
+        return cc.check_window(lim, qc_type)
+
     # ── Chart data builder ───────────────────────────────────────────────
+
+    def _chart_rows(self, analyte, qc_type, limit, filters):
+        """The newest `limit` results the chart can draw, with the removed
+        ones among them: a removed point, or a row with no value to chart,
+        never shortens the chart (the fetch grows by what it set aside)."""
+        store = self._store()
+        extra = 0
+        for _round in range(10):
+            rows = store.get_chart_data(analyte, qc_type, limit=limit + extra, **filters)
+            if len(rows) < limit + extra:
+                return rows                      # the store holds no more
+            try:
+                removed = set(n["result_id"] for n in store.get_annotations([r.get("id") for r in rows])
+                              if n["action"] == "excluded")
+            except Exception as e:                          # noqa: BLE001
+                # the chart is drawn without removals, never blanked
+                logger.warning("chart removals %s %s unread: %s", analyte, qc_type, e)
+                return rows
+            short = sum(1 for r in rows if r.get("id") in removed or chart_value(qc_type, r)[0] is None)
+            if short <= extra:
+                return rows
+            extra = short
+        return rows
+
+    def _recorded(self, analyte, qc_type, filters):
+        """How many results the store holds under the page's filters that
+        the chart can draw, the removed ones left out; None when it cannot
+        say."""
+        try:
+            return self._store().count_chart_data(analyte, qc_type, drawn=drawn_kind(qc_type), **filters)
+        except Exception as e:                              # noqa: BLE001
+            logger.warning("chart count %s %s: %s", analyte, qc_type, e)
+            return None
 
     def _study_hidden(self):
         """Worksheets of studies not opted into the charts."""
@@ -513,19 +673,12 @@ class PFASControlChartView(BrowserView):
             return self._empty_chart(analyte, qc_type, qc_level or "",
                                      units, limit, history)
 
+        filters = dict(qc_level=qc_level, method=method, analyst=analyst,
+                       instrument_id=instrument, include_superseded=history,
+                       date_from=date_from, date_to=date_to,
+                       exclude_batches=self._study_hidden())
         try:
-            rows = self._store().get_chart_data(
-                analyte, qc_type,
-                qc_level=qc_level,
-                method=method,
-                analyst=analyst,
-                instrument_id=instrument,
-                limit=limit,
-                include_superseded=history,
-                date_from=date_from,
-                date_to=date_to,
-                exclude_batches=self._study_hidden(),
-            )
+            rows = self._chart_rows(analyte, qc_type, limit, filters)
         except Exception as e:
             logger.error("get_chart_data: %s", e)
             return self._empty_chart(analyte, qc_type, qc_level or "",
@@ -551,8 +704,12 @@ class PFASControlChartView(BrowserView):
                 "instrument_id": str(r.get("instrument_id", "")),
                 "status":        str(r.get("result_status", "active")),
                 # the value's provenance record: a point click opens it on
-                # the run's Data Review (lab, 2026-10-11)
+                # the run's Data Review
                 "prov_key":      str(r.get("prov_key") or ""),
+                "injection":     injection_of(r.get("qc_level")),
+                "method":        str(r.get("method") or ""),
+                # the window the worker judged it in, when it recorded one
+                "window":        (r.get("limit_low"), r.get("limit_high")),
             })
 
         # Check if this QC type uses a threshold chart (blanks) vs L-J
@@ -594,6 +751,10 @@ class PFASControlChartView(BrowserView):
             all_warnings = []
         else:
             limits = cc.limits([p["value"] for p in points])
+            # limits stand on BASELINE_N in-control results: on fewer, none is
+            # drawn and no point is judged against a provisional one
+            if not cc.ready(limits):
+                limits = None
             all_warnings = (cc.westgard if view_mode == "westgard" else cc.lj_warnings)(
                 points, limits)
         for w in all_warnings:
@@ -604,19 +765,29 @@ class PFASControlChartView(BrowserView):
         dismissed_list = [dict(w, note=dismissed[w["key"]]) for w in all_warnings
                           if w["key"] in dismissed]
 
-        # Annotate points with their worst violation
-        violated = {}
-        for viol in violations:
-            for idx in viol.get("indices", []):
-                prev = violated.get(idx, "ok")
-                if viol["severity"] == "reject":
-                    violated[idx] = "reject"
-                elif prev != "reject" and viol["severity"] == "warning":
-                    violated[idx] = "warning"
+        # each point's mark and the rules its tooltip leads with; a threshold
+        # chart judges a point above its threshold
+        threshold = self._r(threshold_val)
+        if is_threshold:
+            severity, rule_lines = cc.threshold_marks(points, threshold)
+        else:
+            severity, rule_lines = cc.point_marks(points, violations, limits)
+        too_few = not is_threshold and limits is None
+        window = recorded = None
+        if too_few:
+            # the axis: the windows the points were judged in; the method's
+            # window only for a point that recorded none
+            judged = [p["window"] for p in points]
+            fallback = None
+            if not all(w[0] is not None and w[1] is not None for w in judged):
+                methods = set(p["method"] for p in points if p["method"])
+                fallback = self.qc_window(qc_type, method or (methods.pop() if len(methods) == 1 else None))
+            window = cc.axis_window(judged, fallback)
+            recorded = self._recorded(analyte, qc_type, filters)
 
         labels, values, batch_ids, flags = [], [], [], []
         analysts_list, instruments_list = [], []
-        point_viol, point_status, point_nd, prov_keys = [], [], [], []
+        point_status, point_nd, prov_keys = [], [], []
 
         for i, p in enumerate(points):
             # one run per label: several runs share a date
@@ -627,10 +798,6 @@ class PFASControlChartView(BrowserView):
             flags.append(p["flag"])
             analysts_list.append(p["analyst"])
             instruments_list.append(p["instrument_id"])
-            point_viol.append(",".join(
-                v["rule"] for v in violations
-                if i in v.get("indices", [])
-            ))
             point_status.append(p["status"])
             prov_keys.append(p.get("prov_key") or "")
 
@@ -647,20 +814,38 @@ class PFASControlChartView(BrowserView):
             "flags":          flags,
             "analysts":       analysts_list,
             "instruments":    instruments_list,
-            "violations":     point_viol,
+            "dates":          [p["date"] for p in points],
+            "injections":     [p["injection"] for p in points],
+            "point_severity": severity,
+            "point_rules":    rule_lines,
             "point_status":   point_status,
             "point_nd":       point_nd,
             "prov_keys":      prov_keys,
             "lot_markers":    self._lot_markers(batch_ids),
+            "overlay":        self.overlay_series(labels),
+            "overlays":       self.overlays_series(labels),
+            "show":           self.show(),
             "limits":         limits,
             "target":         target,
-            "threshold":      self._r(threshold_val),
+            "threshold":      threshold,
             "chart_type":     "threshold" if is_threshold else "levey_jennings",
+            "unit":           chart_unit(qc_type),
+            "too_few_points": too_few,
+            "baseline_n":     cc.BASELINE_N,
+            "recorded":       recorded,
+            # the store holds more than the chart shows: the line says how many
+            "more_recorded":  bool(recorded and recorded > len(points)),
+            "window":         list(window) if window else None,
+            "insight":        cc.insight_title(points, violations, noun=qc_type, lim=limits,
+                                               chart="threshold" if is_threshold else "levey_jennings",
+                                               threshold=threshold, dismissed=len(dismissed_list),
+                                               recorded=recorded),
             "westgard":       violations,
             "dismissed":      dismissed_list,
             "removed":        [{"id": p["id"], "date": p["date"], "batch_id": p["batch_id"],
                                 "value": self._r(p["value"]), "note": p["note"]}
-                               for p in removed],
+                               for p in removed[:REMOVED_SHOWN]],
+            "removed_more":   max(0, len(removed) - REMOVED_SHOWN),
             "view_mode":      view_mode,
             "has_rejects":    any(v["severity"] == "reject" for v in violations),
             "has_warnings":   any(v["severity"] == "warning" for v in violations),
@@ -679,9 +864,11 @@ class PFASControlChartView(BrowserView):
             "qc_level": qc_level, "units": units,
             "labels": [], "values": [], "batch_ids": [],
             "flags": [], "analysts": [], "instruments": [],
-            "violations": [], "point_status": [],
+            "dates": [], "injections": [], "point_severity": [], "point_rules": [],
+            "point_status": [], "unit": chart_unit(qc_type), "too_few_points": False,
+            "window": None, "recorded": None, "more_recorded": False, "insight": u"",
             "limits": None, "target": None,
-            "westgard": [], "dismissed": [], "removed": [], "view_mode": "lj",
+            "westgard": [], "dismissed": [], "removed": [], "removed_more": 0, "view_mode": "lj",
             "has_rejects": False,
             "has_warnings": False, "n_points": 0,
             "limit": limit, "show_history": history,

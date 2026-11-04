@@ -27,7 +27,7 @@ The status column is the point of the page:
     Derived          computed from something else; no editor exists by design
     Unknown          the owning store could not be read
 
-`NOT CONFIGURED` exists because of the 2026-08-03 decision to refuse rather than
+`NOT CONFIGURED` exists because of the to refuse rather than
 substitute: an unset acceptance criterion stops a batch instead of quietly
 passing it, and until now nothing showed a lab WHICH criterion.
 
@@ -37,8 +37,8 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
 
-from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import settings_registry as reg
@@ -62,8 +62,44 @@ _STATUS_META = {
 CONSOLE_GROUPS = tuple(g for g in reg.GROUPS if g != reg.GROUP_QC_LIMITS)
 
 
-class PFASLabSettingsView(BrowserView):
-    """@@pfas-lab-settings — the configuration console."""
+# A QC check's two settings read as one row on the reference: what happens
+# when it fails, then the certificate's wording beneath.
+DISPOSITION_WORDS = {"block": u"Hold the result", "qualify": u"Report with qualifier"}
+
+
+def merge_qc_wording(rows):
+    """The "qualifier.<check>.disposition" and ".statement" settings of one QC
+    check as ONE row, named for the check: its default says what a failure
+    does ("Hold the result" / "Report with qualifier") with the wording
+    beneath. Keys and storage are unchanged; only the listing merges."""
+    by_key = dict((r.get("key"), r) for r in rows)
+    out, done = [], set()
+    for r in rows:
+        key = r.get("key") or u""
+        parts = key.split(u".")
+        if len(parts) == 3 and parts[0] == u"qualifier" and parts[2] in (u"disposition", u"statement"):
+            check = parts[1]
+            if check in done:
+                continue
+            done.add(check)
+            disp = by_key.get(u"qualifier.%s.disposition" % check) or {}
+            stmt = by_key.get(u"qualifier.%s.statement" % check) or {}
+            row = dict(stmt or disp)
+            row["label"] = (row.get("label") or u"").split(u" \u2014 ", 1)[-1]
+            row["display_seed"] = DISPOSITION_WORDS.get(disp.get("seed"), disp.get("seed") or u"\u2014")
+            row["seed_detail"] = stmt.get("seed") or u""
+            row["help"] = u""
+            out.append(row)
+        else:
+            out.append(r)
+    return out
+
+
+class PFASLabSettingsView(ViewHelpers, BrowserView):
+    """@@pfas-lab-settings — Help › Settings reference: every setting the
+    lab owns, its default, who may change it and the page that edits it.
+    Documentation: no live values (the editors show those), no status; a
+    judging setting with no value is raised on the QC Management landing."""
 
     template = ViewPageTemplateFile("templates/lab_settings.pt")
 
@@ -81,12 +117,6 @@ class PFASLabSettingsView(BrowserView):
         return self.template()
 
     # ── Context ─────────────────────────────────────────────────────────────
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def portal_url(self):
-        return self._portal().absolute_url()
 
     # ── Filters, all server-side so the page stays LINKABLE ─────────────────
     # "send me the URL of the unset limits" is the thing a lab admin actually
@@ -140,8 +170,11 @@ class PFASLabSettingsView(BrowserView):
             row["display_value"] = self._display(row)
             row["display_seed"] = self._display(row, field="seed")
             row["owner_href"] = self._owner_href(row)
-            row["changed"] = reg.last_changed(portal, row["key"])
-        return rows
+            # a value and its unit always apart: "7 days", "25.0 °C"
+            unit = row.get("unit") or u""
+            if unit and row["display_seed"] not in (u"\u2014", u""):
+                row["display_seed"] = u"%s %s" % (row["display_seed"], unit)
+        return merge_qc_wording(rows)
 
     def _display(self, row, field="value"):
         """A value a person can read. Long wording is truncated here rather than
@@ -191,11 +224,13 @@ class PFASLabSettingsView(BrowserView):
             })
         return out
 
-    def unconfigured_count(self):
-        return len([r for r in self._rows() if r.get("source") == "unset"])
-
     def total_count(self):
         return len(self._rows())
+
+    def help_tabs(self):
+        """The Help page's tabs, this one ("Settings reference") among them."""
+        from senaite.pfas.browser.help import PFASHelpView
+        return PFASHelpView(self.context, self.request).tabs()
 
     def filtering(self):
         return bool(self.query() or self.tier_filter() or self.status_filter())
@@ -204,7 +239,3 @@ class PFASLabSettingsView(BrowserView):
         return [(reg.TIER_LAB, u"Lab values"),
                 (reg.TIER_STRUCTURAL, u"Structural")]
 
-    def status_options(self):
-        # Ordered so the one that blocks a run is not buried mid-list.
-        order = ("unset", "override", "seed", "derived", "unknown")
-        return [(k, _STATUS_META[k][1]) for k in order]

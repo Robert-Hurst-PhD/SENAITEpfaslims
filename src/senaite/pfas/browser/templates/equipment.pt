@@ -14,19 +14,20 @@
   <div metal:fill-slot="content">
   <div class="page-body" tal:define="rows view/rows">
 
-    <p class="form-note">Each item is a SENAITE instrument; its type sets what it owes. Internal checks are kept here, certificates in SENAITE. <tal:h define="hid string:equipment-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="form-note">Each item is a SENAITE instrument; its type sets what it owes. Internal checks are kept here, certificates in SENAITE. <tal:h define="hid string:equipment-types"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
     <p class="form-note" tal:condition="not:rows">No equipment yet.</p>
 
-    <table class="pfas-table" tal:condition="rows">
+    <table class="pfas-table" data-col-resize="equipment-1" tal:condition="rows">
       <thead>
         <tr><th>Equipment</th><th>Type</th><th>Location</th><th>Internal check</th>
-            <th>External certificate</th><th>Status</th><th></th></tr>
+            <th>External certificate</th><th>Status</th>
+            <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr>
       </thead>
       <tbody>
         <tr tal:repeat="r rows">
           <td><strong tal:content="r/name">Balance 1</strong>
-              <div class="cf-hint" tal:condition="r/serial_number" tal:content="string:SN ${r/serial_number}">SN 123</div>
+              <div class="cf-hint" tal:condition="r/serial_number" tal:content="r/serial_number">123</div>
               <span class="badge badge-archived" tal:condition="not:r/active">inactive</span></td>
           <td><span tal:replace="r/type_title">Balance</span>
               <div class="cf-hint" tal:content="r/kind_label">Balance, analytical</div></td>
@@ -46,15 +47,18 @@
           </td>
           <td><span tal:attributes="class python:'badge ' + {'ok': 'badge-active', 'due_soon': 'badge-quarantine', 'overdue': 'badge-expired', 'missing': 'badge-expired'}.get(r['due']['status'], 'badge-archived')"
                     tal:content="r/status_label">OK</span></td>
-          <td class="row-actions-cell">
-            <div class="row-actions">
-              <a class="btn-sm" title="Name, serial, type, location and certificates (SENAITE)"
-                 tal:attributes="href string:${r/url}/base_edit">Edit</a>
-              <a class="btn-sm btn-secondary" title="Sensor, temperature range, weight points"
-                 tal:attributes="href string:${view/portal_url}/@@pfas-equipment-settings?uid=${r/id}">Settings</a>
-              <a class="btn-sm btn-secondary" tal:condition="r/records_url" title="Its checks and calibrations"
-                 tal:attributes="href r/records_url">Records</a>
-            </div>
+          <td class="row-plus-cell">
+            <details class="row-more">
+              <summary class="row-plus" aria-label="Actions for this equipment" title="Actions">+</summary>
+              <div class="row-more-menu">
+                <a class="btn-sm btn-secondary" title="Name, serial, type, location and certificates (SENAITE)"
+                   tal:attributes="href string:${r/url}/base_edit">Edit</a>
+                <a class="btn-sm btn-secondary" title="Sensor, temperature range, weight points"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-equipment-settings?uid=${r/id}">Settings</a>
+                <a class="btn-sm btn-secondary" tal:condition="r/records_url" title="Its checks and calibrations"
+                   tal:attributes="href r/records_url">Records</a>
+              </div>
+            </details>
           </td>
         </tr>
       </tbody>

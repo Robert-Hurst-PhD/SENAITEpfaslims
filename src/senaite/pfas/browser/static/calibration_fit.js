@@ -126,5 +126,20 @@
     return ssTot > 0 ? 1 - ssRes / ssTot : 1;
   }
 
-  return {fit: fit, r2: r2, weightOf: weightOf};
+  /* A calibrator read against the fit: x (expected), y (its response
+     ratio), the fit at x, the concentration read back off the fit from y, and
+     that value's deviation from x against the window (±limit %, null = not
+     judged). */
+  function readout(m, p, limit) {
+    var fy = m ? m.f(p.x) : null, back = m ? m.inverse(p.y) : null;
+    var dev = (back != null && p.x) ? (back - p.x) / p.x * 100 : null;
+    return {x: p.x, y: p.y, fit_y: fy, back: back, dev: dev,
+            within: (limit == null || dev == null) ? null : Math.abs(dev) <= limit};
+  }
+  /* "Open the calculation": every point read the same way, and the R². */
+  function calculation(pts, m) {
+    return {points: (pts || []).map(function (p) { return readout(m, p, null); }), r2: r2(pts, m)};
+  }
+
+  return {fit: fit, r2: r2, weightOf: weightOf, readout: readout, calculation: calculation};
 }));

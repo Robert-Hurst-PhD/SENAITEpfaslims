@@ -34,12 +34,8 @@ from __future__ import absolute_import, unicode_literals
 import copy
 import json
 
-try:
-    from senaite.pfas import config_forms as cf
-    from senaite.pfas import method_profile_sections as mps
-except Exception:          # tests: loaded without the package
-    import config_forms as cf
-    import method_profile_sections as mps
+from senaite.pfas import config_forms as cf
+from senaite.pfas import method_profile_sections as mps
 
 KEY = "senaite.pfas.project.specs"
 ALL = "*"
@@ -273,18 +269,12 @@ def _published(method_id, key, value, matrix=None):
     """The published-method verdict where a baseline is on file."""
     if not key:
         return _PUBLISHED_NONE
-    try:
-        try:
-            from senaite.pfas import method_baselines as mb
-        except Exception:
-            import method_baselines as mb
-        b = mb.get_baseline(method_id, key, matrix=matrix)
-        if b is None:
-            return _PUBLISHED_NONE
-        verdict, _v = mb.compare(b, value)
-        return u"published method: %s (%s)" % (verdict.lower(), b.citation)
-    except Exception:
+    from senaite.pfas import method_baselines as mb
+    b = mb.get_baseline(method_id, key, matrix=matrix)
+    if b is None:
         return _PUBLISHED_NONE
+    verdict, _v = mb.compare(b, value)
+    return u"published method: %s (%s)" % (verdict.lower(), b.citation)
 
 
 def _fmt(v):
@@ -355,10 +345,7 @@ def departures(profile, eff, method_id=None, matrices=None):
         out.append({"what": u"Dup RPD max %", "method": _fmt(dm), "project": _fmt(de),
                     "where": u"all analytes and matrices",
                     "published": _published(method_id, "dup_rpd_max", de)})
-    try:
-        from senaite.pfas.report_limits import limits_for
-    except Exception:          # tests
-        from report_limits import limits_for
+    from senaite.pfas.report_limits import limits_for
     for m in matrices:
         for kw in panel:
             for field in (u"rl", u"mdl"):
@@ -373,7 +360,7 @@ def departures(profile, eff, method_id=None, matrices=None):
     grid_e = eff.get("labelled_standards") or {}
     for name in sorted(grid_m):
         if name not in grid_e:
-            out.append({"what": u"Labelled standard %s" % name, "method": u"used",
+            out.append({"what": u"Isotope standard %s" % name, "method": u"used",
                         "project": u"not used", "where": u"all matrices",
                         "published": _PUBLISHED_NONE})
     return out
@@ -385,7 +372,7 @@ def _dig(d, path):
     return d
 
 
-# Criteria Project Specs can override since P3 (Calibration & CCV, QC
+# Instrument criteria Project Specs can override (Calibration & CCV, QC
 # composition, SUR limits): (label, path, which way is looser, baseline key)
 _INSTRUMENT_CHECKS = [
     (u"Calibration R\u00b2 min", ("instrument_verification", "calibration", "r2_min"), "lower", "cal_r2_min"),
@@ -402,7 +389,7 @@ _INSTRUMENT_CHECKS = [
 
 
 def _instrument_departures(profile, eff, method_id):
-    """The P3 criteria a project loosens: a lower floor, a higher ceiling or
+    """The instrument criteria a project loosens: a lower floor, a higher ceiling or
     interval, a requirement removed."""
     out = []
     for label, path, looser, key in _INSTRUMENT_CHECKS:
@@ -417,7 +404,17 @@ def _instrument_departures(profile, eff, method_id):
     if dup_m and not _dig(eff, ("qc_acceptance", "Dup", "duplicate_all_samples")):
         out.append({"what": u"Duplicate every field sample", "method": u"yes",
                     "project": u"no", "where": u"all matrices", "published": _PUBLISHED_NONE})
-    # SUR (EIS) limits: per analyte, a lower min or a higher max
+    out.extend(_loosened_eis(profile, eff))
+    return out
+
+
+def _loosened_eis(profile, eff):
+    """The SUR (EIS) limits a project loosens: per analyte, a lower min or a
+    higher max, aqueous and per matrix class, and a class the method assesses
+    that the project leaves not assessed (a requirement removed). A class the
+    method leaves not assessed is never loosened."""
+    out = []
+
     def rows(p):
         return dict((r.get("analyte"), r) for r in p.get("eis_overrides") or []
                     if isinstance(r, dict) and r.get("analyte"))
@@ -432,30 +429,51 @@ def _instrument_departures(profile, eff, method_id):
                 out.append({"what": u"SUR %s %s %%" % (analyte, field.replace("recovery_", "recovery ")),
                             "method": _fmt(a), "project": _fmt(b), "where": u"aqueous",
                             "published": _PUBLISHED_NONE})
-    for cls, by in sorted((profile.get("eis_matrix_overrides") or {}).items()):
-        for analyte, lim in sorted((by or {}).items()):
-            for field, looser in (("recovery_min", "lower"), ("recovery_max", "higher")):
-                a = (lim or {}).get(field)
-                b = (((eff.get("eis_matrix_overrides") or {}).get(cls) or {}).get(analyte) or {}).get(field)
-                if a is None or a == b:
-                    continue
-                if b is None or (b < a if looser == "lower" else b > a):
-                    out.append({"what": u"SUR %s %s %%" % (analyte, field.replace("recovery_", "recovery ")),
-                                "method": _fmt(a), "project": _fmt(b), "where": cls,
-                                "published": _PUBLISHED_NONE})
+    mine = profile.get("eis_matrix_overrides") or {}
+    theirs = eff.get("eis_matrix_overrides") or {}
+    pairs = set((cls, a) for cls, by in mine.items() for a in (by or {}))
+    pairs |= set((cls, a) for cls, by in theirs.items() for a, lim in (by or {}).items()
+                 if mps.not_assessed(lim))
+    for cls, analyte in sorted(pairs):
+        lim = (mine.get(cls) or {}).get(analyte)
+        other = (theirs.get(cls) or {}).get(analyte)
+        if mps.not_assessed(lim):
+            continue
+        if mps.not_assessed(other):
+            judged = lim or em.get(analyte) or {}
+            out.append({"what": u"SUR %s recovery" % analyte,
+                        "method": u"%s \u2013 %s %%" % (_fmt(judged.get("recovery_min")),
+                                                         _fmt(judged.get("recovery_max"))),
+                        "project": u"not assessed", "where": cls, "published": _PUBLISHED_NONE})
+            continue
+        for field, looser in (("recovery_min", "lower"), ("recovery_max", "higher")):
+            a = (lim or {}).get(field)
+            b = (other or {}).get(field)
+            if a is None or a == b:
+                continue
+            if b is None or (b < a if looser == "lower" else b > a):
+                out.append({"what": u"SUR %s %s %%" % (analyte, field.replace("recovery_", "recovery ")),
+                            "method": _fmt(a), "project": _fmt(b), "where": cls,
+                            "published": _PUBLISHED_NONE})
     return out
 
 
 # ── storage (Zope) ───────────────────────────────────────────────────────────
 
+def read_specs(project):
+    """A project's specs; raises when they cannot be read (a migration must
+    not take an unreadable project for one with none)."""
+    from zope.annotation.interfaces import IAnnotations
+    raw = IAnnotations(project).get(KEY)
+    return json.loads(raw) if raw else {}
+
+
 def get_specs(project):
     if project is None:
         return {}
     try:
-        from zope.annotation.interfaces import IAnnotations
-        raw = IAnnotations(project).get(KEY)
-        return json.loads(raw) if raw else {}
-    except Exception:
+        return read_specs(project)
+    except (ValueError, TypeError):
         return {}
 
 
@@ -480,17 +498,60 @@ def save_for_project(portal, uid, specs, request=None):
     project = project_by_id(portal, uid)
     if project is None:
         raise ValueError(u"No project %s" % uid)
-    try:
-        from senaite.pfas import config_history
-        config_history.track(portal, "project_specs", uid, lambda: get_specs(project),
-                             label=u"Project specs: %s" % (getattr(project, "title", None) or uid))
-    except Exception:
-        pass
+    # the change history is strict: when its entry cannot be prepared the
+    # save does not happen
+    from senaite.pfas import config_history
+    config_history.track(portal, "project_specs", uid, lambda: get_specs(project),
+                         label=u"Project specs: %s" % (getattr(project, "title", None) or uid))
     save_specs(project, specs)
     from senaite.pfas import resolved_criteria_store
     from bika.lims import api
     return resolved_criteria_store.refresh_linked_batches(
         portal, project_uid=api.get_uid(project), request=request)
+
+
+def _qcc():
+    from senaite.pfas import qc_consolidation as qcc
+    return qcc
+
+
+def migrate_tier_lists(portal, method_id, shared, projects=None, read=read_specs, write=None):
+    """Every project's patches for `method_id` list their tight tiers' own
+    matrices (qc_consolidation.patch_tiers_own_matrices), from the method's
+    one Tier 1 list `shared`, before the method's migration drops it.
+    `projects` defaults to the Projects folder's (none without a portal);
+    `read` / `write` a project's specs. True when every project was read
+    and written (the method may drop its list); False when one could not
+    be, or there is no portal to find them by: the list is kept and the
+    next save or start tries again."""
+    qcc = _qcc()
+    write = write or save_specs
+    try:
+        if projects is None:
+            if portal is None:
+                return False
+            folder = getattr(portal, "pfas_projects", None)
+            projects = folder.objectValues() if folder is not None else []
+        for project in projects:
+            specs = read(project) or {}
+            if qcc.patch_tiers_own_matrices(specs.get(method_id), shared):
+                write(project, specs)
+    except Exception as exc:                  # noqa: BLE001
+        import logging
+        logging.getLogger("senaite.pfas.project_specs").warning(
+            "project tier lists of %s not migrated (kept for the next start): %s", method_id, exc)
+        return False
+    return True
+
+
+def as_saved_with_projects(portal, method_id, data, projects=None, read=read_specs, write=None):
+    """`data` as save_profile stores it (qc_consolidation.as_saved): where
+    the method still holds its one Tier 1 list, every project's patches
+    take their copy first (migrate_tier_lists), and the list goes only if
+    they all did. Returns the profile."""
+    done = ("tight_matrices" not in data or
+            migrate_tier_lists(portal, method_id, data.get("tight_matrices"), projects, read, write))
+    return _qcc().as_saved(data, projects_migrated=done)
 
 
 def site_env():
@@ -518,11 +579,8 @@ def profile_for_batch(portal, batch, method_id, matrix=None):
     profile = get_profile(portal, method_id) or {} if method_id else {}
     if batch is None or not profile:
         return profile
-    try:
-        from senaite.pfas import project_ref
-        project = project_ref.get_project(portal, batch)
-    except Exception:
-        return profile
+    from senaite.pfas import project_ref
+    project = project_ref.get_project(portal, batch)
     if project is None:
         return profile
     return effective_for_project(project, method_id, matrix, profile)[0]

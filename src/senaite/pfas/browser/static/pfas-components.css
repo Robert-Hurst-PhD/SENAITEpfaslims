@@ -7,16 +7,23 @@
  * One component per job:
  *   .pfas-seg        segmented control (sliding pill): every tab strip, pill
  *                    filter, mode switch, unit / range picker
- *   .pfas-switch     a boolean that acts now (show archived, a rule on / off)
+ *   .pfas-switch     an on / off: a setting or a view option, never a check box
+ *                    (check boxes only select rows)
  *   .pfas-filterbar  the one row of filters above a list; applies on change
  *   .pfas-tree       a hierarchy with elbow connectors, a lit path, a card
+ *   .pfas-nav-tree   the navigation tree (a .pfas-tree variant): rows, twists, a row menu
  *   .pfas-fab        the action menu: a page's actions on phone / tablet
- *   .pfas-drawer     a right-side detail panel (value provenance)
+ *   .pfas-drawer     a centred window: editors, forms, a value's record
+ *   .btn-help        a section's one Help control; it opens .pfas-help-panel,
+ *                    the entry beside the page (not modal)
  *   .pfas-stepper    a wizard's steps
  *   .pfas-num        a number input with - and + buttons
  *   .pfas-range      a min / max pair as a two-handle slider with typed ends
  *   .pfas-cell-btn   a table cell's value (or "70 - 130 %" with a mini bar); opens the drawer
  *   .pfas-chips      a comma list drawn as chips, each with a remove button
+ *   .pfas-sheet      a tab's one grid: cells never wrap, a selection bar, column
+ *                    switches, a links cell's list, a row drawer (profile_grids.py)
+ *   .pfas-toast      what an action just did, with its Undo, until the next action
  *   .pfas-chip       the top bar's context chip
  *   .pfas-tiles      the one tile grid
  * Buttons, badges, tables and the crumb stay in pfas_macros.pt until each
@@ -33,16 +40,55 @@
   font-family: inherit; font-size: var(--fs-base); font-weight: var(--fw-strong); color: var(--text-muted);
   cursor: pointer; text-decoration: none; white-space: nowrap; transition: color var(--t-pill); }
 .pfas-seg-sm .pfas-seg-item { padding: 0 10px; font-size: var(--fs-sm); }
+/* Text starts at the left, numbers end at the right: a text box, a select
+   and free text keep the browser's left; a number box, or a box in a
+   right-aligned column (.is-right), ends at the right in tabular numerals.
+   Zero specificity (:where), so a component's own alignment (a stepper, a
+   date) still wins. */
+:where(.pfas-content-area) :where(input[type=number], input.is-right, .is-right input:not([type=checkbox]):not([type=radio])) {
+  text-align: right; font-variant-numeric: tabular-nums; }
+/* a unit keeps its case under an uppercase header or caption: "(g)", "(µL)" */
+.pfas-unit { text-transform: none; }
+
+/* .pfas-file: "Choose file" button + the chosen file's name; the native input
+   stays in the form, unseen */
+.pfas-file { position: relative; display: inline-flex; align-items: center; gap: var(--sp-3); }
+.pfas-file-btn { height: var(--ctl-h); }
+.pfas-file-name { color: var(--text-muted); font-size: var(--fs-sm); }
+.pfas-file-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* .pfas-date: an ISO date / time text box with a calendar button; the native
+   input stays beside it, unseen, and is what the form posts */
+.pfas-date-wrap { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.pfas-date-text { height: var(--ctl-h); box-sizing: border-box; text-align: center; font-variant-numeric: tabular-nums; }
+.pfas-date-text.is-date { width: 9.5em; }
+.pfas-date-text.is-datetime-local { width: 12.5em; }
+.pfas-date-text.is-time { width: 6em; }
+.pfas-date-btn { height: var(--ctl-h); width: var(--ctl-h); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius);
+                 background: var(--surface); color: var(--text-muted); cursor: pointer; line-height: 1; }
+.pfas-date-btn:disabled { cursor: default; opacity: .5; }
+.pfas-date-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.pfas-seg.is-fit { align-self: flex-start; justify-self: start; width: fit-content; max-width: 100%; }   /* a form choice: as wide as its options */
+td .pfas-seg.is-fit { max-width: none; white-space: nowrap; }   /* in a table cell: never clamped below its options; the column widens */
 .pfas-seg-item:hover { color: var(--text); text-decoration: none; }
 .pfas-seg-item[aria-selected="true"], .pfas-seg-item[aria-pressed="true"], .pfas-seg-item.is-on { color: var(--on-accent); }
-.pfas-seg-count { font-weight: var(--fw-body); opacity: .85; }
 .pfas-seg-flag { color: var(--s-danger-dk); }
 .pfas-seg-item[aria-selected="true"] .pfas-seg-flag { color: var(--on-accent); }
-.pfas-seg-pill { position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 0; width: 0;
+.pfas-seg-pill { position: absolute; z-index: 0; top: 3px; height: calc(100% - 6px); left: 0; width: 0;
   border-radius: var(--radius-pill); background: var(--accent-text); box-shadow: var(--shadow-pill);
-  transition: left var(--t-pill) var(--ease), width var(--t-pill) var(--ease); }
-.pfas-seg-strip { overflow-x: auto; scrollbar-width: thin; }     /* many sections: scrolls */
-.pfas-seg-strip .pfas-seg-item { flex: none; }                  /* never squeezed: the strip scrolls instead */
+  transition: left var(--t-pill) var(--ease), width var(--t-pill) var(--ease), top var(--t-pill) var(--ease); }
+/* many sections: the strip wraps onto another row rather than hiding tabs
+   past the screen's edge; wrapped, its corners are a card's */
+.pfas-seg-strip { flex-wrap: wrap; row-gap: 2px; height: auto; min-height: var(--ctl-h); overflow-x: auto; scrollbar-width: thin; }
+.pfas-seg-strip > .pfas-seg-item { height: calc(var(--ctl-h) - 8px); }
+.pfas-seg-strip.is-wrapped { border-radius: var(--radius-card); }
+.pfas-seg-strip.has-more-right { -webkit-mask-image: linear-gradient(to right, currentcolor calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, currentcolor calc(100% - 28px), transparent); }     /* tabs wait past an edge: it fades */
+.pfas-seg-strip.has-more-left { -webkit-mask-image: linear-gradient(to left, currentcolor calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to left, currentcolor calc(100% - 28px), transparent); }
+.pfas-seg-strip.has-more-left.has-more-right { -webkit-mask-image: linear-gradient(to right, transparent, currentcolor 28px, currentcolor calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, transparent, currentcolor 28px, currentcolor calc(100% - 28px), transparent); }
+.pfas-seg-strip .pfas-seg-item { flex: none; }                  /* never squeezed: the strip wraps instead */
 .pfas-seg:focus-within { box-shadow: 0 0 0 3px var(--focus); }
 .pfas-pane { display: none; }
 .pfas-pane.is-active { display: block; }
@@ -60,6 +106,65 @@
 .pfas-switch input:checked + .pfas-switch-track::after { left: 21px; }
 .pfas-switch input:focus-visible + .pfas-switch-track { box-shadow: 0 0 0 3px var(--focus); }
 .pfas-switch input:disabled + .pfas-switch-track { opacity: .5; }
+/* a switch's state in a word beside it (On / Off) */
+.pfas-switch-word { min-width: 2em; font-weight: var(--fw-body); color: var(--text-muted); }
+/* a group of columns under one header (a pipette's five weighings, Mass (g)) */
+.pfas-table th.mass-group { border-left: 1px solid var(--line); border-right: 1px solid var(--line); text-align: center; }
+/* a settings page's boxes: a desktop grid sized to its content that stacks on a phone (R5-21);
+   a min / max range in a box is the compact size, the touch size kept on a coarse pointer (R5-26) */
+.pfas-settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--sp-3); align-items: start; }
+.pfas-settings-grid > .pfas-card { margin: 0; }
+.pfas-settings-grid > .is-wide { grid-column: span 2; }
+@media (max-width: 640px) { .pfas-settings-grid > .is-wide { grid-column: auto; } }
+.pfas-settings-grid .pfas-range { --thumb: 14px; }
+.pfas-settings-grid .pfas-range .pfas-num input { height: 26px; font-size: var(--fs-sm); }
+@media (pointer: coarse) { .pfas-settings-grid .pfas-range { --thumb: 20px; } }
+/* a study's design controls: a full-width band, one centred control per column (R5-12) */
+.study-design { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); justify-items: center;
+                text-align: center; padding: var(--sp-3); margin: var(--sp-2) 0; border: 1px solid var(--line); border-radius: var(--radius-card); }
+/* pfas-multi: a one-line field of tags that opens a searchable list, about seven rows, scrolling inside (R5-16) */
+.pfas-multi { position: relative; }
+.pfas-multi-field { display: flex; align-items: center; gap: var(--sp-1); min-height: 36px; padding: 2px var(--sp-2); cursor: pointer;
+                    border: 1px solid var(--line-strong); border-radius: var(--radius-input, 6px); background: var(--surface); overflow: hidden; }
+.pfas-multi-more, .pfas-multi-count { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
+.pfas-multi-count { margin-left: auto; }
+.pfas-multi-panel { position: absolute; z-index: 20; left: 0; right: 0; margin-top: 4px; padding: var(--sp-2); background: var(--surface);
+                    border: 1px solid var(--line-strong); border-radius: var(--radius-card); box-shadow: var(--shadow-pill); }
+.pfas-multi-list { list-style: none; margin: var(--sp-2) 0; padding: 0; max-height: calc(7 * 32px); overflow-y: auto; }
+.pfas-multi-list li { padding: 6px var(--sp-2); cursor: pointer; border-radius: 4px; }
+.pfas-multi-list li:hover { background: var(--accent-soft); }
+.pfas-multi-foot { color: var(--text-muted); font-size: var(--fs-sm); }
+/* the search picker (pfas-components.js initPicker): the chosen as tokens
+   with a cross, then the search box and the options matching it */
+.pfas-picker { position: relative; display: flex; flex-direction: column; gap: var(--sp-1); }
+.pfas-picker-sel { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.pfas-picker-empty { color: var(--text-muted); font-size: var(--fs-sm); }
+/* a tier's own matrix list shows only while the tier is Listed below: its
+   row is hidden otherwise, and the row's own flex display must not undo it */
+.pfas-picker-lists > .field-row[hidden] { display: none; }
+.pfas-tok { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2) 2px var(--sp-3);
+            border: 1px solid var(--s-info-bd); border-radius: var(--radius-pill); background: var(--accent-soft);
+            color: var(--accent-text); font: inherit; font-size: var(--fs-sm); cursor: pointer; }   /* a chip's look */
+.pfas-tok:hover { background: var(--surface-2); }
+.pfas-tok:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+.pfas-picker-in { max-width: 28rem; }
+.pfas-picker-list { list-style: none; margin: 0; padding: var(--sp-1); max-width: 28rem; max-height: calc(7 * 32px); overflow-y: auto;
+                    border: 1px solid var(--line-strong); border-radius: var(--radius-card); background: var(--surface);
+                    box-shadow: var(--shadow-pill); }
+.pfas-picker-list li { padding: 6px var(--sp-2); cursor: pointer; border-radius: 4px; }
+.pfas-picker-list li:hover { background: var(--accent-soft); }
+@media (pointer: coarse) { .pfas-tok { min-height: 44px; } }
+/* a toggle pill: a pick from a short list (R5-16); pressed is solid with its tick */
+.pfas-chip-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 6px 14px; border-radius: var(--radius-pill);
+                    border: 1px solid var(--line-strong); background: var(--surface); color: var(--text);
+                    font: inherit; font-weight: var(--fw-strong); cursor: pointer; }
+.pfas-chip-toggle[aria-pressed="true"] { background: var(--accent-text); border-color: var(--accent-text); color: var(--on-accent); }
+.pfas-chip-toggle:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+/* a planned dilution: a % or two volumes on one line, the factor under them (R5-10) */
+.rb-pdil { white-space: nowrap; }
+.rb-pdil input { width: 6.5em; display: inline-block; }
+/* a column of row actions (Start / Continue / Open): one width, text centred */
+.row-action { display: inline-flex; justify-content: center; text-align: center; min-width: 10em; }
 .pfas-switch-hint { font-weight: var(--fw-body); color: var(--text-muted); font-size: var(--fs-sm); }
 
 /* ── Filter bar ────────────────────────────────────────────────────────── */
@@ -70,6 +175,23 @@
   letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
 .pfas-filterbar .pfas-switch { height: var(--ctl-h); }
 .pfas-filterbar-spacer { flex: 1; }
+.pfas-paging { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-4); }   /* "1–20 of N", Page x of y, Previous / Next */
+.pfas-content-area details.pfas-fold, .pfas-content-area details.pfas-fold[open] { margin: 2px 0 0; border: 0; box-shadow: none; background: none; }
+.pfas-content-area details.pfas-fold > summary { padding: 0; border: 0; background: none; cursor: pointer; color: var(--accent-text); font-size: var(--fs-sm); }
+.pfas-content-area details.pfas-fold > summary::before { content: none; }
+/* a field's caption with a badge on the same line, so every box below
+   starts at the same height ("from the file", "saved layout found") */
+.is-from-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.is-from-line .badge { font-weight: var(--fw-body); }
+.is-from-line > [hidden], .field-grid > [hidden] { display: none !important; }
+/* a field read as a sentence, its boxes in the words */
+.field-sentence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.field-sentence .pfas-input { width: 180px; height: var(--ctl-h); box-sizing: border-box; }
+.field-sentence .pfas-input.is-wide { width: 280px; }
+.pfas-intro-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+                  gap: var(--sp-3) var(--sp-4); margin: 0 0 var(--sp-4); }   /* a page's one line, its action at the right */
+.pfas-intro-row > p { margin: 0; }
+.pfas-filter-help { display: inline-flex; align-items: center; height: var(--ctl-h); }   /* a "?" on the controls' line */
 
 /* ── Tree ──────────────────────────────────────────────────────────────── */
 .pfas-tree { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--sp-5); }
@@ -97,8 +219,53 @@
 .pfas-tree-card dd { margin: 0; font-family: var(--font-mono); }
 @media (max-width: 760px) { .pfas-tree { grid-template-columns: 1fr; } }
 
+/* ── Navigation tree (.pfas-tree.pfas-nav-tree, the section panel) ─────────
+   An ARIA tree on the frame whose treeitem is the row link: rows 36 px,
+   44 px under a coarse pointer (for gloves); a label too long for the panel
+   ends in an ellipsis. A closed row (aria-expanded="false") hides its
+   children. The twist draws its own chevron and the menu button its own
+   glyph; the menu button shows on the row under the mouse or in focus; the
+   current row is marked with the brand mint. The lineage tree above keeps
+   its own rules. */
+.pfas-tree.pfas-nav-tree { --nav-row-h: 36px; display: block; margin: 0; padding: 0; list-style: none;
+  background: var(--frame); color: var(--on-frame); font-size: var(--fs-sm); }
+.pfas-nav-tree [role="group"] { margin: 0; padding: 0 0 0 var(--sp-3); list-style: none; flex: 0 0 100%; }
+.pfas-nav-tree li { position: relative; display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+.pfas-nav-row[aria-expanded="false"] ~ [role="group"] { display: none; }
+.pfas-nav-row { flex: 1 1 0; min-width: 0; display: flex; align-items: center; height: var(--nav-row-h);
+  padding: 0 var(--sp-2); border-radius: var(--radius); color: var(--on-frame-muted); text-decoration: none;
+  transition: background var(--t-fast), color var(--t-fast); }
+.pfas-nav-row:not([aria-expanded]) { margin-left: 24px; }   /* a leaf's label lines up under its siblings' */
+.pfas-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfas-nav-row:hover { color: var(--on-frame); background: color-mix(in srgb, var(--on-frame) 10%, transparent); }
+.pfas-nav-row[aria-current="page"] { color: var(--on-frame); font-weight: var(--fw-strong);
+  background: color-mix(in srgb, var(--accent) 24%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.pfas-nav-twist, .pfas-nav-more { flex: none; display: grid; place-items: center; height: var(--nav-row-h); padding: 0;
+  border: 0; border-radius: var(--radius); background: none; color: var(--on-frame-muted); cursor: pointer; }
+.pfas-nav-twist { order: -1; width: 24px; }
+.pfas-nav-twist::before { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--t-fast); }
+.pfas-nav-row[aria-expanded="true"] ~ .pfas-nav-twist::before { transform: rotate(45deg); }
+.pfas-nav-more { width: 32px; }
+.pfas-nav-more::before { content: "\22EF"; font-size: var(--fs-base); line-height: 1; }
+.pfas-nav-twist:hover, .pfas-nav-more:hover, .pfas-nav-more[aria-expanded="true"] { color: var(--on-frame); }
+.pfas-nav-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (hover: hover) {   /* a mouse: the menu button shows on its own row only, under the mouse or in focus */
+  .pfas-nav-more { opacity: 0; }
+  .pfas-nav-row:hover ~ .pfas-nav-more, .pfas-nav-row:focus-visible ~ .pfas-nav-more,
+  .pfas-nav-more:hover, .pfas-nav-more[aria-expanded="true"] { opacity: 1; }
+}
+.pfas-nav-menu { position: absolute; top: var(--nav-row-h); right: var(--sp-1); z-index: 20; display: flex; flex-direction: column;
+  min-width: 168px; padding: var(--sp-1); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface-raised); color: var(--text); box-shadow: var(--shadow-card-hover); }
+.pfas-nav-menu-item { display: flex; align-items: center; height: var(--nav-row-h); padding: 0 var(--sp-3); border: 0;
+  border-radius: var(--radius); background: none; color: inherit; font-size: var(--fs-sm); text-align: left;
+  white-space: nowrap; cursor: pointer; }
+.pfas-nav-menu-item:hover, .pfas-nav-menu-item:focus-visible { outline: none; background: var(--surface-2); }
+@media (pointer: coarse) { .pfas-tree.pfas-nav-tree { --nav-row-h: 44px; } .pfas-nav-more { width: 44px; } }
+
 /* ── Action menu (FAB) ─────────────────────────────────────────────────── */
-.pfas-fab { position: fixed; right: 20px; bottom: 20px; z-index: 1050; }
+.pfas-fab { position: fixed; right: var(--fab-inset); bottom: var(--fab-inset); z-index: 1050; }
 .pfas-fab-main { width: var(--fab-size); height: var(--fab-size); border-radius: var(--radius-pill); border: 0;
   background: var(--accent-text); color: var(--on-accent); box-shadow: var(--shadow-card-hover); cursor: pointer;
   display: grid; place-items: center; transition: background var(--t-fast); }
@@ -124,11 +291,34 @@
 .pfas-fab[data-open="true"] + .pfas-fab-scrim { opacity: 1; pointer-events: auto; }
 @media (min-width: 1024px) { .pfas-fab, .pfas-fab-scrim { display: none; } }   /* desktop: the sub-bar holds the actions */
 
+/* ── A short screen: the save bar is slimmer ────────────────────────────── */
+@media screen and (max-height: 719.98px) { body .pfas-action-bar { padding: 6px var(--sp-4); } }
+
+/* ── A row's menu with a mouse ───────────────────────────────────────────
+   With a mouse a row's menu is its right click (pfas-components.js
+   contextItems: the same entries), so the ⋯ and + buttons and their
+   column are not drawn; a touch screen keeps them, and a long press there
+   opens the same menu. */
+@media (pointer: fine) {
+  .pfas-sheet .pfas-rowmenu, .pfas-sheet td.pfas-sheet-menu, .pfas-sheet th[data-col="menu"],
+  table th.row-plus-cell, table td.row-plus-cell { display: none; }
+}
+
 /* ── Drawer ────────────────────────────────────────────────────────────── */
-.pfas-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 1060; width: min(720px, 100vw);
-  background: var(--surface); color: var(--text); border-left: 1px solid var(--line); box-shadow: var(--shadow-card-hover);
-  transform: translateX(100%); transition: transform var(--t-reveal) var(--ease); display: flex; flex-direction: column; }
-.pfas-drawer[data-open="true"] { transform: none; }
+/* every editor, form and record the drawer shows opens as a centred window
+   over the dimmed page, never a panel along the side; a cell's editor is
+   the narrow one (is-cell), a value's analyser and the wide forms keep the
+   full width (is-dialog names that width) */
+.pfas-drawer { position: fixed; top: 50%; left: 50%; z-index: 1060; width: min(900px, calc(100vw - 32px)); max-height: 88vh;
+  background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-card-hover); display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden; transform: translate(-50%, -50%) scale(.97);
+  transition: transform var(--t-fast) var(--ease), opacity var(--t-fast), visibility var(--t-fast); }
+.pfas-drawer[data-open="true"] { transform: translate(-50%, -50%); opacity: 1; visibility: visible; }
+.pfas-drawer .pfas-drawer-body { min-height: 0; }
+/* a calibration point's readout and the curve's calculation (R5-82) */
+.cal-readout th[scope="row"] { text-align: left; font-weight: var(--fw-strong); white-space: nowrap; width: 40%; }
+.cal-readout td button { margin-left: var(--sp-2); }
 .pfas-drawer-head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--line); }
 .pfas-drawer-head h2 { font-family: var(--font-heading); font-size: var(--fs-lg); font-weight: var(--fw-heading); margin: 0; flex: 1; }
@@ -136,6 +326,43 @@
 .pfas-drawer-scrim { position: fixed; inset: 0; z-index: 1059; background: rgba(15,26,24,.35);
   opacity: 0; pointer-events: none; transition: opacity var(--t-fast); }
 .pfas-drawer[data-open="true"] + .pfas-drawer-scrim { opacity: 1; pointer-events: auto; }
+
+/* ── Help ──────────────────────────────────────────────────────────────── */
+/* One "?" per section, at the end of its header (a grid with no section: the
+   right end of its tools row). A button, never an underlined word. */
+.btn-help { display: inline-flex; flex: none; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin-left: 6px; padding: 0; vertical-align: middle;
+  border: 1px solid var(--s-border); border-radius: 50%; background: var(--s-bg); color: var(--s-secondary);
+  font-family: inherit; font-size: var(--fs-sm); font-weight: var(--fw-strong); line-height: 1;
+  text-decoration: none; cursor: pointer; }
+.btn-help:hover, .btn-help[aria-expanded="true"] { color: var(--s-primary-dk); border-color: var(--s-primary); text-decoration: none; }
+.btn-help:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.pfas-sec > summary > .btn-help { margin-left: auto; }
+/* The panel: docked at the right edge of the content area, 360 px, beside
+   the page and not over it; the page stays usable while it is open. On a
+   phone it covers the screen until closed. */
+.pfas-content-row { flex: 1; display: flex; min-height: 0; min-width: 0; }
+.pfas-content-row > .pfas-content-area { min-width: 0; }
+.pfas-help-panel { flex: 0 0 360px; width: 360px; display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); color: var(--text); border-left: 1px solid var(--line); }
+.pfas-help-panel[hidden] { display: none; }
+.pfas-help-head { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line); }
+.pfas-help-title { flex: 1; margin: 0; font-family: var(--font-heading); font-size: var(--fs-md); font-weight: var(--fw-heading); }
+.pfas-help-body { flex: 1; overflow-y: auto; padding: var(--sp-4); }
+.pfas-help-body .help-entry { max-width: none; padding: 0; }
+.pfas-help-body .help-facts { grid-template-columns: 1fr; }
+.pfas-help-body .help-facts dd { margin-bottom: var(--sp-2); }
+.help-open { margin-top: var(--sp-3); }
+/* the entries an entry leads on to: the same control, its term written out */
+.help-related { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+.help-related-l { font-size: var(--fs-sm); color: var(--s-secondary); font-weight: var(--fw-strong); }
+.btn-help.is-term { width: auto; height: auto; min-height: 24px; margin-left: 0; padding: 2px 10px;
+  border-radius: 999px; font-weight: var(--fw-body); line-height: 1.3; }
+@media (max-width: 640px) {
+  .pfas-help-panel { position: fixed; inset: 0; z-index: 1060; width: auto; border-left: 0; }
+}
+@media print { .pfas-help-panel, .btn-help { display: none !important; } }
 
 /* ── Stepper ───────────────────────────────────────────────────────────── */
 .pfas-stepper { display: flex; counter-reset: step; padding: 0; margin: 0 0 var(--sp-5); list-style: none; }
@@ -190,7 +417,19 @@
 .pfas-table td.num, .pfas-table th.num { font-variant-numeric: tabular-nums; text-align: right; font-family: var(--font-mono); }
 .pfas-table tr.is-fail td:first-child { box-shadow: inset 3px 0 0 var(--s-danger); }
 .pfas-table tr.is-warn td:first-child { box-shadow: inset 3px 0 0 var(--s-warning); }
+/* a row holding a value for review only: the amber edge (a failing row takes the coral one) */
+.pfas-table tr.is-review td:first-child { box-shadow: inset 3px 0 0 var(--s-warning); }
+/* a number column ends at the right, its heading with it */
+.pfas-table th.is-right, .pfas-table td.is-right { text-align: right; }
+/* a column with nothing in it for the whole run stays, greyed, its reason a
+   second heading line ("not judged", "not set") */
+.pfas-table th.is-muted, .pfas-table td.is-muted { color: var(--text-muted); }
+.pfas-th-note { display: block; font-weight: var(--fw-body); text-transform: none; letter-spacing: normal; }
 .pfas-table td .btn-sm, .pfas-table td .pfas-switch { vertical-align: middle; }
+/* a change log under a section (When, Who, Setting, From, To): compact rows, the time one line */
+.pfas-log td { padding: 6px 10px; font-size: var(--fs-sm); }
+.pfas-log td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pfas-log .pfas-log-empty { color: var(--text-muted); }
 
 /* ── A page with an aside (the context tree beside the panes) ──────────── */
 .pfas-aside-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--sp-5); align-items: start; }
@@ -211,27 +450,19 @@
 .pfas-sub { margin-top: 2px; color: var(--text-muted); font-size: var(--fs-sm); }
 
 /* ── QC type grid (method x QC type) ───────────────────────────────────── */
-.pfas-grid-table { min-width: 700px; }
-.pfas-grid-table th.pfas-grid-method { min-width: 160px; }
-.pfas-grid-table th.pfas-grid-col { text-align: center; min-width: 90px; font-size: var(--fs-sm); }
-.pfas-grid-table tr.pfas-grid-sub td { font-size: var(--fs-xs); color: var(--text-muted); }
-.pfas-grid-table td.pfas-grid-sublabel { text-align: center; padding: 2px 4px; }
-.pfas-grid-table td.pfas-grid-name { font-weight: var(--fw-strong); padding: 8px 12px; }
-.pfas-grid-table td.pfas-grid-check { text-align: center; padding: 8px 4px; }
-.pfas-grid-check input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
-.pfas-grid-table tr.pfas-grid-rpd { background: var(--surface-2); font-size: var(--fs-sm); }
-.pfas-grid-table td.pfas-grid-rpd-label { padding: 4px 12px 8px 28px; color: var(--text-muted); }
-.pfas-grid-table td.pfas-grid-rpd-cell { padding: 4px 2px 8px; }
-.pfas-grid-stack { display: flex; flex-direction: column; gap: 2px; align-items: center; }
-.pfas-grid-stack label { font-size: var(--fs-xs); color: var(--text-muted); }
-.pfas-grid-stack input { width: 56px; font-size: var(--fs-xs); text-align: center; }
-.pfas-grid-actions { margin-top: var(--sp-5); display: flex; gap: var(--sp-3); align-items: center; }
-.pfas-legend { margin-top: var(--sp-5); border-top: 1px solid var(--line); padding-top: var(--sp-4); }
-.pfas-legend h4 { font-size: var(--fs-base); margin: 0 0 var(--sp-2); }
-.pfas-legend dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: var(--fs-sm); margin: 0; }
-.pfas-legend dt { font-weight: var(--fw-strong); }
-.pfas-legend dd { margin: 0; }
-.pfas-legend p { font-size: var(--fs-xs); color: var(--text-muted); margin: var(--sp-2) 0 0; }
+
+/* a grid's legend: one line under its pickers, each state drawn as the grid draws it */
+.pfas-legend { margin: var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-legend-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; padding: 0 var(--sp-1); }
+/* set: full colour with the teal edge, as .pfas-sheet td.is-set draws it */
+.pfas-legend-val.is-set { color: var(--text); box-shadow: inset 3px 0 0 var(--s-info); padding-left: var(--sp-2); }
+.pfas-legend .fa-lock { font-size: var(--fs-xs); }
+.pfas-legend-val.is-folded svg { vertical-align: middle; }
+/* a rule state's two looks: outlined (the method's default) and filled (set
+   on this method), as the segment draws them */
+.pfas-legend-state { display: inline-block; padding: 0 var(--sp-2); border-radius: var(--radius-pill); }
+.pfas-legend-state.is-inherited { color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pfas-legend-state.is-set { background: var(--accent-text); color: var(--on-accent); }
 
 /* ── Filter bar: selects and inputs are as tall as the buttons ─────────── */
 .pfas-filterbar .pfas-select, .pfas-filterbar .pfas-input { min-width: 140px; height: var(--ctl-h); box-sizing: border-box; }
@@ -260,8 +491,7 @@
 .pfas-col-date { width: 96px; }
 .pfas-col-qty { width: 84px; }
 .pfas-col-status { width: 128px; }
-.pfas-col-actions { width: 224px; }
-.pfas-col-actions-sm { width: 176px; }
+
 .pfas-col-expiry { width: 150px; }
 .pfas-cell-name { font-weight: var(--fw-strong); }
 .pfas-cell-empty { text-align: center; color: var(--text-muted); padding: var(--sp-6); }
@@ -273,6 +503,8 @@
 .pfas-modal { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center;
   background: rgba(15,26,24,.5); }
 .pfas-modal.open { display: flex; }
+/* a question asked by an open drawer or dialog (1060), over it */
+.pfas-modal.is-top { z-index: 1070; }
 .pfas-modal [hidden] { display: none; }
 .pfas-modal-box { width: 90%; max-width: 620px; max-height: 90vh; overflow-y: auto; padding: var(--sp-5);
   background: var(--surface-raised); color: var(--text); border: 1px solid var(--line);
@@ -286,17 +518,22 @@
 .pfas-form-row { display: flex; gap: var(--sp-4); margin-bottom: var(--sp-3); flex-wrap: wrap; }
 .pfas-form-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 180px; min-width: 0; }
 .pfas-form-field.is-full { flex: 1 1 100%; }
+/* a field whose control is a stepper: its label and stepper centred in the column */
+.pfas-form-field.is-centered { align-items: center; text-align: center; }
+.pfas-form-field.is-centered input, input.is-center-text { text-align: center; }
+.pfas-form-field.is-centered > .pfas-num, .pfas-form-field.is-centered > .pfas-inline { align-self: center; }
 .pfas-form-field.is-wide { flex: 2 1 280px; }
 .pfas-form-field label { font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--text); }
 .pfas-form-field input, .pfas-form-field select, .pfas-form-field textarea { padding: 7px 10px; font-size: var(--fs-base);
   border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); }
 .pfas-form-field textarea { min-height: 60px; resize: vertical; }
 .pfas-hint, .pfas-aux { margin: 3px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
-.pfas-req { color: var(--s-danger-dk); }
 summary .pfas-aux { margin-left: var(--sp-2); font-weight: var(--fw-body); }
 .pfas-inline { display: flex; gap: var(--sp-2); align-items: center; }
 .pfas-inline > input { flex: 1; min-width: 0; }
 .pfas-inline > .pfas-unit { width: 80px; flex: none; }
+/* a unit or a box's name written beside it: as wide as its words */
+.pfas-inline > span.pfas-unit { width: auto; flex: none; white-space: nowrap; }
 .pfas-suggest { position: relative; }
 .pfas-suggest-list { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 2000; max-height: 220px; overflow-y: auto;
   background: var(--surface-raised); border: 1px solid var(--line); border-radius: 0 0 var(--radius-lg) var(--radius-lg);
@@ -355,6 +592,10 @@ summary .pfas-aux { margin-left: var(--sp-2); font-weight: var(--fw-body); }
 .pfas-muted { color: var(--text-muted); font-size: var(--fs-sm); }
 .pfas-empty { text-align: center; padding: var(--sp-6) var(--sp-5); color: var(--text-muted); }
 .pfas-empty p.pfas-empty-glyph { font-size: var(--fs-2xl); margin: 0 0 var(--sp-2); }
+/* A drawn icon from the platform's icon set (the sidebar's sprite), sized
+   by the text around it: a landing tile, an empty state, a warning. */
+svg.pfas-ico { width: 1em; height: 1em; display: inline-block; vertical-align: -0.125em;
+  stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .pfas-empty .btn { margin-top: var(--sp-3); }
 .form-actions.is-end { justify-content: flex-end; }
 .pfas-modal-box.is-wide { max-width: 780px; max-height: 94vh; }
@@ -374,8 +615,7 @@ summary .pfas-aux { margin-left: var(--sp-2); font-weight: var(--fw-body); }
 .pfas-seg-bar { padding: var(--sp-3) 20px; background: var(--surface); border-bottom: 1px solid var(--line); }   /* a tab strip in the header's tabs slot */
 .pfas-crumb.is-inline { margin-bottom: var(--sp-4); }
 .pfas-mt { margin-top: var(--sp-3); }
-.pfas-intro { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-4); }
-.pfas-intro > p { margin: 0; color: var(--text-muted); font-size: var(--fs-base); }
+
 .pfas-label { display: block; margin-bottom: 4px; font-size: var(--fs-sm); font-weight: var(--fw-strong); }
 .pfas-inline-form { display: inline; margin: 0 5px 0 0; }
 .pfas-center { text-align: center; }
@@ -389,7 +629,7 @@ summary .badge { margin-left: var(--sp-2); }
 /* ── Legacy logbook forms (250-253): what their inline styles said ─────── */
 .lb-original { text-decoration: line-through; color: var(--text-muted); font-weight: var(--fw-body); }
 .lb-original.is-block { max-width: 300px; display: inline-block; }
-.pfas-w-36 { width: 36px; } .pfas-w-80 { width: 80px; } .pfas-w-90 { width: 90px; } .pfas-w-120 { width: 120px; } .pfas-w-140 { width: 140px; }
+.pfas-w-36 { width: 36px; }    .pfas-w-140 { width: 140px; }
 .pfas-w-160 { width: 160px; } .pfas-w-220 { width: 220px; }
 .pfas-minw-50 { min-width: 50px; } .pfas-minw-70 { min-width: 70px; } .pfas-minw-80 { min-width: 80px; }
 .pfas-minw-100 { min-width: 100px; } .pfas-minw-110 { min-width: 110px; } .pfas-minw-120 { min-width: 120px; }
@@ -399,9 +639,7 @@ summary .badge { margin-left: var(--sp-2); }
   border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); }
 .pfas-note-sm { margin-bottom: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
 .pfas-btn-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
-.pfas-list-scroll { margin-top: var(--sp-3); max-height: 280px; overflow-y: auto; }
-.pfas-pick { padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: var(--fs-sm); }
-.pfas-pick:hover { background: var(--accent-soft); }
+
 .pfas-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-3); }
 .pfas-modal-head strong { font-size: var(--fs-md); }
 @media print { .pfas-add-row, .pfas-row-remove { display: none !important; } }
@@ -463,18 +701,9 @@ summary .badge { margin-left: var(--sp-2); }
 .pfas-tiles + .pfas-section-head, .pfas-section-head:first-child { margin-top: var(--sp-5); }
 .pfas-chart-box { position: relative; height: 300px; }
 .pfas-chart-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--text-muted); }
-.pfas-study-row { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: center; padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
-.pfas-study-row:last-child { border-bottom: 0; }
-.pfas-study-row > strong:first-child { min-width: 90px; }
-.pfas-point-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
-.pfas-point-cell { padding: 10px; font-size: var(--fs-xs); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
-.pfas-point-cell > label { display: block; margin-bottom: 4px; font-weight: var(--fw-strong); color: var(--text-muted); }
-.pfas-point-cell input { width: 100%; box-sizing: border-box; margin-bottom: 4px; padding: 4px 6px; font-size: var(--fs-sm);
-  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
-.pfas-point-cell .btn-sm { width: 100%; justify-content: center; }
 .pfas-subpanel { margin-top: var(--sp-4); padding: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .pfas-subpanel > strong { font-size: var(--fs-sm); }
+.pfas-subpanel > form { margin-top: var(--sp-3); }
 .pfas-between { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
 .pfas-seg-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .pfas-summary-link { font-size: var(--fs-sm); font-weight: var(--fw-strong); cursor: pointer; color: var(--accent-text); }
@@ -485,9 +714,8 @@ summary .badge { margin-left: var(--sp-2); }
 .pfas-dev.is-fail { color: var(--s-danger-dk); }
 .pfas-muted-cell { color: var(--text-muted); }
 .pfas-mt-md { margin-top: var(--sp-4); }
-.pfas-mb-0 { margin-bottom: 0; }
+
 .pfas-tile > .badge { align-self: flex-start; }
-.pfas-point-cell > div { margin-bottom: 4px; }
 .pfas-entry { margin-bottom: var(--sp-4); }
 .pfas-entry-trace { margin: 0 0 6px; font-size: var(--fs-xs); color: var(--text-muted); }
 .pfas-meta-row { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: 6px; font-size: var(--fs-sm); }
@@ -496,7 +724,13 @@ summary .badge { margin-left: var(--sp-2); }
 /* ── Import Studio ─────────────────────────────────────────────────────── */
 .pfas-studio { display: flex; gap: var(--sp-5); align-items: flex-start; }
 .pfas-studio-main { flex: 1 1 auto; min-width: 0; }
-.pfas-studio-side { flex: 0 0 260px; }
+
+/* Import Studio: the "save as a layout" panel sits under the mapping, full width, three columns (R5-59) */
+.pfas-studio-panel { margin-top: var(--sp-4); }
+.field-grid.is-3col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+.field-grid.is-3col > .is-full { grid-column: 1 / -1; }
+@media (max-width: 900px) { .field-grid.is-3col { grid-template-columns: 1fr; } }
+.pfas-pill-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .pfas-section-title { margin: 0 0 18px; padding-bottom: var(--sp-2); font-size: var(--fs-lg); font-weight: var(--fw-heading);
   color: var(--text); border-bottom: 2px solid var(--line); }
 .pfas-upload { display: block; margin: var(--sp-4) 0; padding: 40px 24px; text-align: center; cursor: pointer;
@@ -504,23 +738,22 @@ summary .badge { margin-left: var(--sp-2); }
   transition: border-color var(--t-fast); }
 .pfas-upload:hover, .pfas-upload.drag-over { border-color: var(--accent); background: var(--accent-soft); }
 .pfas-upload-icon { margin-bottom: 10px; font-size: 36px; }
-.pfas-upload-icon::before { content: "\1F4C4"; }
 .pfas-upload p { margin: 0; font-size: var(--fs-base); color: var(--text-muted); }
 .pfas-upload p.pfas-upload-chosen { margin-top: var(--sp-2); font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--accent-text); }
 .pfas-map-grid { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .pfas-map-grid th { padding: var(--sp-2) 10px; text-align: left; font-weight: var(--fw-heading);
   background: var(--surface-2); border-bottom: 2px solid var(--line); }
 .pfas-map-grid td { padding: 5px var(--sp-2); vertical-align: middle; border-bottom: 1px solid var(--line); }
-.pfas-map-grid td.col-name { max-width: 160px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); word-break: break-all; }
-.pfas-map-grid td.col-preview { max-width: 200px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-map-grid td.col-name { max-width: 160px; font-size: var(--fs-sm); color: var(--text); word-break: break-all; }
+.pfas-map-grid td.col-preview { max-width: 200px; font-size: var(--fs-sm); color: var(--text-muted); text-align: center; }
 .pfas-map-grid select { width: 100%; padding: 4px 6px; font-size: var(--fs-sm); color: var(--text); background: var(--surface);
   border: 1px solid var(--line-strong); border-radius: var(--radius); }
 .pfas-map-grid select.is-mapped { border-color: var(--s-success); background: var(--s-success-lt); }
 .pfas-map-grid select.is-ignored { border-color: var(--line-strong); background: var(--surface-2); color: var(--text-muted); }
 .pfas-preview { display: block; width: 100%; margin-bottom: 20px; overflow-x: auto; border-collapse: collapse;
-  font-family: var(--font-mono); font-size: var(--fs-xs); }
+  font-size: var(--fs-sm); }
 .pfas-preview th { padding: 4px 6px; font-weight: var(--fw-heading); background: var(--surface-2); border: 1px solid var(--line); }
-.pfas-preview td { padding: 3px 6px; white-space: nowrap; border: 1px solid var(--line); }
+.pfas-preview td { padding: 3px 6px; white-space: nowrap; border: 1px solid var(--line); text-align: center; }
 .pfas-card.is-tint { background: var(--surface-2); }
 .pfas-card.is-tint > h3 { margin-bottom: var(--sp-3); }
 .pfas-card.is-tint .pfas-textarea { margin-bottom: var(--sp-2); }
@@ -531,6 +764,9 @@ summary .badge { margin-left: var(--sp-2); }
 .pfas-cols-2 > .pfas-card { margin-bottom: 0; min-width: 0; }
 .pfas-field.is-spaced { margin-bottom: var(--sp-3); }
 .pfas-field > .pfas-select, .pfas-field > .pfas-input, .pfas-field > .pfas-textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+/* a select as wide as its longest choice, never the page (a name from a
+   list); it follows the full-width rule above, which it overrides */
+.pfas-select.is-fit { width: auto; min-width: 16ch; max-width: 360px; align-self: flex-start; }
 .pfas-field .pfas-hint { text-transform: none; letter-spacing: 0; font-weight: var(--fw-body); }
 .pfas-radios { display: flex; flex-direction: column; gap: 6px; }
 .pfas-radios .pfas-check { font-size: var(--fs-base); font-weight: var(--fw-body); }
@@ -549,25 +785,32 @@ summary .badge { margin-left: var(--sp-2); }
 .pfas-card-head > .pfas-sub { margin: 0; font-weight: var(--fw-body); }
 .pfas-card-head .btn.is-end { margin-left: auto; }
 .pfas-card.is-spaced { margin-top: 22px; }
-.pfas-seqlist { display: flex; flex-direction: column; gap: 5px; max-width: 540px; padding: var(--sp-2);
-  background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: var(--radius-lg); }
-.pfas-seqrow { display: flex; align-items: center; gap: 9px; padding: 7px 9px; font-size: var(--fs-sm); cursor: grab;
-  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+/* the handle a row is dragged by (SortableJS's handle): one rule for every
+   list that reorders (the run sequence, the injection list, the stages) */
+.grip { color: var(--text-muted); cursor: grab; user-select: none; }
+.grip::before { content: "\22EE"; }
+/* the run sequence: one table row per step (Run Builder) */
+.pfas-seqrow > td { font-size: var(--fs-sm); }
 .pfas-seqrow.dragging { opacity: .35; }
-.pfas-seqrow.samples { background: var(--s-success-lt); border-color: var(--s-success-bd); }
-.pfas-seqrow.cal { background: var(--s-info-lt); border-color: var(--s-info-bd); }
-.pfas-seqrow.blank { background: var(--surface-2); }
-.pfas-seqrow .grip { color: var(--text-muted); font-size: var(--fs-md); line-height: 1; cursor: grab; user-select: none; }
-.pfas-seqrow .lbl { flex: 1; font-weight: var(--fw-strong); }
-.pfas-seqrow .code { color: var(--text-muted); font-size: var(--fs-xs); }
-.pfas-seqrow .del { padding: 2px 5px; font-size: var(--fs-base); line-height: 1; color: var(--text-muted);
-  background: transparent; border: 0; border-radius: var(--radius); cursor: pointer; }
-.pfas-seqrow .del:hover { background: var(--accent-soft); color: var(--text); }
+.pfas-seqrow.samples > td { background: var(--s-success-lt); }
+.pfas-seqrow.cal > td { background: var(--s-info-lt); }
+.pfas-seqrow.blank > td { background: var(--surface-2); }
+.pfas-seqrow .grip { font-size: var(--fs-md); line-height: 1; }
+.pfas-seqrow .lbl { font-weight: var(--fw-strong); }
+.pfas-seqrow .code { color: var(--text-muted); }
+.rb-seq .rb-grip-col, .rb-seq .rb-del-col { width: 44px; }
+/* the injection list table (Import Studio): it fills its card */
+.inj-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-4); margin-bottom: var(--sp-3); }
+.inj-head label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
+.inj-table { width: 100%; table-layout: fixed; }
+.inj-table td .pfas-input, .inj-table td .pfas-select { width: 100%; box-sizing: border-box; }
+.inj-table .inj-n { width: 150px; white-space: nowrap; }
+.inj-table .inj-n .btn-sm { padding: 2px 6px; }
+.rb-upload { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); }
 .pfas-seq-add { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .pfas-seq-add select { max-width: 280px; }
 .is-readonly .pfas-seqrow { cursor: default; }
 .is-readonly .pfas-seqrow .grip, .is-readonly .pfas-seqrow .del, .is-readonly .pfas-seq-add { display: none; }
-.pfas-seqrow .grip::before { content: "\22EE"; }
 .pfas-card > h3.is-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 .pfas-card > h3 .pfas-muted { font-weight: var(--fw-body); }
 .pfas-card > h3 .btn.is-end { margin-left: auto; }
@@ -576,9 +819,7 @@ summary .badge { margin-left: var(--sp-2); }
 /* ── Reporting and Configuration pages ─────────────────────────────────── */
 .pfas-page-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-5); }
 .pfas-page-head h2 { margin: 0; font-family: var(--font-heading); font-size: var(--fs-lg); font-weight: var(--fw-heading); color: var(--text); }
-.pfas-section-intro { margin-bottom: var(--sp-4); }
-.pfas-section-intro h3 { margin: 0 0 4px; font-size: var(--fs-base); font-weight: var(--fw-heading); color: var(--text); }
-.pfas-section-intro p { margin: 0; font-size: var(--fs-sm); color: var(--text-muted); }
+
 .pfas-row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .field-grid label.pfas-check { flex-direction: row; align-items: center; gap: var(--sp-2); font-weight: var(--fw-strong); }
 .pfas-lead.is-narrow, .pfas-form-narrow { max-width: 720px; }
@@ -668,16 +909,8 @@ textarea.pfas-fill.is-sm { font-size: var(--fs-sm); }
 .alert-danger { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk); }
 .alert-ok { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text); }
 
-/* A page group's sibling pages (Settings, Reporting setup, Equipment checks): the
-   segmented strip in links mode, on the frame's content edge. */
-.pfas-group-bar { padding: var(--sp-3) 20px 0; }
-@media print { .pfas-group-bar { display: none; } }
 /* a cell kept on one line (a date) still wraps its note underneath */
 .cell-nowrap .pfas-sub { white-space: normal; }
-/* QC Type Grid: the LFSMD spike-level RPD limits on one line under the method */
-.pfas-grid-rpd-line { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
-.pfas-grid-rpd-level { display: inline-flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); color: var(--text-muted); }
-.pfas-grid-rpd-level .pfas-input { width: 80px; height: var(--ctl-h-sm); text-align: right; }
 /* An input or select a page left unclassed takes the shared control look,
    so no page falls back to the browser's own (38px, its own border). */
 .pfas-content-area input:not([class]):not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=submit]):not([type=button]):not([type=range]):not([type=color]),
@@ -725,6 +958,16 @@ textarea.pfas-fill.is-sm { font-size: var(--fs-sm); }
 .pfas-num > input.pfas-num-in:focus, .pfas-num > input.pfas-num-in:focus-visible { border: 0; box-shadow: none; background: transparent; outline: none !important; }
 .pfas-num > input.pfas-num-in::-webkit-inner-spin-button, .pfas-num > input.pfas-num-in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .pfas-num > input.pfas-num-in::placeholder { color: var(--text-muted); }
+/* an empty box shows the number it resolves to, muted, until a value is
+   typed; the number is drawn over the box and never posted */
+.pfas-num[data-resolved] { position: relative; }
+.pfas-num-resolved { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-variant-numeric: tabular-nums; pointer-events: none; }
+.pfas-num-resolved[hidden] { display: none; }
+/* a rule every field of a settings group follows, one line above them; what
+   a blank cell of a table column means, one line under the table */
+.cf-group-help, .cf-col-help { display: block; margin: 0 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); }
+.cf-col-help { margin: var(--sp-1) 0 0; }
 /* the value settles with a short spring in the direction of travel */
 @keyframes pfas-num-up { from { transform: translateY(55%); opacity: .3; } 60% { transform: translateY(-8%); opacity: 1; } to { transform: none; opacity: 1; } }
 @keyframes pfas-num-down { from { transform: translateY(-55%); opacity: .3; } 60% { transform: translateY(8%); opacity: 1; } to { transform: none; opacity: 1; } }
@@ -805,11 +1048,302 @@ td.pfas-cell { position: relative; }
 .pfas-cell-bar > span { position: absolute; top: 0; bottom: 0; left: calc(var(--lo, 0) * 100%); right: calc((1 - var(--hi, 1)) * 100%);
   border-radius: var(--radius-pill); background: var(--accent); }
 @media (pointer: coarse) { .pfas-cell-btn { min-height: 44px; } }
-.pfas-drawer.is-cell { width: min(440px, 100vw); }
+.pfas-drawer.is-cell { width: min(480px, calc(100vw - 32px)); }
+/* a drawer's own controls beside its title (the window drawer's Prev / Next) */
+.pfas-drawer-tools { display: flex; gap: var(--sp-2); }
+/* the window drawer: the effective window, large, on its 0 – 200 % bar, and
+   who sets it, the one that does with the teal edge of a cell set on itself */
+.pfas-win-big { font-family: var(--font-mono); font-size: var(--fs-xl); font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
+.pfas-win-big + .pfas-cell-bar { align-self: stretch; height: 6px; }
+.pfas-setby { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); align-self: stretch;
+  padding: var(--sp-1) var(--sp-3); border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--fs-sm); }
+.pfas-setby.is-set { border-color: var(--s-info-bd); box-shadow: inset 3px 0 0 var(--s-info); }
+.pfas-setby b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pfas-setby:not(.is-set) { color: var(--text-muted); }
 .pfas-cell-form { display: flex; flex-direction: column; gap: var(--sp-4); align-items: flex-start; }
 .pfas-drawer-foot { display: flex; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); background: var(--surface); }
 .pfas-drawer-foot[hidden] { display: none; }
 .pfas-drawer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+
+/* ── .pfas-sheet: a tab's one grid (profile_grids.py) ───────────────────────
+   A cell never wraps: a wide grid scrolls in its own box, with the heading
+   and the row names held in place. A value's state is how it is drawn: set
+   here over something it overrides (a teal bar on the left), inherited
+   (muted), off (an em dash), locked (a lock). */
+.pfas-sheet-box { --sheet-sel-w: 40px; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; max-width: 100%; }
+.pfas-sheet-wrap { overflow: auto; max-height: 75vh; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  scrollbar-gutter: stable; }
+/* a wide grid's or config-form table's scrollbar is drawn thin, not left to
+   an overlay that hides (.is-cf: the sideways box of a table the config
+   forms draw, pfas-components.js initTables) */
+.pfas-sheet-wrap, .pfas-scroll-x.is-cf { scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--surface-2); }
+.pfas-sheet-wrap::-webkit-scrollbar, .pfas-scroll-x.is-cf::-webkit-scrollbar { width: 8px; height: 8px; }
+.pfas-sheet-wrap::-webkit-scrollbar-track, .pfas-scroll-x.is-cf::-webkit-scrollbar-track { background: var(--surface-2); }
+.pfas-sheet-wrap::-webkit-scrollbar-thumb, .pfas-scroll-x.is-cf::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-pill); }
+.pfas-sheet { width: max-content; min-width: 100%; margin: 0; border-collapse: separate; border-spacing: 0; font-size: var(--fs-base); }
+.pfas-sheet td, .pfas-sheet th { white-space: nowrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--surface);
+  text-align: left; vertical-align: middle; }
+.pfas-sheet thead { position: sticky; top: 0; z-index: 3; }
+.pfas-sheet thead th, .pfas-sheet thead td { background: var(--surface-2); color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-strong); }
+.pfas-sheet th.pfas-sheet-gh { text-align: center; border-bottom-color: var(--line-strong); }
+.pfas-sheet .is-right { text-align: right; }
+.pfas-sheet .is-center { text-align: center; }
+/* The tables and collections the config forms draw (config_form_macros.pt
+   marks them pfas-cf) space their columns as the grids do: 14 px each side.
+   A heading is aligned as its cells are: numbers right, text left. */
+.pfas-cf.cf-table td, .pfas-cf.cf-table th, .pfas-cf.cf-coll td, .pfas-cf.cf-coll th { padding: 8px 14px; }
+/* a heading starts where its column's boxes start (a browser centres a th
+   left to itself); numbers end where their heading ends */
+.factor-table:not(.cf-grid) th:not(.is-box-col) { text-align: left; }
+.pfas-cf.cf-table .is-right, .pfas-cf.cf-coll .is-right { text-align: right; }
+/* a column of boxes in a table one types into: the heading and its boxes
+   centred in the column (pfas-components.js alignBoxColumns); the number in
+   a box still ends at the right */
+table th.is-box-col, table td.is-box-col, .pfas-sheet .is-box-col.is-right, .pfas-cf .is-box-col.is-right { text-align: center; }
+.is-right > .pfas-cell-btn { text-align: right; }
+/* a config-form table that pins its first column: it stays put while the
+   rest scroll sideways, with the grids' edge on its right */
+.pfas-cf.cf-table.is-sticky-first th:first-child, .pfas-cf.cf-table.is-sticky-first td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: inset -1px 0 0 var(--line); }
+/* an empty table keeps its header; one muted line says what would fill it */
+.pfas-empty-row td { color: var(--text-muted); }
+/* the scroll cue: a chip at the top right of a box whose table runs past it
+   ("3 more →"). Its bar is pinned to the box's visible area and takes no
+   room or clicks. */
+.pfas-sheet-more-bar { position: sticky; top: 0; left: 0; z-index: 5; height: 0; overflow: visible; text-align: right; pointer-events: none; }
+.pfas-sheet-more-bar[hidden] { display: none; }
+.pfas-sheet-more { display: inline-block; margin: 6px 6px 0 0; padding: 1px var(--sp-2); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: var(--shadow-pill);
+  color: var(--text); font-size: var(--fs-xs); font-weight: var(--fw-strong); white-space: nowrap; }
+/* the pinned sideways bar: along the bottom of the visible area while a
+   wide box's own scrollbar is below it (pfas-components.js initHScroll);
+   under a dialog, the drawer and their scrims */
+.pfas-hrail { position: fixed; z-index: 900; height: 14px; overflow-x: scroll; overflow-y: hidden; box-sizing: border-box;
+  background: var(--surface-2); border-top: 1px solid var(--line); box-shadow: var(--shadow-pill);
+  scrollbar-width: auto; scrollbar-color: var(--line-strong) var(--surface-2); }
+.pfas-hrail[hidden] { display: none; }
+.pfas-hrail-in { height: 1px; }
+.pfas-hrail::-webkit-scrollbar { height: 12px; }
+.pfas-hrail::-webkit-scrollbar-track { background: var(--surface-2); }
+.pfas-hrail::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-pill); }
+.pfas-hrail::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* the wheel button pressed: a mark where it was pressed, the scroll cursor
+   everywhere until it stops */
+.pfas-autoscroll-mark { position: fixed; z-index: 1060; width: 28px; height: 28px; margin: -14px 0 0 -14px; box-sizing: border-box;
+  border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface-raised); box-shadow: var(--shadow-pill);
+  pointer-events: none; }
+.pfas-autoscroll-mark::after { content: ""; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%; background: var(--text-muted); }
+html.is-autoscrolling, html.is-autoscrolling * { cursor: all-scroll !important; }
+/* the chip is a pointer's shortcut to the next columns */
+.pfas-sheet-more { pointer-events: auto; cursor: pointer; }
+.pfas-sheet-more:hover { border-color: var(--accent); }
+/* a heading's right edge is a drag handle that widens its column (a
+   computer only: a finger scrolls the table) */
+th.has-col-handle { position: relative; }
+.pfas-col-handle { position: absolute; top: 0; right: -1px; bottom: 0; z-index: 2; width: 3px; cursor: col-resize; touch-action: none; }
+.pfas-col-handle:hover, .pfas-col-handle.is-dragging { background: var(--accent); }
+.is-col-dragging { user-select: none; -webkit-user-select: none; }   /* a drag selects no text */
+/* a column dragged to a width wraps between its words, the one exception
+   to a cell that never wraps: else no column is narrower than its longest
+   entry; a word is never split, so its longest word is how narrow it goes */
+table th.is-col-set, table td.is-col-set { white-space: normal; overflow-wrap: break-word; }
+@media (pointer: coarse) { .pfas-col-handle { display: none; } }
+.pfas-sheet td.is-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.pfas-sheet .is-col-off { display: none; }
+.pfas-sheet-unit { font-weight: var(--fw-body); text-transform: none; }
+/* a heading's unit: its own line under the name; in a drawer's label it
+   runs on after the name */
+.pfas-th-unit { display: block; font-weight: var(--fw-body); text-transform: none; }
+.pfas-sheet-flabel .pfas-th-unit { display: inline; margin-left: var(--sp-1); color: var(--text-muted); }
+/* the selection and row-name columns stay put while the grid scrolls sideways */
+.pfas-sheet .pfas-sheet-sel { width: var(--sheet-sel-w); min-width: var(--sheet-sel-w); box-sizing: border-box; text-align: center;
+  padding-left: 0; padding-right: 0; }   /* the box fits the set width the row names are pinned beside */
+.pfas-sheet-box.is-sticky-first .pfas-sheet-sel,
+.pfas-sheet-box.is-sticky-first .pfas-sheet-label { position: sticky; left: 0; z-index: 1; }
+.pfas-sheet-box.is-sticky-first.has-select .pfas-sheet-label { left: var(--sheet-sel-w); }
+.pfas-sheet-box.is-sticky-first .pfas-sheet-label { box-shadow: inset -1px 0 0 var(--line); }
+.pfas-sheet th.pfas-sheet-label { color: var(--text); font-weight: var(--fw-strong); }
+.pfas-sheet thead th.pfas-sheet-label { color: var(--text-muted); }
+.pfas-sheet tr.is-selected > td, .pfas-sheet tr.is-selected > th { background: var(--s-info-lt); }
+.pfas-sheet-sub { display: block; color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-body); }
+/* a group row's words run on after its name; a column's list wraps under its heading */
+.pfas-sheet-grouprow .pfas-sheet-sub { display: inline; margin-left: var(--sp-1); }
+.pfas-sheet thead .pfas-sheet-sub { white-space: normal; max-width: 28em; text-transform: none; }
+.pfas-seg-item .fa-lock { margin-left: var(--sp-1); font-size: var(--fs-xs); }
+.pfas-sheet-flag { display: inline-block; margin-left: var(--sp-1); padding: 0 6px; border-radius: var(--radius-pill);
+  background: var(--s-danger-lt); color: var(--s-danger-dk); font-size: var(--fs-xs); font-weight: var(--fw-strong); }
+.pfas-sheet-flag.is-warn { background: var(--s-warn-lt); color: var(--s-warn-text); }
+.pfas-sheet-flag.is-ok { background: var(--s-success-lt); color: var(--s-success-text); }
+/* a classification that is not a fault (no surrogate): a grey tag, never coral */
+.pfas-tag { display: inline-block; margin-left: var(--sp-1); padding: 0 6px; border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-strong); }
+/* the one tag that is a fault: what holds release (Data Review's warnings) */
+.pfas-tag.is-flag { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+/* a gap said in the cell's own words, no chip: coral where it is a fault
+   (an Enforced rule with no limit), muted where it holds nothing back (an
+   Evaluate rule with none) */
+.pfas-flag-text.is-flag { color: var(--s-danger-dk); font-weight: var(--fw-strong); }
+.pfas-flag-text.is-quiet { color: var(--text-muted); }
+/* muted words after a value that qualify it: an inherited rule's scope
+   reads "Method · default" */
+.pfas-sheet-aside { margin-left: var(--sp-1); color: var(--text-muted); }
+/* a state the method fixes: a drawn lock and its words, no control */
+.pfas-fixed { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--text-muted); white-space: nowrap; }
+.pfas-fixed .pfas-lock { flex: none; }
+/* a state shown as its word (a standard's role), set in the row's drawer */
+.pfas-sheet td.pfas-sheet-role { font-weight: var(--fw-strong); }
+.pfas-sheet-grouprow > th, .pfas-sheet-grouprow > td { background: var(--surface-2); }
+/* a folding group: the toggle's chevron points at the name while the group
+   is folded and down while it is open; the summary, on its own line, says
+   what the folded members hold; a folded member row stays hidden */
+.pfas-group-toggle { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  margin-right: var(--sp-1); padding: 0; border: 0; border-radius: var(--radius); background: transparent;
+  color: var(--text-muted); cursor: pointer; vertical-align: middle; }
+.pfas-group-toggle:hover { background: var(--surface); color: var(--text); }
+.pfas-sheet tr.pfas-sheet-grouprow .pfas-group-chev { transform: rotate(90deg); transition: transform .15s; }
+.pfas-sheet tr.pfas-sheet-grouprow.is-folded .pfas-group-chev { transform: none; }
+.pfas-group-summary { display: block; margin-top: 2px; color: var(--text); font-size: var(--fs-xs);
+  font-weight: var(--fw-body); white-space: normal; }
+.pfas-sheet tr[data-in-group][hidden] { display: none; }
+/* a declared table's choice that inherits the row above, while it does:
+   the "·" muted (its options keep the text colour) */
+.pfas-cf select.is-inherited { color: var(--text-muted); }
+.pfas-cf select.is-inherited option { color: var(--text); }
+/* an analyte not reported in the column's matrices: the words, muted */
+.pfas-sheet td.is-na { color: var(--text-muted); font-size: var(--fs-xs); white-space: nowrap; }
+/* states */
+.pfas-sheet td.is-set { box-shadow: inset 3px 0 0 var(--s-info); }
+.pfas-sheet td.is-inherited, .pfas-sheet td.is-inherited .pfas-cell-txt { color: var(--text-muted); }
+.pfas-sheet td.is-off .pfas-sheet-val:empty::before { content: "\2014"; color: var(--text-muted); }
+/* a list with nothing in it (Quantifies): a muted dash */
+.pfas-sheet .pfas-sheet-val.is-empty { color: var(--text-muted); }
+.pfas-sheet tr.is-flagged td.is-off .pfas-sheet-val:empty::before,
+.pfas-sheet tr.is-flagged td.is-off select { color: var(--s-danger-dk); }
+.pfas-seg-item.is-inherited { color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pfas-sheet td.is-locked { color: var(--text-muted); }
+.pfas-sheet td.is-locked .fa-lock { margin-left: var(--sp-1); font-size: var(--fs-xs); }
+/* a min / max pair is two cells; its value shows once, in the first */
+.pfas-sheet td.pfas-sheet-hi { padding-left: 0; padding-right: 0; }
+.pfas-sheet td.pfas-sheet-hi .pfas-cell-btn { display: none; }
+/* the selection bar, Columns and the popovers (a links cell's list, the column picker) */
+.pfas-sheet-bar { position: sticky; top: 0; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--s-info-bd); border-radius: var(--radius); background: var(--s-info-lt); color: var(--s-info-text); }
+.pfas-sheet-bar[hidden] { display: none; }
+.pfas-sheet-count { font-weight: var(--fw-strong); margin-right: auto; }
+.pfas-sheet-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+/* a row's menu (⋯) at the row's end: its items a column of buttons, a
+   refused one disabled with the reason under it */
+.pfas-sheet td.pfas-sheet-menu { width: 1%; padding-left: 0; padding-right: 0; text-align: center; }
+.pfas-rowmenu { min-width: 28px; height: 24px; padding: 0 var(--sp-1); border: 0; border-radius: var(--radius); background: none;
+  color: var(--text-muted); font: inherit; font-weight: var(--fw-strong); line-height: 1; cursor: pointer; }
+.pfas-rowmenu:hover, .pfas-rowmenu:focus-visible, .pfas-rowmenu[aria-expanded="true"] { color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pfas-sheet-pop.is-menu { width: 260px; font-size: var(--fs-sm); }
+.pfas-menu-item { display: block; width: 100%; padding: var(--sp-1) var(--sp-2); border: 0; border-radius: var(--radius); background: none;
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.pfas-menu-item:hover:not(:disabled), .pfas-menu-item:focus-visible { background: var(--surface-2); }
+.pfas-menu-item:disabled { color: var(--text-muted); cursor: not-allowed; }
+.pfas-refused { margin: 0 var(--sp-2) var(--sp-1); color: var(--s-warn-text); font-size: var(--fs-xs); }
+/* .pfas-menu: a context menu or an Actions button's list (PFAS.components.menu), fixed to
+   the viewport over the drawer and the page's dialogs; its entries are .pfas-menu-item, a
+   disabled one muted with its reason on a line under it, a separator between groups */
+.pfas-menu { position: fixed; z-index: 1080; min-width: 220px; max-width: min(340px, calc(100vw - 16px));
+  padding: var(--sp-1); background: var(--surface-raised); color: var(--text); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-card-hover); font-size: var(--fs-sm); }
+.pfas-menu .pfas-menu-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--sp-3); align-items: baseline; }
+.pfas-menu .pfas-menu-item:focus { outline: none; background: var(--surface-2); }
+.pfas-menu-key { color: var(--text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.pfas-menu-why { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--fs-xs); }
+.pfas-menu-item[aria-disabled="true"] { color: var(--text-muted); cursor: not-allowed; }
+.pfas-menu-item[aria-disabled="true"]:hover { background: none; }
+.pfas-menu-item[aria-checked="true"] .pfas-menu-label::before { content: "\2713"; margin-right: var(--sp-1); }
+.pfas-menu-item[aria-checked="false"] .pfas-menu-label { padding-left: 1.2em; }
+.pfas-menu-item[aria-expanded="true"] { background: var(--surface-2); }
+.pfas-menu-sep { height: 1px; margin: var(--sp-1) 0; background: var(--line); }
+/* a class cell marked None: not assessed, a muted ✗ (a decision, not a failure) */
+.pfas-sheet td.is-none .pfas-cell-txt { color: var(--text-muted); }
+.pfas-cell-none { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); font-size: var(--fs-sm); }
+.pfas-sheet-pop { position: fixed; z-index: 1050; max-width: min(360px, calc(100vw - 32px)); max-height: 50vh; overflow: auto; padding: var(--sp-2);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised); box-shadow: var(--shadow-card-hover); }
+.pfas-sheet-pop[hidden] { display: none; }
+.pfas-sheet-pop ul { display: flex; flex-direction: column; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.pfas-sheet-picker { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pfas-sheet-picker[hidden] { display: none; }
+.pfas-sheet-switches th, .pfas-sheet-switches td { padding-top: 0; }
+.pfas-sheet-colswitch { justify-content: center; }
+/* a panel flag: a tick when reported (mint), the RL in its place when one is set,
+   a cross when left out (muted: leaving an analyte out is a decision, not a
+   failure, so never coral); a click opens the cell's editor */
+.pfas-flag { min-width: 30px; height: 24px; padding: 0 var(--sp-1); border: 0; border-radius: var(--radius); background: none;
+  color: var(--s-success-text); font: inherit; font-weight: var(--fw-strong); line-height: 1; cursor: pointer; }
+.pfas-flag:hover, .pfas-flag:focus-visible { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pfas-flag.is-rl { color: var(--s-body); font-family: var(--font-mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.pfas-flag.is-out { color: var(--text-muted); font-weight: var(--fw-body); }
+.pfas-colchip { padding: 1px var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--surface);
+  color: var(--s-success-text); font: inherit; font-size: var(--fs-xs); white-space: nowrap; cursor: pointer; }
+.pfas-colchip:hover, .pfas-colchip:focus-visible { border-color: var(--line-strong); }
+/* the Columns control: a chip per shown column the grid starts without (its
+   \2715 hides it), then "+ <n> hidden", which opens the picker */
+.pfas-colchips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.pfas-colchips .pfas-colchip { color: var(--text); }
+.pfas-colchips .pfas-colchip[hidden] { display: none; }
+.pfas-colchips .pfas-colchip span { margin-left: var(--sp-1); color: var(--text-muted); }
+.pfas-sheet-pop.is-flag { width: 220px; font-size: var(--fs-sm); }
+/* a popover's title, its rows (a word, then its control) and, last, its button:
+   a flag's editor and a bulk bar action */
+.pfas-sheet-pop.is-action { width: 280px; font-size: var(--fs-sm); }
+.pfas-flag-h, .pfas-pop-h { margin-bottom: var(--sp-2); font-weight: var(--fw-strong); }
+.pfas-flag-row, .pfas-pop-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: var(--sp-1) 0; }
+.pfas-flag-row[hidden] { display: none; }
+.pfas-pop-row:last-child { justify-content: flex-end; margin-top: var(--sp-2); }
+.pfas-pop-row select { min-width: 0; max-width: 170px; }
+.pfas-flag-l, .pfas-pop-l { color: var(--text-muted); }
+.pfas-flag-note { margin: var(--sp-2) 0 0; color: var(--text-muted); font-size: var(--fs-xs); }
+/* the row drawer: the same cells as a vertical list */
+.pfas-sheet-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.pfas-sheet-field { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+.pfas-sheet-flabel { font-size: var(--fs-sm); font-weight: var(--fw-strong); }
+.pfas-sheet-help, .pfas-sheet-ro { color: var(--text-muted); font-size: var(--fs-sm); }
+.pfas-sheet-field.is-leave > :not(.pfas-sheet-flabel):not(.pfas-sheet-leave) { opacity: .5; }
+.pfas-sheet-leave { font-size: var(--fs-sm); }
+/* Edit selected in the matrix layout: a row per matrix, then the row's own
+   fields in three columns. A field set to a value or none, and its matrix,
+   carry the teal edge; under each field, what the ticked rows hold now. */
+.pfas-sheet-h { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-strong);
+  text-transform: uppercase; letter-spacing: .04em; }
+.pfas-sheet-form.is-matrix { gap: var(--sp-2); }
+.pfas-sheet-mx { border-collapse: collapse; font-size: var(--fs-sm); }
+.pfas-sheet-mx th, .pfas-sheet-mx td { padding: 4px var(--sp-3) 4px var(--sp-2); border-bottom: 1px solid var(--line);
+  text-align: left; vertical-align: top; white-space: nowrap; }
+.pfas-sheet-mx thead th { color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-strong); }
+.pfas-sheet-mx tbody th { font-weight: var(--fw-strong); }
+.pfas-sheet-mx tr.is-changed > th { box-shadow: inset 3px 0 0 var(--s-info); }
+.pfas-bulk-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-3); }
+@media (max-width: 640px) { .pfas-bulk-cells { grid-template-columns: minmax(0, 1fr); } }
+.pfas-bulk-cells .pfas-bulk-f { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--sp-1); }
+.pfas-bulk-cells .pfas-sheet-flabel { flex-basis: 100%; }
+.pfas-bulk-in { height: var(--ctl-h-sm); box-sizing: border-box; padding: 0 var(--sp-2); border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-sm); }
+input.pfas-bulk-in { width: 9em; font-variant-numeric: tabular-nums; }
+.pfas-bulk-cells .pfas-bulk-in { flex: 1; min-width: 0; }
+.pfas-bulk-in::placeholder { color: var(--text-muted); font-style: italic; }
+.pfas-bulk-f.is-changed .pfas-bulk-in { border-color: var(--s-info-bd); background: var(--s-info-lt); }
+.pfas-bulk-in[hidden], .pfas-bulk-none[hidden] { display: none; }
+.pfas-bulk-none { color: var(--text-muted); font-style: italic; }
+.pfas-bulk-x { padding: 2px var(--sp-1); border: 0; border-radius: var(--radius); background: none; color: var(--text-muted);
+  font: inherit; cursor: pointer; }
+.pfas-bulk-x:hover, .pfas-bulk-x:focus-visible { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.pfas-hint { display: block; flex-basis: 100%; margin-top: 2px; color: var(--text-muted); font-size: var(--fs-xs); white-space: normal; }
+.pfas-bulk-who { align-self: center; color: var(--text-muted); font-size: var(--fs-sm); }
+.pfas-bulk-foot { align-items: center; width: 100%; }
+.pfas-bulk-key { margin-right: auto; color: var(--text-muted); font-size: var(--fs-xs); }
+.pfas-bulk-count { font-size: var(--fs-sm); font-weight: var(--fw-strong); }
+/* ── .pfas-toast: what an action just did, under its grid, with its Undo ── */
+.pfas-toast { display: inline-flex; align-self: flex-start; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); border-radius: var(--radius-card);
+  background: var(--frame); color: var(--on-frame); font-size: var(--fs-sm); box-shadow: var(--shadow-card-hover); }
+.pfas-toast .pfas-toast-undo { border: 1px solid var(--on-frame-muted); background: none; color: inherit; }
+.pfas-toast .pfas-toast-undo:hover, .pfas-toast .pfas-toast-undo:focus-visible { background: var(--on-frame); color: var(--frame); }
 
 /* ── Chips: a list drawn as chips, each with a remove button ────────────────── */
 .pfas-chips { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; max-width: 100%; }
@@ -833,3 +1367,195 @@ td.pfas-cell { position: relative; }
 .pfas-chips-text:focus, .pfas-chips-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
 .pfas-chips-arrow { color: var(--text-muted); }
 @media (pointer: coarse) { .pfas-chips-x { width: 32px; height: 32px; } .pfas-chips-text, .pfas-chips-select { height: 44px; } }
+
+/* A field that does not apply to the current choice (data-enable-if). */
+[data-enable-if].is-off { opacity: .5; }
+/* A range's typed ends are plain boxes: no -/+ on a range end. */
+.pfas-range .pfas-num-btn { display: none; }
+
+/* Rows a form adds and removes ([data-rows], pfas-components.js initRows). */
+.pfas-rows-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pfas-rows-item { display: flex; align-items: center; gap: var(--sp-2); }
+.pfas-input.is-num { width: 110px; text-align: center; font-variant-numeric: tabular-nums; }
+/* a cell holding a switch or a short value, centred under its header */
+.pfas-table th.is-center, .pfas-table td.is-center { text-align: center; }
+/* three boxes side by side (Equipment Types' lab-wide defaults) */
+
+/* a short value box and what stands beside it (Eye Wash: the required
+   range, which opens the lab-wide defaults it is drawn from; the Run
+   Builder's planned dilution: each box's name). It sets no alignment of
+   its own: a number ends at the right by the number rule, unless its
+   field centres it (.pfas-form-field.is-centered, as on Eye Wash) */
+.pfas-inline > input.is-short { flex: none; width: 110px; }
+/* in a table cell a short box takes a short number's width, so a row of
+   them keeps the table inside its frame */
+td .pfas-inline > input.is-short { width: 9ch; }
+.pfas-inline > .btn.is-range { font-size: var(--fs-md); white-space: nowrap; }
+/* a value the form works out and shows instead of asking (Pipettes: next due) */
+.pfas-shown-value { display: flex; align-items: center; min-height: var(--ctl-h); font-variant-numeric: tabular-nums; }
+/* a settings table sized to its columns, with room for its switches
+   (Homogenisation Methods); a slim last cell holds the row's remove button */
+.pfas-table.is-roomy td { height: 52px; }
+.pfas-table th.is-slim, .pfas-table td.is-slim { width: 1%; padding-left: 0; white-space: nowrap; }
+.pfas-table tr.is-builtin input[type="text"] { color: var(--text-muted); }
+/* a pass / fail result as a symbol (pfas_macros pass-mark) */
+.badge.pfas-mark { min-width: 1.75em; justify-content: center; text-align: center; }
+
+/* Text with fill-in parts as chips (textarea[data-tokens], initTokenText):
+   the "Insert:" bar is the box's foot. */
+.pfas-tokens { border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); }
+.pfas-tokens:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--s-focus-ring); }
+.pfas-tokens-text { min-height: 4.5em; padding: 8px 10px; line-height: 1.7; white-space: pre-wrap; outline: none; }
+.pfas-token { display: inline-block; padding: 0 8px; margin: 0 2px; border-radius: 999px; background: var(--accent-soft);
+  color: var(--accent-text); font-size: var(--fs-sm); font-weight: var(--fw-strong); line-height: 1.6; user-select: all; }
+.pfas-tokens-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px;
+  border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.pfas-tokens-lead { font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-tokens.is-line .pfas-tokens-text { min-height: 0; white-space: nowrap; overflow-x: auto; }
+
+/* ── Settings layout ───────────────────────────────────────────────────
+   Every settings block (a declared section, the Engine's names, the Run
+   Builder's "Loaded on the instrument") is one two-column grid: the label
+   in bold with its help line under it on the left, the control on the
+   right. A switch sits left of its state word. A text area spans the block,
+   its label above it. On a phone the label sits above its control. */
+.cf-settings { display: grid; grid-template-columns: 260px 1fr; column-gap: 16px; row-gap: 10px;
+  align-items: start; margin: 0 0 var(--sp-3); }
+.cf-settings > [hidden] { display: none !important; }   /* a field shown for another's value: the grid must not undo hidden */
+.cf-settings > .cf-label { min-width: 0; padding-top: 8px; font-family: inherit; font-size: var(--fs-sm);
+  font-weight: var(--fw-strong); letter-spacing: normal; text-transform: none; color: var(--text); }
+.cf-settings > .cf-label > label, .cf-settings > .cf-label > .cf-label-t { display: block; margin: 0;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
+.cf-settings .hint { display: block; margin-top: 3px; font-size: var(--fs-xs); font-weight: var(--fw-body);
+  color: var(--text-muted); }
+.cf-settings > .cf-control { min-width: 0; }
+.cf-settings > .cf-control.is-switch { display: flex; align-items: center; gap: 10px; min-height: var(--ctl-h); }
+.cf-settings > .cf-control > input[type=text], .cf-settings > .cf-control > select { width: 100%; max-width: 360px; }
+/* a number left without a stepper (a typed limit, or read-only N/A) is
+   fitted to its value; a stepper (.pfas-num) keeps its own width */
+.cf-settings > .cf-control > input[type=number] { width: 12ch; max-width: 100%; }
+.cf-settings > .cf-control > textarea { width: 100%; }
+.cf-settings > .is-wide { grid-column: 1 / -1; }
+.cf-settings > .cf-label.is-wide { padding-top: 0; }
+.cf-settings > .cf-control > .cf-chips { margin: 6px 0 0; }
+@media (max-width: 640px) {
+  .cf-settings { grid-template-columns: 1fr; row-gap: 4px; }
+  .cf-settings > .cf-label { padding-top: var(--sp-2); }
+}
+/* A field governed by a rule switch that is off (config_forms rule=): N/A,
+   greyed and read-only; its value still posts. A slider cannot be dragged. */
+.cf-settings > .is-na > label, .cf-settings > .is-na input, .cf-settings > .is-na .pfas-range { opacity: .55; }
+.cf-settings > .is-na .pfas-range, .cf-settings > .is-na .pfas-num-btn { pointer-events: none; }
+
+/* Facility Monitoring: one card per unit (facility_temp_log.pt) */
+.pfas-mon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--sp-4); }
+.pfas-mon-card { margin-bottom: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.pfas-mon-now { display: flex; align-items: center; gap: var(--sp-2); }
+.pfas-mon-value { font-size: var(--fs-lg); font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
+.pfas-mon-chart { position: relative; height: 120px; }
+/* Logbooks > Recipes: a recipe's card (R5-15) */
+.rc-card { margin-top: var(--sp-4); }
+.rc-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--sp-2) var(--sp-4); margin: var(--sp-3) 0; }
+.rc-facts dt { font-size: var(--fs-xs); color: var(--text-muted); font-weight: var(--fw-strong); }
+.rc-facts dd { margin: 0; }
+.rc-h { font-family: var(--font-heading); font-size: var(--fs-md); font-weight: var(--fw-heading); margin: var(--sp-4) 0 var(--sp-2); }
+/* the lot record's parentage: each parent indented under what it made */
+.lr-tree { list-style: none; margin: 0; padding: 0; }
+.lr-row { display: flex; gap: var(--sp-2); align-items: baseline; padding: 4px 0; border-left: 2px solid var(--line); padding-left: var(--sp-2); }
+.lr-row.d0 { border-left: 0; padding-left: 0; font-weight: var(--fw-strong); }
+.lr-row.d1 { margin-left: 0; }
+.lr-row.d2 { margin-left: 24px; }
+.lr-row.d3 { margin-left: 48px; }
+.lr-row.d4, .lr-row.d5 { margin-left: 72px; }
+.lr-row small { color: var(--text-muted); }
+.lr-row.is-problem small { color: var(--s-danger-dk); }
+@media print { .rc-card { break-inside: avoid; } }
+
+/* Logbooks > Templates, By use (R5-47): each step with its templates */
+.lb-use-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--sp-3); }
+.lb-use-step { border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-3); }
+.lb-use-step h4 { margin: 0 0 var(--sp-2); font-size: var(--fs-base); }
+.lb-use-step ul { list-style: none; padding: 0; margin: 0 0 var(--sp-2); display: grid; gap: var(--sp-1); }
+
+/* Control charts: the filters' right column (R5-65) and the lab overlay's strips (R5-57) */
+.cc-right { display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2); }
+.cc-overlay { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
+.chart-strips { display: flex; flex-direction: column; }
+.chart-strip { position: relative; height: 120px; }
+
+/* Help figures (R5-71): the captured page with its parts numbered */
+.help-figure { margin: var(--sp-4) 0; }
+.help-figure svg { width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius, 6px); }
+.help-mark rect { fill: none; stroke: var(--s-danger); stroke-width: 3; }
+.help-mark circle { fill: var(--s-danger); }
+.help-mark text { fill: var(--on-accent); font-size: 16px; font-weight: var(--fw-strong); }
+.help-caption { margin: 6px 0 0; padding-left: 22px; font-size: var(--fs-sm); }
+
+/* ── Method profile editor: the tab strip, tab intros, the stage table ─────── */
+.mp-tabs { margin-bottom: var(--sp-5); }
+/* A section that opens and closes (details.pfas-sec): the title, then a
+   one-phrase summary line of what it holds; a CSS triangle in place of the
+   card's glyph; one body under it */
+.pfas-sec { margin: 0 0 var(--sp-3); }
+.pfas-sec > summary { align-items: baseline; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.pfas-sec > summary::before { content: ""; width: 0; height: 0; align-self: center; border-style: solid;
+  border-width: 5px 0 5px 7px; border-color: transparent transparent transparent var(--text-muted); }
+.pfas-sec[open] > summary::before { transform: rotate(90deg); }
+.pfas-sec-t { font-size: var(--fs-md); font-weight: var(--fw-strong); }
+.pfas-sec-s { font-size: var(--fs-sm); font-weight: var(--fw-body); color: var(--text-muted); }
+.pfas-sec-b { padding: var(--sp-3) var(--sp-4) var(--sp-4); }
+/* the footer's line of what is unsaved: before the actions, a dot while
+   anything is unsaved (the tab's own dot, in the footer) */
+.pfas-unsaved { margin-right: auto; }
+.pfas-unsaved.is-dirty::before { content: "\2022\00a0"; color: var(--s-warning); }
+/* a tab with unsaved changes: a dot after its label */
+.pfas-seg-item.is-dirty::after { content: "\2022"; color: var(--s-warning); }
+.pfas-seg-item[aria-selected="true"].is-dirty::after { color: var(--on-accent); }
+/* a tab's one line of purpose */
+.pane-intro { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.5; margin: 0 0 var(--sp-3); }
+.pane-intro code { font-family: var(--font-mono); font-size: var(--fs-xs); }
+/* Run & reporting: the extraction stages, one row each (method_profile_edit.js):
+   the handle and the order, the name over its id, what is recorded per
+   sample, the two switches as words, Edit at the row's end; the rest of a
+   stage is edited in its drawer */
+.mp-stages td, .mp-stages th { padding: 8px 14px; vertical-align: middle; }
+/* the order is a number: it ends at the right, its heading with it; the
+   handle stays at the cell's left */
+.mp-stages .mp-stage-order { width: 1%; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.mp-stages .mp-stage-order .grip { float: left; margin-right: var(--sp-3); }
+.mp-stages tr.dragging { opacity: .35; }
+.mp-stage-name { display: block; font-weight: var(--fw-strong); }
+.mp-stage-slug { display: block; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+.mp-stages .mp-stage-act { width: 1%; white-space: nowrap; text-align: right; }
+/* a settings block in a drawer (outside the content area): its boxes drawn
+   as the page draws them, text starting at the left */
+.pfas-drawer .cf-settings :where(input[type=text], input[type=number], select, textarea) { box-sizing: border-box; padding: 8px 10px;
+  border: 1px solid var(--s-input-border); border-radius: 4px; font-family: inherit; font-size: var(--fs-base);
+  line-height: 18px; text-align: left; color: var(--s-input-text); background: var(--surface); }
+.pfas-drawer .cf-settings textarea { line-height: 1.5; resize: vertical; }
+.pfas-drawer .cf-settings input[type=number] { text-align: right; font-variant-numeric: tabular-nums; }
+/* a value the drawer refuses: the reason under its box */
+.cf-settings .hint.is-error { color: var(--s-danger-dk); }
+/* a reason drawn only when there is one stays hidden until then */
+.cf-settings .hint[hidden] { display: none; }
+.pfas-drawer .cf-settings :where(input, select, textarea):focus { outline: none; border-color: var(--s-primary);
+  box-shadow: 0 0 0 3px var(--s-focus-ring); }
+.mp-stage-thumb { display: block; }
+.mp-stage-thumb img { display: block; max-width: 160px; max-height: 96px; margin-bottom: var(--sp-2);
+  border: 1px solid var(--line); border-radius: var(--radius); }
+.mp-stage-thumb[hidden], .mp-stage-clear[hidden] { display: none; }
+.mp-stage-clear { margin-top: var(--sp-2); }
+.mp-stage-actions { flex: 1; }
+.mp-stage-remove { margin-left: auto; }
+/* a switch with its words on one line, inside a column of captions */
+.cb-label { flex-direction: row !important; align-items: center !important; gap: 6px !important;
+  font-size: var(--fs-base) !important; font-weight: var(--fw-body) !important; color: var(--s-text) !important;
+  cursor: pointer; }
+
+/* A table that fits its box: it takes the box's width, its cells wrap, the
+   choices and text boxes in it shrink to their cell, and the last column (a
+   button) takes its own width instead of being cut at the box's edge. */
+.pfas-table-fit { width: 100%; }
+.pfas-table-fit th, .pfas-table-fit td { overflow-wrap: anywhere; }
+.pfas-table-fit td > select, .pfas-table-fit td > input[type="text"] { width: 100%; min-width: 10ch; max-width: 100%; box-sizing: border-box; }
+.pfas-table-fit td:last-child { width: 1%; white-space: nowrap; overflow-wrap: normal; }

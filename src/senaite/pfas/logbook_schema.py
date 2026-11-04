@@ -1,26 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-Canonical vocabulary + validation for logbook field schemas and guided steps.
+Canonical vocabulary + validation for logbook field schemas.
 
-Until now the set of legal field types existed ONLY as `tal:condition` guards
-inside logbook_dynamic.pt and a 10px hint string in prep_logbooks.pt — an
-unknown type silently rendered nothing, and malformed JSON was persisted
-verbatim then degraded to an empty form. This module is the single source of
-truth for:
+The single source of truth for:
 
   * which field types exist and which keys each one actually honours (`caps`),
-  * what a valid field name / step looks like,
-  * how fields are grouped into guided steps at render time.
+  * what a valid field name looks like.
 
-`caps` mirrors the AUDITED behaviour of the renderer, not an aspiration:
+`caps` mirrors what the renderer does:
   - "required" / "width" are honoured only for text/date/number
   - "correctable" is ignored for table and checkbox
   - table columns are coerced to text/date/number
-Keeping it here means the builder UI, the server-side validator and the help
-text all derive from one list.
+The builder UI, the server-side validator and the help text all derive from
+this one list; validate_schema refuses an unknown type.
 
-Deliberately free of Zope/Plone imports so it can be exercised from a plain
-`bin/instance run` script (and reasoned about) without a site.
+Free of Zope/Plone imports, so it runs without a site.
 
 Python 2.7 compatible.
 """
@@ -58,7 +52,7 @@ FIELD_TYPES = [
      "caps": ["correctable"]},
     {"type": "table",       "label": "Table",
      "caps": ["columns", "default_rows"]},
-    # : the instrument a temperature was taken with; on save the
+    # the instrument a temperature was taken with; on save the
     # correction factor in force is frozen beside it and applied to the
     # number columns that name it (column key `corrected_by`).
     {"type": "thermometer", "label": "Thermometer used",
@@ -93,14 +87,11 @@ WIDTHS = ("sm", "md", "lg")
 # Field names become POST parameter names and dict keys.
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
-# A leading underscore is reserved for bookkeeping keys (_corrections,
-# _steps_done) and for the correction POST params (_newval_*, _corr_by_*).
+# A leading underscore is reserved for bookkeeping keys (_corrections, _def_rev)
+# and for the correction POST params (_newval_*, _corr_by_*).
 # A _json suffix would collide with a table's hidden input (<name>_json).
-# Banning both kills the entire collision class in two rules.
 RESERVED_SUFFIXES = ("_json",)
 
-STEP_ID_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
-UNASSIGNED_STEP_ID = "_unassigned"
 
 # Reserved keys stored INSIDE a table row to mark it struck as not-applicable
 # ("we did not prepare this one today"). Safe from collision because NAME_RE
@@ -121,9 +112,8 @@ def active_rows(rows):
     """The rows that COUNT.
 
     A struck row is recorded and printed, but it is inert: nothing consumes it,
-    nothing is created from it, and it must never be treated as a real entry.
-    Defined once here so every consumer inherits the same meaning rather than
-    each re-deciding what a struck row means.
+    nothing is created from it, and it is never a real entry. Defined once,
+    for every consumer.
     """
     return [r for r in (rows or [])
             if isinstance(r, dict) and not r.get(NA_KEY)]
@@ -186,20 +176,18 @@ def hidden_names(fields, data):
             and f["name"] not in shown and (f.get("type") or "text") not in VALUELESS]
 
 
-def missing_required(fields, data, only=None):
+def missing_required(fields, data):
     """Labels of the required fields with no value in `data`: the server's
     copy of the browser's `required`, so a post that skips the form cannot
-    save an entry without them. `only`: the field names this post covers
-    (guided mode saves one step at a time); None = every field. A field
-    whose type does not honour "required", or that its show-if hides, is
-    never asked for."""
+    save an entry without them. A field whose type does not honour
+    "required", or that its show-if hides, is never asked for."""
     shown = visible_names(fields, data)
     out = []
     for f in fields or []:
         if not isinstance(f, dict) or not f.get("required"):
             continue
         name = f.get("name")
-        if not name or (only is not None and name not in only) or name not in shown:
+        if not name or name not in shown:
             continue
         if "required" not in CAPS_BY_TYPE.get(f.get("type", "text"), ()):
             continue
@@ -208,7 +196,7 @@ def missing_required(fields, data, only=None):
     return out
 
 
-def value_errors(fields, data, only=None):
+def value_errors(fields, data):
     """Sentences for answers outside a field's rule: a number below its
     minimum or above its maximum, text not matching its pattern, a choice
     that is not one of its options. Only shown fields with an answer."""
@@ -218,7 +206,7 @@ def value_errors(fields, data, only=None):
         if not isinstance(f, dict):
             continue
         name = f.get("name")
-        if not name or name not in shown or (only is not None and name not in only):
+        if not name or name not in shown:
             continue
         value = (data or {}).get(name)
         if _empty(value):
@@ -245,6 +233,8 @@ def value_errors(fields, data, only=None):
     return out
 
 
+# ── Validation ───────────────────────────────────────────────────────────────
+
 def column_name(label, taken=()):
     """A field / column name (NAME_RE) from a label, unique against `taken`."""
     base = re.sub(r"[^a-z0-9]+", u"_", (label or u"").lower()).strip(u"_") or u"col"
@@ -259,35 +249,6 @@ def column_name(label, taken=()):
         name, n = u"%s_%d" % (base, n), n + 1
     return name
 
-
-def columns_schema(labels):
-    """The field schema of a simple logbook made from a list of column
-    labels (Logbooks > Templates, "Table columns"): who and when, the table,
-    notes, review -- the shape the old custom logbook page drew."""
-    taken, cols = set(), []
-    for label in labels or []:
-        label = (label or u"").strip()
-        if not label:
-            continue
-        name = column_name(label, taken)
-        taken.add(name)
-        cols.append({"name": name, "label": label, "type": "text"})
-    fields = [{"name": "analyst", "label": "Analyst", "type": "text"},
-              {"name": "log_date", "label": "Date", "type": "date"}]
-    if cols:
-        fields.append({"name": "rows", "label": "Entries", "type": "table", "columns": cols})
-    fields += [{"name": "notes", "label": "Notes", "type": "textarea"},
-               {"name": "reviewed_by", "label": "Reviewed By", "type": "text"},
-               {"name": "reviewed_date", "label": "Reviewed Date", "type": "date"}]
-    return fields
-
-
-def field_type_labels():
-    """[(type, label)] for building a <select>."""
-    return [(t["type"], t["label"]) for t in FIELD_TYPES]
-
-
-# ── Validation ───────────────────────────────────────────────────────────────
 
 def validate_schema(fields):
     """Validate a parsed field_schema_json list.
@@ -423,8 +384,8 @@ def _thermometer_names(fields):
 def canonicalize_schema(fields):
     """Strip keys a type does not honour, so stored JSON stays truthful.
 
-    e.g. width/required on a textarea are silently ignored by the renderer;
-    keeping them in the stored schema implies behaviour that does not exist.
+    e.g. width/required on a textarea are ignored by the renderer, so they
+    are not stored.
     """
     out = []
     for f in fields or []:
@@ -492,127 +453,3 @@ def canonicalize_schema(fields):
     return out
 
 
-def validate_steps(steps, fields):
-    """Validate parsed steps_json against the field schema."""
-    errors = []
-    if steps in (None, ""):
-        return errors
-    if not isinstance(steps, list):
-        return ["Steps must be a list."]
-
-    # NB: a step may reference a field name that no longer exists in the
-    # schema (the field was deleted). That is deliberately NOT an error —
-    # build_steps drops such names silently — so the schema is not consulted
-    # for validity here, only for duplicate-claim detection.
-    seen_ids = set()
-    claimed = {}
-    for idx, s in enumerate(steps):
-        where = "Step {0}".format(idx + 1)
-        if not isinstance(s, dict):
-            errors.append("{0}: not an object.".format(where))
-            continue
-        sid = (s.get("id") or "").strip()
-        if not sid:
-            errors.append("{0}: id is required.".format(where))
-        elif not STEP_ID_RE.match(sid):
-            errors.append(
-                "{0} ('{1}'): id may use only lowercase letters, digits, "
-                "'-' and '_'.".format(where, sid))
-        elif sid in seen_ids:
-            errors.append("{0}: duplicate id '{1}'.".format(where, sid))
-        else:
-            seen_ids.add(sid)
-
-        if not (s.get("title") or "").strip():
-            errors.append("{0}: title is required.".format(where))
-
-        names = s.get("fields")
-        if names is not None and not isinstance(names, list):
-            errors.append("{0}: fields must be a list of field names.".format(where))
-            continue
-        for n in (names or []):
-            n = (n or "").strip()
-            if not n:
-                continue
-            # An unknown name is NOT an error — the field may have been
-            # deleted since; build_steps drops it silently.
-            if n in claimed:
-                errors.append(
-                    "{0}: field '{1}' is already used by step '{2}'.".format(
-                        where, n, claimed[n]))
-            else:
-                claimed[n] = sid or where
-    return errors
-
-
-def build_steps(fields, steps):
-    """Resolve steps against the schema for rendering.
-
-    Returns a list of {id, title, instructions, media, media_alt, fields}
-    where `fields` holds the RESOLVED field dicts (in schema order), not names.
-
-    Guarantees:
-      * a name that no longer exists in the schema is dropped silently
-      * a field claimed by two steps belongs to the first one
-      * every field not claimed by any step lands in a trailing synthetic step,
-        so no field can ever become unreachable (and therefore un-fillable)
-    """
-    by_name = {}
-    order = []
-    for f in (fields or []):
-        if not isinstance(f, dict):
-            continue
-        n = (f.get("name") or "").strip()
-        if n:
-            by_name[n] = f
-            order.append(n)
-
-    out = []
-    used = set()
-    for s in (steps or []):
-        if not isinstance(s, dict):
-            continue
-        resolved = []
-        for n in (s.get("fields") or []):
-            n = (n or "").strip()
-            if n and n in by_name and n not in used:
-                used.add(n)
-                resolved.append(by_name[n])
-        out.append({
-            "id": (s.get("id") or "").strip(),
-            "title": (s.get("title") or "").strip(),
-            "instructions": s.get("instructions") or "",
-            "media": (s.get("media") or "").strip(),
-            "media_alt": (s.get("media_alt") or "").strip(),
-            "fields": resolved,
-        })
-
-    leftover = [by_name[n] for n in order if n not in used]
-    if leftover:
-        out.append({
-            "id": UNASSIGNED_STEP_ID,
-            "title": "Additional fields",
-            "instructions": "",
-            "media": "",
-            "media_alt": "",
-            "fields": leftover,
-        })
-    return out
-
-
-def unassigned_names(fields, steps):
-    """Field names not claimed by any step (what build_steps would sweep up)."""
-    claimed = set()
-    for s in (steps or []):
-        if isinstance(s, dict):
-            for n in (s.get("fields") or []):
-                n = (n or "").strip()
-                if n:
-                    claimed.add(n)
-    out = []
-    for f in (fields or []):
-        if isinstance(f, dict):
-            n = (f.get("name") or "").strip()
-            if n and n not in claimed:
-                out.append(n)
-    return out

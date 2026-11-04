@@ -3,16 +3,13 @@
 Dilution tracking — the contract between FM-ENV-003 and the pipeline.
 
 A dilution is not a separate sample. It is the SAME sample re-injected at a
-known factor because the neat extract read above the calibration range, and it
-exists so that the over-range analytes have a quantifiable number. The lab
-records it on the Extraction Log (FM-ENV-003), because a 1:10 dilution is made
-from the final extract at reconstitution — an extraction step.
+known factor because the neat extract read above the calibration range, so
+the over-range analytes have a quantifiable number. The lab records it on the
+Extraction Log (FM-ENV-003): a dilution is made from the final extract at
+reconstitution, an extraction step.
 
-That record is the ONLY source of truth for the relationship. Deriving it from
-the injection name (`"…; Dil. 1:10"`) was deliberately rejected: naming
-conventions belong to the lab, not to the code, and the same assumption in
-``INJECTION_PATTERNS`` had already produced a validator that rejected the LIMS's
-own output.
+That record is the ONLY source of truth for the relationship; it is never
+derived from the injection name (naming conventions belong to the lab).
 
 ## The contract
 
@@ -21,14 +18,12 @@ FM-ENV-003's ``samples`` table carries two columns per row:
     dilution_of      the Sample ID (or injection name) this row was diluted from
     dilution_factor  the total fold, a number > 1 ("2", "10"); ratios are refused
 
-A row with an empty ``dilution_of`` is a neat sample — which every existing
-logbook entry is, so batches recorded before these columns existed resolve to
-"no dilutions" and behave exactly as they did.
+A row with an empty ``dilution_of`` is a neat sample.
 
 ## What the pipeline does with it
 
-* the dilution injection is classified ``Dilution``, not ``Sample`` — so it stops
-  appearing as a sample in its own right (it was being double-reported);
+* the dilution injection is classified ``Dilution``, not ``Sample``, so it is
+  never reported as a sample in its own right;
 * QC rules are NOT applied to it, except the internal-standard consistency
   check, which is the one thing a dilution must still demonstrate;
 * in the final report, an analyte whose NEAT result is above the limit of
@@ -52,19 +47,18 @@ PARENT_COLUMN = "dilution_of"
 FACTOR_COLUMN = "dilution_factor"
 SAMPLE_ID_COLUMN = "sample_id"
 
-# "1:10" | "1 : 10" | "10" | "0.1"
+# a ratio, "1:10" or "1 : 10" (parse_factor refuses ratios)
 _RATIO_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$')
 
 
 def parse_factor(raw):
-    """A dilution's total fold as a float, or None (
-    "Dilution fold"): a number greater than 1 -- "2", "10", 2.5.
+    """A dilution's total fold ("Dilution fold") as a float, or None: a
+    number greater than 1 -- "2", "10", 2.5.
 
     Ratios are refused, not interpreted: to this lab "1:1" is a 2-fold
-    dilution (sample : diluent), while the code that existed read "1:10" as
-    10-fold. A notation that can be read two ways is not evidence. A value of
-    1 or below is not a dilution (the old reciprocal guess, "0.1" -> 10, went
-    with the ratios)."""
+    dilution (sample : diluent), elsewhere "1:10" is 10-fold; a notation
+    that reads two ways is not evidence.
+    A value of 1 or below is not a dilution."""
     if raw is None or isinstance(raw, bool):
         return None
     try:
@@ -77,8 +71,7 @@ def parse_factor(raw):
 def get_dilutions(batch):
     """{dilution_sample_id: {"parent": str, "factor": float|None}} for a batch.
 
-    Empty when the logbook has no dilution rows — which is every batch recorded
-    before these columns existed, so the caller's behaviour is unchanged.
+    Empty when the logbook has no dilution rows.
     """
     out = {}
     if batch is None:
@@ -86,7 +79,7 @@ def get_dilutions(batch):
     try:
         from zope.annotation.interfaces import IAnnotations
         raw = IAnnotations(batch).get(LOGBOOK_KEY)
-    except Exception:
+    except TypeError:
         return out
     if not raw:
         return out
@@ -97,18 +90,12 @@ def get_dilutions(batch):
                        getattr(batch, "getId", lambda: "?")())
         return out
 
-    try:
-        from senaite.pfas.logbook_schema import active_rows
-    except Exception:
-        def active_rows(rows):
-            return [r for r in (rows or []) if isinstance(r, dict)]
+    from senaite.pfas.sample_table import route_key
+    from senaite.pfas.logbook_schema import active_rows
 
-    try:
-        from senaite.pfas import extraction_batch
-        rows = extraction_batch.rekey_rows(active_rows(data.get(SAMPLES_FIELD)),
-                                           extraction_batch.load(batch))
-    except Exception:                                       # noqa: BLE001
-        rows = active_rows(data.get(SAMPLES_FIELD))
+    from senaite.pfas import extraction_batch
+    rows = extraction_batch.rekey_rows(active_rows(data.get(SAMPLES_FIELD)),
+                                       extraction_batch.load(batch))
     for row in rows:
         parent = (row.get(PARENT_COLUMN) or u"").strip()
         if not parent:
@@ -119,6 +106,9 @@ def get_dilutions(batch):
         out[sample_id] = {
             "parent": parent,
             "factor": parse_factor(row.get(FACTOR_COLUMN)),
+            # how it was diluted: the worker judges a re-spiked
+            # dilution's surrogate and qualifies its result
+            "route": route_key(row.get("route")),
         }
     return out
 
@@ -144,41 +134,29 @@ def get_sample_amounts(batch):
     try:
         from zope.annotation.interfaces import IAnnotations
         data = json.loads(IAnnotations(batch).get(LOGBOOK_KEY) or u"{}")
-    except Exception:                                       # noqa: BLE001
+    except (TypeError, ValueError):
         return {}
-    try:
-        from senaite.pfas.logbook_schema import active_rows
-    except Exception:                                       # noqa: BLE001
-        def active_rows(rows):
-            return [r for r in (rows or []) if isinstance(r, dict)]
+    from senaite.pfas.logbook_schema import active_rows
+    from senaite.pfas import extraction_batch
     rows = active_rows(data.get(SAMPLES_FIELD))
-    try:
-        from senaite.pfas import extraction_batch
-        rows = extraction_batch.rekey_rows(rows, extraction_batch.load(batch))
-    except Exception:                                       # noqa: BLE001
-        pass
+    rows = extraction_batch.rekey_rows(rows, extraction_batch.load(batch))
     return sample_amounts_from_rows(rows)
 
 
 # ── Matrix-spike pedigree ────────────────────────────────────────────────────
 # The guided extraction records, per spiked injection, which sample it was
-# fortified from and at what level. That is the same shape of fact as a
-# dilution: something the bench did, recorded where the bench records it.
-#
-# It exists because the pipeline otherwise identifies an LFSM by looking for
-# the literal substring "; LFSM " in the injection name — another hardcoded
-# naming convention, and one this lab's names do not follow, so no LFSM was
-# ever evaluated.
+# fortified from and at what level: like a dilution, something the bench did,
+# recorded where the bench records it. An LFSM is identified by this record,
+# never by its injection name.
 
 EXTRACTION_SESSION_KEY = u"senaite.pfas.extraction_session"
 
 
 def spikes_from_rows(rows):
     """{injection: {"parent", "spike", "spike_unit", "level", "qc_type",
-    "lfsm"}} from FM-ENV-003's older `spikes` rows (the guide's spike card
-    before the extraction batch's members, extraction_batch.py, held them).
-    `spike` is the amount added in `spike_unit` (the matrix's reporting
-    unit), None for the method's level; an older row's `spike_ppt` is ppt."""
+    "lfsm"}} from FM-ENV-003's `spikes` rows (read where the extraction
+    batch's members, extraction_batch.py, hold none). `spike` is the amount added in `spike_unit` (the matrix's reporting
+    unit), None for the method's level; a row's `spike_ppt` is ppt."""
     out = {}
     for row in rows or []:
         if not isinstance(row, dict):
@@ -204,20 +182,15 @@ def spikes_from_rows(rows):
 def get_spikes(batch):
     """{injection: {"parent", "spike", "spike_unit", "level", "qc_type", "lfsm"}}.
 
-    The guided extraction's spike rows (FM-ENV-003 `spikes`)
-    are the record. A reviewer's amount for a recorded spike whose amount was
-    blank (Data Review) fills it in; older session records that name a parent
-    are still read."""
+    The extraction batch's members are the record, else FM-ENV-003's `spikes`
+    rows. A reviewer's amount for a recorded spike whose amount was blank
+    (Data Review) fills it in; session records that name a parent are read
+    too."""
     out = {}
     if batch is None:
         return out
-    # the extraction batch's members (extraction_batch.py)
-    # are the record; the guide's older spike rows are read where none exist
-    try:
-        from senaite.pfas import extraction_batch
-        members = extraction_batch.load(batch)
-    except Exception:                                       # noqa: BLE001
-        members = []
+    from senaite.pfas import extraction_batch
+    members = extraction_batch.load(batch)
     if members:
         recorded = extraction_batch.spike_map(members)
         out.update(_session_spikes(batch, recorded))
@@ -226,7 +199,7 @@ def get_spikes(batch):
     try:
         from zope.annotation.interfaces import IAnnotations
         logbook = json.loads(IAnnotations(batch).get(LOGBOOK_KEY) or u"{}")
-    except Exception:                                       # noqa: BLE001
+    except (TypeError, ValueError):
         logbook = {}
     recorded = spikes_from_rows(logbook.get("spikes") if isinstance(logbook, dict) else [])
     out.update(_session_spikes(batch, recorded))
@@ -235,13 +208,13 @@ def get_spikes(batch):
 
 
 def _session_spikes(batch, recorded):
-    """Older session pedigree entries with a parent; and, into `recorded`, a
+    """Session pedigree entries with a parent; and, into `recorded`, a
     reviewer-entered amount for a recorded spike that had none."""
     out = {}
     try:
         from zope.annotation.interfaces import IAnnotations
         raw = IAnnotations(batch).get(EXTRACTION_SESSION_KEY)
-    except Exception:
+    except TypeError:
         return out
     if not raw:
         return out

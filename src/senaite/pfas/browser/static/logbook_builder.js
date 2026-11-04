@@ -1,8 +1,7 @@
 /* PFAS logbook form builder.
  *
- * Replaces hand-typed JSON with a visual field + step editor. Serialises back
- * into the two hidden inputs (#lbFieldSchema, #lbStepsJson) that the server
- * already reads, so prep_logbooks.py needs no parsing change.
+ * Replaces hand-typed JSON with a visual field editor. Serialises back into
+ * the hidden input (#lbFieldSchema) that the server reads.
  *
  * The field-type vocabulary is NOT defined here — it is injected as
  * window.LB_FIELD_TYPES from senaite.pfas.logbook_schema.FIELD_TYPES, so the
@@ -23,7 +22,6 @@
   var NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
   var fields = [];   // [{name,label,type,required,width,correctable,lot_type,columns,default_rows}]
-  var steps = [];    // [{id,title,instructions,media,media_alt,fields:[name,...]}]
 
   function capsFor(type) {
     for (var i = 0; i < TYPES.length; i++) {
@@ -46,11 +44,6 @@
     if (selected) { o.selected = true; }
     return o;
   }
-  function slugId(s) {
-    return (s || "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-")
-                    .replace(/^-+|-+$/g, "").substring(0, 32);
-  }
-
   /* Derive the stored key from the analyst-facing question, obeying the
      server rules: start with a letter, lowercase/digits/underscore only,
      never a leading underscore, never a _json suffix. */
@@ -94,9 +87,7 @@
       labelIn.addEventListener("input", function () {
         f.label = labelIn.value;
         if (!f._lockName) {
-          var old = f.name;
           f.name = deriveName(labelIn.value);
-          renameInSteps(old, f.name);
           var kt = row.querySelector(".fb-keytext");
           if (kt) { kt.textContent = f.name || "(not set)"; }
         }
@@ -120,8 +111,7 @@
       btns.appendChild(iconBtn("▼", "Move down", function () { move(fields, idx, 1); }));
       btns.appendChild(iconBtn("×", "Remove field", function () {
         if (!window.confirm("Remove field '" + (f.name || "") + "'?")) { return; }
-        removeFromSteps(f.name);
-        fields.splice(idx, 1); renderFields(); renderSteps(); markDirty();
+        fields.splice(idx, 1); renderFields(); markDirty();
       }));
       head.appendChild(btns);
       row.appendChild(head);
@@ -179,7 +169,7 @@
         if (f._lockName) {                       // back to automatic
           f._lockName = false;
           f.name = deriveName(f.label || "");
-          renderFields(); renderSteps(); markDirty();
+          renderFields(); markDirty();
           return;
         }
         var v = window.prompt(
@@ -188,11 +178,9 @@
           "logbook that already has saved records will orphan the old values.",
           f.name || "");
         if (v === null) { return; }
-        var old = f.name;
         f.name = deriveName(v);
         f._lockName = true;
-        renameInSteps(old, f.name);
-        renderFields(); renderSteps(); markDirty();
+        renderFields(); markDirty();
       });
       keyBar.appendChild(edit);
       row.appendChild(keyBar);
@@ -222,7 +210,7 @@
     var to = idx + delta;
     if (to < 0 || to >= arr.length) { return; }
     var tmp = arr[idx]; arr[idx] = arr[to]; arr[to] = tmp;
-    renderFields(); renderSteps(); markDirty();
+    renderFields(); markDirty();
   }
 
   function columnEditor(f) {
@@ -274,250 +262,6 @@
     return wrap;
   }
 
-  /* ── Steps tab ──────────────────────────────────────────────────────── */
-
-  function claimedBy(name) {
-    for (var i = 0; i < steps.length; i++) {
-      if ((steps[i].fields || []).indexOf(name) !== -1) { return i; }
-    }
-    return -1;
-  }
-  function removeFromSteps(name) {
-    steps.forEach(function (s) {
-      var i = (s.fields || []).indexOf(name);
-      if (i !== -1) { s.fields.splice(i, 1); }
-    });
-  }
-  function renameInSteps(oldName, newName) {
-    if (!oldName || oldName === newName) { return; }
-    steps.forEach(function (s) {
-      var i = (s.fields || []).indexOf(oldName);
-      if (i !== -1) { s.fields[i] = newName; }
-    });
-  }
-
-  function renderSteps() {
-    var host = document.getElementById("fbStepList");
-    if (!host) { return; }
-    host.textContent = "";
-
-    if (!steps.length) {
-      host.appendChild(el("div", "fb-empty",
-        "No steps. This logbook opens as a single concise form."));
-    }
-
-    steps.forEach(function (s, idx) {
-      var card = el("div", "fb-step");
-
-      var head = el("div", "fb-row-head");
-      head.appendChild(el("span", "fb-idx", String(idx + 1)));
-      var t = el("input", "fb-in fb-in-label"); t.type = "text";
-      t.value = s.title || ""; t.placeholder = "Step title, e.g. Weigh the reagent";
-      t.addEventListener("input", function () {
-        s.title = t.value;
-        if (!s.id) { s.id = slugId(t.value) || ("s" + (idx + 1)); }
-        markDirty();
-      });
-      head.appendChild(t);
-      var btns = el("span", "fb-rowbtns");
-      btns.appendChild(iconBtn("▲", "Move up", function () { moveStep(idx, -1); }));
-      btns.appendChild(iconBtn("▼", "Move down", function () { moveStep(idx, 1); }));
-      btns.appendChild(iconBtn("×", "Remove step", function () {
-        if (!window.confirm("Remove this step? Its fields return to unassigned; no field is deleted.")) { return; }
-        steps.splice(idx, 1); renderSteps(); markDirty();
-      }));
-      head.appendChild(btns);
-      card.appendChild(head);
-
-      var body = el("div", "fb-step-body");
-
-      /* instructions */
-      var left = el("div", "fb-step-instr");
-      left.appendChild(el("label", "fb-sublabel", "Instructions (one action per line)"));
-      var ta = el("textarea", "fb-in fb-instr");
-      ta.rows = 5; ta.value = s.instructions || "";
-      ta.addEventListener("input", function () { s.instructions = ta.value; markDirty(); });
-      left.appendChild(ta);
-      body.appendChild(left);
-
-      /* media */
-      var right = el("div", "fb-step-media");
-      right.appendChild(el("label", "fb-sublabel", "Picture of the action"));
-      var prev = el("div", "fb-thumb");
-      if (s.media) {
-        var img = document.createElement("img");
-        img.src = mediaSrc(s.media);
-        img.alt = s.media_alt || "";
-        prev.appendChild(img);
-      } else {
-        prev.appendChild(el("span", "fb-thumb-empty", "none chosen"));
-      }
-      right.appendChild(prev);
-
-      var pickBtn = el("button", "btn-sm", "Choose animation");
-      pickBtn.type = "button";
-      pickBtn.addEventListener("click", function () { openGallery(s); });
-      right.appendChild(pickBtn);
-
-      var upLabel = el("label", "fb-uplabel", "or upload your own");
-      var file = document.createElement("input");
-      file.type = "file";
-      file.accept = ".gif,.png,.jpg,.jpeg";
-      file.className = "fb-file";
-      file.addEventListener("change", function () {
-        if (file.files && file.files[0]) { uploadMedia(file.files[0], s); }
-      });
-      upLabel.appendChild(file);
-      right.appendChild(upLabel);
-
-      if (s.media) {
-        var rm = el("button", "btn-sm", "Remove");
-        rm.type = "button";
-        rm.addEventListener("click", function () {
-          s.media = ""; s.media_alt = ""; renderSteps(); markDirty();
-        });
-        right.appendChild(rm);
-      }
-      body.appendChild(right);
-      card.appendChild(body);
-
-      /* field assignment */
-      var fa = el("div", "fb-assign");
-      fa.appendChild(el("div", "fb-cols-title", "Fields shown on this step"));
-      if (!fields.length) {
-        fa.appendChild(el("span", "fb-hint", "Define fields first."));
-      }
-      fields.forEach(function (f) {
-        if (!f.name) { return; }
-        var owner = claimedBy(f.name);
-        var mine = owner === idx;
-        var lab = el("label", "fb-assign-item" + (!mine && owner !== -1 ? " is-taken" : ""));
-        var cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = mine;
-        cb.disabled = !mine && owner !== -1;
-        cb.addEventListener("change", function () {
-          if (!s.fields) { s.fields = []; }
-          if (cb.checked) { s.fields.push(f.name); }
-          else {
-            var i = s.fields.indexOf(f.name);
-            if (i !== -1) { s.fields.splice(i, 1); }
-          }
-          renderSteps(); markDirty();
-        });
-        lab.appendChild(cb);
-        lab.appendChild(document.createTextNode(" " + (f.label || f.name)));
-        var badge = el("span", "fb-tybadge", f.type);
-        lab.appendChild(badge);
-        if (!mine && owner !== -1) {
-          lab.appendChild(el("span", "fb-taken", "in step " + (owner + 1)));
-        }
-        fa.appendChild(lab);
-      });
-      card.appendChild(fa);
-
-      host.appendChild(card);
-    });
-
-    updateUnassigned();
-  }
-
-  function moveStep(idx, delta) {
-    var to = idx + delta;
-    if (to < 0 || to >= steps.length) { return; }
-    var tmp = steps[idx]; steps[idx] = steps[to]; steps[to] = tmp;
-    renderSteps(); markDirty();
-  }
-
-  function updateUnassigned() {
-    var box = document.getElementById("fbUnassigned");
-    if (!box) { return; }
-    if (!steps.length) { box.textContent = ""; return; }
-    var loose = [];
-    fields.forEach(function (f) {
-      if (f.name && claimedBy(f.name) === -1) { loose.push(f.label || f.name); }
-    });
-    box.textContent = loose.length
-      ? ("Unassigned fields (" + loose.length + "): " + loose.join(", ")
-         + " — these appear in a final 'Additional fields' step.")
-      : "All fields are assigned to a step.";
-  }
-
-  /* ── Step imagery: built-in library + own uploads ───────────────────── */
-
-  /* A step's media is either "lib:<name>" (a shipped pixel-art animation) or
-     an uploaded token. One field, two sources — mirrors media_src() server
-     side so the picker preview and the analyst view agree. */
-  function mediaSrc(token) {
-    token = token || "";
-    if (token.indexOf("lib:") === 0) {
-      return window.LB_LIBRARY_BASE + token.substring(4) + ".gif";
-    }
-    return window.LB_MEDIA_URL + "?f=" + encodeURIComponent(token);
-  }
-
-  function openGallery(step) {
-    var lib = window.LB_LIBRARY || [];
-    var back = el("div", "fb-gal-backdrop");
-    var box = el("div", "fb-gal");
-    box.appendChild(el("div", "fb-gal-title", "Choose an animation"));
-    var grid = el("div", "fb-gal-grid");
-    lib.forEach(function (item) {
-      var cell = el("button", "fb-gal-cell");
-      cell.type = "button";
-      var im = document.createElement("img");
-      im.src = window.LB_LIBRARY_BASE + item.name + ".gif";
-      im.alt = item.label;
-      cell.appendChild(im);
-      cell.appendChild(el("span", "fb-gal-cap", item.label));
-      if (step.media === "lib:" + item.name) { cell.className += " is-on"; }
-      cell.addEventListener("click", function () {
-        step.media = "lib:" + item.name;
-        step.media_alt = item.label;
-        close(); renderSteps(); markDirty();
-      });
-      grid.appendChild(cell);
-    });
-    box.appendChild(grid);
-    var bar = el("div", "fb-gal-bar");
-    var cancel = el("button", "btn-sm", "Cancel");
-    cancel.type = "button";
-    cancel.addEventListener("click", function () { close(); });
-    bar.appendChild(cancel);
-    box.appendChild(bar);
-    back.appendChild(box);
-    document.body.appendChild(back);
-    function close() {
-      if (back.parentNode) { back.parentNode.removeChild(back); }
-    }
-    back.addEventListener("click", function (ev) {
-      if (ev.target === back) { close(); }
-    });
-  }
-
-  /* ── Media upload (AJAX so a reject never loses the typing) ─────────── */
-
-  function uploadMedia(file, step) {
-    var fd = new FormData();
-    fd.append("action", "upload");
-    fd.append("media", file);
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", window.LB_MEDIA_URL, true);
-    xhr.onload = function () {
-      var res = {};
-      try { res = JSON.parse(xhr.responseText); } catch (e) { res = {}; }
-      if (res.ok && res.token) {
-        step.media = res.token;
-        step.media_alt = step.media_alt || file.name;
-        renderSteps(); markDirty();
-      } else {
-        window.alert("Upload failed: " + (res.error || ("HTTP " + xhr.status)));
-      }
-    };
-    xhr.onerror = function () { window.alert("Upload failed (network)."); };
-    xhr.send(fd);
-  }
-
   /* ── Validation + serialization ─────────────────────────────────────── */
 
   function validate() {
@@ -550,10 +294,6 @@
         });
       }
     });
-    steps.forEach(function (s, i) {
-      if (!(s.title || "").trim()) { errs.push("Step " + (i + 1) + ": title is required."); }
-      if (!s.id) { s.id = slugId(s.title) || ("s" + (i + 1)); }
-    });
     return errs;
   }
 
@@ -578,21 +318,6 @@
     });
   }
 
-  function cleanSteps() {
-    return steps.map(function (s, i) {
-      return {
-        id: s.id || ("s" + (i + 1)),
-        title: s.title || "",
-        instructions: s.instructions || "",
-        media: s.media || "",
-        media_alt: s.media_alt || "",
-        fields: (s.fields || []).filter(function (n) {
-          return fields.some(function (f) { return f.name === n; });
-        })
-      };
-    });
-  }
-
   function showErrors(errs) {
     var box = document.getElementById("fbErrors");
     if (!box) { return; }
@@ -612,35 +337,26 @@
       return false;
     }
     document.getElementById("lbFieldSchema").value = JSON.stringify(cleanFields());
-    document.getElementById("lbStepsJson").value = JSON.stringify(cleanSteps());
     return true;
   };
 
   function markDirty() {
     syncJsonTab();
-    updateUnassigned();
   }
 
   function syncJsonTab() {
     var a = document.getElementById("fbFieldsJsonRaw");
-    var b = document.getElementById("fbStepsJsonRaw");
     if (a) { a.value = JSON.stringify(cleanFields(), null, 2); }
-    if (b) { b.value = JSON.stringify(cleanSteps(), null, 2); }
   }
 
   /* ── Load / tabs ────────────────────────────────────────────────────── */
 
-  window.lbLoadBuilder = function (fieldSchemaJson, stepsJson, procedureText) {
+  window.lbLoadBuilder = function (fieldSchemaJson) {
     fields = [];
-    steps = [];
     try {
       var f = JSON.parse(fieldSchemaJson || "[]");
       if (Object.prototype.toString.call(f) === "[object Array]") { fields = f; }
     } catch (e) { fields = []; }
-    try {
-      var s = JSON.parse(stepsJson || "[]");
-      if (Object.prototype.toString.call(s) === "[object Array]") { steps = s; }
-    } catch (e) { steps = []; }
     fields.forEach(function (x) {
       if (!x.type) { x.type = "text"; }
       /* A field loaded from storage already has a key that saved records are
@@ -648,9 +364,7 @@
          existing data. Only fields added in this session auto-derive. */
       if (x.name) { x._lockName = true; }
     });
-    steps.forEach(function (x) { if (!x.fields) { x.fields = []; } });
-    window.__lbProcedure = procedureText || "";
-    renderFields(); renderSteps(); syncJsonTab(); showErrors([]);
+    renderFields(); syncJsonTab(); showErrors([]);
     switchTab("fields");
   };
 
@@ -676,37 +390,7 @@
         var f = { name: "", label: "", type: t };
         if (t === "table") { f.columns = []; f.default_rows = []; }
         fields.push(f);
-        renderFields(); renderSteps(); markDirty();
-      });
-    }
-    var addStep = document.getElementById("fbAddStep");
-    if (addStep) {
-      addStep.addEventListener("click", function () {
-        steps.push({ id: "s" + (steps.length + 1), title: "", instructions: "",
-                     media: "", media_alt: "", fields: [] });
-        renderSteps(); markDirty();
-      });
-    }
-    var seed = document.getElementById("fbSeedSteps");
-    if (seed) {
-      seed.addEventListener("click", function () {
-        var proc = (document.getElementById("lbProc") || {}).value ||
-                   window.__lbProcedure || "";
-        var lines = proc.split("\n").map(function (l) {
-          return l.replace(/^\s*\d+[.)]\s*/, "").trim();
-        }).filter(function (l) { return l.length > 0; });
-        if (!lines.length) {
-          window.alert("The Procedure box is empty — nothing to seed from.");
-          return;
-        }
-        if (steps.length && !window.confirm("Replace the current " + steps.length + " step(s)?")) {
-          return;
-        }
-        steps = lines.map(function (l, i) {
-          return { id: "s" + (i + 1), title: l.substring(0, 60),
-                   instructions: l, media: "", media_alt: "", fields: [] };
-        });
-        renderSteps(); markDirty();
+        renderFields(); markDirty();
       });
     }
     var apply = document.getElementById("fbApplyJson");
@@ -715,16 +399,13 @@
         var errBox = document.getElementById("fbJsonErr");
         try {
           var f = JSON.parse(document.getElementById("fbFieldsJsonRaw").value || "[]");
-          var s = JSON.parse(document.getElementById("fbStepsJsonRaw").value || "[]");
-          if (Object.prototype.toString.call(f) !== "[object Array]" ||
-              Object.prototype.toString.call(s) !== "[object Array]") {
-            throw new Error("Both must be JSON arrays.");
+          if (Object.prototype.toString.call(f) !== "[object Array]") {
+            throw new Error("The field schema must be a JSON array.");
           }
-          fields = f; steps = s;
+          fields = f;
           fields.forEach(function (x) { if (!x.type) { x.type = "text"; } });
-          steps.forEach(function (x) { if (!x.fields) { x.fields = []; } });
           if (errBox) { errBox.textContent = ""; }
-          renderFields(); renderSteps(); switchTab("fields");
+          renderFields(); switchTab("fields");
         } catch (e) {
           if (errBox) { errBox.textContent = "Invalid JSON: " + e.message; }
         }

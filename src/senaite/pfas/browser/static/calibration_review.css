@@ -10,8 +10,8 @@
   .stat-box .sv { font-size:var(--fs-xl); font-weight:700; color: var(--text); }
   .stat-box .sl { font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase;
                   letter-spacing:.05em; margin-top:2px; }
-  .stat-box.good .sv { color: var(--s-success-text); }
-  .stat-box.warn .sv { color: var(--s-warn-text); }
+  /* a tile's number is coloured only for a fault (a rejected curve) */
+  .stat-box.is-flag .sv { color: var(--s-danger-dk); }
 
   /* A run: its analytes listed on the left, the chosen one's card on the right */
   .cal-split { display:grid; grid-template-columns:240px minmax(0, 1fr); gap:16px; align-items:start; }
@@ -21,6 +21,7 @@
                      border-bottom:1px solid var(--s-border); background:none; font:inherit; text-align:left;
                      cursor:pointer; color:var(--s-body); }
   .cal-list button.active { background:var(--s-primary-lt); font-weight:700; }
+  .cal-list-count { margin:0; padding:8px 12px; border-bottom:1px solid var(--s-border); font-size:var(--fs-sm); color:var(--s-secondary); }
   .cal-list button:hover { background:var(--s-bg-alt); }
   .cal-detail .analyte-card[hidden] { display:none; }
   @media (max-width: 900px) { .cal-split { grid-template-columns:1fr; } .cal-list { max-height:240px; } }
@@ -34,8 +35,14 @@
   .run-header .run-meta { font-size:var(--fs-sm); color:var(--s-secondary); }
   .pass-badge { padding:3px 12px; border-radius:12px; font-size:var(--fs-sm); font-weight:700;
                 white-space:nowrap; }
-  .pass-ok   { background:var(--s-primary-lt); color: var(--s-primary-dk); }
   .pass-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+
+  /* the curve's rule, failing: the worker's sentence and the calibrators off by hand */
+  .card-rule { padding:8px 14px; background:var(--s-danger-lt); color:var(--s-danger-dk);
+               border-bottom:1px solid var(--s-border); font-size:var(--fs-sm); }
+  .card-rule p { margin:0; font-weight:600; }
+  .card-dropped { margin:4px 0 0; padding-left:18px; }
+  .approve-hold { flex:2; font-size:var(--fs-sm); color:var(--s-danger-dk); }
 
   .analyte-card { background:var(--s-bg); border:1px solid var(--s-border);
                   border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.07);
@@ -43,26 +50,26 @@
   .card-head { padding:10px 14px 8px; border-bottom:1px solid var(--s-border);
                display:flex; align-items:center; gap:8px; }
   .card-head .analyte-name { font-size:var(--fs-base); font-weight:700; flex:1; color: var(--text); }
-  .r2-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
-  .r2-ok   { background:var(--s-primary-lt); color: var(--s-primary-dk); }
+  /* an R² is a plain number; the coral chip only below the method's minimum,
+     a muted — when there is none */
+  .r2-num  { font-variant-numeric: tabular-nums; font-size:var(--fs-sm); }
+  .r2-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700;
+              font-variant-numeric: tabular-nums; }
   .r2-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
-  .r2-na   { background:var(--s-bg-alt); color:var(--s-secondary); }
-  /* .badge base is global; page-specific badge colours: */
-  .badge-pending  { background:var(--s-warn-lt); color:var(--s-warn-text); }
-  .badge-approved { background:var(--s-success-lt); color:var(--s-success-text); }
-  .badge-rejected { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+  .r2-na   { color:var(--text-muted); }
 
   /* Controls strip */
-  .card-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-                   padding:6px 14px; background:var(--s-light);
+  /* Controls strip: labelled selects and a full-size button, even gaps */
+  .card-controls { display:flex; gap:var(--sp-3) var(--sp-4); align-items:center; flex-wrap:wrap;
+                   padding:var(--sp-3) var(--sp-4); background:var(--s-light);
                    border-bottom:1px solid var(--s-border); }
-  .card-controls label { font-size: var(--fs-sm); color: var(--s-body); font-weight: 600; }
-  .card-controls select { font-size:var(--fs-xs); padding:3px 6px;
-                          border:1px solid var(--s-input-border); border-radius:3px;
+  .card-controls label { display:flex; align-items:center; gap:var(--sp-2); margin:0;
+                         font-size: var(--fs-sm); color: var(--s-body); font-weight: 600; }
+  .card-controls select { height:var(--ctl-h); min-width:112px; padding:0 var(--sp-3); font-size:var(--fs-sm);
+                          border:1px solid var(--s-input-border); border-radius:var(--radius);
                           background: var(--surface-raised); color:var(--s-input-text); }
-  .save-ovr { font-size:var(--fs-xs); padding:3px 10px; border:none; border-radius:3px;
-              cursor:pointer; background:var(--s-primary-dk); color:#fff; }
-  .save-ovr:hover { opacity:.85; }
+  .card-controls .card-controls-gap { flex:1 1 auto; }
+  .save-ovr { height:var(--ctl-h); display:inline-flex; align-items:center; }
 
   /* Plots */
   /* plots scale with the window: tall enough to read the low levels */
@@ -71,6 +78,10 @@
   .plot-label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                 text-transform:uppercase; letter-spacing:.04em; margin-bottom:var(--sp-2);
                 display:flex; align-items:center; gap:var(--sp-2); }
+  /* the curve's title line: the analyte, the fit and its R² */
+  .plot-title { font-size:var(--fs-sm); font-weight:var(--fw-strong); color:var(--s-body);
+                margin-bottom:var(--sp-1); }
+  .plot-title:empty { display:none; }
   .run-time { font-weight:400; color:var(--s-secondary); font-size:var(--fs-base); }
   .plot-opt { margin-left:auto; font-weight:400; text-transform:none; letter-spacing:0;
               display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
@@ -83,11 +94,6 @@
   .eq-line { font-size:var(--fs-xs); color:var(--s-secondary); font-family: var(--font-mono);
              padding:4px 14px 8px; overflow:hidden; text-overflow:ellipsis;
              white-space:nowrap; }
-
-  /* Response-ratio info icon */
-  .rr-info { color:var(--s-secondary); cursor:help; font-size:var(--fs-xs);
-             margin-left:3px; border:1px solid var(--s-border);
-             border-radius:50%; padding:0 3px; font-style:normal; }
 
   /* CCB blank chips */
   .ccb-chips { display:none; gap:6px; flex-wrap:wrap;
@@ -123,3 +129,4 @@
                  padding:8px 14px; margin-bottom:12px; color:var(--s-success-text); font-weight:600; }
   .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
   .pf-path { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:12px; }
+  .card-controls [hidden] { display:none; }

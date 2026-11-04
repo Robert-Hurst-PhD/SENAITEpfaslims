@@ -12,19 +12,25 @@ Python 2.7.
 from __future__ import absolute_import, unicode_literals
 
 import logging
-from datetime import datetime
 
 from bika.lims import api
 from Products.Five.browser import BrowserView
 
 from senaite.pfas import custody_documents as cus
 from senaite.pfas import homogenisation as hg
+from senaite.pfas import lab_time
+from senaite.pfas import print_doc
+from senaite.pfas.browser.view_helpers import send_pdf
 
 logger = logging.getLogger("senaite.pfas.custody_documents")
 
 
 def _when(dt_value):
-    """'YYYY-MM-DD HH:MM' of a DateTime, or ''."""
+    """'YYYY-MM-DD HH:MM' of a DateTime on the laboratory's clock, or ''.
+    While no zone converts it is the DateTime's own strftime, on the
+    server's clock, as it always printed."""
+    if dt_value and lab_time.active():
+        return lab_time.show(dt_value, "utc", u"%Y-%m-%d %H:%M")
     try:
         return dt_value.strftime("%Y-%m-%d %H:%M") if dt_value else u""
     except Exception:                                       # noqa: BLE001
@@ -69,9 +75,7 @@ def _pdf(view, kind, data, name):
         resp.setHeader("Content-Type", "text/plain; charset=utf-8")
         return (u"No %s design is issued. Issue one under Reporting > Document Templates."
                 % cus_title(kind))
-    resp.setHeader("Content-Type", "application/pdf")
-    resp.setHeader("Content-Disposition", "inline; filename=%s.pdf" % name)
-    return pdf
+    return send_pdf(resp, pdf, "%s.pdf" % name)
 
 
 def cus_title(kind):
@@ -80,7 +84,7 @@ def cus_title(kind):
 
 
 def _printed():
-    return datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    return print_doc.now_stamp()
 
 
 class PFASCoCDocumentView(BrowserView):

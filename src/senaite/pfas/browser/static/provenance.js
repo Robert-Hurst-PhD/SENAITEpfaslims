@@ -1,4 +1,4 @@
-/* provenance.js — "Where does this number come from?" (decided 2026-10-11)
+/* provenance.js — "Where does this number come from?"
  * Any element with data-prov="<key>" opens the value's record in the shared
  * drawer (pfas-components.js): the formula with each term coloured, the terms
  * with their sources, the steps of a chain, the rule and verdict, and below
@@ -8,8 +8,8 @@
  * Deep link: #prov=<key>. Plain ES5, no library. */
 (function () {
   "use strict";
-  var doc = document;
-  var KINDS = { IS: "Labelled standard response", RT: "Retention time", ION: "Ion ratio",
+  var doc = typeof document !== "undefined" ? document : null;   /* node: the pure helpers only */
+  var KINDS = { IS: "Isotope standard response", RT: "Retention time", ION: "Ion ratio",
     CAL: "Calibration point", CCV: "Continuing calibration verification", ICV: "Initial calibration verification",
     SUR: "Surrogate recovery", LFSM: "Matrix spike recovery", LFSMD: "Matrix spike duplicate RPD",
     LFSMD_REC: "Matrix spike duplicate recovery", BLANK: "Blank", LFB: "Fortified blank recovery",
@@ -34,6 +34,7 @@
 
   function sourceText(s) {
     if (!s) { return ""; }
+    if (s.peak) { return s.file + ": " + s.peak; }
     if (s.file) { return s.file + " line " + s.line + (s.column ? ", " + s.column : ""); }
     if (s.rows) { return s.rows.length + " calibrator rows" + (s.column ? " (" + s.column + ")" : ""); }
     if (s.profile !== undefined) { return "method profile: " + s.key + (s.label ? " (" + s.label + ")" : ""); }
@@ -63,6 +64,51 @@
     return text.replace(/\u0001(\d+)\u0002/g, function (_m, n) { return marks[+n]; });
   }
 
+  /* one block per imported line: the line's heading, the row's filled
+     fields only (the cited term's cell outlined in its colour), and one line on
+     what was stored with the run -- "as read", or what differs from the file. */
+  function same(a, b) {
+    var x = parseFloat(a), y = parseFloat(b);
+    if (isNaN(x) || isNaN(y)) { return String(a == null ? "" : a).trim() === String(b == null ? "" : b).trim(); }
+    return Math.abs(x - y) <= 1e-9 * Math.max(1, Math.abs(x), Math.abs(y));
+  }
+  function when(t) { return String(t || "").replace("T", " ").slice(0, 16); }
+  function storedLine(row, f, cells) {
+    if (!row) { return '<p class="pv-stored">Not stored with the run.</p>'; }
+    var cols = (f && f.columns) || {}, parts = [], diff = false;
+    [["calc_conc", "reported"], ["rt", "RT"]].forEach(function (p) {
+      var v = row[p[0]], col = cols[p[0]], fv = cells && col != null ? cells[col] : null, txt = p[1] + " " + num(v);
+      if (fv != null && !same(v, fv)) { diff = true; txt += " (the file reads " + fv + ")"; }
+      parts.push(txt);
+    });
+    return '<p class="pv-stored">' + (diff ? "Stored with the run: " : "Stored with the run as read: ") +
+      esc(parts.join(", ")) + ".</p>";
+  }
+  function lineBlock(f, ln, terms, rows) {
+    var hot = {};
+    (terms || []).forEach(function (t, i) {
+      var srcs = [t.source || {}].concat((t.source && t.source.rows) || []);
+      srcs.forEach(function (s) {
+        if (s.file === f.file && +s.line === +ln.line) {
+          var col = f.columns && f.columns[s.column];
+          hot[col == null ? "*" : col] = i;
+        }
+      });
+    });
+    var row = (rows || []).filter(function (r) { return r.source_file === f.file && +r.source_row === +ln.line; })[0];
+    var head = [f.file, "line " + ln.line].concat(row ? [row.injection_name, row.analyte, when(row.acquired_at)] : [])
+      .filter(function (x) { return x; });
+    var h = '<section class="pv-line"><h3 class="pv-h">' + esc(head.join(" \u00b7 ")) + '</h3><dl class="pv-grid">';
+    (ln.cells || []).forEach(function (c, ci) {
+      if (String(c == null ? "" : c).trim() === "") { return; }
+      var ti = hot[ci] != null ? hot[ci] : hot["*"];
+      h += ti == null ? '<div class="pv-f">' :
+        '<div class="pv-f is-term" data-term="' + ti + '" style="box-shadow:inset 0 0 0 2px ' + colour(ti) + '">';
+      h += "<dt>" + esc((f.header || [])[ci] || "column " + (ci + 1)) + "</dt><dd>" + esc(c) + "</dd></div>";
+    });
+    return h + "</dl>" + storedLine(row, f, ln.cells) + "</section>";
+  }
+
   function render(b) {
     var r = b.record, terms = r.terms || [], steps = r.steps || [], rule = r.rule || {};
     var title = (KINDS[r.kind] || r.kind) + " — " + r.analyte + (r.injection ? " · " + r.injection.split("|")[0] : "");
@@ -72,7 +118,7 @@
     h += '<div class="pv-formula">' + formulaHtml(r.formula, terms) + "</div>";
     if (rule.text) { h += '<p class="pv-rule">' + esc(rule.text) + "</p>"; }
     if (rule.lo != null || rule.hi != null) { h += '<p class="pv-rule">Window ' + esc(num(rule.lo)) + " – " + esc(num(rule.hi)) + (rule.basis ? " · " + esc(rule.basis) : "") + "</p>"; }
-    h += '<table class="pfas-table pv-terms"><thead><tr><th></th><th>Term</th><th>Means</th><th class="num">Value</th><th>Source</th></tr></thead><tbody>';
+    h += '<table class="pfas-table pv-terms" data-col-resize="pv-terms"><thead><tr><th></th><th>Term</th><th>Means</th><th class="num">Value</th><th>Source</th></tr></thead><tbody>';
     terms.forEach(function (t, i) {
       var src = t.source || {}, link = "";
       if (src.record) { link = ' <button type="button" class="btn-sm btn-secondary pv-open" data-prov="' + esc(src.record) + '">Open</button>'; }
@@ -89,41 +135,21 @@
     if (rule.qualifier || (rule.flags && rule.flags.length)) {
       h += '<p class="pv-rule">Qualifier: ' + esc(rule.qualifier || "none") + (rule.flags && rule.flags.length ? " · flags: " + esc(rule.flags.join(", ")) : "") + "</p>";
     }
+    var shown = {};
     (b.files || []).forEach(function (f) {
-      h += '<h3 class="pv-h">Imported data — ' + esc(f.file) + (f.layout && f.layout.layout ? " (" + esc(f.layout.layout) + ")" : "") + "</h3>";
-      if (f.missing) { h += '<p class="pv-rule">The file is no longer in the import folder; lines ' + esc(f.lines.join(", ")) + " were read.</p>"; return; }
-      // which term cites which (line, column)
-      var hot = {};
-      terms.forEach(function (t, i) {
-        var srcs = [t.source || {}].concat((t.source && t.source.rows) || []);
-        srcs.forEach(function (s) {
-          if (s.file === f.file && s.line) {
-            var col = f.columns && f.columns[s.column];
-            hot[s.line + ":" + (col == null ? "*" : col)] = i;
-          }
-        });
-      });
-      h += '<div class="pv-scroll"><table class="pfas-table pv-file"><thead><tr><th>line</th>';
-      (f.header || []).forEach(function (c) { h += "<th>" + esc(c) + "</th>"; });
-      h += "</tr></thead><tbody>";
-      (f.lines || []).forEach(function (ln) {
-        h += "<tr><td class=\"num\">" + ln.line + "</td>";
-        (ln.cells || []).forEach(function (c, ci) {
-          var ti = hot[ln.line + ":" + ci];
-          if (ti == null && hot[ln.line + ":*"] != null) { ti = hot[ln.line + ":*"]; }
-          h += ti == null ? "<td>" + esc(c) + "</td>" : '<td class="pv-cell" data-term="' + ti + '" style="box-shadow:inset 0 0 0 2px ' + colour(ti) + '">' + esc(c) + "</td>";
-        });
-        h += "</tr>";
-      });
-      h += "</tbody></table></div>";
+      if (f.missing) {
+        h += '<h3 class="pv-h">' + esc(f.file) + '</h3><p class="pv-rule">The file is no longer in the import folder; lines ' +
+          esc(f.lines.join(", ")) + " were read.</p>";
+        return;
+      }
+      (f.lines || []).forEach(function (ln) { shown[f.file + ":" + ln.line] = true; h += lineBlock(f, ln, terms, b.rows); });
     });
-    if (b.rows && b.rows.length) {
-      h += '<h3 class="pv-h">Stored injection rows</h3><div class="pv-scroll"><table class="pfas-table pv-rows"><thead><tr><th>Injection</th><th>Compound</th><th class="num">Raw</th><th class="num">Reported</th><th class="num">RT</th><th>Ion ratio</th><th class="num">Line</th></tr></thead><tbody>';
-      b.rows.forEach(function (x) {
-        h += "<tr><td>" + esc(x.injection_name) + "</td><td>" + esc(x.analyte) + '</td><td class="num">' + esc(num(x.raw_conc)) + '</td><td class="num">' + esc(num(x.calc_conc)) + (x.conc_qualifier ? " " + esc(x.conc_qualifier) : "") + '</td><td class="num">' + esc(num(x.rt)) + "</td><td>" + esc(x.ion_ratio_text || num(x.ion_ratio_obs)) + '</td><td class="num">' + esc(x.source_row == null ? "—" : x.source_row) + "</td></tr>";
-      });
-      h += "</tbody></table></div>";
-    }
+    /* a stored row whose file line is not drawn above: what was stored, said once */
+    (b.rows || []).forEach(function (x) {
+      if (shown[x.source_file + ":" + x.source_row]) { return; }
+      var head = [x.injection_name, x.analyte, when(x.acquired_at)].filter(function (v) { return v; });
+      h += '<section class="pv-line"><h3 class="pv-h">' + esc(head.join(" \u00b7 ")) + "</h3>" + storedLine(x, null, null) + "</section>";
+    });
     return { title: title, html: h };
   }
 
@@ -146,39 +172,42 @@
   function open(key) {
     var d = window.PFAS && window.PFAS.components && window.PFAS.components.drawer;
     if (!d) { return; }
-    d.open("Where does this number come from?", '<p class="pv-rule">Loading ' + esc(key) + "…</p>");
+    d.open("Where does this number come from?", '<p class="pv-rule">Loading ' + esc(key) + "…</p>", { cls: "is-dialog" });
     try { history.replaceState(null, "", "#prov=" + encodeURIComponent(key)); } catch (e) {}
     var url = endpoint() + "?batch_id=" + encodeURIComponent(batchId()) + "&key=" + encodeURIComponent(key);
     fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
       .then(function (r) { return r.json(); })
       .then(function (b) {
-        if (b.error) { d.open("Where does this number come from?", '<p class="pv-rule">' + esc(b.error) + "</p>"); return; }
+        if (b.error) { d.open("Where does this number come from?", '<p class="pv-rule">' + esc(b.error) + "</p>", { cls: "is-dialog" }); return; }
         var out = render(b);
-        d.open(out.title, out.html);
+        d.open(out.title, out.html, { cls: "is-dialog" });
         var body = d.el.querySelector(".pfas-drawer-body");
         linkHover(body);
       })
-      .catch(function (err) { d.open("Where does this number come from?", '<p class="pv-rule">The record could not be loaded (' + esc(err) + ").</p>"); });
+      .catch(function (err) { d.open("Where does this number come from?", '<p class="pv-rule">The record could not be loaded (' + esc(err) + ").</p>", { cls: "is-dialog" }); });
   }
 
-  doc.addEventListener("click", function (e) {
-    var el = e.target.closest("[data-prov]");
-    if (!el) { return; }
-    e.preventDefault();
-    open(el.getAttribute("data-prov"));
-  });
-  doc.addEventListener("keydown", function (e) {
-    if (e.key !== "Enter" && e.key !== " ") { return; }
-    var el = doc.activeElement && doc.activeElement.closest && doc.activeElement.closest("[data-prov]");
-    if (!el) { return; }
-    e.preventDefault();
-    open(el.getAttribute("data-prov"));
-  });
-  function fromHash() {
-    var m = /[#&]prov=([^&]+)/.exec(location.hash || "");
-    if (m) { open(decodeURIComponent(m[1])); }
+  if (doc) {
+    doc.addEventListener("click", function (e) {
+      var el = e.target.closest("[data-prov]");
+      if (!el) { return; }
+      e.preventDefault();
+      open(el.getAttribute("data-prov"));
+    });
+    doc.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") { return; }
+      var el = doc.activeElement && doc.activeElement.closest && doc.activeElement.closest("[data-prov]");
+      if (!el) { return; }
+      e.preventDefault();
+      open(el.getAttribute("data-prov"));
+    });
+    var fromHash = function () {
+      var m = /[#&]prov=([^&]+)/.exec(location.hash || "");
+      if (m) { open(decodeURIComponent(m[1])); }
+    };
+    if (doc.readyState === "loading") { doc.addEventListener("DOMContentLoaded", fromHash); } else { fromHash(); }
   }
-  if (doc.readyState === "loading") { doc.addEventListener("DOMContentLoaded", fromHash); } else { fromHash(); }
-  window.PFAS = window.PFAS || {};
-  window.PFAS.provenance = { open: open, render: render, formulaHtml: formulaHtml };
+  var api = { open: open, render: render, formulaHtml: formulaHtml, lineBlock: lineBlock };
+  if (typeof window !== "undefined") { window.PFAS = window.PFAS || {}; window.PFAS.provenance = api; }
+  if (typeof module !== "undefined" && module.exports) { module.exports = api; }
 })();

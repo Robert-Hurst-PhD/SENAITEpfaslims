@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """What each QC Summary cell shows: the result itself, coloured by its
-stored verdict, with the criterion it was judged by cited ONCE ("a superscript numerical citation with the supporting
-information below the table ... we can't have it visually cluttering").
+stored verdict, with the criterion it was judged by cited ONCE, as a
+superscript number with the supporting text below the table.
 
 A criterion is identified by its rule (qc_results.limit_basis, written by the
 worker from the check that set the verdict: "LFSM recovery 70-130 %"), never
@@ -12,18 +12,23 @@ rule (the lowest-level CCC, another recovery tier) carries its own number.
 The resolved window is in the cell's tooltip.
 
 Colour comes from the stored verdict only, never from re-judging the value
-against the window (the Calibration page's old defect):
+against the window, and only for the exception: a value that passed is a
+plain number.
 
-    pass   the check passed                      (mint)
-    fail   it failed and holds release           (coral)
-    review qualified, flagged for reanalysis,    (amber)
+    pass   the check passed                      (plain, no chip)
+    fail   it failed and holds release           (coral, "Fail" after it)
+    review qualified, flagged for reanalysis,    (amber, "Review" after it)
            not evaluated, or advisory
+
+A row holding a failing cell is marked "fail", one holding a cell for
+review only "review" (the table draws that on the row's left edge).
 
     split(qc_type, values)                 [(display column, values)]: one
                                            measure per column (LFSMD's
                                            recovery and its RPD apart)
     sub_status(status, values)             a split column's own state
-    cell_display(qc_type, values, status)  {text, cls, tip, bases, n}
+    cell_display(qc_type, values, status)  {text, word, cls, tip, bases, n}
+    row_state(cells)                       "fail" | "review" | "" for a row
     footnotes(columns, rows)               (header_notes, cell_notes, notes)
     group_of(column)                       "extracted" | "instrument"
     groups(columns, rows, notes)           the two tables, each with the
@@ -40,15 +45,11 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas.extraction_batch import QC_ROLES
-except ImportError:                                          # loaded by path (tests)
-    from extraction_batch import QC_ROLES
+from senaite.pfas.extraction_batch import QC_ROLES
 
 # QC prepared WITH the samples (the extraction batch's QC members, and the
 # field reagent and trip blanks extracted beside them); everything else is the
 # instrument's: calibration, ICV, CCV, CCB, internal-standard response
-# ("extracted and non-extracted QC to simplify the review")
 EXTRACTED = frozenset(QC_ROLES) | frozenset(("FRB", "TB"))
 # reading order: blanks, fortified blanks, matrix QC; then the run's own
 # order -- the curve, its verification, the bracket, the standards
@@ -56,16 +57,20 @@ ORDER = ("MB", "LRB", "MxB", "FRB", "TB", "LFB", "LCS", "LFSM", "LFSMD", "Dup",
          "Calibration", "ICV", "CCV", "CCB", "IS")
 GROUPS = (("extracted", u"Extracted QC"), ("instrument", u"Instrument QC (not extracted)"))
 
-STATUS_CLASS = {"ok": "qv-pass", "fail": "qv-fail", "qualified": "qv-review",
+STATUS_CLASS = {"ok": "qv-plain", "fail": "qv-fail", "qualified": "qv-review",
                 "warn": "qv-review", "unevaluated": "qv-review"}
+# the verdict word a chip carries after its value; a pass carries none
+CLASS_WORD = {"qv-fail": u"Fail", "qv-review": u"Review"}
 STATUS_WORD = {"ok": u"Pass", "fail": u"Fail", "qualified": u"Qualified",
                "warn": u"Review", "unevaluated": u"Not evaluated"}
 ND = u"N.D."
 NOT_RECORDED = u"Criterion not recorded for this run: re-process it to show it."
 BLANKS = ("MB", "LRB", "MxB", "CCB", "FRB", "TB")
 RECOVERY_FROM_EXPECTED = ("CCV", "ICV")
-UNIT_LABEL = {"%": u"%", "% RPD": u"% RPD", "% deviation": u"% dev.",
-              "% of ICAL avg": u"% of ICAL"}
+# a column's unit, spelled out, shown in brackets after its name:
+# "LFB (Recovery %)", "LFSMD RPD (%)", "Calibration (Deviation %)"
+UNIT_LABEL = {"%": u"Recovery %", "% RPD": u"%", "% deviation": u"Deviation %",
+              "% of ICAL avg": u"Initial calibration average %"}
 
 
 def split(qc_type, values):
@@ -85,11 +90,7 @@ def sub_status(status, values):
         "ok" if status in ("fail", "qualified") else status)
 
 
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _num
 
 
 def shown(qc_type, v):
@@ -124,11 +125,15 @@ def worst(qc_type, values):
 
 
 def fmt(qc_type, x):
+    """A blank to three significant figures; every other cell (recoveries,
+    RPDs, deviations: all percents) as a whole percent, so 0.985 never reads
+    0.99 beside 4 and 12."""
     if x is None:
         return u""
     if qc_type in BLANKS:
         return u"%.3g" % x
-    return u"%.0f" % x if abs(x) >= 10 else u"%.2g" % x
+    text = u"%.0f" % x
+    return u"0" if text == u"-0" else text
 
 
 def _window_text(v):
@@ -141,7 +146,8 @@ def _window_text(v):
 
 
 def cell_display(qc_type, values, status):
-    """{text, cls, tip, bases, n} for one cell."""
+    """{text, word, cls, tip, bases, n} for one cell. A passing value is
+    plain (N.D. muted); a failing or review value is a chip with its word."""
     values = list(values or [])
     w = worst(qc_type, values)
     x = shown(qc_type, w) if w else None
@@ -167,13 +173,27 @@ def cell_display(qc_type, values, status):
         k = v.get("prov_key") or u""
         if k and k not in prov:
             prov.append(k)
-    return {"text": text, "cls": STATUS_CLASS.get(status, "qv-review"),
+    cls = STATUS_CLASS.get(status, "qv-review")
+    if text == ND and cls == STATUS_CLASS["ok"]:
+        cls += u" pfas-muted"
+    return {"text": text, "word": CLASS_WORD.get(cls, u""), "cls": cls,
             "tip": u" · ".join(tips), "bases": bases, "n": len(values), "prov": prov}
+
+
+def row_state(cells):
+    """"fail" when a cell of the row failed, "review" when one is for
+    review only, else "": the row's edge."""
+    classes = u" ".join((c or {}).get("cls") or u"" for c in cells or [])
+    if u"qv-fail" in classes:
+        return u"fail"
+    return u"review" if u"qv-review" in classes else u""
 
 
 def column_unit(qc_type, values):
     if qc_type in RECOVERY_FROM_EXPECTED:
-        return u"% rec."
+        return u"Recovery %"
+    if values and all((v.get("kind") or u"") == u"RPD" for v in values):
+        return u"%"                                          # "LFSMD RPD (%)"
     for v in values or []:
         u = (v.get("units") or u"").strip()
         if u:
@@ -286,6 +306,7 @@ def tables(columns, rows, keep=None):
     for r in mine:
         for k, d in r["display"].items():
             d["notes"] = cells.get((r["analyte"], k)) or []
+        r["state"] = row_state(r["display"].values())
     return {"columns": cols, "rows": mine, "notes": notes,
             "groups": groups(cols, mine, notes)}
 
@@ -293,10 +314,80 @@ def tables(columns, rows, keep=None):
 def code_cell(codes, reasons=u""):
     """A result's QC qualifier codes ("M, P") as a cell the shared macro
     draws: review colour -- the result is released with a qualifier, as a
-    qualified cell reads in the QC Summary -- and why in the tooltip.
+    qualified cell reads in the QC Summary -- and why in the tooltip. The
+    codes are the chip's words: no verdict word after them.
     None when the result carries no code."""
     if not codes:
         return None
-    return {"text": codes, "cls": STATUS_CLASS["qualified"], "tip": reasons or codes,
+    return {"text": codes, "word": u"", "cls": STATUS_CLASS["qualified"], "tip": reasons or codes,
             "bases": [], "n": 1, "notes": []}
 
+
+# ── the Blanks tab: each blank against its limit ───────────────────────────
+BLANK_COLUMNS = ("MB", "LRB", "MxB", "FRB", "TB")     # extracted blanks; the CCB is the instrument's
+
+
+def blank_table(rows, qc_types):
+    """Every extracted blank of a run against its limit: for each analyte and
+    blank type the result as judged, the limit it was judged by ("not set"
+    when there is none) and how close it came, as a whole % of the limit.
+    A column with nothing in it for the whole run stays, greyed, its reason
+    under its heading: a blank never judged reads "not judged", a limit
+    never set "not set".
+    {"types": [(qc_type, unit)], "rows": [{"analyte", "cells": [...], "state"}],
+    "notes": [(qc_type, basis)],
+    "heading_note": {qc_type: {"value", "limit", "pct"}} for a type with a
+    greyed column}."""
+    types = [qt for qt in BLANK_COLUMNS if qt in (qc_types or [])]
+    units, notes, out = {}, {}, []
+    judged, limited, pcts = set(), set(), set()
+    for row in rows or []:
+        cells, any_cell = [], False
+        for qt in types:
+            c = (row.get("cells") or {}).get(qt)
+            vals = (c or {}).get("values") or []
+            for v in vals:
+                units.setdefault(qt, v.get("units") or u"")
+                if v.get("limit_basis"):
+                    notes.setdefault(qt, v.get("limit_basis"))
+            if not vals:
+                cells.append({"type": qt, "text": u"\u2014", "word": u"", "cls": u"pfas-muted", "tip": u"",
+                              "limit": u"not set", "pct": u"\u2014", "prov": None})
+                continue
+            any_cell = True
+            judged.add(qt)
+            d = (row.get("display") or {}).get(qt) or cell_display(qt, vals, (c or {}).get("status"))
+            w = worst(qt, vals)
+            hi = _num(w.get("limit_high")) if w else None
+            x = shown(qt, w) if w else None
+            pct = u"\u2014"
+            if hi and x is not None:
+                pct = u"%.0f" % (x / hi * 100.0)
+                pcts.add(qt)
+            if hi is not None:
+                limited.add(qt)
+            cls = d.get("cls") or u""
+            cells.append({"type": qt, "text": d.get("text") or u"", "cls": cls,
+                          "word": d.get("word", CLASS_WORD.get(cls, u"")), "tip": d.get("tip") or u"",
+                          "limit": (u"%.3g" % hi) if hi is not None else u"not set", "pct": pct,
+                          # the record behind the value: the value and its % open it
+                          "prov": ((d.get("prov") or cell_display(qt, vals, (c or {}).get("status")).get("prov")
+                                    or [None])[0])})
+        if any_cell:
+            out.append({"analyte": row.get("analyte"), "cells": cells, "state": row_state(cells)})
+    heading = {}
+    for qt in types:
+        # a judged blank with its limit is not greyed for want of a %: one
+        # that was not detected anywhere (N.D.) has no % to show
+        note = {"value": u"" if qt in judged else u"not judged",
+                "limit": u"" if qt in limited else u"not set",
+                "pct": u"" if (qt in pcts or (qt in judged and qt in limited))
+                else (u"not judged" if qt not in judged else u"not set")}
+        if any(note.values()):
+            heading[qt] = note
+    for r in out:
+        for c in r["cells"]:
+            c["heading_note"] = heading.get(c["type"]) or {}
+    return {"types": [(qt, units.get(qt, u"")) for qt in types], "rows": out,
+            "notes": [(qt, notes[qt]) for qt in types if qt in notes],
+            "heading_note": heading}

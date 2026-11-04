@@ -1,0 +1,240 @@
+/* pfas-sidebar.css -- the rail and the section panel (templates/pfas_sidebar.pt),
+   on PFAS and core pages alike.
+
+   One dark frame with the top bar: the rail holds Home and the person's
+   sections, an icon over a short label, each button 48 px or more; the
+   panel beside it shows one section as the navigation tree
+   (pfas-components.css .pfas-nav-tree), the others hidden until their rail
+   button is pressed (pfas-sidebar.js PFAS.nav). How it folds, opens over the
+   page and becomes a phone's bar and sheet is at the end. Colour only from
+   the frame tokens. */
+
+#sidebar.pfas-nav {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: calc(var(--pfas-rail-width) + var(--pfas-panel-width));
+  max-width: calc(var(--pfas-rail-width) + var(--pfas-panel-width));
+  overflow: hidden;
+  background: var(--frame);
+  color: var(--on-frame);
+  font-size: var(--fs-sm);
+  line-height: 16px;   /* one row pitch on every host page */
+  white-space: nowrap;
+}
+.pfas-sprite { display: none; }
+
+/* ── The rail ─────────────────────────────────────────────────────────── */
+.pfas-rail {
+  flex: 0 0 var(--pfas-rail-width);
+  width: var(--pfas-rail-width);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-1) 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid var(--pfas-rail-border);
+}
+.pfas-rail-btn {
+  min-height: 56px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--sp-1) 2px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--on-frame-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1.15;
+  white-space: normal;   /* a two-word label takes two lines */
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.pfas-rail-btn svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pfas-rail-btn:hover { color: var(--on-frame); background: color-mix(in srgb, var(--on-frame) 10%, transparent); }
+.pfas-rail-btn[aria-pressed="true"] { color: var(--on-frame); background: color-mix(in srgb, var(--on-frame) 16%, transparent); }
+/* the section of the page on screen, whichever section the panel shows */
+.pfas-rail-btn[aria-current] { box-shadow: inset 3px 0 0 var(--accent); }
+.pfas-rail-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── The panel ────────────────────────────────────────────────────────── */
+.pfas-panel {
+  flex: 0 0 var(--pfas-panel-width);
+  width: var(--pfas-panel-width);
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* room under the last row for its menu (two rows), which opens below it */
+  padding: var(--sp-2) var(--sp-1) 100px;
+  scroll-padding-bottom: 100px;
+}
+.pfas-panel-section[hidden] { display: none; }
+.pfas-panel-title {
+  margin: 0;
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  color: var(--on-frame-muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-strong);
+  line-height: 16px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+/* Home: the pins under Dashboard, a rule between */
+#pfas-nav-pins { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--pfas-rail-border); }
+#pfas-nav-pins[hidden] { display: none; }
+/* a pin's place, after its label, where another pin has the same label */
+.pfas-nav-place { flex: 0 1 auto; min-width: 0; margin-left: var(--sp-2); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--on-frame-muted); font-size: var(--fs-xs); }
+/* a Pin or Unpin that was not saved: the reason, a failure's mark beside it;
+   empty, the line takes no room and stays a live region */
+.pfas-nav-status { margin: 0; padding: 0; color: var(--on-frame); font-size: var(--fs-sm); }
+.pfas-nav-status:not(:empty) { margin-bottom: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-left: 3px solid var(--s-danger); }
+
+/* ── Folded, and open over the page (pfas-sidebar.js PFAS.nav) ─────────
+   The widths are pfas-sidebar.js's own queries, so the script and the
+   styles never disagree: compact is (max-width: 1279.98px), the phone
+   (max-width: 768px), wide everything else. Wide, the menu button folds the
+   panel (html.pfas-panel-folded, set from the session by the head script
+   before the first paint) and the page takes the width; compact, the panel
+   is always folded. Folded, a rail button opens the panel over the page
+   (is-open): the nav takes its full width and hands the panel's width back
+   by a negative margin, so the page does not move. The phone's rules below
+   come later at the same weight and replace these. */
+.pfas-nav-scrim { display: none; }
+@media not all and (max-width: 1279.98px) {
+  html.pfas-panel-folded #sidebar.pfas-nav:not(.is-open) {
+    min-width: var(--pfas-rail-width);
+    max-width: var(--pfas-rail-width);
+  }
+  html.pfas-panel-folded #sidebar.pfas-nav:not(.is-open) .pfas-panel { display: none; }
+}
+@media (max-width: 1279.98px) {
+  #sidebar.pfas-nav:not(.is-open) {
+    min-width: var(--pfas-rail-width);
+    max-width: var(--pfas-rail-width);
+  }
+  #sidebar.pfas-nav:not(.is-open) .pfas-panel { display: none; }
+}
+#sidebar.pfas-nav.is-open {
+  position: relative;
+  z-index: 1040;
+  margin-right: calc(0px - var(--pfas-panel-width));
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ── Phone, 768 px and less: a bar along the bottom and a sheet ────────────
+   The rail is a fixed bar of Home and the person's sections; a button opens
+   its section as a sheet above the bar, over a backdrop. The page is padded
+   by the bar's height so the bar covers nothing. Nothing here may transform
+   the nav: the sheet and the backdrop are fixed to the window. */
+@media (max-width: 768px) {
+  #sidebar.pfas-nav:not(.is-open),
+  #sidebar.pfas-nav.is-open {
+    position: fixed;
+    left: 0; right: 0; bottom: 0; top: auto;
+    z-index: 1055;   /* over the action menu (.pfas-fab), under a dialog */
+    min-width: 0;
+    max-width: none;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    box-shadow: none;
+  }
+  .pfas-rail {
+    position: relative;
+    z-index: 2;
+    flex: 1 1 auto;
+    flex-direction: row;
+    width: 100%;
+    height: calc(var(--pfas-bar-height) + env(safe-area-inset-bottom, 0px));
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    gap: 0;
+    overflow-x: auto;   /* more buttons than fit scroll inside the bar */
+    overflow-y: hidden;
+    border-right: 0;
+    border-top: 1px solid var(--pfas-rail-border);
+    background: var(--frame);
+  }
+  .pfas-rail-btn {
+    flex: 1 0 auto;
+    width: auto;
+    min-width: 48px;
+    min-height: 48px;
+    height: var(--pfas-bar-height);
+    padding: 2px;
+    gap: 2px;
+  }
+  .pfas-rail-btn[aria-current] { box-shadow: inset 0 3px 0 var(--accent); }
+  #sidebar.pfas-nav .pfas-panel { display: none; }
+  #sidebar.pfas-nav.is-open .pfas-panel {
+    display: block;
+    position: fixed;
+    z-index: 1;
+    left: 0; right: 0;
+    bottom: calc(var(--pfas-bar-height) + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-height: calc(100vh - var(--pfas-header-h) - var(--pfas-bar-height) - var(--sp-5));
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    background: var(--frame);
+    box-shadow: var(--shadow-card-hover);
+    overscroll-behavior: contain;
+  }
+  #sidebar.pfas-nav.is-open .pfas-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: color-mix(in srgb, var(--frame) 55%, transparent);
+  }
+  /* room for the bar, on a page that draws the nav (html.pfas-has-nav,
+     set by PFAS.nav before the page's content is read) */
+  html.pfas-has-nav .pfas-shell {
+    padding-bottom: calc(var(--pfas-bar-height) + env(safe-area-inset-bottom, 0px));
+  }
+  /* a core page's body is the window's height and its content runs past it:
+     the room for the bar follows the content */
+  html.pfas-has-nav body:not(.pfas-app)::after {
+    content: "";
+    display: block;
+    height: calc(var(--pfas-bar-height) + env(safe-area-inset-bottom, 0px));
+  }
+  html.pfas-has-nav .pfas-fab {
+    bottom: calc(var(--pfas-bar-height) + env(safe-area-inset-bottom, 0px) + var(--fab-inset));
+  }
+  /* Core pages: the content takes the full width, over SENAITE's
+     width:calc(100% - 50px), and scrolls inside its own box */
+  body:not(.pfas-app) .wrapper > div,
+  body:not(.pfas-app) .wrapper div.container-fluid,
+  body:not(.pfas-app) .wrapper div.container-lg,
+  body:not(.pfas-app) .wrapper div.container-md,
+  body:not(.pfas-app) .wrapper div.container-sm,
+  body:not(.pfas-app) .wrapper div.container-xl {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding-left: 8px !important;
+  }
+  body:not(.pfas-app) .pat-structure,
+  body:not(.pfas-app) .container { overflow-x: auto; }
+}
+
+/* ── Print: no navigation on paper ─────────────────────────────────────── */
+@media print {
+  #sidebar.pfas-nav { display: none; }
+}

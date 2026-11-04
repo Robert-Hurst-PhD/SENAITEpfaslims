@@ -17,10 +17,9 @@ names and the key-analyte default. The service is the one owner of these
 facts; SENAITE exports them to the worker (compound_library.json) with the
 method profiles and whenever a service changes.
 
-This role is the single authoritative source for the IS/surrogate/analyte
-distinction.  The Method Profile, wizard, and pipeline all derive their IS
-lists and surrogate maps from this field rather than from category names or
-private per-profile lists.
+This role is the single source for the IS/surrogate/analyte distinction:
+the Method Profile, wizard and pipeline derive their IS lists and surrogate
+maps from it.
 
 Python 2.7 compatible.
 """
@@ -39,7 +38,7 @@ from bika.lims.content.analysisservice import AnalysisService
 ROLE_VOCAB = DisplayList((
     ("",            "— not a PFAS service —"),
     ("analyte",     "Target Analyte"),
-    ("surrogate",   "Surrogate / Labeled Standard"),
+    ("surrogate",   "Surrogate / Isotope Standard"),
     ("injection_is","Injection Internal Standard"),
 ))
 
@@ -61,12 +60,8 @@ class AnalysisServiceExtender(object):
 
     pfas_role            — analyte / surrogate / injection_is (the authoritative
                            source for the analyte/surrogate/IS lists).
-    pfas_quant_surrogate — on an ANALYTE service: the KEYWORD of the surrogate
-                           SUGGESTED when this native joins a method with no
-                           surrogate chosen yet. Not read at run time: each
-                           method's Surrogate Map owns the link.
-    pfas_display_name, pfas_cas, pfas_labelled_analog_of, pfas_aliases,
-    pfas_published_names, pfas_key_analyte
+    pfas_display_name, pfas_cas, pfas_full_name, pfas_labelled_analog_of,
+    pfas_aliases, pfas_published_names, pfas_key_analyte
                          — the compound library's facts
                            (senaite.pfas.compound_library.FIELDS).
     """
@@ -93,22 +88,6 @@ class AnalysisServiceExtender(object):
             ),
         ),
         _ExtStringField(
-            "pfas_quant_surrogate",
-            schemata="PFAS",
-            required=False,
-            default="",
-            widget=StringWidget(
-                label="Suggested Surrogate (keyword)",
-                description=(
-                    "For an ANALYTE service: the surrogate suggested when this "
-                    "native is added to a method. Only a suggestion -- each "
-                    "method chooses its own quantifying surrogate on its "
-                    "Method Profile Surrogate Map."
-                ),
-                size=20,
-            ),
-        ),
-        _ExtStringField(
             "pfas_display_name",
             schemata="PFAS",
             required=False,
@@ -130,10 +109,10 @@ class AnalysisServiceExtender(object):
             widget=StringWidget(
                 label="Labelled form of (native keyword)",
                 description=(
-                    "For a LABELLED standard: the keyword of the native analyte "
+                    "For an isotope standard: the keyword of the native analyte "
                     "it is the isotopically labelled form of (13C8-PFOA: PFOA). "
-                    "A native linked in a method to its own labelled form has a "
-                    "labelled standard of its own there. Blank for a native."
+                    "A native linked in a method to its own labelled form has an "
+                    "isotope standard of its own there. Blank for a native."
                 ),
                 size=20,
             ),
@@ -152,6 +131,20 @@ class AnalysisServiceExtender(object):
                     "exists."
                 ),
                 size=20,
+            ),
+        ),
+        _ExtStringField(
+            "pfas_full_name",
+            schemata="PFAS",
+            required=False,
+            default="",
+            widget=StringWidget(
+                label="Full chemical name",
+                description=(
+                    "For a NATIVE analyte: the name written out (Perfluorobutanoic "
+                    "acid), as the certificate of analysis prints it."
+                ),
+                size=60,
             ),
         ),
         _ExtLinesField(

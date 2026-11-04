@@ -25,10 +25,14 @@
     <div class="alert alert-success" tal:condition="view/built">
       Run built and saved to the batch manifest — download the worklist below.
     </div>
+    <div class="alert alert-error" tal:define="w request/form/warn|nothing" tal:condition="w" tal:content="w">warning</div>
 
-    <p class="pfas-lead is-narrow">The run follows the batch: its method&rsquo;s extraction log supplies the samples. Choose the analyst and confirm them. <tal:h define="hid string:guided-extraction"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="pfas-lead is-narrow" tal:condition="view/selected_batch">The run follows the batch: its method&rsquo;s extraction log supplies the samples. Choose the analyst and confirm them.</p>
+    <p class="pfas-lead is-narrow" tal:condition="not:view/selected_batch">Pick the extraction batch to build a run for.</p>
 
-    <form method="get" class="pfas-filterbar is-narrow">
+    <!-- a chosen worksheet: the filter bar switches to another; its blank
+         option leads back to the lists -->
+    <form method="get" class="pfas-filterbar is-narrow" tal:condition="view/selected_batch">
       <div class="pfas-field">
         <label for="batch_id">Extraction batch</label>
         <select name="batch_id" id="batch_id" class="pfas-select" onchange="this.form.submit()">
@@ -41,68 +45,159 @@
       </div>
     </form>
 
+    <!-- no worksheet chosen: two lists, each worksheet id the button to its
+         run. Ready to build: the extraction finalized and no run built, or
+         the run sent back. In progress: the run built and waiting at a later
+         step, which its button names and opens. Each empty list says why; a
+         list that cannot be read says so and never reads as empty. -->
+    <tal:landing condition="not:view/selected_batch">
+    <div class="pfas-card is-spaced" id="rb-ready" tal:define="ready view/ready_to_build">
+      <h3>Ready to build</h3>
+      <table class="pfas-table" tal:condition="ready">
+        <tbody>
+          <tr tal:repeat="r ready">
+            <td><a class="btn-sm btn-secondary" tal:attributes="href r/url" tal:content="r/id">WS-298</a>
+              <span class="pfas-muted" tal:condition="r/about" tal:content="r/about">Client batch</span></td>
+            <td class="pfas-muted"><tal:s condition="r/sent_back">Sent back: <tal:w replace="r/sent_back">why</tal:w></tal:s></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="pfas-empty" tal:condition="python:ready == []">No worksheet is ready to build: one is listed once its extraction is finalized.
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide">Extraction Guide</a></p>
+      <p class="pfas-muted" tal:condition="python:ready is None">Could not list the worksheets.</p>
+    </div>
+    <div class="pfas-card is-spaced" id="rb-going" tal:define="going view/in_progress">
+      <h3>In progress</h3>
+      <table class="pfas-table" tal:condition="going">
+        <tbody>
+          <tr tal:repeat="r going">
+            <td><a class="btn-sm btn-secondary" tal:attributes="href r/url"
+                   tal:content="string:${r/id} &#183; ${r/label}">WS-313 &#183; step 3, import results</a>
+              <span class="pfas-muted" tal:condition="r/about" tal:content="r/about">Client batch</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="pfas-empty" tal:condition="python:going == []">No run is in progress: a built run is listed until its results and dilutions are in.</p>
+      <p class="pfas-muted" tal:condition="python:going is None">Could not list the worksheets.</p>
+    </div>
+    </tal:landing>
+
     <tal:ctx tal:define="ctx view/run_context" tal:condition="ctx">
       <div class="pfas-banner is-plain">
         <span>Method: <b tal:content="ctx/method_id">FDA</b></span>
-        <span>Extraction logbook: <b tal:content="string:FM-ENV-${ctx/extraction_slug}">252</b>
-              <span class="pfas-muted">(set by method)</span></span>
+        <span>Extraction logbook: <b tal:content="ctx/extraction_label">FM-ENV-003 Extraction Log</b>
+              <span class="pfas-muted">set by the method</span></span>
         <span>CCV every <b tal:content="ctx/ccv_interval">6</b> samples
-              <span class="pfas-muted">(method parameter)</span></span>
+              <span class="pfas-muted">set by the method</span></span>
         <span>Samples found: <b tal:content="ctx/n_samples">3</b></span>
+        <span>Run template: <b tal:content="ctx/method_id">FDA</b>
+              <span class="pfas-muted">set by the method</span></span>
       </div>
 
-      <div class="pfas-cols-2">
+      <!-- one step at a time -->
+      <nav class="pfas-seg is-spaced" role="tablist" aria-label="Run steps" data-tabs="data-tabs"
+           tal:define="st view/active_step">
+        <button type="button" class="pfas-seg-item" role="tab" tal:repeat="s view/STEPS"
+                tal:attributes="data-pane python:'step-%s' % s[0];
+                                aria-selected python:'true' if s[0] == st else 'false'"
+                tal:content="python:s[1]">1 &#183; Build the run</button>
+      </nav>
+
+      <div>
         <!-- ── 1. Build ─────────────────────────────────────────────────── -->
-        <div class="pfas-card">
-          <h3>1 · Build the run</h3>
+        <div id="step-1" tal:attributes="class python:'pfas-card pfas-pane' + (' is-active' if view.active_step() == '1' else '')">
+          <h3>1 · Build the run <tal:h define="hid string:guided-extraction"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
 
           <div class="table-wrap" tal:condition="ctx/rows">
-            <table class="pfas-table">
-              <thead><tr><th>Sample</th><th>Matrix (per sample)</th><th>Spike</th></tr></thead>
+            <table class="pfas-table" data-col-resize="run-builder-1">
+              <thead><tr><th>Sample</th><th>Matrix</th><th>Spike</th><th>Planned dilution</th><th>Route</th><th>Runs</th></tr></thead>
               <tbody>
                 <tr tal:repeat="r ctx/rows">
                   <td tal:content="r/sample_id">DW-1</td>
                   <td tal:content="python:r['matrix'] or '—'">Eggs</td>
                   <td tal:content="python:r['spike'] or '—'">80</td>
+                  <!-- a box holds a value or nothing: each box is named by
+                       its label outside it, a share or a volume pair -->
+                  <td class="rb-pdil">
+                    <div class="pfas-inline">
+                      <input type="number" min="0" step="any" class="is-short" form="build"
+                             tal:attributes="name string:pdil_pct.${r/sample_id}; aria-label string:Share of the extract, %, ${r/sample_id}" />
+                      <span class="pfas-unit">%</span>
+                      <span class="pfas-muted">or</span>
+                      <input type="number" min="0" step="any" class="is-short" form="build"
+                             tal:attributes="name string:pdil_take.${r/sample_id}; aria-label string:Volume taken, ${r/sample_id}" />
+                      <span class="pfas-unit">taken</span>
+                      <span class="pfas-unit">made up to</span>
+                      <input type="number" min="0" step="any" class="is-short" form="build"
+                             tal:attributes="name string:pdil_to.${r/sample_id}; aria-label string:Made up to, ${r/sample_id}" />
+                    </div>
+                    <div class="pfas-hint rb-fold"></div></td>
+                  <td><select form="build" tal:attributes="name string:proute.${r/sample_id}; aria-label string:Route, ${r/sample_id}">
+                        <option tal:repeat="rt view/dilution_routes" tal:attributes="value python:rt[0]"
+                                tal:content="python:rt[1]">Dilute the extract</option></select></td>
+                  <!-- the segment writes the hidden field the build reads -->
+                  <td><input type="hidden" value="with" form="build"
+                             tal:attributes="name string:pruns.${r/sample_id}; id string:pruns-${r/sample_id}" />
+                    <div class="pfas-seg pfas-seg-sm is-fit" role="group" data-field="data-field" data-quiet="data-quiet"
+                         tal:attributes="data-input string:pruns-${r/sample_id}; aria-label string:Runs, ${r/sample_id}">
+                      <button type="button" class="pfas-seg-item" data-value="with" aria-pressed="true">With this run</button>
+                      <button type="button" class="pfas-seg-item" data-value="separately" aria-pressed="false">Separately</button>
+                    </div></td>
                 </tr>
               </tbody>
             </table>
+            <script type="text/javascript">
+            //<![CDATA[
+            /* the factor beside a planned dilution, as it is typed */
+            document.querySelectorAll('td.rb-pdil').forEach(function (td) {
+              var ins = td.querySelectorAll('input'), out = td.querySelector('.rb-fold');
+              function show() {
+                var p = parseFloat(ins[0].value), t = parseFloat(ins[1].value), v = parseFloat(ins[2].value);
+                var f = p ? 100 / p : (t && v ? v / t : 0);
+                out.textContent = f > 1 ? '= ' + (Math.round(f * 100) / 100) + '-fold' : '';
+              }
+              td.addEventListener('input', show);
+            });
+            //]]>
+            </script>
           </div>
           <p tal:condition="not:ctx/rows" class="pfas-banner is-warn">
             No samples found in the method's extraction logbook or linked to
             this batch — complete the extraction log, or add sample names below.
           </p>
 
-          <form method="post"
+          <form method="post" id="build"
                 tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
             <input type="hidden" name="action" value="build"/>
             <input type="hidden" name="batch_id"
                    tal:attributes="value view/selected_batch"/>
             <div class="pfas-field is-spaced" tal:define="staff view/staff_pool">
-              <label>Analyst (laboratory staff pool) *</label>
-              <select name="initials" class="pfas-select" required="required" tal:condition="staff">
+              <!-- the label names what the box takes: a name from the pool, else initials -->
+              <label for="initials" tal:content="python:'Analyst' if staff else 'Analyst initials'">Analyst</label>
+              <select name="initials" id="initials" class="pfas-select is-fit" required="required" tal:condition="staff">
                 <option value="">— select analyst —</option>
                 <option tal:repeat="p staff"
                         tal:attributes="value p/initials"
                         tal:content="string:${p/fullname} (${p/initials})">A (AB)</option>
               </select>
               <tal:empty tal:condition="not:staff">
-                <input type="text" name="initials" maxlength="4" class="pfas-input is-upper"
-                       placeholder="Initials"/>
+                <input type="text" name="initials" id="initials" maxlength="4" class="pfas-input is-upper"/>
                 <span class="pfas-hint">Staff pool is empty — add Lab Contacts in
                   <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/bika_setup/bika_labcontacts">SENAITE setup</a>
                   so analysts are selectable instead of typed.</span>
               </tal:empty>
             </div>
             <div class="pfas-field is-spaced">
-              <label for="extra_samples">Additional sample names (optional, one per line)</label>
+              <label for="extra_samples">Additional sample names, one per line</label>
               <textarea name="extra_samples" id="extra_samples" rows="3" class="pfas-textarea"></textarea>
             </div>
             <div class="pfas-field is-spaced" tal:condition="view/made_requests">
               <span>Run</span>
               <div class="pfas-radios">
-                <label class="pfas-check"><input type="radio" name="run_kind" value="full" checked="checked" /> The whole batch</label>
-                <label class="pfas-check"><input type="radio" name="run_kind" value="supplementary" />
+                <label class="pfas-check"><input type="radio" name="run_kind" value="full"
+                       tal:attributes="checked python:None if request.get('run_kind') == 'supplementary' else 'checked'" /> The whole batch</label>
+                <label class="pfas-check"><input type="radio" name="run_kind" value="supplementary"
+                       tal:attributes="checked python:'checked' if request.get('run_kind') == 'supplementary' else None" />
                   <span tal:replace="python:'Only what review asked for (%d made)' % len(view.made_requests())">Only requests</span></label>
               </div>
             </div>
@@ -123,191 +218,171 @@
                 </div>
               </tal:a>
             </div>
+            <!-- what the instrument is loaded with: each lot in date on the
+                 run date (run_lots.py); the levels and the ICV for a new curve -->
+            <tal:l define="mid ctx/method_id; series python:view.series_options(mid)">
+            <div class="section-group-hdr">Loaded on the instrument <tal:h define="hid string:calibration-decision"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></div>
+            <div class="cf-settings">
+              <!-- the levels made in one sitting load as one: the run records each level's lot -->
+              <div class="cf-label"><label for="cal_series">Calibration series</label></div>
+              <div class="cf-control">
+                <select name="cal_series" id="cal_series">
+                  <option value="" tal:content="python:'Choose a sitting' if series else 'No sitting made every level'">Choose a sitting</option>
+                  <option tal:repeat="e series" tal:attributes="value e/id" tal:content="e/label">FM-ENV-002-261014-01</option>
+                </select>
+              </div>
+              <tal:s repeat="sl python:[x for x in view.run_slots(mid, True) if not x[0].startswith('CAL-')]">
+              <div class="cf-label"><label tal:attributes="for python:'lot__%s' % sl[0]" tal:content="python:sl[1]">CAL-1</label></div>
+              <div class="cf-control">
+                <select tal:attributes="id python:'lot__%s' % sl[0]; name python:'lot__%s' % sl[0]; data-slot python:sl[0]">
+                  <tal:o tal:define="opts python:view.slot_options(sl[0], mid)">
+                  <option value="" tal:content="python:'Choose a lot' if opts else 'No lot made for this slot'">Choose a lot</option>
+                  <option tal:repeat="o opts" tal:attributes="value python:o[0]" tal:content="python:o[1]">CAL-1 &#183; C1</option>
+                  </tal:o>
+                </select>
+              </div>
+              </tal:s>
+            </div>
+            </tal:l>
             <button class="btn btn-primary" type="submit">Build Run Sequence</button>
           </form>
         </div>
-
-        <!-- ── 2. Import instrument data ────────────────────────────────── -->
-        <div class="pfas-card">
-          <h3>2 · Import instrument data</h3>
-          <p class="pfas-note-sm">Upload the instrument&rsquo;s finished export; it is imported only with an active Import Studio mapping. <tal:h define="hid string:import-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-          <form method="post" enctype="multipart/form-data"
-                tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
-            <input type="hidden" name="action" value="upload_export"/>
-            <input type="hidden" name="batch_id"
-                   tal:attributes="value view/selected_batch"/>
-            <div class="pfas-field is-spaced">
-              <input type="file" name="export_file" accept=".csv,.txt,.tsv"/>
-            </div>
-            <button class="btn btn-primary" type="submit">Upload to pipeline</button>
-          </form>
-        </div>
       </div>
 
-      <!-- ── Run template (per-method, editable) ───────────────────────── -->
-      <tal:tpl tal:define="tpl view/current_template;
-                           vocab view/add_vocabulary;
-                           editable view/can_edit_template"
-               tal:condition="tpl">
-      <div class="pfas-card is-spaced"
-           tal:attributes="class python:'pfas-card is-spaced' + ('' if editable else ' is-readonly')">
-        <h3>Run template — how this method builds its worklist
-          <span class="pfas-muted"
-                tal:content="ctx/method_id">FDA</span>
-        </h3>
-        <p class="pfas-note-sm">One run sequence; drag to reorder. <tal:h define="hid string:ccv-bracketing"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-        <div class="alert alert-success" tal:condition="view/template_saved">
-          Run template saved to the method profile.
+
+      <!-- ── 4 · Dilutions and re-injections review asked for ─────────── -->
+      <div class="pfas-pane" id="step-4" tal:condition="not:view/review_requests"
+           tal:attributes="class python:'pfas-pane' + (' is-active' if view.active_step() == '4' else '')">
+        <p class="pfas-note-sm">No dilution or re-injection has been asked for.</p>
+      </div>
+      <div id="step-4" tal:define="reqs view/review_requests" tal:condition="reqs"
+           tal:attributes="class python:'pfas-card is-spaced pfas-pane' + (' is-active' if view.active_step() == '4' else '')">
+        <div class="pfas-between">
+          <h3>4 &#183; Dilutions and re-injections <tal:h define="hid string:dilution"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+          <a class="btn btn-secondary" tal:condition="view/made_requests"
+             tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?batch_id=${view/selected_batch}&amp;run_kind=supplementary#build">Build follow-up run</a>
         </div>
-
-        <form method="post" id="rb-tpl-form"
-              tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
-          <input type="hidden" name="action" value="save_template"/>
-          <input type="hidden" name="batch_id"
-                 tal:attributes="value view/selected_batch"/>
-          <input type="hidden" name="method_id" tal:attributes="value ctx/method_id"/>
-          <input type="hidden" name="sequence_codes" id="sequence_codes"/>
-
-          <div class="pfas-field is-spaced">
-            <label>Run sequence — drag to reorder</label>
-            <div class="pfas-seqlist" id="seq-chips">
-              <div tal:repeat="c tpl/sequence_labelled"
-                   tal:attributes="data-code c/code; data-kind c/kind;
-                                   class python:'pfas-seqrow ' + c['kind']">
-                <span class="grip" title="Drag to reorder"></span>
-                <span class="lbl" tal:content="c/label">Method Blank</span>
-                <span class="code"
-                      tal:condition="python:c['code'] != 'SAMPLES'"
-                      tal:content="string:(${c/code})">(MB)</span>
-                <button type="button" class="del" title="Remove"
-                        tal:condition="c/removable">&times;</button>
+        <table class="pfas-table" data-col-resize="run-builder-2">
+          <thead><tr><th>Injection</th><th>Asked for</th><th>Why</th><th>Asked by</th><th>Status</th><th>Made as</th><th></th></tr></thead>
+          <tbody>
+            <tr tal:repeat="r reqs">
+              <td class="pfas-mono" tal:content="r/injection">537_GW_GW-0006_261006-01</td>
+              <td tal:content="r/asked">Dilution 1:10</td>
+              <td tal:content="r/reason">over range</td>
+              <td tal:content="r/requested_by">AN1</td>
+              <td><span tal:attributes="class python:'badge badge-ok' if r['status'] == 'made' else 'badge badge-pending'"
+                        tal:content="python:r['status'].capitalize()">Open</span></td>
+              <td class="pfas-mono">
+                <tal:m tal:content="r/new_injection">537_GW_GW-0006_261006-01_DIL10</tal:m>
+                <tal:pf condition="python:r.get('matches') is not None" define="pf_ok r/matches"><span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span></tal:pf>
+              </td>
+              <td><button type="button" class="btn-sm btn-primary" tal:condition="python:r['status'] == 'open'"
+                          tal:attributes="data-modal-open string:make-${r/id}">Make</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <tal:dialogs tal:repeat="r reqs">
+        <div class="pfas-modal" tal:condition="python:r['status'] == 'open'" tal:attributes="id string:make-${r/id}">
+          <div class="pfas-modal-box is-wide" role="dialog" aria-modal="true">
+            <h2>Make <tal:a tal:replace="r/asked">Dilution 1:10</tal:a> of <tal:i tal:replace="r/injection">X</tal:i></h2>
+            <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-run-builder" tal:define="rid r/id">
+              <input type="hidden" name="action" value="make_request" />
+              <input type="hidden" name="batch_id" tal:attributes="value view/selected_batch" />
+              <input type="hidden" name="request" tal:attributes="value rid" />
+              <!-- the dilution's vial, one settings block; the internal
+                   standard and the surrogate each under its own heading -->
+              <tal:dil condition="python:r.get('kind') == 'dilution'">
+              <div class="cf-settings">
+                <div class="cf-label"><label tal:attributes="for string:extract_ul.${rid}">Extract taken (&micro;L)</label></div>
+                <div class="cf-control">
+                  <input type="number" step="any" min="0" class="no-stepper" required="required"
+                         tal:attributes="name string:extract_ul.${rid}; id string:extract_ul.${rid}" /></div>
+                <div class="cf-label"><label tal:attributes="for string:final_ul.${rid}">Final volume (&micro;L)</label></div>
+                <div class="cf-control">
+                  <input type="number" step="any" min="0" class="no-stepper" required="required"
+                         tal:attributes="name string:final_ul.${rid}; id string:final_ul.${rid}" /></div>
+                <div class="cf-label"><label tal:attributes="for string:diluent_lot.${rid}">Diluent</label></div>
+                <div class="cf-control">
+                  <select required="required" tal:attributes="name string:diluent_lot.${rid}; id string:diluent_lot.${rid}">
+                    <option value="">Choose</option>
+                    <option tal:repeat="l view/diluent_lots" tal:attributes="value python:l[0]" tal:content="python:l[1]">Methanol &#183; LOT-1</option>
+                  </select></div>
               </div>
-            </div>
-            <div class="pfas-seq-add">
-              <select id="seq-add">
-                <option value="">&mdash; add QC / calibrators &mdash;</option>
-                <option tal:repeat="v vocab" tal:attributes="value v/code"
-                        tal:content="python:(('Calibrator list') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
-              </select>
-              <button type="button" class="btn-sm btn-secondary"
-                      id="seq-add-btn">+ add</button>
-            </div>
+              <tal:std repeat="std python:(('is', 'Internal standard'), ('sur', 'Surrogate'))">
+              <div class="section-group-hdr" tal:content="python:std[1]"
+                   tal:attributes="id python:'%s_head.%s' % (std[0], rid)">Internal standard</div>
+              <!-- the heading names the group: a screen reader reads it with each box -->
+              <div class="cf-settings" role="group" tal:attributes="aria-labelledby python:'%s_head.%s' % (std[0], rid)">
+                <div class="cf-label"><label tal:attributes="for python:'%s_handling.%s' % (std[0], rid)">Handling</label></div>
+                <div class="cf-control">
+                  <select required="required" tal:attributes="name python:'%s_handling.%s' % (std[0], rid); id python:'%s_handling.%s' % (std[0], rid)">
+                    <option value="">Choose</option>
+                    <option tal:repeat="h view/handlings" tal:attributes="value python:h[0]" tal:content="python:h[1]">Not added</option>
+                  </select></div>
+                <div class="cf-label"><label tal:attributes="for python:'%s_lot.%s' % (std[0], rid)">Lot</label></div>
+                <div class="cf-control">
+                  <select tal:attributes="name python:'%s_lot.%s' % (std[0], rid); id python:'%s_lot.%s' % (std[0], rid)">
+                    <option value="">Prepared standard</option>
+                    <option tal:repeat="l view/standard_lots" tal:attributes="value python:l[0]" tal:content="python:l[1]">IS mix &#183; PS-1</option>
+                  </select></div>
+                <div class="cf-label"><label tal:attributes="for python:'%s_ul.%s' % (std[0], rid)">Volume (&micro;L)</label></div>
+                <div class="cf-control">
+                  <input type="number" step="any" min="0" class="no-stepper"
+                         tal:attributes="name python:'%s_ul.%s' % (std[0], rid); id python:'%s_ul.%s' % (std[0], rid)" /></div>
+              </div>
+              </tal:std>
+              </tal:dil>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Make</button>
+                <button class="btn btn-secondary" type="button" data-modal-close="data-modal-close">Cancel</button>
+              </div>
+            </form>
           </div>
-
-          <p class="pfas-note-sm">
-            Bracketing: a <b>CCV</b> is inserted automatically every
-            <span tal:content="ctx/ccv_interval">6</span> injections
-            (interval from the method profile) — you don't add or position it.
-          </p>
-
-          <p class="pfas-hint">Calibrator list expands to the calibration standards when the curve is included; Field samples can be moved, not removed.</p>
-          <button class="btn btn-primary" type="submit"
-                  tal:condition="editable">Save run template</button>
-          <p class="pfas-note-sm"
-             tal:condition="not:editable">
-            Read-only — a Manager can edit this run template.
-          </p>
-        </form>
+        </div>
+        </tal:dialogs>
       </div>
 
-      <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
-      <script>
-      /* Pure DOM (no innerHTML / no literal markup); and NO bare "less-than",
-         "ampersand" or "and-and" operators, so the Chameleon template parser
-         never mistakes JS for markup. SortableJS reorders the rows (touch
-         screens included;. */
-      (function () {
-        var form = document.getElementById("rb-tpl-form");
-        if (!form) return;
-        var list = document.getElementById("seq-chips");
-
-        function makeRow(code, label, kind) {
-          var row = document.createElement("div");
-          row.className = "pfas-seqrow " + kind;
-          row.setAttribute("data-code", code);
-          row.setAttribute("data-kind", kind);
-          var g = document.createElement("span");
-          g.className = "grip"; g.title = "Drag to reorder";
-          row.appendChild(g);
-          var l = document.createElement("span");
-          l.className = "lbl"; l.textContent = label; row.appendChild(l);
-          var c = document.createElement("span");
-          c.className = "code"; c.textContent = "(" + code + ")";
-          row.appendChild(c);
-          var d = document.createElement("button");
-          d.type = "button"; d.className = "del"; d.title = "Remove";
-          d.textContent = "\u00d7"; row.appendChild(d);
-          return row;
-        }
-        function serialize() {
-          var codes = [];
-          list.querySelectorAll(".pfas-seqrow").forEach(function (r) {
-            codes.push(r.getAttribute("data-code")); });
-          document.getElementById("sequence_codes").value = codes.join(",");
-        }
-        // add
-        var addBtn = document.getElementById("seq-add-btn");
-        if (addBtn) {
-          addBtn.addEventListener("click", function () {
-            var sel = document.getElementById("seq-add");
-            if (!sel.value) return;
-            if (sel.value === "SAMPLES") return;
-            var label = sel.options[sel.selectedIndex].text
-                           .replace(/\s*\([^)]*\)\s*$/, "");
-            var kind = (sel.value === "CAL") ? "cal" : "qc";
-            list.appendChild(makeRow(sel.value, label, kind));
-          });
-        }
-        // delete
-        list.addEventListener("click", function (e) {
-          var b = e.target.closest ? e.target.closest("button.del") : null;
-          if (!b) return;
-          var row = b.parentNode;
-          if (row.getAttribute("data-kind") === "samples") return;
-          row.remove();
-        });
-        // drag reorder: SortableJS (mouse and touch); read-only templates stay put
-        Sortable.create(list, {
-          draggable: ".pfas-seqrow", filter: "button.del", preventOnFilter: false,
-          animation: 150, ghostClass: "dragging",
-          disabled: !!list.closest(".is-readonly"),
-          onEnd: serialize
-        });
-        form.addEventListener("submit", serialize);
-      })();
-      </script>
-      </tal:tpl>
+      <!-- the run template is the method's, edited on its profile's Run Template tab -->
     </tal:ctx>
 
     <!-- ── Built sequence + download ──────────────────────────────────── -->
+    <div class="pfas-pane" id="step-2" tal:condition="python:view.selected_batch() and not view.manifest()"
+         tal:attributes="class python:'pfas-pane' + (' is-active' if view.active_step() == '2' else '')">
+      <p class="pfas-note-sm">Build the run first.</p>
+    </div>
     <tal:man tal:define="m view/manifest" tal:condition="m">
-      <div class="pfas-card is-spaced">
+      <div class="pfas-banner is-warn" tal:condition="python:m.get('sent_back')">
+        Sent back: <span tal:content="python:m['sent_back'].get('reason')">why</span>
+      </div>
+      <div id="step-2" tal:attributes="class python:'pfas-card is-spaced pfas-pane' + (' is-active' if view.active_step() == '2' else '')">
         <h3 class="is-row">
-          <span>Built run — <span tal:content="m/batch_id">B</span></span>
+          <span>2 &#183; Load on the instrument &#8212; <span tal:content="m/batch_id">B</span></span>
           <span class="pfas-muted">
-            <span tal:content="m/built_at">ts</span> by
+            <span tal:content="python:view.lab_at(m.get('built_at'), m.get('built_at'))">ts</span> by
             <span tal:content="m/built_by">INI</span> ·
             <span tal:content="m/method_id">FDA</span> ·
             CCV/<span tal:content="m/ccv_interval">6</span>
           </span>
-          <a class="btn btn-primary is-end"
+          <a class="btn btn-primary is-end" title="The run in the instrument software's sample-list format: import it on the LC-MS PC"
+             tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_masslynx&batch_id=${m/batch_id}">
+            Load Injection List to LC-MS/MS
+          </a>
+          <a class="btn btn-secondary" title="The same injections as a spreadsheet, with the table's columns, to keep or print"
              tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_csv&batch_id=${m/batch_id}">
-            Download worklist CSV
+            Backup CSV
           </a>
-          <a class="btn btn-secondary"
-             tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_masslynx&batch_id=${m/batch_id};
-                             title view/export_source">
-            Instrument sample list
-          </a>
+          <tal:h define="hid string:sequence-export"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
         </h3>
+        <p class="pfas-note-sm">The LIMS does not send the run to the instrument: load the instrument sample list on its computer.</p>
         <div class="table-wrap">
-          <table class="pfas-table">
-            <thead><tr><th>Vial</th><th>Injection name (lot)</th>
+          <table class="pfas-table" data-col-resize="run-builder-3">
+            <thead><tr><th>Vial</th><th>Injection name</th><th>Lot</th>
                        <th>Description</th><th>Type</th></tr></thead>
-            <tbody>
+            <tbody tal:define="std python:m.get('standards') or {}; row_lot python:__import__('senaite.pfas.run_lots', fromlist=['row_lot']).row_lot">
               <tr tal:repeat="r m/rows">
                 <td tal:content="r/vial">1</td>
                 <td class="pfas-mono" tal:content="r/name">name</td>
+                <td class="pfas-mono" tal:content="python:row_lot(r, std)">L1</td>
                 <td class="pfas-muted-cell"
                     tal:content="python:r.get('description','')">desc</td>
                 <td><span tal:attributes="class python:{'Standard': 'pfas-text-accent', 'QC': 'pfas-text-warn', 'Sample': 'pfas-text-ok'}.get(r['type'], 'pfas-muted')"
@@ -318,6 +393,20 @@
         </div>
       </div>
     </tal:man>
+
+    <!-- ── 3. Import results ───────────────────────────────────────────── -->
+    <div id="step-3" tal:condition="view/selected_batch"
+         tal:attributes="class python:'pfas-card is-spaced pfas-pane' + (' is-active' if view.active_step() == '3' else '')">
+      <h3>3 &#183; Import results <tal:h define="hid string:import-profiles"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+      <p class="pfas-note-sm">After the run, upload the instrument&rsquo;s results export; it is read with the instrument&rsquo;s active Import Studio layout.</p>
+      <form method="post" enctype="multipart/form-data" class="rb-upload"
+            tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
+        <input type="hidden" name="action" value="upload_export"/>
+        <input type="hidden" name="batch_id" tal:attributes="value view/selected_batch"/>
+        <input type="file" name="export_file" accept=".csv,.txt,.tsv"/>
+        <button class="btn btn-primary" type="submit">Upload results</button>
+      </form>
+    </div>
 
   </div>
   </div><!-- /content slot -->

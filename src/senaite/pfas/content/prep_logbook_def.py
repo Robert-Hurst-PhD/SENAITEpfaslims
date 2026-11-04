@@ -35,6 +35,12 @@ class IPrepLogbookDef(model.Schema):
         default=u"draft",
         required=True,
     )
+    scope = schema.Choice(
+        title=_(u"Used for"),
+        values=[u"batch", u"library"],
+        default=u"batch",
+        required=False,
+    )
     standard_type = schema.Choice(
         title=_(u"Standard Type"),
         values=[
@@ -106,24 +112,6 @@ class IPrepLogbookDef(model.Schema):
     builtin = schema.Bool(
         title=_(u"Built-in"),
         description=_(u"True for the four standard logbooks (cannot delete)."),
-        default=False,
-        required=False,
-    )
-    steps_json = schema.Text(
-        title=_(u"Guided Steps (JSON)"),
-        description=_(
-            u"Ordered guided steps: [{id, title, instructions, media, "
-            u"media_alt, fields}]. `fields` holds field NAMES resolved against "
-            u"field_schema_json — the schema stays the single source for a "
-            u"field's type and label. Empty means this logbook has no guided "
-            u"mode and renders as a single concise form."),
-        required=False,
-    )
-    guided_default = schema.Bool(
-        title=_(u"Open in Guided Mode by Default"),
-        description=_(
-            u"When this logbook has steps, open it guided unless the analyst "
-            u"has chosen otherwise."),
         default=False,
         required=False,
     )

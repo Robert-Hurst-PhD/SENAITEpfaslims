@@ -65,18 +65,39 @@ services:
       - OUTPUT_DIR=/data/reports
       # QC control-chart SQLite database (shared with senaite container)
       - PFAS_QC_DB=/data/qc/pfas_qc_results.db
+      # raw data processing: each pulled run's raw folders and any mzML (docs/RAW_DATA.md)
+      - RAW_RUN_DIR=/data/raw_runs
+      # unset: Waters folders read natively; "service": native first, then pfas-convert for
+      # other folders; "native": mzML converted on a Windows PC
+      - PFAS_CONVERTER=${PFAS_CONVERTER:-}
     volumes:
       - ./pfas_pipeline:/app/pfas_pipeline
       # The canonical instrument-column vocabulary is owned by the add-on and
       # read by the worker through pfas_pipeline/canonical_columns.py — one
       # definition, two runtimes.
       - ./src/senaite/pfas:/app/senaite_pfas:ro
-      # DEV: local placeholder; replace with /mnt/pfas_share/Instrument_Output for production
-      - ./data/instrument_output:/data/instrument_output:ro
+      # DEV: local placeholder; replace with /mnt/pfas_share/Instrument_Output for production.
+      # Writable: the raw-data converter hands its runs over here (docs/RAW_DATA.md)
+      - ./data/instrument_output:/data/instrument_output
+      - pfas-raw-runs:/data/raw_runs
       - pfas-reports:/data/reports
       - pfas-qc:/data/qc
     depends_on: [senaite]
     networks: [senaite]
+    restart: unless-stopped
+
+  # ── Raw-data converter (ProteoWizard msconvert; docs/RAW_DATA.md) ──
+  # Started only with `docker compose --profile raw-data up -d`, once the lab
+  # has accepted the vendor licences of the image it names in PFAS_PWIZ_IMAGE.
+  # No network: it sees only the raw-runs volume the worker hands runs over on.
+  pfas-convert:
+    image: ${PFAS_PWIZ_IMAGE:-set-PFAS_PWIZ_IMAGE-after-accepting-the-vendor-licences}
+    profiles: [raw-data]
+    network_mode: none
+    entrypoint: ["/bin/sh", "/convert/convert_loop.sh"]
+    volumes:
+      - pfas-raw-runs:/data/raw_runs
+      - ./tools/convert:/convert:ro
     restart: unless-stopped
 
   # ── Document renderer (pdfme) ────────────────────────────
@@ -105,6 +126,7 @@ volumes:
   senaite-data:
   pfas-reports:
   pfas-qc:
+  pfas-raw-runs:
 
 networks:
   senaite:

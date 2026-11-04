@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """Manual integration: detection, reasons and records.
 
-when the import captures a manual integration, or the
+When the import captures a manual integration, or the
 instrument report shows one, each must be justified from a list of reasons
 and signed (analyst, then reviewer), and the report's before / after pages
-stamped with the justification. The documentation follows the VELAP Manual
-Integration Technical Assistance Document (Virginia DCLS, 11/30/2016) §5.2,
-and the North Carolina DEQ Manual Integration Policy (04/09/2010).
+stamped with the justification. The documentation follows a state laboratory accreditation programme's
+manual-integration technical assistance document (2016) §5.2 and a state
+environmental agency's manual-integration policy (2010).
 
     is_manual(raw, markers)   the ONE decision, also made by the pipeline
                               (pfas_pipeline loads this file): with markers,
@@ -30,7 +30,12 @@ The worksheet's records (a dict, stored on the worksheet):
                   "reviewer": {...} | None}],
      "none_in_report": {"userid", "name", "at"} | None,
      "history": [{"at", "by", "id", "action", "changes"}],   append-only
-     "stamped": {"file", "fp", "of", "at", "by"} | None}
+     "stamped": {"file", "fp", "of", "at", "by"} | None,
+     "raw_changes": [{"id", "injection", "analyte", "transition", "qc_type",
+                  "kind", "before", "after", "by", "at", "dropped",
+                  "reason_id", "reason", "detail",
+                  "analyst": {"userid", "name", "initials", "at", "fp"} | None,
+                  "verifier": {"userid", "name", "at", "fp"} | None}]}
 
     merge_detected(state, rows, who, when)   add the export's manual integrations
     update(state, id, fields, who, when)     edit; a real change clears signatures
@@ -43,6 +48,32 @@ The worksheet's records (a dict, stored on the worksheet):
     server_heading_pages(texts, heading)     the server's scan of the report
     gate(state, report_fp)                   (ok, [what is missing])
 
+Changes made on the Raw Data tab are kept apart from the report's records
+(raw_changes): one per (injection, analyte, transition), the transition None
+for the quantifier. An edit asks for nothing; before submit each open change
+has a reason and the analyst's initials, given once for all; at verify a
+different person countersigns them. The report's gate and stamp ignore them.
+`no_effect` names the changes the run kept but could not apply,
+{(injection, analyte, transition): why}: they ask no reason or signature.
+`sign_as` is the person's People & Roles sign rights (SIGN_RIGHT): initials need
+the analyst's, a countersignature the reviewer's.
+
+    record_raw_edit(state, injection, analyte, transition, kind, before,
+                    after, who, when, qc_type, quant_transition)
+                                             an edit made or changed
+    drop_raw_edit(state, injection, analyte, transition, who, when,
+                  quant_transition)          the edit undone
+    set_raw_reason(state, id, reason_id, reason, detail, who, when)
+    initial_raw(state, initials, who, when, name, no_effect, sign_as)
+                                             the analyst, once for all
+    countersign_raw(state, who, when, name, no_effect, sign_as)
+                                             the verifier, a DIFFERENT person
+    raw_gate(state, phase, no_effect, overrides)
+                                             (ok, [what is missing]) at
+                                             "submit" or "verify"; an edit in
+                                             the run's file with no record
+                                             is missing too
+
 Pure: Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
@@ -50,8 +81,8 @@ from __future__ import absolute_import, unicode_literals
 # a cell meaning "nothing changed"
 _EMPTY = frozenset(("", "0", "no", "n", "false", "none", "-", "nan", "n/a", "na"))
 
-# The starting list. Verbatim from the sources; a manager
-# edits the list, these only seed it.
+# The starting list, verbatim from the sources; a manager edits the list,
+# these only seed it.
 SEED_REASONS = [
     ("not-identified", "The software did not identify and integrate the peak of interest", "VELAP TAD 2.1"),
     ("inconsistent", "The software integrated the peak of interest in an inconsistent manner", "VELAP TAD 2.1"),
@@ -112,7 +143,8 @@ QC_TYPES_FLAGGED = ("MB", "LRB", "MxB", "LFB", "LFSM", "LFSMD", "Dup", "CAL", "I
 
 def empty_state():
     return {"report_fp": "", "report_file": "", "records": [], "none_in_report": None,
-            "history": [], "stamped": None, "heading_scan": None, "dismissed": {}}
+            "history": [], "stamped": None, "heading_scan": None, "dismissed": {},
+            "raw_changes": []}
 
 
 def _log(state, who, when, rec_id, action, changes=None):
@@ -128,7 +160,9 @@ def _find(state, rec_id):
 
 
 def _new_id(state):
-    n = max([int(r["id"].split("-")[-1]) for r in state.get("records") or []
+    # a raw change moved out of the records keeps its id: it is never reused
+    moved = [r for r in state.get("raw_changes") or [] if r["id"].startswith("mi-")]
+    n = max([int(r["id"].split("-")[-1]) for r in (state.get("records") or []) + moved
              if r["id"].split("-")[-1].isdigit()] or [0]) + 1
     return "mi-%d" % n
 
@@ -446,3 +480,332 @@ def gate(state, report_fp, captured=True, server=None):
             out.append("stamp the report")
     return (not out), out
 
+
+# ── changes made on the Raw Data tab ───────────────────────────────────────
+
+# the People & Roles sign right each signature needs, the instrument report's
+# records and the Raw Data changes alike
+SIGN_RIGHT = {"analyst": "preparer", "reviewer": "reviewer"}
+RAW_KINDS = ("integrate", "apex", "delete")
+RAW_KIND_TEXT = {"integrate": "re-integrated", "apex": "another apex", "delete": "peak deleted"}
+RAW_FIELDS = ("kind", "before", "after", "reason_id", "reason", "detail")
+
+
+def _transition(transition, quant_transition=None):
+    """None for the quantifier: no transition, an empty one, or the
+    quantifier's own."""
+    if transition in (None, "") or transition == quant_transition:
+        return None
+    return transition
+
+
+def _raw_find(state, injection, analyte, transition):
+    for r in state.get("raw_changes") or []:
+        if (r["injection"], r["analyte"], r.get("transition")) == (injection, analyte, transition):
+            return r
+    return None
+
+
+def _raw_by_id(state, rec_id):
+    for r in state.get("raw_changes") or []:
+        if r["id"] == rec_id:
+            return r
+    raise KeyError(rec_id)
+
+
+def _raw_new_id(state):
+    n = max([int(r["id"].split("-")[-1]) for r in state.get("raw_changes") or []
+             if r["id"].startswith("re-") and r["id"].split("-")[-1].isdigit()] or [0]) + 1
+    return "re-%d" % n
+
+
+def raw_fingerprint(rec):
+    """What a signature on a raw change attests: the change and its reason.
+    A signature counts only while this is unchanged."""
+    import hashlib
+    import json
+    body = json.dumps(dict((k, rec.get(k)) for k in ("injection", "analyte", "transition") + RAW_FIELDS),
+                      sort_keys=True)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def raw_signed(rec, role):
+    sig = rec.get(role)
+    return bool(sig) and sig.get("fp") == raw_fingerprint(rec)
+
+
+def _clear_signatures(rec, changes):
+    if rec.get("analyst") or rec.get("verifier"):
+        changes["signatures"] = ["cleared", None]
+    rec["analyst"] = rec["verifier"] = None
+
+
+def raw_key(rec):
+    """(injection, analyte, transition) of a raw change; None for the quantifier."""
+    return (rec["injection"], rec["analyte"], rec.get("transition"))
+
+
+def raw_open(state, no_effect=None):
+    """The changes that need a reason and signatures: every one not undone,
+    less those the run could not apply (`no_effect`)."""
+    no_effect = no_effect or {}
+    return [r for r in state.get("raw_changes") or [] if not r.get("dropped") and raw_key(r) not in no_effect]
+
+
+def _sign_right(role, sign_as, name, act):
+    """ValueError when People & Roles gives the person (`name`) no sign right for
+    `role`; `sign_as` None is not checked."""
+    if sign_as is not None and SIGN_RIGHT[role] not in sign_as:
+        raise ValueError("%s has no %s sign right in People & Roles, so does not %s manual changes"
+                         % (name, SIGN_RIGHT[role], act))
+
+
+def record_raw_edit(state, injection, analyte, transition, kind, before, after, who, when,
+                    qc_type="", quant_transition=None):
+    """An edit made on the Raw Data tab: no reason is asked. The trace's one
+    record is made, or updated (also after an undo); the automatic peak
+    (before) is the first edit's. A real change clears the signatures; the
+    same edit posted again changes nothing. after: the edges, apex, area,
+    the line it is measured on ("baseline"), any levels set by hand and the
+    record's "version" (raw_review.EDIT_VERSION: its baseline is named in
+    this version's words); ignored for a delete."""
+    if kind not in RAW_KINDS:
+        raise ValueError("%s / %s: the change is one of %s" % (injection, analyte, ", ".join(RAW_KINDS)))
+    if kind == "delete":
+        after = {"deleted": True}
+    elif not isinstance(after, dict) or not after:
+        raise ValueError("%s / %s: the edited peak is missing" % (injection, analyte))
+    transition = _transition(transition, quant_transition)
+    rec = _raw_find(state, injection, analyte, transition)
+    if rec is None:
+        rec = {"id": _raw_new_id(state), "injection": injection, "analyte": analyte,
+               "transition": transition, "qc_type": qc_type or "", "kind": kind,
+               "before": before, "after": None, "by": who, "at": when, "dropped": None,
+               "reason_id": "", "reason": "", "detail": "", "analyst": None, "verifier": None}
+        state.setdefault("raw_changes", []).append(rec)
+        changes = {"kind": [None, kind], "before": [None, before], "after": [None, after]}
+    else:
+        if not rec.get("dropped") and rec.get("kind") == kind and rec.get("after") == after:
+            return rec
+        changes = {"after": [rec.get("after"), after]}
+        if rec.get("kind") != kind:
+            changes["kind"] = [rec.get("kind"), kind]
+        if rec.get("dropped"):
+            changes["undone"] = [rec["dropped"], None]
+        if rec.get("before") is None and before is not None:
+            rec["before"] = before
+        _clear_signatures(rec, changes)
+    rec.update(kind=kind, after=after, by=who, at=when, dropped=None)
+    _log(state, who, when, rec["id"], "edited on the Raw Data tab", changes)
+    return rec
+
+
+def drop_raw_edit(state, injection, analyte, transition, who, when, quant_transition=None):
+    """The edit undone: the change leaves the list to sign and the history
+    keeps it. None when the trace has no open change."""
+    rec = _raw_find(state, injection, analyte, _transition(transition, quant_transition))
+    if rec is None or rec.get("dropped"):
+        return None
+    changes = {"undone": [None, {"by": who, "at": when}]}
+    _clear_signatures(rec, changes)
+    rec["dropped"] = {"by": who, "at": when}
+    _log(state, who, when, rec["id"], "undone on the Raw Data tab", changes)
+    return rec
+
+
+def set_raw_reason(state, rec_id, reason_id, reason, detail, who, when):
+    """The reason (from the lab's list) and detail of an open change. A real
+    change clears its signatures."""
+    rec = _raw_by_id(state, rec_id)
+    if rec.get("dropped"):
+        raise ValueError("%s: the change was undone" % raw_label(rec))
+    changes = {}
+    for field, value in (("reason_id", reason_id), ("reason", reason), ("detail", detail)):
+        new = ("%s" % (value or "")).strip()
+        if new != (rec.get(field) or ""):
+            changes[field] = [rec.get(field), new]
+            rec[field] = new
+    if changes:
+        _clear_signatures(rec, changes)
+        _log(state, who, when, rec_id, "reason given", changes)
+    return changes
+
+
+def initial_raw(state, initials, who, when, name="", no_effect=None, sign_as=None):
+    """The analyst initials every open change at once; refused while any of
+    them lacks a reason, or when People & Roles gives the analyst no preparer
+    sign right. Those already initialled as they stand are kept."""
+    initials = ("%s" % (initials or "")).strip()
+    if not initials:
+        raise ValueError("type your initials")
+    _sign_right("analyst", sign_as, name or who, "initial")
+    recs = raw_open(state, no_effect)
+    if not recs:
+        raise ValueError("no manual changes to initial")
+    no_reason = [raw_label(r) for r in recs if not r.get("reason")]
+    if no_reason:
+        raise ValueError("give a reason first: %s" % "; ".join(no_reason))
+    todo = [r for r in recs if not raw_signed(r, "analyst")]
+    for rec in todo:
+        rec["analyst"] = {"userid": who, "name": name or who, "initials": initials, "at": when,
+                          "fp": raw_fingerprint(rec)}
+        rec["verifier"] = None
+    if todo:
+        _log(state, who, when, "", "initialled", {"changes": [None, [r["id"] for r in todo]]})
+    return todo
+
+
+# history actions that edit a raw change's peak
+_RAW_EDITED = ("edited on the Raw Data tab", "re-integrated")
+_RAW_UNDONE = "undone on the Raw Data tab"
+
+
+def raw_editors(state, rec):
+    """The user ids who edited this change's peak since its last undo: the
+    last editor and every edit the history keeps after the last undo."""
+    who = set([rec["by"]]) if rec.get("by") else set()
+    for h in state.get("history") or []:
+        if h.get("id") != rec["id"]:
+            continue
+        if h.get("action") == _RAW_UNDONE:
+            who = set()
+        elif h.get("action") in _RAW_EDITED and h.get("by"):
+            who.add(h["by"])
+    if rec.get("by"):
+        who.add(rec["by"])
+    return who
+
+
+def countersign_raw(state, who, when, name="", no_effect=None, sign_as=None):
+    """The verifier countersigns every open change at once: each needs its
+    reason and the analyst's initials, the verifier needs the reviewer sign
+    right in People & Roles, and is never the person who initialled a change nor
+    anyone who edited its peak since its last undo. A change already
+    countersigned as it stands is kept."""
+    recs = raw_open(state, no_effect)
+    if recs:
+        _sign_right("reviewer", sign_as, name or who, "countersign")
+    need = [raw_label(r) for r in recs if not r.get("reason") or not raw_signed(r, "analyst")]
+    if need:
+        raise ValueError("the manual changes need a reason and the analyst's initials first: %s"
+                         % "; ".join(need))
+    todo = [r for r in recs if not raw_signed(r, "verifier")]
+    own = []
+    for r in todo:
+        if r["analyst"]["userid"] == who:
+            own.append("%s initialled %s" % (who, raw_label(r)))
+        if who in raw_editors(state, r):
+            own.append("%s edited %s" % (who, raw_label(r)))
+    if own:
+        raise ValueError("a different person countersigns these manual changes: %s" % "; ".join(own))
+    for rec in todo:
+        rec["verifier"] = {"userid": who, "name": name or who, "at": when, "fp": raw_fingerprint(rec)}
+    if todo:
+        _log(state, who, when, "", "countersigned", {"changes": [None, [r["id"] for r in todo]]})
+    return todo
+
+
+def _unrecorded(state, overrides):
+    """The edits in the run's file (`overrides`, by key) that no open record
+    lists: one whose record was never saved, or was undone."""
+    from senaite.pfas.raw_review import parse_edit_key
+    out = []
+    for key in sorted(overrides or {}):
+        try:
+            injection, analyte, transition = parse_edit_key(key)
+        except ValueError:
+            out.append("%s: an edit has no record; undo it on the Raw Data tab" % key)
+            continue
+        rec = _raw_find(state, injection, analyte, transition)
+        if rec is None or rec.get("dropped"):
+            out.append("%s / %s: an edit has no record; undo it on the Raw Data tab" % (injection, analyte))
+    return out
+
+
+def raw_gate(state, phase="submit", no_effect=None, overrides=None):
+    """(ok, [what is missing]): before submit every open change has a reason
+    and the analyst's initials; at verify also the verifier's
+    countersignature. An undone change needs nothing, nor one the run could
+    not apply (`no_effect`). Every edit in the run's file (`overrides`)
+    has an open record: an edit with none is missing, as nobody would sign
+    it."""
+    out = _unrecorded(state, overrides)
+    for rec in raw_open(state, no_effect):
+        need = []
+        if not rec.get("reason"):
+            need.append("a reason")
+        if not raw_signed(rec, "analyst"):
+            need.append("the analyst's initials")
+        elif phase == "verify" and not raw_signed(rec, "verifier"):
+            need.append("the verifier's countersignature")
+        if need:
+            out.append("%s: %s" % (raw_label(rec), ", ".join(need)))
+    return (not out), out
+
+
+def raw_label(rec):
+    """"S1 / PFOA quantifier, re-integrated"."""
+    return "%s / %s %s, %s" % (rec["injection"], rec["analyte"], rec.get("transition") or "quantifier",
+                               RAW_KIND_TEXT.get(rec.get("kind"), rec.get("kind") or ""))
+
+
+def _raw_review():
+    """raw_review, the panel's words for a manual peak's line. Read when a
+    peak is named, never when the module loads: the worker loads this file
+    on its own for is_manual alone."""
+    from senaite.pfas import raw_review
+    return raw_review
+
+
+def peak_text(peak):
+    """A peak as the review reads it: its edges and area, its apex, or
+    deleted, then the line it is measured on and any levels set by hand in
+    the panel's words (raw_review.line_text): "11.16 to 11.34 min, area
+    181904, perpendicular drop, baseline 4,000 and 4,000". A record with no
+    version reads its baseline through raw_review.LEGACY_BASELINES ("drop"
+    is the flat baseline, never the perpendicular drop)."""
+    if not peak:
+        return "no peak"
+    if peak.get("deleted"):
+        return "peak deleted"
+    parts = []
+    if peak.get("start") is not None and peak.get("end") is not None:
+        parts.append("%.2f to %.2f min" % (peak["start"], peak["end"]))
+    elif peak.get("apex") is not None:
+        parts.append("apex %.2f min" % peak["apex"])
+    if peak.get("area") is not None:
+        parts.append("area %.0f" % peak["area"])
+    if peak.get("baseline"):
+        rr = _raw_review()
+        baseline = peak["baseline"]
+        if peak.get("version") is None:
+            baseline = rr.LEGACY_BASELINES.get(baseline, baseline)
+        parts.append(rr.line_text(baseline, peak.get("levels")))
+    return ", ".join(p for p in parts if p) or "no peak"
+
+
+def raw_summary(rec):
+    """"<automatic> -> <now>"."""
+    return "%s → %s" % (peak_text(rec.get("before")), peak_text(rec.get("after")))
+
+
+def captured(state, detected):
+    """Whether the run's manual integrations were captured: as the export
+    says, or as kept on the state (migrated_captured) when its records
+    moved to raw changes."""
+    return bool(detected or state.get("migrated_captured"))
+
+
+def vendor_detections(rows):
+    """([{"injection", "analyte", "qc_type"}] flagged manual, captured) from
+    rows (injection, analyte, qc_type, flag, derived_from). A row the LIMS
+    integrated from raw data (derived_from "raw:...") is not the export's:
+    its manual changes are the Raw Data tab's."""
+    rows = [r for r in rows if not ("%s" % (r[4] or "")).startswith("raw:")]
+    captured = any(r[3] is not None for r in rows)
+    flagged, seen = [], set()
+    for inj, an, qc, flag, _derived in rows:
+        if flag and (inj, an) not in seen:
+            seen.add((inj, an))
+            flagged.append({"injection": inj, "analyte": an, "qc_type": qc or ""})
+    return flagged, captured

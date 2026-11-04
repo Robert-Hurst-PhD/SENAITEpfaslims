@@ -2,21 +2,21 @@
 """
 PFAS logbook definition store.
 
-NOW authoritative source: PrepLogbookDef objects in ``portal/pfas_prep_logbooks/``.
+Source: PrepLogbookDef objects in ``portal/pfas_prep_logbooks/``.
 The four built-in logbooks (250/251/252/253) are seeded there by
 ``seed_builtin_logbook_defs()`` called from ``post_install``.
 
-Legacy fallback (pre-migration): portal annotation key ``senaite.pfas.logbook_defs``
-and the hardcoded DEFAULT_LOGBOOK_DEFS list are still consulted if the
-pfas_prep_logbooks folder is empty.
+With no pfas_prep_logbooks folder, definitions are read from and written to
+the portal annotation ``senaite.pfas.logbook_defs``, seeded from
+DEFAULT_LOGBOOK_DEFS.
 
-Public API dict format (unchanged for callers):
+Public API dict format:
   slug       str   — logbook_slug from PrepLogbookDef
   form_num   str   — logbook_code from PrepLogbookDef
   title      str   — title
   builtin    bool  — cannot delete
   active     bool  — shown in batch logbook index
-  table_columns  list[str]  — always [] (columns now live in field_schema_json)
+  table_columns  list[str]  — always [] (columns live in field_schema_json)
   field_schema_json  str    — raw JSON string (for dynamic renderer routing)
   method_slug  str          — owning method slug
 
@@ -38,6 +38,7 @@ LOGBOOK_DEFS_KEY = u"senaite.pfas.logbook_defs"
 DEFAULT_LOGBOOK_DEFS = [
     {
         "slug":          "250",
+        "scope":         "library",
         "form_num":      "FM-ENV-001",
         "title":         "Solvent / Reagent Prep Log",
         "builtin":       True,
@@ -48,6 +49,7 @@ DEFAULT_LOGBOOK_DEFS = [
     },
     {
         "slug":          "251",
+        "scope":         "library",
         "form_num":      "FM-ENV-002",
         "title":         "Calibration Curve Prep Log",
         "builtin":       True,
@@ -58,6 +60,7 @@ DEFAULT_LOGBOOK_DEFS = [
     },
     {
         "slug":          "252",
+        "scope":         "batch",
         "form_num":      "FM-ENV-003",
         "title":         "Extraction Log",
         "builtin":       True,
@@ -68,6 +71,7 @@ DEFAULT_LOGBOOK_DEFS = [
     },
     {
         "slug":          "253",
+        "scope":         "batch",
         "form_num":      "FM-ENV-004",
         "title":         "Sample Processing Log",
         "builtin":       True,
@@ -80,6 +84,24 @@ DEFAULT_LOGBOOK_DEFS = [
 
 _BUILTIN_SLUGS = frozenset(d["slug"] for d in DEFAULT_LOGBOOK_DEFS)
 
+# A template's scope: a BATCH logbook is filled for each batch (FM-ENV-003,
+# FM-ENV-004, the lab's own); a LIBRARY logbook (FM-ENV-001 / 002) is a prep
+# entry that makes Prepared Standard lots (prep_entries.py).
+BATCH, LIBRARY = "batch", "library"
+
+
+def scope_of(d):
+    return (d or {}).get("scope") or BATCH
+
+
+def batch_only(defs):
+    """The logbooks filled per batch: not a library prep, and not sample
+    receipt, which is recorded on the samples' CoC records (Data Review still
+    reads an older batch's CoC logbook)."""
+    from senaite.pfas.logbook_roles import role_of
+    return [d for d in defs or [] if scope_of(d) != LIBRARY
+            and role_of(dict(d, logbook_slug=d.get("slug"))) != u"receipt"]
+
 
 # ── Conversion helpers ─────────────────────────────────────────────────────────
 
@@ -91,17 +113,17 @@ def _prep_def_to_logbook_def(d):
         "title":         d.get("title") or d["logbook_slug"],
         "builtin":       bool(d.get("builtin", False)),
         "active":        bool(d.get("active", True)),
+        "scope":         d.get("scope") or BATCH,
         "table_columns": [],
         "field_schema_json": d.get("field_schema_json") or "[]",
         "method_slug":   d.get("method_slug") or "",
-        # 0 is the FIRST place: `or 100` read it back as 100 and sent the
-        # first logbook (FM-ENV-001) to the end of every list
+        # 0 is the first place, not unset: only a missing value sorts last
         "sort_order":    int(d["sort_order"]) if d.get("sort_order") not in (None, u"", "") else 100,
     }
 
 
 def _merge_defaults(saved_defs):
-    """Ensure every built-in slug appears in the saved list (legacy fallback)."""
+    """Ensure every built-in slug appears in the saved list (the annotation store)."""
     saved_slugs = {d["slug"] for d in saved_defs}
     result = list(saved_defs)
     for default in DEFAULT_LOGBOOK_DEFS:
@@ -142,23 +164,20 @@ def get_logbook_defs(portal):
 
     Source: PrepLogbookDef objects in pfas_prep_logbooks/ (one per slug family,
     the highest active/draft/archived revision).
-    Falls back to legacy annotation store or DEFAULT_LOGBOOK_DEFS.
+    Without the folder: the portal annotation, else DEFAULT_LOGBOOK_DEFS.
     """
-    try:
-        from senaite.pfas.browser.prep_logbooks import _get_active_families
-        families = _get_active_families(portal)
-        if families:
-            return [_prep_def_to_logbook_def(d) for d in families]
-    except Exception as exc:
-        logger.warning("get_logbook_defs: PrepLogbookDef read failed: %s", exc)
+    from senaite.pfas.browser.prep_logbooks import _get_active_families
+    families = _get_active_families(portal)
+    if families:
+        return [_prep_def_to_logbook_def(d) for d in families]
 
-    # Legacy annotation fallback
+    # the portal annotation
     try:
         ann = IAnnotations(portal)
         raw = ann.get(LOGBOOK_DEFS_KEY)
         if raw:
             return _merge_defaults(json.loads(raw))
-    except Exception as exc:
+    except (ValueError, TypeError) as exc:
         logger.warning("get_logbook_defs: annotation fallback failed: %s", exc)
 
     return [dict(d) for d in DEFAULT_LOGBOOK_DEFS]
@@ -181,14 +200,12 @@ def print_control(portal, slug, entry=None, method=None):
     method. One answer for the browser print and the PDFs."""
     out = {"doc_id": form_code(portal, slug), "title": u"", "revision": u"",
            "date": u"", "date_label": u"Template dated"}
-    try:
-        obj = _find_prep_def_by_slug(portal, slug)
-        if obj is not None:
-            out["revision"] = u"%s" % (getattr(obj, "revision", None) or 1)
-            out["title"] = obj.title or u""
-            out["date"] = u"%s" % obj.modified().strftime("%Y-%m-%d")
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("print_control(%s): %s", slug, exc)
+    obj = _find_prep_def_by_slug(portal, slug)
+    if obj is not None:
+        out["revision"] = u"%s" % (getattr(obj, "revision", None) or 1)
+        out["title"] = obj.title or u""
+        from senaite.pfas import print_doc
+        out["date"] = print_doc.lab_or(obj.modified(), u"%s" % obj.modified().strftime("%Y-%m-%d"), u"%Y-%m-%d")
     cells = []
     if entry:
         cells.append((u"Entry", u"%s" % entry))
@@ -230,19 +247,14 @@ def save_logbook_defs(portal, defs):
         raise ValueError(u"Form number {0} is already used by another logbook.".format(
             u", ".join(dup)))
     defs, _renamed = normalise(defs)
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(portal, 'logbook_defs', "all", lambda: get_logbook_defs(portal), label=u"Logbook definitions")
-    except Exception:
-        pass
+    # change history: track() itself decides whether a failure blocks the save
+    from senaite.pfas import config_history
+    config_history.track(portal, 'logbook_defs', "all", lambda: get_logbook_defs(portal), label=u"Logbook definitions")
     folder = portal.get("pfas_prep_logbooks")
     if folder is None:
-        # Annotation fallback (pre-migration)
-        try:
-            ann = IAnnotations(portal)
-            ann[LOGBOOK_DEFS_KEY] = json.dumps(defs)
-        except Exception as exc:
-            logger.error("save_logbook_defs: annotation write failed: %s", exc)
+        # no folder: the annotation store
+        ann = IAnnotations(portal)
+        ann[LOGBOOK_DEFS_KEY] = json.dumps(defs)
         return
 
     saved_slugs = set()
@@ -252,37 +264,28 @@ def save_logbook_defs(portal, defs):
             continue
         saved_slugs.add(slug)
 
-        # Find existing PrepLogbookDef for this slug
         obj = _find_prep_def_by_slug(portal, slug)
 
         if obj is None:
-            # Create new PrepLogbookDef for a custom logbook
+            # a custom logbook
             new_id = "lbdef-" + uuid.uuid4().hex[:8]
             title = d.get("title") or slug
-            try:
-                folder.invokeFactory("PrepLogbookDef", id=new_id, title=title)
-                obj = folder[new_id]
-                obj.logbook_slug = slug
-                obj.revision = 1
-                obj.status = u"active"
-                obj.builtin = False
-                # a new logbook's fields (its table columns among them)
-                obj.field_schema_json = d.get("field_schema_json") or u"[]"
-            except Exception as exc:
-                logger.error("save_logbook_defs: create failed for slug=%s: %s", slug, exc)
-                continue
+            folder.invokeFactory("PrepLogbookDef", id=new_id, title=title)
+            obj = folder[new_id]
+            obj.logbook_slug = slug
+            obj.revision = 1
+            obj.status = u"active"
+            obj.builtin = False
+            # a new logbook's fields (its table columns among them)
+            obj.field_schema_json = d.get("field_schema_json") or u"[]"
 
-        # Update editable fields
         obj.title = d.get("title") or obj.title or slug
         obj.logbook_code = d.get("form_num") or u""
         obj.sort_order = i
         raw_active = d.get("active", True)
         obj.active = bool(raw_active)
 
-        try:
-            obj.reindexObject()
-        except Exception:
-            pass
+        obj.reindexObject()
 
     # Delete custom (non-builtin) PrepLogbookDefs not in the saved list
     for obj in list(folder.objectValues()):
@@ -290,29 +293,26 @@ def save_logbook_defs(portal, defs):
             continue
         slug = getattr(obj, "logbook_slug", "") or ""
         if slug and slug not in saved_slugs and not bool(getattr(obj, "builtin", False)):
-            try:
-                folder._delObject(obj.getId())
-                logger.info("save_logbook_defs: deleted custom def slug=%s", slug)
-            except Exception as exc:
-                logger.warning("save_logbook_defs: delete failed slug=%s: %s", slug, exc)
+            folder._delObject(obj.getId())
+            logger.info("save_logbook_defs: deleted custom def slug=%s", slug)
 
 
 def seed_defaults(portal):
     """Idempotently seed the default logbook definitions.
 
-    Now delegates to seed_builtin_logbook_defs() which writes PrepLogbookDef
-    objects.  Falls back to annotation store if the Dexterity folder is absent.
+    Delegates to seed_builtin_logbook_defs(), which writes PrepLogbookDef
+    objects; the annotation store when the Dexterity folder is absent.
     """
     folder = portal.get("pfas_prep_logbooks")
     if folder is not None:
+        from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
         try:
-            from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
             seed_builtin_logbook_defs(portal)
         except Exception as exc:
             logger.warning("seed_defaults: seed_builtin_logbook_defs failed: %s", exc)
         return
 
-    # Pre-migration: write to annotation store
+    # no folder: the annotation store
     try:
         ann = IAnnotations(portal)
         if LOGBOOK_DEFS_KEY not in ann:
@@ -329,7 +329,5 @@ def is_builtin(slug):
 
 def method_key(value):
     """A method reference reduced to letters and digits, lower case, so a
-    seeded slug ("fda-32-pfas") and a method ID ("FDA_32PFAS") compare equal.
-    Logbook definitions were seeded with the slug while the pool matched the
-    ID exactly, so the seeded FDA logbooks were never offered."""
+    seeded slug ("fda-32-pfas") and a method ID ("FDA_32PFAS") compare equal."""
     return re.sub(r"[^a-z0-9]", "", (value or "").lower())

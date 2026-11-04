@@ -21,8 +21,8 @@
     <tr tal:condition="python:rec['kind'] == 'pt'"><th>Proficiency test</th>
         <td tal:define="pt rec/pt" tal:content="python:u'%s %s, round %s, sample %s, received %s; certificate %s' % (pt.get('provider') or u'', pt.get('scheme') or u'', pt.get('round') or u'', pt.get('sample') or u'', pt.get('received') or u'', (pt.get('certificate') or {}).get('name') or u'none')">pt</td></tr>
     <tr><th>Period / worksheets</th><td tal:content="python:u'%s to %s; %s' % (rec.get('since') or u'-', rec.get('until') or u'-', u', '.join(rec.get('worksheets') or []) or u'-')">p</td></tr>
-    <tr><th>Created</th><td tal:content="python:u'%s %s' % (rec.get('created_by') or u'', rec.get('created_at') or u'')">c</td></tr>
-    <tr><th>Status</th><td tal:content="python:u'%s %s %s' % (rec['status'], rec.get('approved_by') or u'', rec.get('approved_at') or u'')">s</td></tr>
+    <tr><th>Created</th><td tal:content="python:u'%s %s' % (rec.get('created_by') or u'', view.when(rec.get('created_at')))">c</td></tr>
+    <tr><th>Status</th><td tal:content="python:u'%s %s %s' % (rec['status'], rec.get('approved_by') or u'', view.when(rec.get('approved_at')))">s</td></tr>
     <tr tal:condition="rec/statement|nothing"><th>Statement</th><td tal:content="rec/statement">st</td></tr>
   </table>
   <h2>Results</h2>
@@ -33,7 +33,7 @@
       <thead><tr><th>Injection</th><th>Analyte</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
       <tbody><tr tal:repeat="e rec/exclusions">
         <td tal:content="e/injection">i</td><td tal:content="e/analyte">a</td><td tal:content="e/reason">r</td>
-        <td tal:content="e/by">b</td><td tal:content="e/at">t</td></tr></tbody>
+        <td tal:content="e/by">b</td><td tal:content="python:view.when(e.get('at'))">t</td></tr></tbody>
     </table>
   </tal:x>
 </body>

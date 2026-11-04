@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Which analytes in a method have NO labelled standard of their own
-(consolidation P4).
+"""Which analytes in a method have NO labelled standard of their own.
 
 An analyte has its own labelled standard when the method links it (its
-surrogate map, owned per method since) to its own isotopically
-labelled analog. Any other analyte -- linked to another compound's labelled
+surrogate map, owned per method) to its own isotopically labelled analog. Any other analyte -- linked to another compound's labelled
 standard, or not linked at all -- has none, and is judged on the method's
-"no labelled standard" tier (FDA: 40-140 %, RSD <= 30).
-
-This was stored three times -- a column of the global analyte table, FDA's
-per_analyte checkbox, and implicitly the links -- and the pipeline read the
-global column, so changing a link in one method did not move the analyte.
-Derived from the links, all three today agree exactly (tests pin it).
+"no labelled standard" tier (FDA: 40-140 %, RSD <= 30). The links are the only source: it is
+derived, never stored per analyte.
 
     no_labelled_standard(profile, analog_map) -> frozenset of keywords
 

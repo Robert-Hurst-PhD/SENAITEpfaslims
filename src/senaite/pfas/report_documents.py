@@ -20,28 +20,12 @@ Pure: Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas.print_style import PALETTE as _P
-except ImportError:                                          # loaded by path (tests)
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-    from print_style import PALETTE as _P
+from senaite.pfas.print_style import PALETTE as _P
 
-try:
-    from senaite.pfas import doc_fields as _df
-except ImportError:                                         # loaded by path (tests)
-    import os, sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import doc_fields as _df
+from senaite.pfas import doc_fields as _df
 
 
-def _s(v):
-    if v is None:
-        return ""
-    if isinstance(v, bool):
-        return "Yes" if v else "No"
-    return "%s" % v
+_s = _df.as_text
 
 
 def _cols(*specs):
@@ -64,7 +48,7 @@ EXTRACTION_FIELDS = [
     ("pedigree", "Spike pedigree (older records)", ""),
 ]
 # the laboratory and its signatories: the extraction analyst
-# prepares, the reviewing analyst reviews, the Director of Site Settings
+# prepares, the reviewing analyst reviews, the Director named on Laboratory
 _SIGNED = _df.LAB_FIELDS + [f for _c, fs in _df.people() for f in fs]
 SIGNED_IMAGES = _df.LAB_IMAGES + _df.people_images()
 
@@ -113,7 +97,11 @@ EXTRACTION_TABLES = {
                     ("ppt", "Level (ppt)", "10"), ("by", "Entered by", "AN1"),
                     ("at", "Entered at", "2026-10-01"), ("source", "Source", "review")),
 }
-EXTRACTION_ORDER = ("extracted", "stages", "materials", "equipment", "spikes")
+EXTRACTION_TABLES["dilutions"] = _cols(
+    ("from", "Diluted from", "DEMO-0001"), ("injection", "Injection", "DEMO-0001_DIL10"),
+    ("fold", "Fold", "10"), ("route", "Route", "Dilute the extract"), ("aliquot", "Aliquot", ""),
+    ("by", "Logged by", "AN1"), ("at", "Logged", "2026-10-01 14:00"))
+EXTRACTION_ORDER = ("extracted", "stages", "materials", "equipment", "spikes", "dilutions")
 EXTRACTION_REQUIRED = ("batch_id", "method", "lead_analyst", "finalized", "reviewer",
                        "warnings", "deviations")
 
@@ -155,6 +143,8 @@ def extraction_data(log):
                                 "spe_port"), [_s(c) for c in r])) for r in log.get("extracted") or []],
         "spikes": [dict(zip(("sample", "parent", "lot", "volume_ul", "ppt", "by", "at", "source"),
                             [_s(c) for c in r])) for r in log.get("spikes") or []],
+        "dilutions": [dict(zip(("from", "injection", "fold", "route", "aliquot", "by", "at"),
+                               [_s(c) for c in r])) for r in log.get("dilutions") or []],
     }
 
 
@@ -531,8 +521,4 @@ def starter(title, fields, tables, order, long_fields=(), width=210.0, height=29
             "schemas": pages}
 
 
-def _text(name, x, y, w, h, size=8, align="left", **kw):
-    f = {"name": name, "type": "text", "position": {"x": x, "y": y}, "width": w, "height": h,
-         "fontSize": size, "alignment": align, "content": ""}
-    f.update(kw)
-    return f
+_text = _df.text_field

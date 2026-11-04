@@ -20,6 +20,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
@@ -44,13 +45,13 @@ logger = logging.getLogger("senaite.pfas.browser.setuprefs")
 # the editable Title.
 QC_REF_SPEC = {
     # ── Blank QC types ──────────────────────────────────────────────────────
-    "MB":    ("Method Blank",
+    "MB":    ("Method Blank (MB)",
               True,  "blank",
               "blank", "blank_threshold"),
-    "LRB":   ("Lab Reagent Blank",
+    "LRB":   ("Laboratory Reagent Blank (LRB)",
               True,  "blank",
               "blank", "blank_threshold"),
-    "MxB":   ("Matrix Blank",
+    "MxB":   ("Matrix Blank (MxB)",
               True,  "blank",
               "blank", "blank_threshold"),
 
@@ -66,19 +67,19 @@ QC_REF_SPEC = {
               "instrument", "instrument_ccv"),
 
     # ── Extraction / matrix QC types ────────────────────────────────────────
-    "LFB":   ("Laboratory Fortified Blank",
+    "LFB":   ("Laboratory Fortified Blank (LFB)",
               False, "recovery",
               "extraction", "recovery_tiered"),
-    "LCS":   ("Laboratory Control Sample",
+    "LCS":   ("Laboratory Control Sample (LCS)",
               False, "recovery",
               "extraction", "recovery_tiered"),
-    "LFSM":  ("Lab Fortified Sample Matrix",
+    "LFSM":  ("Laboratory Fortified Sample Matrix (LFSM)",
               False, "recovery",
               "extraction", "recovery_tiered"),
-    "LFSMD": ("LFSM Duplicate",
+    "LFSMD": ("LFSM Duplicate (LFSMD)",
               False, "recovery_dup",
               "extraction", "tiered_recovery_rpd"),
-    "Dup":   ("Sample Duplicate",
+    "Dup":   ("Sample Duplicate (Dup)",
               False, "rpd",
               "extraction", "rpd_tiered"),
 }
@@ -163,10 +164,7 @@ def _profile_limits(profile, qc_code):
     """
     if not profile:
         return None, None
-    try:
-        from senaite.pfas.spec_sync import _tier_limits, _build_kw_to_tier
-    except Exception:                                       # noqa: BLE001
-        return None, None
+    from senaite.pfas.spec_sync import _tier_limits, _build_kw_to_tier
     try:
         limits = _tier_limits(profile.get("qc_acceptance") or {}, qc_code)
         return limits, (_build_kw_to_tier(profile) or {})
@@ -183,7 +181,10 @@ def _build_reference_results(qc_code, rules, analyte_uids, profile=None):
     Returns a list of {"uid": <uid>, "result": str, "min": str,
                         "max": str, "error": str} dicts.
     """
-    from senaite.pfas.analytes import KEY_ANALYTES
+    key_analytes = set(profile.get("key_analytes") or ())
+    if not key_analytes:
+        from senaite.pfas import compound_library, compound_library_store
+        key_analytes = set(compound_library.key_keywords(compound_library_store.library()))
     qt = rules.get("qc_types", {}).get(qc_code, {})
     strategy = QC_REF_SPEC.get(qc_code, ("", False, "blank", "", ""))[2]
     prof_limits, kw_to_tier = _profile_limits(profile, qc_code)
@@ -191,7 +192,7 @@ def _build_reference_results(qc_code, rules, analyte_uids, profile=None):
 
     records = []
     for uid, keyword in analyte_uids:
-        is_key = keyword in KEY_ANALYTES
+        is_key = keyword in key_analytes
 
         if strategy == "blank":
             rec = {"uid": uid, "result": "0", "min": "0",
@@ -273,12 +274,12 @@ def _build_reference_results(qc_code, rules, analyte_uids, profile=None):
     if skipped:
         logger.warning(
             "%s: %d analyte(s) have no configured acceptance limits, so no "
-            "reference range was written for them. Set them in Method "
-            "Profiles -> QC Types.", qc_code, skipped)
+            "reference range was written for them. Set them on the method's "
+            "QC criteria tab.", qc_code, skipped)
     return records
 
 
-class PFASSetupRefsView(BrowserView):
+class PFASSetupRefsView(ViewHelpers, BrowserView):
     """
     Manager browser view that creates/refreshes SENAITE ReferenceDefinitions
     for all PFAS QC types and stamps them with PFAS pool metadata fields.
@@ -312,10 +313,6 @@ class PFASSetupRefsView(BrowserView):
         return self.template()
 
     # ── Template helpers ──────────────────────────────────────────────────────
-
-    def portal_url(self):
-        from bika.lims import api
-        return api.get_portal().absolute_url()
 
     def is_manager(self):
         return _is_manager(self.context)

@@ -35,7 +35,7 @@ def _stamp_pfas_role(obj, role):
     except AttributeError:
         try:
             obj.getField("pfas_role").set(obj, role)
-        except Exception:
+        except AttributeError:
             pass
     except Exception as exc:
         logger.warning("_stamp_pfas_role: %s = %r failed: %s",
@@ -66,9 +66,8 @@ def _get_or_create(container, portal_type, title, key=None, **kw):
     THIS RUNS ON EVERY RESTART, not only on install: the container's buildout
     re-applies senaite.pfas:default through collective.recipe.plonesite each
     time it starts. So a seed value may be written only to an object
-    this call has just CREATED. Writing it to an existing one reverts whatever
-    the lab set there -- proven live: a Method description edited in SENAITE
-    setup came back as the CSV text after one restart.
+    this call has just CREATED; writing it to an existing one reverts whatever
+    the lab set there.
 
     ``key`` is ``(accessor_name, value)`` for a type with a stable identifier
     (Method -> getMethodID, AnalysisService -> getKeyword, SampleType ->
@@ -85,7 +84,7 @@ def _get_or_create(container, portal_type, title, key=None, **kw):
     def _key_of(o):
         try:
             return getattr(o, key[0])() or ""
-        except Exception:
+        except AttributeError:
             return ""
 
     def _title_of(o):
@@ -118,11 +117,9 @@ def _get_or_create(container, portal_type, title, key=None, **kw):
 
 
 def setup_handler(context):
-    try:   # installer and seeder writes are attributed to "installer" in history
-        from senaite.pfas.config_history import set_actor
-        set_actor(u"installer")
-    except Exception:
-        pass
+    # installer and seeder writes are attributed to "installer" in history
+    from senaite.pfas.config_history import set_actor
+    set_actor(u"installer")
     marker = context.readDataFile("senaite.pfas.install.txt")
     if marker is None:
         return
@@ -150,11 +147,8 @@ def setup_handler(context):
         m, created = _get_or_create(method_folder, "Method", row["Title"],
                                     key=("getMethodID", row["MethodID"]))
         if created:
-            try:
-                m.setMethodID(row["MethodID"])
-                m.setDescription(row["Description"])
-            except Exception:
-                pass
+            m.setMethodID(row["MethodID"])
+            m.setDescription(row["Description"])
         methods[row["MethodID"]] = m
 
     # ── Native analyte AnalysisServices ─────────────────────────────────
@@ -165,50 +159,23 @@ def setup_handler(context):
                                       key=("getKeyword", row["Keyword"]),
                                       Keyword=row["Keyword"], Category=pfas_cat)
         if created:
-            # The collapse onto one category was a one-time migration of
-            # existing services; it has run on every restart since, so it is
-            # done. From here the category and precision are the lab's.
-            try:
-                svc.setCategory(pfas_cat)
-                svc.setPrecision(int(row["PrecisionDigits"]))
-            except Exception:
-                pass
+            # once created, the category and precision are the lab's
+            svc.setCategory(pfas_cat)
+            svc.setPrecision(int(row["PrecisionDigits"]))
         # NOTE: SENAITE 2.6 core AnalysisService has NO CAS field: the CAS is
         # the PFAS tab's pfas_cas (compound_library), seeded with the other
-        # library facts when the service is created. A previous setCASNumber()
-        # call here threw AttributeError into a silent except and also blocked
-        # setPrecision(); both are fixed by removing it.
+        # library facts when the service is created.
         _seed_service(svc, created, "analyte")
 
     # ── Internal standards / surrogates ─────────────────────────────────
     is_cat = categories[u"PFAS - Internal Standards"]
-    # supplier-code keywords renamed to labels BEFORE seeding, which keys on
-    # the keyword and would otherwise seed a copy
-    try:
-        from senaite.pfas.migrations.labelled_keywords import rename_services
-        rename_services(svc_folder)
-    except Exception as exc:
-        logger.error("labelled keyword rename (services): %s", exc)
     for row in _read("internal_standards.csv"):
         svc, created = _get_or_create(svc_folder, "AnalysisService", row["Title"],
                                       key=("getKeyword", row["Keyword"]),
                                       Keyword=row["Keyword"], Category=is_cat)
         if created:
-            try:
-                svc.setCategory(is_cat)
-            except Exception:
-                pass
+            svc.setCategory(is_cat)
         _seed_service(svc, created, row.get("Role", "surrogate"))
-
-    # ── The compound library on the services, once per site ────────────
-    # (what analyte_reference.py held: names, CAS, labelled-form links,
-    # export spellings, published names, key flags; facts already set stay;
-    # the method profiles' export below writes it for the worker)
-    try:
-        from senaite.pfas import compound_library_store
-        compound_library_store.migrate(portal)
-    except Exception as e:
-        logger.warning("Compound library not migrated onto the services: %s", e)
 
     # ── Sample types ────────────────────────────────────────────────────
     st_folder = new_setup["sampletypes"]
@@ -220,10 +187,7 @@ def setup_handler(context):
             # No retention period is seeded: core's Retention Period is how long
             # the lab keeps a sample, the lab's own policy -- not the holding
             # time, which the method profile owns.
-            try:
-                st.setHazardous(row["Hazardous"] == "Y")
-            except Exception:
-                pass
+            st.setHazardous(row["Hazardous"] == "Y")
 
     # ── Sample containers ───────────────────────────────────────────────
     cont_folder = new_setup["samplecontainers"]
@@ -241,68 +205,34 @@ def setup_handler(context):
         sl_folder = new_setup["storagelocations"]
         for row in _read("storage_locations.csv"):
             _get_or_create(sl_folder, "StorageLocation", row["Title"],
-                           description="{} -- {}".format(row["TargetTemp"], row["Notes"]))
+                           description="{}: {}".format(row["TargetTemp"], row["Notes"]))
     except (KeyError, AttributeError):
         logger.info("senaite.storage not present; storage locations skipped")
 
     # ── Method Profiles ──────────────────────────────────────────────────
     # Seed defaults into ZODB and export /data/qc/method_profiles.json.
     # Must run before Reference Definitions so refs can read from the profile.
+    # The add-on's own modules are imported outside the handlers: a seed that
+    # fails is logged and the install goes on, an import that fails raises.
+    from senaite.pfas.method_profile_store import seed_default_profiles
+    from senaite.pfas.edd_store import seed_defaults as seed_edd_defaults
+    from senaite.pfas.logbook_store import seed_defaults as seed_logbook_defaults
+    from senaite.pfas.logbook_store import normalise_form_codes
     try:
-        from senaite.pfas.method_profile_store import seed_default_profiles
         seed_default_profiles(portal)
     except Exception as e:
         logger.warning("Method profiles not seeded: %s", e)
-    # Profiles to the current models: one labelled-standards grid per method
-    #  and the isomers model. Idempotent.
-    try:
-        from senaite.pfas.method_profile_store import migrate_profile_models
-        migrate_profile_models(portal)
-    except Exception as e:
-        logger.warning("Profile models not migrated: %s", e)
-    try:
-        # rule switches that changed nothing / retired parameters
-        from senaite.pfas.qc.rules import get_store, migrate_rule_store
-        store = get_store()
-        rules = store.load()
-        if migrate_rule_store(rules):
-            store.save(rules, updated_by="migration")
-            logger.info("QC rules: retired switches and parameters removed")
-    except Exception as e:
-        logger.warning("QC rule store not migrated: %s", e)
 
-    # ── EDD export: settings into the profiles, then the default profile ──.
-    # The move is idempotent: with nothing retired
-    # left it changes nothing, so this re-running every start is harmless.
+    # ── EDD export: the default profile ──────────────────────────────────
     try:
-        from senaite.pfas.edd_migration import migrate as migrate_edd_settings
-        migrate_edd_settings(portal)
-        from senaite.pfas.edd_store import seed_defaults as seed_edd_defaults
         seed_edd_defaults(portal)
     except Exception as e:
-        logger.warning("EDD export settings not migrated / seeded: %s", e)
-
-    # ── Import Studio: columns added for ion-ratio redundancy (fill-only) ──
-    try:
-        from senaite.pfas.browser.import_studio import map_new_columns
-        n = map_new_columns(portal)
-        if n:
-            logger.info("Import profiles: ion-ratio fallback columns mapped in %d", n)
-    except Exception as e:
-        logger.warning("Import profiles not updated: %s", e)
-    # ── Import Studio: the earlier profiles become import layouts (once) ──
-    try:
-        from senaite.pfas import import_layouts_store
-        import_layouts_store.migrate(portal)
-    except Exception as e:
-        logger.warning("Import layouts not migrated: %s", e)
+        logger.warning("EDD export settings not seeded: %s", e)
 
     # ── Logbook definitions ───────────────────────────────────────────────
     try:
-        from senaite.pfas.logbook_store import seed_defaults as seed_logbook_defaults
         seed_logbook_defaults(portal)
         # one number per form, the pool in number order
-        from senaite.pfas.logbook_store import normalise_form_codes
         normalise_form_codes(portal)
     except Exception as e:
         logger.warning("Logbook defaults not seeded: %s", e)
@@ -323,11 +253,8 @@ REFERENCE_METHOD_KEY = "senaite.pfas.reference_definition_method"
 
 def get_reference_method(portal):
     """Which method's limits the global Reference Definitions use, or ""."""
-    try:
-        from zope.annotation.interfaces import IAnnotations
-        return IAnnotations(portal).get(REFERENCE_METHOD_KEY) or ""
-    except Exception:                                       # noqa: BLE001
-        return ""
+    from zope.annotation.interfaces import IAnnotations
+    return IAnnotations(portal).get(REFERENCE_METHOD_KEY) or ""
 
 
 def set_reference_method(portal, method_id):
@@ -340,12 +267,10 @@ def _primary_method_profile(portal):
 
     SENAITE Reference Definitions are GLOBAL — one per QC code — while PFAS
     acceptance limits are per METHOD, so one method has to supply them. That
-    choice is CONFIGURED, not inferred: picking "the first configured method"
-    selected EPA_1633A purely because it sorts first, which would have drawn
-    every control chart against a method the lab may not even run.
+    choice is CONFIGURED, never inferred.
 
-    Unset, this returns {} and no ranges are written: the QC rules store no
-    longer holds criteria (QC consolidation P2), and nothing is invented.
+    Unset, this returns {} and no ranges are written: the QC rules store
+    holds no criteria, and nothing is invented.
     """
     method_id = get_reference_method(portal)
     if not method_id:
@@ -355,13 +280,8 @@ def _primary_method_profile(portal):
             "Definitions so control charts match the limits the QC engine "
             "enforces.")
         return {}
-    try:
-        from senaite.pfas.method_profile_store import get_profile
-        profile = get_profile(portal, method_id) or {}
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("reference-definition method %s unreadable: %s",
-                       method_id, exc)
-        return {}
+    from senaite.pfas.method_profile_store import get_profile
+    profile = get_profile(portal, method_id) or {}
     if not profile:
         logger.warning("reference-definition method %s has no profile; no "
                        "ranges are written", method_id)
@@ -390,22 +310,17 @@ def create_reference_definitions(portal):
     # per-method definitions, which the object model does not yet carry.
     ref_profile = _primary_method_profile(portal)
 
-    # Collect AnalysisService (uid, keyword) pairs
+    from bika.lims import api
     try:
-        from bika.lims import api
-        try:
-            catalog = api.get_tool("senaite_catalog_setup")
-        except Exception:
-            catalog = api.get_tool("bika_setup_catalog")
-        brains = catalog(portal_type="AnalysisService")
-        analyte_uids = []
-        for brain in brains:
-            obj = brain.getObject()
-            kw = getattr(obj, "getKeyword", lambda: "")() or ""
-            analyte_uids.append((api.get_uid(obj), kw))
-    except Exception as e:
-        logger.warning("create_reference_definitions: cannot list services: %s", e)
-        return
+        catalog = api.get_tool("senaite_catalog_setup")
+    except Exception:
+        catalog = api.get_tool("bika_setup_catalog")
+    brains = catalog(portal_type="AnalysisService")
+    analyte_uids = []
+    for brain in brains:
+        obj = brain.getObject()
+        kw = getattr(obj, "getKeyword", lambda: "")() or ""
+        analyte_uids.append((api.get_uid(obj), kw))
 
     if not analyte_uids:
         logger.info("create_reference_definitions: no AnalysisServices yet; skipping")
@@ -417,9 +332,7 @@ def create_reference_definitions(portal):
         logger.warning("create_reference_definitions: %s", e)
         return
 
-    # QC_REF_SPEC rows are 5-tuples; this unpacked three, so the loop raised on
-    # its first row and setup_handler swallowed it as a warning on every restart
-    # -- no Reference Definition was ever created or updated here.
+    # QC_REF_SPEC rows are 5-tuples: index them, never unpack a fixed count
     for code, spec in sorted(QC_REF_SPEC.items()):
         title, is_blank = spec[0], spec[1]
         try:
@@ -432,371 +345,35 @@ def create_reference_definitions(portal):
                                                profile=ref_profile)
             obj.setReferenceResults(records)
             obj.setBlank(is_blank)
-            try:
-                obj.reindexObject()
-            except Exception:
-                pass
+            obj.reindexObject()
             logger.info("%s ReferenceDefinition: %s",
                         "Created" if is_new else "Updated", title)
         except Exception as e:
             logger.error("create_reference_definitions %s: %s", code, e)
 
 
-def setup_reagents_catalog(portal):
-    """Register Reagent portal_type in senaite_catalog_setup and create container.
-
-    Must run after the Reagent FTI is installed (i.e. in post_install, not
-    setup_handler).  Idempotent.
-    """
-    try:
-        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
-    except ImportError:
-        logger.warning("setup_reagents_catalog: senaite.core.catalog unavailable; skipping")
-        return None
-
-    set_catalogs("Reagent", [SETUP_CATALOG])
-    logger.info("Reagent registered in %s", SETUP_CATALOG)
-
-    # Create pfas_reagents Folder at portal root if not yet present.
-    # Reagent.xml uses global_allow=True because this SENAITE environment's
-    # Plone Folder does not support ISelectableConstrainTypes.
-    if "pfas_reagents" not in portal:
-        from bika.lims import api as bika_api
-        folder = bika_api.create(portal, "Folder",
-                                 id="pfas_reagents",
-                                 title="PFAS Reagents")
-        logger.info("Created pfas_reagents folder at portal root")
-    else:
-        folder = portal["pfas_reagents"]
-
-    return folder
+# portal_type -> (folder id, folder title): catalogued in the setup catalog
+# and kept in its own folder at the portal root. The types use
+# global_allow=True because this SENAITE's Plone Folder does not support
+# ISelectableConstrainTypes. Runs after the FTIs are installed.
+SETUP_TYPES = (
+    ("Reagent", "pfas_reagents", "PFAS Reagents"),
+    ("PFASProject", "pfas_projects", "PFAS Projects"),
+    ("MethodProfile", "pfas_method_profiles", "PFAS Method Profiles"),
+    ("PrepLogbookDef", "pfas_prep_logbooks", "PFAS Preparation Logbooks"),
+    ("PreparedStandard", "pfas_prepared_standards", "PFAS Prepared Standards"),
+)
 
 
-def setup_projects_catalog(portal):
-    """Register PFASProject portal_type in senaite_catalog_setup and create
-    container.
-
-    Must run after the PFASProject FTI is installed (i.e. in post_install,
-    not setup_handler).  Idempotent.  No annotation-based legacy store exists
-    for Project, so unlike Reagent there is no migration step to pair with
-    this.
-    """
-    try:
-        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
-    except ImportError:
-        logger.warning("setup_projects_catalog: senaite.core.catalog unavailable; skipping")
-        return None
-
-    set_catalogs("PFASProject", [SETUP_CATALOG])
-    logger.info("PFASProject registered in %s", SETUP_CATALOG)
-
-    # Create pfas_projects Folder at portal root if not yet present.
-    # PFASProject.xml uses global_allow=True because this SENAITE environment's
-    # Plone Folder does not support ISelectableConstrainTypes.
-    if "pfas_projects" not in portal:
-        from bika.lims import api as bika_api
-        folder = bika_api.create(portal, "Folder",
-                                 id="pfas_projects",
-                                 title="PFAS Projects")
-        logger.info("Created pfas_projects folder at portal root")
-    else:
-        folder = portal["pfas_projects"]
-
-    return folder
-
-
-def migrate_reagents_from_annotations(portal):
-    """Migrate reagent records from portal.annotations into Reagent content objects.
-
-    Idempotent: records already present as content objects (same Zope id as
-    annotation uid) are skipped.  Returns (migrated, skipped) counts.
-    """
-    import json
-    from datetime import datetime
-
-    from zope.annotation.interfaces import IAnnotations
-
-    REAGENTS_KEY = u"senaite.pfas.reagents"
-    ann = IAnnotations(portal)
-    store = ann.get(REAGENTS_KEY)
-
-    if not store:
-        logger.info("migrate_reagents_from_annotations: annotation store empty; nothing to migrate")
-        return 0, 0
-
-    if "pfas_reagents" not in portal:
-        logger.warning("migrate_reagents_from_annotations: pfas_reagents folder missing; "
-                       "run setup_reagents_catalog() first")
-        return 0, 0
-
-    folder = portal["pfas_reagents"]
-    migrated = 0
-    skipped = 0
-    errors = 0
-
-    for uid, raw in store.items():
-        if uid in folder:
-            skipped += 1
-            continue
-        try:
-            data = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-        except (ValueError, TypeError, UnicodeDecodeError):
-            logger.warning("migrate_reagents: unreadable record uid=%s; skipping", uid)
-            errors += 1
-            continue
-
-        try:
-            name = data.get("name") or data.get("title") or u"Unnamed Reagent"
-            # invokeFactory with explicit id preserves the annotation UUID
-            folder.invokeFactory("Reagent", id=uid, title=name)
-            obj = folder[uid]
-
-            obj.category = data.get("category") or u""
-            obj.supplier = (data.get("supplier") or data.get("manufacturer") or u"")
-            obj.cat_number = (data.get("cat_number") or data.get("catalog_number") or u"")
-            obj.lot_number = data.get("lot_number") or u""
-            obj.storage_location = data.get("storage_location") or u""
-            obj.barcode = data.get("barcode") or u""
-            obj.scan_count = int(data.get("scan_count") or 0)
-            obj.status = data.get("status") or u"active"
-            obj.notes = data.get("notes") or u""
-
-            # Parse ISO date strings → datetime.date
-            date_mapping = [
-                ("received_date", ["received_date"]),
-                ("expiry_date", ["expiry_date"]),
-                ("manufacturer_expiry", ["manufacturer_expiry"]),
-                ("opened_date", ["opened_date"]),
-            ]
-            for field_name, ann_keys in date_mapping:
-                raw_date = None
-                for k in ann_keys:
-                    raw_date = data.get(k)
-                    if raw_date:
-                        break
-                if raw_date:
-                    try:
-                        d = datetime.strptime(raw_date[:10], "%Y-%m-%d").date()
-                        setattr(obj, field_name, d)
-                    except (ValueError, TypeError):
-                        pass
-
-            try:
-                obj.reindexObject()
-            except Exception:
-                pass
-            migrated += 1
-            logger.info("Migrated reagent %r -> pfas_reagents/%s", name, uid)
-
-        except Exception as exc:
-            logger.error("migrate_reagents: failed on uid=%s: %s", uid, exc)
-            errors += 1
-
-    logger.info("migrate_reagents_from_annotations: migrated=%d, skipped=%d, errors=%d",
-                migrated, skipped, errors)
-    return migrated, skipped
-
-
-def setup_logbook_defs_catalog(portal):
-    """Register LogbookDef in senaite_catalog_setup and create container.
-
-    Idempotent.  Must run after the LogbookDef FTI is installed.
-    """
-    try:
-        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
-    except ImportError:
-        logger.warning("setup_logbook_defs_catalog: senaite.core.catalog unavailable; skipping")
-        return None
-
-    set_catalogs("LogbookDef", [SETUP_CATALOG])
-    logger.info("LogbookDef registered in %s", SETUP_CATALOG)
-
-    if "pfas_logbook_defs" not in portal:
-        from bika.lims import api as bika_api
-        folder = bika_api.create(portal, "Folder",
-                                 id="pfas_logbook_defs",
-                                 title="PFAS Logbook Definitions")
-        logger.info("Created pfas_logbook_defs folder at portal root")
-    else:
-        folder = portal["pfas_logbook_defs"]
-
-    return folder
-
-
-def migrate_logbook_defs_from_annotations(portal):
-    """Migrate logbook defs from annotation list into LogbookDef content objects.
-
-    Idempotent: slugs already present as content objects are skipped.
-    Returns (migrated, skipped) counts.
-    """
-    import json
-    from zope.annotation.interfaces import IAnnotations
-    from senaite.pfas.logbook_store import DEFAULT_LOGBOOK_DEFS
-
-    LOGBOOK_DEFS_KEY = u"senaite.pfas.logbook_defs"
-    ann = IAnnotations(portal)
-
-    if "pfas_logbook_defs" not in portal:
-        logger.warning("migrate_logbook_defs_from_annotations: pfas_logbook_defs folder missing")
-        return 0, 0
-
-    folder = portal["pfas_logbook_defs"]
-
-    raw = ann.get(LOGBOOK_DEFS_KEY)
-    if raw:
-        try:
-            defs = json.loads(raw)
-        except (ValueError, TypeError):
-            defs = [dict(d) for d in DEFAULT_LOGBOOK_DEFS]
-    else:
-        defs = [dict(d) for d in DEFAULT_LOGBOOK_DEFS]
-
-    migrated = 0
-    skipped = 0
-    errors = 0
-
-    for i, d in enumerate(defs):
-        slug = d.get("slug", "")
-        if not slug:
-            continue
-        if slug in folder:
-            skipped += 1
-            continue
-        try:
-            title = d.get("title") or slug
-            folder.invokeFactory("LogbookDef", id=slug, title=title)
-            obj = folder[slug]
-            obj.title = title
-            obj.form_num = d.get("form_num") or u""
-            obj.builtin = bool(d.get("builtin", False))
-            obj.active = bool(d.get("active", True))
-            obj.sort_order = i
-            obj.table_columns = [c for c in (d.get("table_columns") or []) if c]
-            try:
-                obj.reindexObject()
-            except Exception:
-                pass
-            migrated += 1
-            logger.info("Migrated logbook def %r -> pfas_logbook_defs/%s", title, slug)
-        except Exception as exc:
-            logger.error("migrate_logbook_defs: failed on slug=%s: %s", slug, exc)
-            errors += 1
-
-    logger.info(
-        "migrate_logbook_defs_from_annotations: migrated=%d, skipped=%d, errors=%d",
-        migrated, skipped, errors,
-    )
-    return migrated, skipped
-
-
-def setup_method_profiles_catalog(portal):
-    """Register MethodProfile in senaite_catalog_setup and create container.
-
-    Idempotent.  Must run after the MethodProfile FTI is installed.
-    """
-    try:
-        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
-    except ImportError:
-        logger.warning("setup_method_profiles_catalog: senaite.core.catalog unavailable; skipping")
-        return None
-
-    set_catalogs("MethodProfile", [SETUP_CATALOG])
-    logger.info("MethodProfile registered in %s", SETUP_CATALOG)
-
-    if "pfas_method_profiles" not in portal:
-        from bika.lims import api as bika_api
-        folder = bika_api.create(portal, "Folder",
-                                 id="pfas_method_profiles",
-                                 title="PFAS Method Profiles")
-        logger.info("Created pfas_method_profiles folder at portal root")
-    else:
-        folder = portal["pfas_method_profiles"]
-
-    return folder
-
-
-def migrate_method_profiles_from_annotations(portal):
-    """Migrate method profiles from annotation PersistentMapping to MethodProfile objects.
-
-    Idempotent: method_ids already present as Dexterity objects are skipped.
-    Copies the raw JSON string verbatim — preserves _seeded flags and user edits.
-    Returns (migrated, skipped) counts.
-    """
-    import json
-    from zope.annotation.interfaces import IAnnotations
-    from senaite.pfas.method_profile_store import DEFAULT_PROFILES, PFAS_METHOD_PROFILES_KEY
-
-    if "pfas_method_profiles" not in portal:
-        logger.warning("migrate_method_profiles_from_annotations: pfas_method_profiles folder missing")
-        return 0, 0
-
-    folder = portal["pfas_method_profiles"]
-    ann = IAnnotations(portal)
-    store = ann.get(PFAS_METHOD_PROFILES_KEY)
-
-    migrated = 0
-    skipped = 0
-    errors = 0
-    from senaite.pfas.method_delete import deleted_ids
-    deleted = deleted_ids(portal)      # a deleted method is not restored
-
-    # Migrate profiles stored in the annotation PersistentMapping (verbatim copy).
-    if store is not None:
-        for method_id, raw in store.items():
-            if method_id in folder or method_id in deleted:
-                skipped += 1
-                continue
-            try:
-                display_name = method_id
-                try:
-                    display_name = json.loads(raw).get("display_name") or method_id
-                except (ValueError, TypeError):
-                    pass
-                folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
-                obj = folder[method_id]
-                obj.title = display_name
-                obj.profile_json = raw  # verbatim copy — preserves _seeded and user edits
-                try:
-                    obj.reindexObject()
-                except Exception:
-                    pass
-                migrated += 1
-                logger.info("Migrated method profile %r -> pfas_method_profiles/%s",
-                            method_id, method_id)
-            except Exception as exc:
-                logger.error("migrate_method_profiles: failed on method_id=%s: %s",
-                             method_id, exc)
-                errors += 1
-
-    # Seed any DEFAULT_PROFILES methods not covered above (missing from annotation store).
-    for method_id, data in DEFAULT_PROFILES.items():
-        if method_id in folder or method_id in deleted:
-            continue
-        try:
-            display_name = data.get("display_name") or method_id
-            seeded_data = dict(data)
-            seeded_data["_seeded"] = True
-            folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
-            obj = folder[method_id]
-            obj.title = display_name
-            obj.profile_json = json.dumps(seeded_data)
-            try:
-                obj.reindexObject()
-            except Exception:
-                pass
-            migrated += 1
-            logger.info("Seeded default profile %r -> pfas_method_profiles/%s",
-                        method_id, method_id)
-        except Exception as exc:
-            logger.error("migrate_method_profiles: failed seeding method_id=%s: %s",
-                         method_id, exc)
-            errors += 1
-
-    logger.info(
-        "migrate_method_profiles_from_annotations: migrated=%d, skipped=%d, errors=%d",
-        migrated, skipped, errors,
-    )
-    return migrated, skipped
+def setup_catalogs(portal):
+    """Each SETUP_TYPES type in the setup catalog, with its folder. Idempotent."""
+    from bika.lims import api as bika_api
+    from senaite.core.catalog import set_catalogs, SETUP_CATALOG
+    for portal_type, folder_id, title in SETUP_TYPES:
+        set_catalogs(portal_type, [SETUP_CATALOG])
+        if folder_id not in portal:
+            bika_api.create(portal, "Folder", id=folder_id, title=title)
+            logger.info("Created %s folder", folder_id)
 
 
 def setup_automation_group(portal):
@@ -804,26 +381,20 @@ def setup_automation_group(portal):
 
     Returns True if it was created, False if it already existed. Idempotent.
 
-    WHY THIS IS SEEDED RATHER THAN DOCUMENTED. `data_review._actor_kind()` decides
-    human-vs-automated from `user.getGroups()`, which returns group **IDs**. If the
-    id does not match exactly, the check does not error -- it silently classifies
-    every service account as a person, which is the one direction that matters,
-    because a machine attestation would then open the release gate looking like a
-    human sign-off. Leaving a lab to create a group and type the id right is a
-    silent-failure mode with no symptom, so the id is created here instead.
+    Seeded, not documented: `data_review._actor_kind()` decides
+    human-vs-automated from `user.getGroups()`, which returns group **IDs**. A
+    mistyped id fails silently and classifies every service account as a person,
+    so a machine attestation would open the release gate as a human sign-off.
 
-    IT GRANTS NO ROLES, deliberately. The group classifies an account; it does not
-    empower one. A service account still needs Analyst or LabManager through the
-    normal role model to reach the Data Review view at all. Keeping capability and
-    classification separate means adding an account here cannot accidentally widen
-    what it may do -- so do NOT attach permissions to this group later.
+    IT GRANTS NO ROLES, deliberately: the group classifies an account, it does
+    not empower one. A service account still needs Analyst or LabManager through
+    the normal role model. Do NOT attach permissions to this group.
 
-    Nobody is a member on install. That is correct: no automated actor exists yet,
-    and the classification has to exist before a producer does, not after (the
-    ordering got wrong).
+    Nobody is a member on install: the classification exists before any
+    automated actor does.
     """
     # Local imports, matching this module's convention (see
-    # setup_reagents_catalog): setuphandlers runs during install, where a
+    # setup_catalogs): setuphandlers runs during install, where a
     # module-level import of a tool or a browser module can order badly.
     from Products.CMFCore.utils import getToolByName
     from senaite.pfas.browser.data_review import AUTOMATION_GROUP
@@ -844,17 +415,75 @@ def setup_automation_group(portal):
     return True
 
 
+# The lab never adds or removes analytes on a sample: the panel comes from
+# the method x matrix. Core's "Manage Analyses" tab
+# shows for the site manager only.
+MANAGE_ANALYSES_CONDITION = "python:'Manager' in member.getRolesInContext(object)"
+
+
+def hide_manage_analyses(portal):
+    """The sample's Manage Analyses tab for the site manager only. True when
+    the type's action changed. Idempotent."""
+    from Products.CMFCore.Expression import Expression
+    fti = portal.portal_types.getTypeInfo("AnalysisRequest")
+    for action in fti.listActions():
+        if action.getId() == "analyses":
+            if action.condition and action.condition.text == MANAGE_ANALYSES_CONDITION:
+                return False
+            action.condition = Expression(MANAGE_ANALYSES_CONDITION)
+            fti._p_changed = True
+            return True
+    return False
+
+
+def worksheet_opens_on_review(portal):
+    """A worksheet opens on its Data Review (@@pfas-ws-open); core's results
+    grid is its "Results entry" tab. True when the
+    type changed. Idempotent."""
+    fti = portal.portal_types.getTypeInfo("Worksheet")
+    changed = False
+    aliases = dict(fti.getMethodAliases())
+    if aliases.get("(Default)") != "pfas-ws-open":
+        aliases["(Default)"] = "pfas-ws-open"
+        fti.setMethodAliases(aliases)
+        changed = True
+    for action in fti.listActions():
+        if action.getId() == "manage_results" and action.title != "Results entry":
+            action.title = "Results entry"
+            changed = True
+    if changed:
+        fti._p_changed = True
+    return changed
+
+
+def setup_lab_identity(portal):
+    """Move the identity into the Laboratory and limit its edit right. Each
+    step has its own try: a failed move never leaves Lab Clerk able to edit."""
+    from senaite.pfas import lab_identity
+    try:
+        filled = lab_identity.migrate_print_identity(portal)
+        if filled:
+            logger.info("Lab identity moved into the Laboratory: %s",
+                        ", ".join(filled))
+    except Exception as exc:
+        logger.error("Failed to move the lab identity into the Laboratory: "
+                     "%s", exc)
+    try:
+        if lab_identity.restrict_laboratory_edit(portal):
+            logger.info("Laboratory edit limited to Lab Manager and Site "
+                        "Administrator")
+    except Exception as exc:
+        logger.error("Failed to limit the Laboratory edit: %s", exc)
+
+
 def post_install(context):
-    try:   # installer and seeder writes are attributed to "installer" in history
-        from senaite.pfas.config_history import set_actor
-        set_actor(u"installer")
-    except Exception:
-        pass
+    # installer and seeder writes are attributed to "installer" in history
+    from senaite.pfas.config_history import set_actor
+    set_actor(u"installer")
     logger.info("senaite.pfas post_install")
     # Defensive portal resolution: in some invocation contexts (e.g. a
     # bin/instance interpreter bootstrap) `context` is a RequestContainer with
-    # no getSite(), which used to abort seeding ("Failed to seed vendor
-    # templates... no attribute 'getSite'"). Fall back to locating the site.
+    # no getSite(); fall back to locating the site.
     if hasattr(context, "getSite"):
         portal = context.getSite()
     else:
@@ -869,6 +498,12 @@ def post_install(context):
         logger.error("post_install: cannot resolve portal — aborting")
         return
 
+    # The add-on's own modules are imported outside the handlers: a step that
+    # fails is logged and the install goes on, an import that fails raises.
+    from senaite.pfas.method_profile_store import (
+        refresh_analyte_sets, seed_default_profiles)
+    from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
+
     # ── Automation service-account group ──────────────────────────────────
     try:
         created = setup_automation_group(portal)
@@ -877,85 +512,51 @@ def post_install(context):
     except Exception as exc:
         logger.error("Failed to set up the automation group: %s", exc)
 
-    # ── Labelled-standard keywords in the method profiles ─────
-    try:
-        from senaite.pfas.migrations.labelled_keywords import rename_profiles
-        rename_profiles(portal)
-    except Exception as exc:
-        logger.error("labelled keyword rename (profiles): %s", exc)
+    # ── Lab identity moves into the Laboratory; Lab Clerk loses its edit ──
+    setup_lab_identity(portal)
 
-    # ── Import Studio vendor templates ────────────────────────────────────
+    # ── The laboratory time zone moves into Plone's own record ────────────
     try:
-        from senaite.pfas.browser.import_studio import seed_vendor_templates
-        n = seed_vendor_templates(portal)
-        logger.info("Import Studio: seeded %d vendor template(s)", n)
+        from senaite.pfas import lab_time
+        if lab_time.migrate_zone(portal):
+            logger.info("Laboratory time zone moved into Plone's record")
     except Exception as exc:
-        logger.error("Failed to seed vendor templates: %s", exc)
+        logger.error("Failed to move the laboratory time zone: %s", exc)
 
-    # ── Reagent catalog integration + migration ───────────────────────────
+    # ── The add-on's setup-catalog types and their folders; the seeds ─────
     try:
-        setup_reagents_catalog(portal)
-        migrated, skipped = migrate_reagents_from_annotations(portal)
-        logger.info("Reagent migration: %d migrated, %d already present", migrated, skipped)
+        setup_catalogs(portal)
+        seed_default_profiles(portal)
     except Exception as exc:
-        logger.error("Failed to set up Reagent catalog / migration: %s", exc)
+        logger.error("Failed to set up the catalogs / seed the profiles: %s", exc)
 
-    # ── Project catalog integration (no legacy data to migrate) ───────────
+    # ── The analyte panels follow the services' Method links ─────────
+    # A profile seen for the first time links the services of its stored
+    # list (the shipped seeds); from then on the links own the panel.
     try:
-        setup_projects_catalog(portal)
+        changed = refresh_analyte_sets(portal)
+        if changed:
+            logger.info("analyte panels refreshed from the services' links: %s",
+                        ", ".join(sorted(changed)))
     except Exception as exc:
-        logger.error("Failed to set up Project catalog: %s", exc)
-
-    # ── LogbookDef catalog integration + migration ────────────────────────
-    try:
-        setup_logbook_defs_catalog(portal)
-        migrated, skipped = migrate_logbook_defs_from_annotations(portal)
-        logger.info("LogbookDef migration: %d migrated, %d already present", migrated, skipped)
-    except Exception as exc:
-        logger.error("Failed to set up LogbookDef catalog / migration: %s", exc)
-
-    # ── MethodProfile catalog integration + migration ─────────────────────
-    try:
-        setup_method_profiles_catalog(portal)
-        migrated, skipped = migrate_method_profiles_from_annotations(portal)
-        logger.info("MethodProfile migration: %d migrated, %d already present", migrated, skipped)
-    except Exception as exc:
-        logger.error("Failed to set up MethodProfile catalog / migration: %s", exc)
-
-    # ── Native Method↔AnalysisService links ─────────────────────────
-    # Makes the per-method analyte set derivable from services (get_master_
-    # analyte_set). The default methods are seeded here, not via the wizard,
-    # so their analyte services need setMethods stamped. Idempotent.
-    try:
-        from senaite.pfas.method_bridge import link_method_analytes
-        r = link_method_analytes(portal)
-        logger.info("Method↔analyte links: %d added across %d methods",
-                    r["links_added"], len(r["methods"]))
-        if r["unmatched_methods"]:
-            logger.warning("Method↔analyte links: unmatched methods: %s",
-                           r["unmatched_methods"])
-    except Exception as exc:
-        logger.error("Failed to backfill Method↔analyte links: %s", exc)
-
-    # ── Prep logbook definitions catalog ──────────────────────────────────
-    try:
-        setup_prep_logbooks_catalog(portal)
-    except Exception as exc:
-        logger.error("Failed to set up PrepLogbookDef catalog: %s", exc)
+        logger.error("Failed to refresh the analyte panels: %s", exc)
 
     # ── Seed built-in logbook definitions (250/251/252/253) ───────────────
     try:
-        from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
         seed_builtin_logbook_defs(portal)
         logger.info("Built-in logbook defs seeded (250/251/252/253)")
     except Exception as exc:
         logger.error("Failed to seed built-in logbook defs: %s", exc)
 
-    # ── Prepared standards catalog ────────────────────────────────────────
+    # ── The sample's Manage Analyses tab: the site manager only ──────────
     try:
-        setup_prepared_standards_catalog(portal)
+        hide_manage_analyses(portal)
     except Exception as exc:
-        logger.error("Failed to set up PreparedStandard catalog: %s", exc)
+        logger.error("Manage Analyses tab not limited: %s", exc)
+    try:
+        worksheet_opens_on_review(portal)
+    except Exception as exc:
+        logger.error("Worksheet not opened on Data Review: %s", exc)
 
     # ── CoA filesystem directory ──────────────────────────────────────────
     try:
@@ -971,48 +572,6 @@ def _ensure_dir(path):
     if not os.path.isdir(path):
         os.makedirs(path)
         logger.info("Created directory: %s", path)
-
-
-def setup_prep_logbooks_catalog(portal):
-    """Register PrepLogbookDef in setup catalog and create container folder."""
-    try:
-        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
-    except ImportError:
-        logger.warning("setup_prep_logbooks_catalog: senaite.core.catalog unavailable; skipping")
-        return None
-
-    set_catalogs("PrepLogbookDef", [SETUP_CATALOG])
-    logger.info("PrepLogbookDef registered in %s", SETUP_CATALOG)
-
-    if "pfas_prep_logbooks" not in portal:
-        from bika.lims import api as bika_api
-        bika_api.create(portal, "Folder",
-                        id="pfas_prep_logbooks",
-                        title="PFAS Preparation Logbooks")
-        logger.info("Created pfas_prep_logbooks folder")
-
-    return portal.get("pfas_prep_logbooks")
-
-
-def setup_prepared_standards_catalog(portal):
-    """Register PreparedStandard in setup catalog and create container folder."""
-    try:
-        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
-    except ImportError:
-        logger.warning("setup_prepared_standards_catalog: senaite.core.catalog unavailable; skipping")
-        return None
-
-    set_catalogs("PreparedStandard", [SETUP_CATALOG])
-    logger.info("PreparedStandard registered in %s", SETUP_CATALOG)
-
-    if "pfas_prepared_standards" not in portal:
-        from bika.lims import api as bika_api
-        bika_api.create(portal, "Folder",
-                        id="pfas_prepared_standards",
-                        title="PFAS Prepared Standards")
-        logger.info("Created pfas_prepared_standards folder")
-
-    return portal.get("pfas_prepared_standards")
 
 
 def post_uninstall(context):

@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Site-wide search. "We need a search bar that
-allows users to search for anything within the site. Ranging from specific data
-sets, equipment or method settings."
+"""Site-wide search: anything within the site, from data sets to equipment
+and method settings.
 
 One query, several sources, one ranking:
 
     records           SENAITE's own catalogs through senaite.app.spotlight
                       (samples, batches, worksheets, clients, methods,
                       services, sample types, instruments, reagents ...)
-    pages             every sidebar item the user can open (the rendered
-                      sidebar is the source, so roles apply by construction)
+    pages             every page the navigation map lets the user open
     method settings   every declared Method Profile section, tab, field and
                       analyte, per method, linked to its tab
     equipment         instruments and equipment types, linked to Equipment
@@ -24,6 +22,8 @@ from __future__ import absolute_import, unicode_literals
 
 import re
 
+from senaite.pfas import page_groups
+
 GROUPS = [("records", u"Records"), ("inventory", u"Reagents & standards"),
           ("pages", u"Pages"), ("equipment", u"Equipment"),
           ("method", u"Method settings"), ("settings", u"Lab settings"),
@@ -32,31 +32,34 @@ GROUPS = [("records", u"Records"), ("inventory", u"Reagents & standards"),
 GROUP_LABELS = dict(GROUPS)
 
 # Which Method Profile tab each section form lives on (method_profile_edit.pt:
-# form#section-<x> posts _section=<ids>). Recovery Tiers' list is dynamic
+# form#section-<x> posts _section=<ids>). QC criteria's list is dynamic
 # (spike levels per QC type), so its prefix rule is below.
-SECTION_PANE = {"rf": "pane-rf", "iso": "pane-iso", "ls": "pane-sur", "sur": "pane-sur",
-                "eis_grid": "pane-eis", "salt": "pane-corr", "scorr": "pane-corr", "rtemp": "pane-mtx", "surscope": "pane-sur", "rpdbasis": "pane-rt", "qcnames": "pane-cal",
-                "mf": "pane-corr", "mtx": "pane-mtx", "rl": "pane-rl", "al": "pane-rl",
-                "qc_comp": "pane-qct", "lbl": "pane-qct", "xbatch": "pane-qct", "blk": "pane-qct", "mxb": "pane-qct", "nom": "pane-corr", "cal": "pane-cal", "cal_levels": "pane-cal",
-                "cal_scale": "pane-cal", "groups": "pane-rt", "tiers": "pane-rt",
-                "tiers_lfb": "pane-rt", "dup": "pane-rt", "lfsmd": "pane-rt",
-                "engine": "pane-engine", "engine_fallback": "pane-engine",
-                "engine_text": "pane-engine", "engine_notes": "pane-engine",
-                "engine_studies": "pane-engine"}
-PANE_LABEL = {"pane-toggles": u"Rule Toggles & QC Run", "pane-qct": u"QC Types",
-              "pane-rt": u"Recovery Tiers", "pane-mtx": u"Matrices & Units",
-              "pane-corr": u"Sample Corrections", "pane-ami": u"Analyte × Matrix",
-              "pane-iso": u"Isomers", "pane-sur": u"Internal Standards",
-              "pane-eis": u"SUR Limits", "pane-rl": u"Reporting Limits",
-              "pane-rf": u"Reporting", "pane-cal": u"Calibration & CCV",
-              "pane-lwf": u"Lab Workflow", "pane-engine": u"Engine"}
+SECTION_PANE = {"run_rules": "pane-qc", "qc_comp": "pane-run", "solv": "pane-run",
+                "xbatch": "pane-qc", "blk": "pane-qc", "mxb": "pane-qc",
+                "groups": "pane-qc", "tiers": "pane-qc", "tiers_lfb": "pane-qc", "dup": "pane-qc",
+                "lfsmd": "pane-qc", "engine_notes_rt": "pane-qc",
+                "mtx": "pane-matrices", "rtemp": "pane-matrices", "hold": "pane-matrices",
+                "scorr": "pane-matrices", "nom": "pane-matrices", "mf": "pane-matrices",
+                "ami": "pane-analytes", "engine_ami": "pane-analytes", "iso": "pane-analytes",
+                "rl": "pane-analytes", "salt": "pane-analytes", "sur": "pane-analytes",
+                "ls": "pane-standards", "surscope": "pane-standards", "cal_sur": "pane-standards",
+                "engine_sur": "pane-standards", "engine_fallback": "pane-standards",
+                "engine_notes_sur": "pane-standards", "eis_grid": "pane-standards",
+                "rf": "pane-run", "al": "pane-run",
+                "cal": "pane-qc", "cal_levels": "pane-qc", "cal_scale": "pane-qc", "engine_notes_conf": "pane-qc", "engine_notes_is": "pane-qc",
+                "lbl": "pane-run", "solv_spe": "pane-run", "dil": "pane-run",
+                "engine": "pane-engine", "engine_names": "pane-engine", "engine_mcodes": "pane-engine", "qcnames": "pane-engine",
+                "engine_studies": "pane-engine", "engine_text": "pane-engine", "engine_notes": "pane-engine",
+                "intg": "pane-run", "intg_an": "pane-run"}
+PANE_LABEL = {"pane-analytes": u"Analytes", "pane-standards": u"Isotope standards", "pane-qc": u"QC criteria",
+              "pane-matrices": u"Matrices", "pane-run": u"Run & reporting", "pane-engine": u"Engine"}
 
 
 def pane_for(section_id):
     if section_id in SECTION_PANE:
         return SECTION_PANE[section_id]
     if section_id.startswith("spk_"):
-        return "pane-rt"
+        return "pane-qc"
     return None
 
 
@@ -66,8 +69,8 @@ _WORD = re.compile(r"[\wµ°.+-]+", re.UNICODE)
 
 
 def _u(text):
-    """Text as unicode: a UTF-8 byte string from a record (Python 2) once
-    broke the whole search on its first non-ASCII character."""
+    """Text as unicode: a UTF-8 byte string from a record (Python 2) must not
+    break the search on a non-ASCII character."""
     if isinstance(text, bytes):
         return text.decode("utf-8", "replace")
     return u"%s" % (text if text is not None else u"")
@@ -130,42 +133,37 @@ def rank(items, q, limit_per_group=None):
 
 # ── index builders ──────────────────────────────────────────────────────────
 
-_SIDEBAR_ITEM = re.compile(
-    r'<a\b[^>]*class="pfas-si[^"]*"[^>]*>.*?</a>', re.S)
-_HREF = re.compile(r'href="([^"]+)"')
-_TITLE = re.compile(r'title="([^"]*)"')
-_LABEL = re.compile(r'<span class="pfas-si-label">([^<]*)</span>')
-_GROUP = re.compile(r'<span class="pfas-sg-label">([^<]*)</span>')
+def _words(key):
+    """'pfas-balance-log' -> 'balance log': a page is found by the name of
+    its view as well as by its label."""
+    k = key[len("pfas-"):] if key.startswith("pfas-") else key
+    return k.replace("-", " ").replace("_", " ")
 
 
-def _unescape(s):
-    return (s or u"").replace(u"&amp;", u"&").replace(u"&#215;", u"×").strip()
-
-
-def pages_from_sidebar(html):
-    """Every link the rendered sidebar offers this user, with its group."""
-    out, seen = [], set()
-    # split on group headings so each item knows its group
-    parts = re.split(r'(<span class="pfas-sg-label">[^<]*</span>)', html or u"")
-    group = u""
-    for part in parts:
-        m = _GROUP.match(part)
-        if m:
-            group = _unescape(m.group(1))
-            continue
-        for a in _SIDEBAR_ITEM.findall(part):
-            href, label = _HREF.search(a), _LABEL.search(a)
-            if not href or not label:
-                continue
-            url = _unescape(href.group(1))
-            if url in seen:
-                continue
-            seen.add(url)
-            title = _TITLE.search(a)
-            out.append({"group": "pages", "title": _unescape(label.group(1)),
-                        "subtitle": group, "url": url,
-                        "keywords": [_unescape(title.group(1))] if title else []})
+def pages_from_map(roles, portal_url):
+    """Every page the navigation map lets these roles open, each with the
+    rows above it as its subtitle; its keywords are those rows and the
+    view's name, so a tab page is found by its tab's name too."""
+    out = []
+    for p in page_groups.pages(roles):
+        keywords = [_words(p["key"])] + [x.strip() for x in p["place"].split(">")]
+        out.append({"group": "pages", "title": p["label"], "subtitle": p["place"],
+                    "url": u"%s/%s" % (portal_url.rstrip("/"), p["url_path"]),
+                    "keywords": keywords})
     return out
+
+
+# Who each search source is on for: the same role sets as the navigation map
+# and the page each result opens (the method editor is for managers alone).
+SOURCES = {"inventory": page_groups.STAFF, "equipment": page_groups.STAFF,
+           "equipment_types": page_groups.MGR, "method": page_groups.MGR,
+           "settings": page_groups.MGR, "limits": page_groups.MGR,
+           "logbooks": page_groups.MGR}
+
+
+def sources_for(roles):
+    """The names of the sources these roles may search."""
+    return set(name for name, who in SOURCES.items() if page_groups._allowed(who, roles))
 
 
 def _link(edit_url, pane, **params):
@@ -214,8 +212,8 @@ def method_settings(method_id, method_name, edit_url, sections, profile, titles=
     titles = titles or {}
     for kw in profile.get("master_analyte_set") or []:
         out.append({"group": "method", "title": u"%s in %s" % (titles.get(kw, kw), method_name),
-                    "subtitle": u"Analyte \u00b7 %s \u203a Analyte \u00d7 Matrix" % sub,
-                    "url": _link(edit_url, "pane-ami", a=kw), "keywords": [kw, method_id]})
+                    "subtitle": u"Analyte \u00b7 %s \u203a Analytes" % sub,
+                    "url": _link(edit_url, "pane-analytes", a=kw), "keywords": [kw, method_id]})
     return out
 
 

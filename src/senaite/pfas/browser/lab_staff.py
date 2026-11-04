@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """Lab staff and personal profiles (part B).
 
-    @@pfas-lab-staff    Managers: every user, the Lab Contact it is linked to
-                        (SENAITE's own link, contact.setUser), job title,
-                        credentials, who may sign as preparer / reviewer /
-                        director, the signature picture, and a setup checklist
+    PFASLabStaffView    the handlers behind @@pfas-people (People & Roles): the
+                        Lab Contact a user is linked to (SENAITE's own link,
+                        contact.setUser), job title, credentials, who signs as
+                        preparer / reviewer, the signature picture, the badge
     @@pfas-my-profile   Everyone signed in: their own signature (their own Lab
                         Contact, resolved on the server, never from the form)
                         and what they may do ("My permissions", derived from
@@ -16,7 +16,6 @@ fingerprint, never the picture. Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
-import datetime
 import importlib
 import logging
 import os
@@ -26,20 +25,18 @@ from bika.lims import api
 from plone.protect import CheckAuthenticator
 from Products.CMFPlone.utils import safe_unicode
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zExceptions import Forbidden
 from zope.annotation.interfaces import IAnnotations
 
+from senaite.pfas import staff as staff_pool
 from senaite.pfas.browser import staff
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import (ALLOWED_ROLES, SITE_ADMIN_ROLES, TIER_CONFIG,
-                                        TIER_SITE_ADMIN, GateMixin, deny_gated_action, refuse)
+                                        TIER_SITE_ADMIN, refuse)
 
 logger = logging.getLogger("senaite.pfas.lab_staff")
-
-STAFF_GATES = {"link": TIER_CONFIG, "save_staff": TIER_CONFIG,
-               "upload_signature": TIER_CONFIG, "remove_signature": TIER_CONFIG,
-               "issue_badge": TIER_CONFIG, "revoke_badge": TIER_CONFIG}
 
 
 def _text(form, key):
@@ -63,7 +60,9 @@ def _staff_view(contact):
         return {}
     st = staff.staff_settings(contact)
     raw = staff.image_bytes(contact.getSignature())
+    field = contact.getField("pfas_initials")
     return {"contact": api.get_uid(contact), "fullname": contact.getFullname(),
+            "initials": (field.get(contact) or u"").strip().upper() if field is not None else u"",
             "jobtitle": getattr(contact, "getJobTitle", lambda: u"")() or u"",
             "credentials": st["credentials"], "sign_as": st["sign_as"],
             "signature": staff.fingerprint(raw)}
@@ -119,54 +118,10 @@ def portal_roles(userid):
     return sorted(r for r in roles if r not in ("Authenticated", "Member"))
 
 
-class PFASLabStaffView(GateMixin, BrowserView):
+class PFASLabStaffView(ViewHelpers, BrowserView):
+    """The staff handlers; PFASPeopleView is the page that dispatches to them."""
 
-    template = ViewPageTemplateFile("templates/lab_staff.pt")
     issued_template = ViewPageTemplateFile("templates/badge_issued.pt")
-
-    def __call__(self):
-        flatten_form(self.request)
-        req = self.request
-        if req.method == "POST":
-            action = req.form.get("action", "")
-            denied = deny_gated_action(self.context, req, action, STAFF_GATES)
-            if denied is not None:
-                return denied
-            try:
-                CheckAuthenticator(req)
-            except Forbidden:
-                return refuse(req)
-            userid = _text(req.form, "userid")
-            msg = u"error:Unknown action."
-            if action == "link":
-                msg = self._link(userid)
-            elif action == "save_staff":
-                msg = self._save(userid, req.form)
-            elif action in ("upload_signature", "remove_signature"):
-                msg = self._signature(userid, action == "remove_signature")
-            elif action == "issue_badge":
-                page = self._issue_badge(userid)
-                if page is not None:
-                    return page             # the code is shown once, in this response
-                msg = self._badge_error
-            elif action == "revoke_badge":
-                from senaite.pfas.browser import badges
-                msg = (u"ok:Badge of %s revoked." % userid if badges.revoke_badge(userid)
-                       else u"error:%s has no badge." % userid)
-            from six.moves.urllib.parse import urlencode
-            kind, text = msg.split(u":", 1)
-            req.response.redirect("%s/@@pfas-lab-staff?%s#%s" % (
-                self.portal_url(), urlencode({kind: text.encode("utf-8")}), userid))
-            return ""
-        if not self.can_configure():
-            return refuse(req)
-        return self.template()
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
-
-    def message(self):
-        return _text(self.request.form, "ok"), _text(self.request.form, "error")
 
     # ── actions ────────────────────────────────────────────────────────────
 
@@ -188,15 +143,33 @@ class PFASLabStaffView(GateMixin, BrowserView):
             return u"error:%s" % exc
         return u"ok:%s is linked to a new Lab Contact." % name
 
-    def _save(self, userid, form):
+    def _save(self, userid, form, sign_as_values=None):
         contact = staff.contact_for(userid)
         if contact is None:
             return u"error:Link %s to a Lab Contact first." % userid
+        # everything is checked before anything is written
+        initials = None
+        if "initials" in form:
+            initials = _text(form, "initials").upper()
+            holder = staff_pool.initials_holder(api.get_portal(), contact.UID(), initials) if initials else None
+            if holder:
+                return u"error:Initials {0} are already used by {1}.".format(initials, holder)
+        if form.get("signs_as"):
+            sign_as = staff.sign_as_for(_text(form, "signs_as"))
+            if sign_as is None:
+                return u"error:Choose None, Preparer, Reviewer or Both."
+        else:
+            sign_as = sign_as_values or form.get("sign_as") or []
+            if not isinstance(sign_as, (list, tuple)):
+                sign_as = [sign_as]
         _track(userid, u"Staff settings of %s" % userid)
+        if initials is not None:
+            contact.getField("pfas_initials").set(contact, initials)
+        if _text(form, "fullname"):
+            first, _sep, last = _text(form, "fullname").partition(u" ")
+            contact.setFirstname(first)
+            contact.setSurname(last.strip())
         contact.setJobTitle(_text(form, "jobtitle"))
-        sign_as = form.get("sign_as") or []
-        if not isinstance(sign_as, (list, tuple)):
-            sign_as = [sign_as]
         IAnnotations(contact)[staff.STAFF_KEY] = {
             "credentials": _text(form, "credentials"),
             "sign_as": staff.clean_sign_as([safe_unicode(x) for x in sign_as])}
@@ -240,49 +213,6 @@ class PFASLabStaffView(GateMixin, BrowserView):
         self.request.response.setHeader("Cache-Control", "no-store")
         return self.issued_template()
 
-    # ── page data ──────────────────────────────────────────────────────────
-
-    def sign_roles(self):
-        return staff.SIGN_ROLES
-
-    def rows(self):
-        director = staff.director_userid()
-        out = []
-        for userid, name in users():
-            info = staff.staff_info(userid)
-            issues = []
-            if not info["has_contact"]:
-                issues.append(u"no Lab Contact")
-            else:
-                if not info["signature"]:
-                    issues.append(u"no signature")
-                if not info["sign_as"]:
-                    issues.append(u"may not sign anything")
-            out.append({"userid": userid, "name": info["fullname"] or name,
-                        "roles": portal_roles(userid), "info": info,
-                        "director": userid == director, "issues": issues,
-                        "badge": self._badge(userid)})
-        return out
-
-    def _badge(self, userid):
-        try:
-            from senaite.pfas.browser import badges
-            return badges.badge_status(userid)
-        except Exception:                                   # noqa: BLE001
-            return None
-
-    def checklist(self):
-        """What still stops a designed document from being signed."""
-        rows = self.rows()
-        out = []
-        director = staff.director_userid()
-        if not director:
-            out.append(u"No Laboratory Director is set (Site Settings).")
-        for role, title in staff.SIGN_ROLES:
-            if not [r for r in rows if role in r["info"]["sign_as"]]:
-                out.append(u"Nobody may sign as %s yet." % title.lower())
-        return out
-
 
 # ── My profile ─────────────────────────────────────────────────────────────
 
@@ -307,7 +237,7 @@ def gated_actions():
     return out
 
 
-class PFASMyProfileView(BrowserView):
+class PFASMyProfileView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/my_profile.pt")
 
@@ -334,7 +264,7 @@ class PFASMyProfileView(BrowserView):
                 except ValueError as exc:
                     msg = u"error:%s" % exc
             elif contact is None:
-                msg = u"error:Your account is not linked to a Lab Contact yet: ask a manager (Lab Staff)."
+                msg = u"error:Your account is not linked to a Lab Contact yet: ask a manager on People & Roles."
             elif action == "upload_my_signature":
                 raw, why = staff.check_signature(_upload(req.form, "signature"))
                 if why:
@@ -359,9 +289,6 @@ class PFASMyProfileView(BrowserView):
         if user is None or user.getUserName() == "Anonymous User":
             return u""
         return safe_unicode(user.getId())
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def message(self):
         return _text(self.request.form, "ok"), _text(self.request.form, "error")

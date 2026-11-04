@@ -12,7 +12,7 @@
 .xl-label svg { width: 100%; height: 9mm; }
 .xl-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 @media print {
-  .xl-tools, .pfas-topbar, .pfas-subbar, #pfas-sidebar { display: none !important; }
+  .xl-tools, .pfas-topbar, .pfas-subbar { display: none !important; }
   .xl-sheet { gap: 0; }
   .xl-label { border: none; page-break-inside: avoid; break-inside: avoid; }
 }

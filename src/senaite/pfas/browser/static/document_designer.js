@@ -11,8 +11,8 @@
   var el = document.getElementById('dt-designer');
   var token = (document.getElementById('dt-token') || {}).value || '';
   var keys = cfg.fields.map(function (f) { return f.key; });
-  var tableCols = {};
-  (cfg.tables || []).forEach(function (t) { tableCols[t.name] = t.columns; });
+  var tableCols = {}, tableInfo = {};
+  (cfg.tables || []).forEach(function (t) { tableCols[t.name] = t.columns; tableInfo[t.name] = t; });
   var dirty = false, busy = false;
 
   function css(name) {
@@ -29,20 +29,68 @@
 
   /* Binding is by name: data-named fields take data, the rest are fixed. */
   /* A data table's columns are linked by key (cfg.columns_key). pdfme's own
-     panel can add, remove or rename columns, so when the headings and the
-     links no longer line up, link each heading to the column whose title it
-     contains; an unmatched heading stays unlinked and the server says so. */
+     panel can add, remove, reorder or rename columns, so after every change
+     each heading is linked again to the column it names: the one whose name
+     (its title, or a title it had before) the heading contains, a field in
+     braces left out, the longest name first; a heading that names none stays
+     unlinked and the server says so. document_templates.column_for is the
+     same rule. */
+  function columnsNamed(names, heading) {
+    var text = String(heading || '').replace(/\{[^{}]*\}/g, ' ').toLowerCase().split(/\s+/)
+      .filter(Boolean).join(' ');
+    var best = 0, hits = [];
+    (names || []).forEach(function (n) {
+      if (!n.name || text.indexOf(n.name.toLowerCase()) < 0) return;
+      best = Math.max(best, n.name.length);
+      hits.push(n);
+    });
+    var present = [], earlier = [];
+    hits.forEach(function (n) {
+      if (n.name.length !== best) return;
+      var into = n.earlier ? earlier : present;
+      if (into.indexOf(n.key) < 0) into.push(n.key);
+    });
+    present.sort();
+    earlier = earlier.filter(function (k) { return present.indexOf(k) < 0; }).sort();
+    // named by its present title first; an earlier title keeps an old link
+    return present.concat(earlier);
+  }
+
+  /* Which column each heading is linked to, given the columns each one
+     names (named[i]) and the links it had: no column twice. A heading that
+     names one column takes it; one that names several keeps its own link,
+     else a link the table had (a column added or removed shifts them),
+     else the first free column it names; none free leaves it unlinked.
+     document_templates.assign_columns is the same rule. */
+  function assignColumns(named, links) {
+    var out = named.map(function () { return null; });
+    var taken = [];
+    var free = function (k) { return k && taken.indexOf(k) < 0; };
+    named.forEach(function (ks, i) {
+      if (ks.length === 1 && free(ks[0])) { out[i] = ks[0]; taken.push(ks[0]); }
+    });
+    named.forEach(function (ks, i) {
+      if (ks.length < 2) return;
+      var own = links.length === named.length ? links[i] : null;
+      var pick = ks.indexOf(own) >= 0 && free(own) ? own : null;
+      if (!pick) pick = links.filter(function (k) { return ks.indexOf(k) >= 0 && free(k); })[0] || null;
+      if (!pick) pick = ks.filter(free)[0] || null;
+      if (pick) { out[i] = pick; taken.push(pick); }
+    });
+    return out;
+  }
+
+  /* A kind whose headings need not name their columns relinks only when
+     the counts differ. */
   function linkColumns(f) {
-    var cols = tableCols[baseKey(f.name)];
+    var tb = tableInfo[baseKey(f.name)];
+    if (!tb) return false;
     var head = f.head || [];
     var links = f[cfg.columns_key] || [];
-    if (!cols || links.length === head.length) return false;
-    f[cfg.columns_key] = head.map(function (h) {
-      var text = String(h || '').toLowerCase();
-      var hit = cols.filter(function (c) { return text.indexOf(c.title.toLowerCase()) >= 0; });
-      hit.sort(function (a, b) { return b.title.length - a.title.length; });
-      return hit.length ? hit[0].key : null;
-    });
+    if (!tb.by_title && links.length === head.length) return false;
+    var next = assignColumns(head.map(function (h) { return columnsNamed(tb.names, h); }), links);
+    if (next.length === links.length && next.every(function (k, i) { return k === links[i]; })) return false;
+    f[cfg.columns_key] = next;
     return true;
   }
 
@@ -127,29 +175,52 @@
   }
   withDefaults(template);
   normalise(template);
-  var designer = new P.Designer({
-    domContainer: el,
-    template: template,
-    plugins: P.plugins,
-    options: { lang: 'en', theme: { token: { colorPrimary: css('--s-primary') || undefined } } }
-  });
+  /* The lab fonts the renderer prints with (pdf_layout measures in them),
+     so the designer and its preview wrap text as the printed PDF does. */
+  var designer = null, labFont = null;
+  function loadFonts() {
+    var list = cfg.fonts || [];
+    if (!list.length || !window.fetch) return Promise.resolve(null);
+    return Promise.all(list.map(function (f) {
+      return fetch(f.url, { credentials: 'same-origin' }).then(function (r) {
+        if (!r.ok) throw new Error(f.url);
+        return r.arrayBuffer();
+      }).then(function (buf) { return [f, buf]; });
+    })).then(function (got) {
+      var font = {};
+      got.forEach(function (g) { font[g[0].name] = { data: g[1], fallback: !!g[0].fallback }; });
+      return font;
+    }).catch(function () { return null; });
+  }
+
+  function start(font) {
+    labFont = font;
+    var options = { lang: 'en', theme: { token: { colorPrimary: css('--s-primary') || undefined } } };
+    if (font) options.font = font;
+    designer = new P.Designer({ domContainer: el, template: template, plugins: P.plugins, options: options });
+    designer.onChangeTemplate(function () {
+      if (busy) return;
+      var t = designer.getTemplate();
+      if (normalise(t)) {
+        busy = true;
+        try { designer.updateTemplate(t); } finally { busy = false; }
+      }
+      dirty = true;
+      if (!startedFromStarter) document.getElementById('dt-saved').textContent = 'Unsaved changes';
+    });
+    showEveryPage();
+    if (!font && (cfg.fonts || []).length) {
+      showProblems((cfg.problems || []).concat(['The lab fonts did not load: the preview wraps text in another font.']));
+    }
+  }
+
   showProblems(cfg.problems);
   if (startedFromStarter) {
     dirty = true;
     document.getElementById('dt-saved').textContent =
       'A starting layout with everything this document must show: arrange it, then Save draft.';
   }
-
-  designer.onChangeTemplate(function () {
-    if (busy) return;
-    var t = designer.getTemplate();
-    if (normalise(t)) {
-      busy = true;
-      try { designer.updateTemplate(t); } finally { busy = false; }
-    }
-    dirty = true;
-    if (!startedFromStarter) document.getElementById('dt-saved').textContent = 'Unsaved changes';
-  });
+  loadFonts().then(start);
 
   /* ── add a data field ─────────────────────────────────────────────────── */
   function pluginFor(type) {
@@ -162,6 +233,7 @@
   }
 
   function addField(field) {
+    if (!designer) return;
     var isImage = (cfg.images || []).indexOf(field.key) >= 0;
     var type = isImage ? 'image' : document.getElementById('dt-add-as').value;
     var plugin = pluginFor(type);
@@ -220,7 +292,8 @@
         var cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.value = k;
-        cb.checked = k !== 'analysis_date' && k !== 'action_level' && k !== 'analyte_name';
+        // the lab's usual columns start ticked
+        cb.checked = table.defaults ? table.defaults.indexOf(k) >= 0 : true;
         lab.appendChild(cb);
         lab.appendChild(document.createTextNode(' ' + byKey[k].title));
         fs.appendChild(lab);
@@ -234,7 +307,8 @@
     go.addEventListener('click', function () {
       var picked = Array.prototype.slice.call(box.querySelectorAll('input:checked')).map(function (i) { return i.value; });
       if (!picked.length) return;
-      addTable({ name: table.name, columns: table.columns.filter(function (c) { return picked.indexOf(c.key) >= 0; }) });
+      addTable({ name: table.name, widths: table.widths, right: table.right,
+                 columns: table.columns.filter(function (c) { return picked.indexOf(c.key) >= 0; }) });
       box.parentNode.removeChild(box);
     });
     box.appendChild(go);
@@ -242,6 +316,7 @@
   }
 
   function addTable(table) {
+    if (!designer) return;
     var plugin = pluginFor('table');
     var t = designer.getTemplate();
     var page = designer.getPageCursor ? designer.getPageCursor() : 0;
@@ -254,8 +329,15 @@
     var s = JSON.parse(JSON.stringify(plugin.propPanel.defaultSchema));
     var cols = table.columns;
     s.name = name;
-    s.head = cols.map(function (c) { return c.title; });
-    s.headWidthPercentages = cols.map(function () { return 100 / cols.length; });
+    // a column's own heading ("Result {result_unit}"), share of the width
+    // and alignment, where the kind gives them
+    s.head = cols.map(function (c) { return c.heading || c.title; });
+    var shares = cols.map(function (c) { return (table.widths || {})[c.key] || 1; });
+    var total = shares.reduce(function (a, b) { return a + b; }, 0);
+    s.headWidthPercentages = shares.map(function (w) { return 100 * w / total; });
+    var align = {};
+    cols.forEach(function (c, i) { if ((table.right || []).indexOf(c.key) >= 0) align[String(i)] = 'right'; });
+    s.columnStyles = Object.keys(align).length ? { alignment: align } : {};
     s[cfg.columns_key] = cols.map(function (c) { return c.key; });
     s.content = JSON.stringify([cols.map(function (c) { return c.example; })]);
     // below what is already on the page, in the compact ruled style
@@ -284,6 +366,7 @@
      (letterhead, report number, page numbers); the server moves them into
      pdfme's repeating area when it renders. */
   function showEveryPage() {
+    if (!designer) return;
     var names = [];
     eachField(designer.getTemplate(), function (f) { if (f[cfg.every_page]) names.push(f.name); });
     var el = document.getElementById('dt-every-list');
@@ -291,6 +374,7 @@
   }
 
   function toggleEveryPage() {
+    if (!designer) return;
     var picked = (designer.getSelectedSchemas ? designer.getSelectedSchemas() : []).map(function (s) { return s.name; });
     if (!picked.length) { showProblems(['Select one or more fields on the page first.']); return; }
     var t = designer.getTemplate();
@@ -365,6 +449,7 @@
   var saveBtn = document.getElementById('dt-save');
   if (saveBtn) {
     saveBtn.addEventListener('click', function () {
+      if (!designer) return;
       saveBtn.disabled = true;
       post('save_draft', { template: JSON.stringify(designer.getTemplate()) }).then(function (res) {
         saveBtn.disabled = false;
@@ -384,13 +469,15 @@
   }
 
   document.getElementById('dt-preview').addEventListener('click', function () {
+    if (!designer) return;
     var t = designer.getTemplate();
     post('preview_inputs', { template: JSON.stringify(t) }).then(function (res) {
       if (!res.ok) { showProblems([res.body.error || 'No preview.']); return null; }
       showProblems(res.body.problems);
       if (!res.body.template) return null;
       // the same compiled document the server renders (compile_document)
-      return P.generate({ template: res.body.template, inputs: [res.body.inputs], plugins: P.plugins });
+      return P.generate({ template: res.body.template, inputs: [res.body.inputs], plugins: P.plugins,
+                          options: labFont ? { font: labFont } : {} });
     }).then(function (pdf) {
       if (!pdf) return;
       var frame = document.getElementById('dt-pdf');

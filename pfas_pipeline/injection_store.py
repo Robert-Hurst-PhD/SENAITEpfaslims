@@ -44,17 +44,69 @@ def persist_injection_results(batch, db_path: str = None) -> int:
     """Write one row per injection × compound for a processed Batch. Replaces
     any existing rows for the same batch_id (idempotent re-import)."""
     path = db_path or DB_PATH
+    cols, rows_out = injection_rows(batch)
+    ph = ",".join(["?"] * len(cols.split(",")))
+    conn = sqlite3.connect(path)
+    try:
+        from .addon import load
+        load("qc_schema").ensure(conn)       # tables + numbered migrations
+        conn.execute("DELETE FROM injection_results WHERE batch_id=?",
+                     (getattr(batch, "batch_id", "") or "",))
+        conn.executemany(
+            "INSERT INTO injection_results ({0}) VALUES ({1})".format(cols, ph),
+            rows_out)
+        conn.commit()
+    finally:
+        conn.close()
+    return len(rows_out)
+
+
+def injection_dicts(batch):
+    """The batch's injection_results rows as dicts (the side of a run kept
+    apart for Validation is stored this way)."""
+    cols, rows_out = injection_rows(batch)
+    names = cols.split(",")
+    return [dict(zip(names, r)) for r in rows_out]
+
+
+def persist_alt_results(batch_id, side, rows, db_path: str = None) -> int:
+    """The side of a run that is not reported ("raw" under Validation,
+    "vendor" under LIMS integration), replacing that side's earlier rows."""
+    import json
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    conn = sqlite3.connect(db_path or DB_PATH)
+    try:
+        from .addon import load
+        load("qc_schema").ensure(conn)
+        conn.execute("DELETE FROM alt_results WHERE batch_id=? AND side=?", (batch_id or "", side))
+        conn.executemany(
+            "INSERT INTO alt_results (batch_id, side, injection_name, analyte, data, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            [(batch_id or "", side, r.get("injection_name") or "", r.get("analyte") or "",
+              json.dumps(r, sort_keys=True), now) for r in rows])
+        conn.commit()
+    finally:
+        conn.close()
+    return len(rows)
+
+
+def injection_rows(batch):
+    """(columns, rows) of injection_results for a processed Batch."""
     from .importer import classify_injection, validate_injection_name
     from .models import reported_conc
 
     # index flags by (injection_name, analyte) → issue string
     flags = {}
+    # and whether each came from a rule in the state Evaluate: a row is
+    # advisory only when every flag on it is (one Enforced flag holds)
+    advisory = {}
     for fl in getattr(batch, "qc_flags", []) or []:
         key = (fl.injection_name, fl.analyte)
         flags.setdefault(key, []).append(fl.issue)
+        advisory[key] = advisory.get(key, True) and bool(getattr(fl, "advisory", False))
 
     dilutions = getattr(batch, "dilutions", None) or {}
-    # : what the surrogate-recovery and IS-response checks judged
+    # what the surrogate-recovery and IS-response checks judged
     is_by = dict(((x.injection_name, x.is_compound), x)
                  for x in getattr(batch, "is_results", None) or [])
     sur_by = dict(((x["injection_name"], x["compound"]), x)
@@ -64,12 +116,8 @@ def persist_injection_results(batch, db_path: str = None) -> int:
     rows_out = []
     # what the run was judged with: "epa;3;pct0"; a certificate
     # drawn under another rule is refused until the run is reprocessed
-    judged_rule = ""
-    try:
-        from .method_profiles import get_profile
-        judged_rule = get_profile(method).judged_rule(getattr(batch, "matrix", "") or "") if method else ""
-    except Exception:                                       # noqa: BLE001
-        judged_rule = ""
+    from .method_profiles import get_profile
+    judged_rule = get_profile(method).judged_rule(getattr(batch, "matrix", "") or "") if method else ""
     for r in getattr(batch, "injections", []) or []:
         inj = r.injection_name
         analyte = r.compound_name
@@ -79,7 +127,7 @@ def persist_injection_results(batch, db_path: str = None) -> int:
         try:
             v = validate_injection_name(inj)
             sample_id = v.get("starlims_id") or v.get("sample_id") or inj
-        except Exception:
+        except TypeError:
             pass
         issues = flags.get((inj, analyte), [])
         sur = sur_by.get((inj, analyte))
@@ -141,6 +189,7 @@ def persist_injection_results(batch, db_path: str = None) -> int:
             _f(getattr(r, "matrix_factor", None)),
             _t(getattr(r, "derived_from", "")),
             "row|%s|%s" % (inj, analyte),
+            1 if issues and advisory.get((inj, analyte)) else 0,
         ))
 
     cols = ("batch_id,run_date,sample_id,injection_name,qc_type,analyte,role,"
@@ -151,18 +200,27 @@ def persist_injection_results(batch, db_path: str = None) -> int:
             "manual_raw,manual_integration,"
             "source_file,source_row,raw_conc,measured_conc,raw_measured_conc,dilution,"
             "expected_conc,reporting_limit,ion_ratio_text,acquired_at,salt_factor,"
-            "matrix_factor,derived_from,prov_key")
-    ph = ",".join(["?"] * 50)
-    conn = sqlite3.connect(path)
+            "matrix_factor,derived_from,prov_key,advisory")
+    return cols, rows_out
+
+
+def persist_raw_traces(batch_id, traces, db_path: str = None) -> int:
+    """A raw run's traces and peaks (raw_run.load_raw_run's `traces`),
+    replacing the batch's earlier ones."""
+    from .addon import load
+    rt = load("raw_traces")
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    conn = sqlite3.connect(db_path or DB_PATH)
     try:
-        from .addon import load
-        load("qc_schema").ensure(conn)       # tables + numbered migrations
-        conn.execute("DELETE FROM injection_results WHERE batch_id=?",
-                     (getattr(batch, "batch_id", "") or "",))
+        load("qc_schema").ensure(conn)
+        conn.execute("DELETE FROM raw_traces WHERE batch_id=?", (batch_id or "",))
         conn.executemany(
-            "INSERT INTO injection_results ({0}) VALUES ({1})".format(cols, ph),
-            rows_out)
+            "INSERT INTO raw_traces (batch_id, injection, analyte, transition, role, t, y, peak, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            [(batch_id or "", x["injection"], x["analyte"], x["transition"], x["role"],
+              sqlite3.Binary(rt.pack(x["t"])), sqlite3.Binary(rt.pack(x["y"])), x["peak"], now)
+             for x in traces or []])
         conn.commit()
     finally:
         conn.close()
-    return len(rows_out)
+    return len(traces or [])

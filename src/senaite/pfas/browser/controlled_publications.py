@@ -33,6 +33,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.view_helpers import LabTime
 
 logger = logging.getLogger("senaite.pfas.controlled_publications")
 
@@ -83,6 +84,10 @@ def _review_state_at_issue(ar):
             return u"passed"
         outstanding = [i.get("key") for i in review.checklist_status()
                        if not i.get("checked")]
+        # the manual integrations and the Raw Data changes say what they lack
+        for ok_need in (review.mi_gate(), review.raw_changes_gate()):
+            if not ok_need[0]:
+                outstanding.extend(ok_need[1])
         return u"NOT PASSED: {0}".format(u", ".join(outstanding) or u"unknown")
     except Exception as exc:                                # noqa: BLE001
         logger.warning("could not evaluate the review state for %s: %s",
@@ -174,11 +179,6 @@ def get_publication_log(ar):
     return out
 
 
-def get_current_publication(ar):
-    """Return the current (latest) issuance entry for the sample, or None."""
-    log = get_publication_log(ar)
-    return log[0] if log else None
-
 
 def set_pending_amendment_reason(ar, reason):
     """Stash a reissue reason to be consumed by the next publish transition."""
@@ -193,14 +193,22 @@ def update_amendment_reason(ar, revision, reason):
     """Fill in (or correct) the amendment reason on an EXISTING issuance entry
     — the QAO's fill-in-later path for a flagged reissue. Only the reason field
     is edited; the issuance facts (revision/date/authorizer/supersede) stay
-    immutable. Clears the reason_missing flag once a reason is present."""
+    immutable, and a reason replaced is kept in reason_history with who
+    replaced it and when. Clears the reason_missing flag once a reason is present."""
+    from senaite.pfas.config_history import actor, now
     ann = IAnnotations(ar)
     log = list(ann.get(PUBLICATION_LOG_KEY, []))
     reason = (reason or u"").strip()
     for i, entry in enumerate(log):
         if entry.get("revision") == revision:
             new = dict(entry)
+            at, who = now(), actor()
+            old = entry.get("amendment_reason") or u""
+            if old and old != reason:
+                new["reason_history"] = list(entry.get("reason_history") or []) + [
+                    {"reason": old, "replaced_at": at, "replaced_by": who}]
             new["amendment_reason"] = api.safe_unicode(reason)
+            new["reason_set_at"], new["reason_set_by"] = at, who
             new["reason_missing"] = bool(revision >= 2 and not reason)
             log[i] = new
             ann[PUBLICATION_LOG_KEY] = log
@@ -235,7 +243,7 @@ def _latest_arreport_uid(ar):
 
 # ── register view (Reporting → Controlled Publications) ─────────────────────
 
-class PFASControlledPublicationsView(BrowserView):
+class PFASControlledPublicationsView(BrowserView, LabTime):
     """Auditor-facing, read-only register of every issued CoA (all clients).
 
     A view onto the §3 relational spine: each row is a controlled issuance
@@ -247,12 +255,8 @@ class PFASControlledPublicationsView(BrowserView):
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
             return self._handle_post()
         return self.template()
 
@@ -299,8 +303,6 @@ class PFASControlledPublicationsView(BrowserView):
         rows.sort(key=lambda r: r.get("issued_at") or "", reverse=True)
         return rows
 
-    def has_flags(self):
-        return any(r["reason_missing"] for r in self.publications())
 
     # ── helpers ─────────────────────────────────────────────────────────
 

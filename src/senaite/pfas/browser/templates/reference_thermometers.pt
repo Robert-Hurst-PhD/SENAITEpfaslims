@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Reference Thermometers</title>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Reference Thermometers</tal:t>
+<metal:content metal:fill-slot="content">
+  <div class="page-body" tal:define="purl view/portal_url; rows view/rows">
+
+    <div class="pfas-filterbar">
+      <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
+      <span class="pfas-filterbar-spacer"></span>
+      <a class="btn btn-primary" tal:attributes="href view/add_url">+ Add reference thermometer</a>
+    </div>
+
+    <table class="pfas-table" data-col-resize="reference-thermometers-1">
+      <thead><tr><th>Equipment</th><th>Model</th><th>Serial</th><th>Laboratory</th><th>Certificate</th>
+        <th>Calibrated</th><th>Due</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="r rows" tal:attributes="data-href r/url">
+          <td tal:content="r/name">REF-1</td>
+          <td tal:content="r/model">Model</td>
+          <td class="pfas-mono" tal:content="r/serial">SN</td>
+          <td tal:content="r/lab">Metrology lab</td>
+          <td tal:content="r/certificate">CERT-1</td>
+          <td class="pfas-mono" tal:content="r/calibrated">2026-01-10</td>
+          <td class="pfas-mono" tal:content="r/due">2027-01-10</td>
+          <td><span tal:attributes="class string:badge ${r/status_cls}" tal:content="r/status">Traceable</span></td>
+        </tr>
+        <tr tal:condition="not:rows"><td colspan="8">No reference thermometer registered: add one, with its type of kind Reference thermometer, and record its certificate in SENAITE.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</metal:content>
+</body>
+</html>

@@ -20,12 +20,7 @@ Pure: Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas import doc_fields as _df
-except ImportError:                                         # loaded by path (tests)
-    import os, sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import doc_fields as _df
+from senaite.pfas import doc_fields as _df
 
 PREFIX = "logbook:"
 

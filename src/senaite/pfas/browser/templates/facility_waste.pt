@@ -11,25 +11,29 @@
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url">
 
+  <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
   <div class="pfas-card">
     <h3>New Entry</h3>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-waste-log">
       <div class="pfas-form-row">
-        <div class="pfas-form-field"><label>Date *</label>
+        <div class="pfas-form-field"><label>Date</label>
           <input type="date" name="log_date" id="wstDate" required/></div>
         <div class="pfas-form-field"><label>Time</label>
           <input type="time" name="log_time" id="wstTime"/></div>
-        <div class="pfas-form-field"><label>Operator initials *</label>
+        <div class="pfas-form-field"><label>Operator initials</label>
           <input type="text" name="operator" maxlength="10" required/></div>
         <div class="pfas-form-field"><label>Container</label>
-          <select name="unit_id">
-            <option value="">— General SAA —</option>
-            <tal:each tal:repeat="u view/waste_units">
-              <option tal:attributes="value u/id" tal:content="u/name"></option>
-            </tal:each>
-          </select>
+          <div class="pfas-inline">
+            <select name="unit_id" required="required">
+              <option value="">Choose</option>
+              <tal:each tal:repeat="u view/waste_units">
+                <option tal:attributes="value u/id" tal:content="u/name"></option>
+              </tal:each>
+            </select>
+            <a class="btn btn-secondary" tal:attributes="href view/add_saa_url">+ Add SAA</a>
+          </div>
         </div>
-        <div class="pfas-form-field"><label>Condition *</label>
+        <div class="pfas-form-field"><label>Condition</label>
           <select name="condition" required>
             <option value="acceptable">Acceptable</option>
             <option value="needs_emptying">Needs Emptying</option>
@@ -52,11 +56,12 @@
     <tal:none tal:condition="python:not view.logs()">
       <p class="pfas-note-sm">No entries yet.</p>
     </tal:none>
-    <table class="pfas-table log-table" tal:condition="python:bool(view.logs())">
-      <tr>
+    <table class="pfas-table log-table" data-col-resize="facility-waste-log-table" tal:condition="python:bool(view.logs())">
+      <thead><tr>
         <th>Date</th><th>Time</th><th>Container</th>
         <th>Operator</th><th>Condition</th><th>Notes</th>
-      </tr>
+      </tr></thead>
+      <tbody>
       <tal:each tal:repeat="r view/logs">
         <tr>
           <td tal:content="r/log_date"></td>
@@ -68,6 +73,7 @@
           <td class="pfas-muted-cell" tal:content="python:r.get('notes','')"></td>
         </tr>
       </tal:each>
+    </tbody>
     </table>
   </div>
 
@@ -80,7 +86,8 @@
   var d = new Date();
   var dd = document.getElementById('wstDate');
   var dt = document.getElementById('wstTime');
-  if (dd) dd.valueAsDate = d;
+  var today = PFAS.components.labToday();
+  if (dd) { if (today) { dd.value = today; } else { dd.valueAsDate = d; } }
   if (dt) dt.value = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
 })();
 //]]>

@@ -7,7 +7,7 @@ The "how it is applied" statements are BUILT FROM THE CONSTANTS the code
 uses (equipment_types, facility_qc), so the report cannot describe a rule the
 code does not run; tests/test_equipment_report.py pins that.
 
-    application()                 -> [(topic, statement)]
+    application(study_points, study_min_days) -> [(topic, statement)]
     type_rows(types)              -> rows for the types table
     instrument_rows(instruments)  -> rows for the instruments table
     config(types, instruments)    -> what goes into the report fingerprint
@@ -16,10 +16,8 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas import equipment_types as et
-except ImportError:                                  # tests
-    import equipment_types as et
+from senaite.pfas import equipment_types as et
+from senaite.pfas import temp_calibration as tc
 
 STATUS = {"ok": u"OK", "due_soon": u"Due soon", "overdue": u"Overdue",
           "missing": u"No record", "not_set": u"Not set"}
@@ -69,9 +67,9 @@ def application(study_points, study_min_days):
         (u"External certificates",
          u"Where a type requires one, the instrument's latest valid SENAITE certificate "
          u"decides: its valid-to date is the due date; none on file is 'no record'."),
-        (u"Worksheet instrument selection",
-         u"SENAITE's worksheet instrument pickers offer only instruments whose type is "
-         u"marked 'in worksheets'; a type nobody has set up stays offered, as in SENAITE."),
+        (u"Instruments that run samples",
+         u"Worksheet instrument pickers and Import Studio offer only instruments whose type is "
+         u"of kind Analytical instrument; a type nobody has set up stays offered, as in SENAITE."),
         (u"Release",
          u"Equipment and facility records do not gate batch release (ISO 17025 §6.4 is "
          u"reviewed on its own cadence); a balance or pipette used in a batch is traced in "
@@ -98,22 +96,27 @@ def type_rows(types):
             "external": _yes(r.get("external_cert_required")),
             "unit": r.get("unit") or u"",
             "tolerance": (u"%s %% of nominal" % _num(r["tolerance_pct"])) if r.get("tolerance_pct") else u"",
-            "worksheets": _yes(r.get("in_worksheets")),
+            "worksheets": _yes(r.get("kind") == "analytical"),
         })
     return out
 
 
 def instrument_rows(instruments):
     """instruments: [{"unit", "due", "correction", "study"}] -> display rows.
-    `correction` is facility_qc.current_correction(...) or None; `study` the
-    study it came from ({"study": {...}, "changes": n}) or None."""
+    `correction` is facility_qc.calibration(...) or None; `study` the
+    study a single factor came from ({"study": {...}, "changes": n}) or None."""
     out = []
     for i in instruments or []:
         u, d = i.get("unit") or {}, i.get("due") or {}
         internal, external = d.get("internal") or {}, d.get("external") or {}
         cf, st = i.get("correction"), (i.get("study") or {}).get("study") or {}
         req = u.get("requirements") or {}
-        if req.get("correction_factor_required"):
+        if req.get("correction_factor_required") and (cf or {}).get("model") == tc.MULTI:
+            # a multi-point calibration: each working temperature's point
+            corr = u"multi-point: %s" % tc.describe(cf) if cf.get("points") \
+                else u"none: no passed study at any working temperature; readings judged uncorrected"
+        elif req.get("correction_factor_required"):
+            cf = cf if (cf or {}).get("correction") is not None else None
             corr = (u"%+.3f °C, study of %s (NIST %s, %s)%s" % (
                 cf["correction"], cf["study_date"], st.get("nist_serial") or u"?",
                 st.get("operator") or u"?",

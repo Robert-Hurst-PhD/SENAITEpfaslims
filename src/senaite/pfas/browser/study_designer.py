@@ -17,11 +17,12 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import study_templates as st
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 GATES = dict((a, TIER_CONFIG) for a in ("new", "save", "add", "remove", "delete"))
 
 
-class PFASStudyDesignerView(GateMixin, BrowserView):
+class PFASStudyDesignerView(ViewHelpers, GateMixin, BrowserView):
     template = ViewPageTemplateFile("templates/study_designer.pt")
 
     def __call__(self):
@@ -48,10 +49,6 @@ class PFASStudyDesignerView(GateMixin, BrowserView):
                     return u""
         return self.template()
 
-    # ── reading ────────────────────────────────────────────────────────────
-    def portal_url(self):
-        return api.get_portal().absolute_url()
-
     def templates(self):
         if not hasattr(self, "_templates"):
             self._templates = st.load(api.get_portal())
@@ -74,6 +71,13 @@ class PFASStudyDesignerView(GateMixin, BrowserView):
         from senaite.pfas.method_profile_store import get_profile
         qa = (get_profile(api.get_portal(), method_id) or {}).get("qc_acceptance") or {}
         return sorted(qa)
+
+    def spike_roles(self, method_id):
+        """An MDL element's spiked-replicate choices: the spiked QC types the
+        method runs (study_data.spike_role_choices)."""
+        from senaite.pfas import study_data as sd
+        from senaite.pfas.method_profile_store import get_profile
+        return sd.spike_role_choices(get_profile(api.get_portal(), method_id) or {})
 
     def types(self):
         return st.TYPES

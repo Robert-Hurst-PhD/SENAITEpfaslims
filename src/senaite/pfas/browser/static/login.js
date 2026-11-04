@@ -5,10 +5,24 @@
   "use strict";
   var time = document.getElementById("login-time");
   var date = document.getElementById("login-date");
+  /* the laboratory's clock when the page gives it (while a zone is set), run
+     on from when the page opened; the device's own clock otherwise */
+  var clock = document.querySelector(".login-clock");
+  var lab = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)$/.exec((clock && clock.getAttribute("data-lab-now")) || "");
+  var opened = Date.now();
+  /* ISO 8601 like every date in the LIMS: 24-hour HH:MM, YYYY-MM-DD */
+  function two(n) { return (n < 10 ? "0" : "") + n; }
   function tick() {
-    var now = new Date();
-    if (time) time.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (date) date.textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    var now, parts;
+    if (lab) {
+      now = new Date(Date.UTC(+lab[1], lab[2] - 1, +lab[3], +lab[4], +lab[5], +lab[6]) + (Date.now() - opened));
+      parts = [now.getUTCHours(), now.getUTCMinutes(), now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()];
+    } else {
+      now = new Date();
+      parts = [now.getHours(), now.getMinutes(), now.getFullYear(), now.getMonth(), now.getDate()];
+    }
+    if (time) time.textContent = two(parts[0]) + ":" + two(parts[1]);
+    if (date) date.textContent = parts[2] + "-" + two(parts[3] + 1) + "-" + two(parts[4]);
   }
   tick();
   setInterval(tick, 15000);

@@ -21,7 +21,7 @@
     <div class="alert alert-success" tal:condition="view/ok" tal:content="view/ok">Saved.</div>
     <div class="alert alert-danger" tal:condition="view/error" tal:content="view/error">error</div>
 
-    <p class="form-note">Justify, sign, then stamp each manual integration. <tal:h define="hid string:manual-integration"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="form-note">Justify, sign, then stamp each manual integration. <tal:h define="hid string:manual-integration"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
     <ul class="bench-alerts">
       <li tal:attributes="class python:'bench-ok' if d['ok'] else 'bench-bad'">
@@ -42,7 +42,7 @@
         </form></li>
       <li tal:attributes="class python:'bench-ok' if d['file'] else 'bench-warn'">
         <strong>Report</strong>
-        <span tal:content="python:d['file'] or ('choose the report under review' if d['choose'] else 'no PDF uploaded (Data Review, Instrument Report)')">report.pdf</span>
+        <span tal:content="python:d['file'] or ('choose the report under review' if d['choose'] else 'no PDF uploaded: Data Review, Instrument Report')">report.pdf</span>
         <a class="btn-sm btn-secondary" tal:condition="d/file" target="_blank"
            tal:attributes="href string:${wsurl}/@@pfas-mi-report">Original</a>
         <a class="btn-sm btn-secondary" tal:condition="d/stamped" target="_blank"
@@ -74,7 +74,7 @@
 
     <form method="post" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
-      <table class="pfas-table pfas-table-form mi-table" data-cells="plain" tal:condition="recs">
+      <table class="pfas-table pfas-table-form mi-table" data-col-resize="manual-integration-mi-table" data-cells="plain" tal:condition="recs">
         <thead><tr><th></th><th>Injection</th><th>Analyte</th><th>Reason</th>
                    <th class="num">Before page</th><th class="num">After page</th>
                    <th>Analyst</th><th>Reviewer</th></tr></thead>
@@ -84,7 +84,7 @@
             <td><strong tal:content="r/injection">S-1</strong>
                 <span class="badge badge-warning" tal:condition="r/qc_flag"
                       tal:content="string:QC ${r/qc_type}" title="Never to make QC pass">QC</span>
-                <div class="cf-hint" tal:content="python:'from the export' if r['source'] == 'export' else 'added from the report'">source</div></td>
+                <div class="cf-hint" tal:content="python:{'export': 'from the export', 'report': 'added from the report'}.get(r['source'], r['source'])">source</div></td>
             <td class="mi-analyte" tal:content="r/analyte">PFOA</td>
             <td><select tal:attributes="name string:${r/id}.reason_id">
                   <option value="">Choose a reason</option>
@@ -98,10 +98,10 @@
             <td class="num"><input type="number" min="1" class="mi-page" data-which="after"
                        tal:attributes="name string:${r/id}.after_page; value r/after_page" /></td>
             <td tal:define="s r/analyst"><tal:s condition="s"><span tal:content="s/name">AN1</span>
-                <div class="cf-hint" tal:content="python:s['at'][:16].replace('T', ' ')">date</div></tal:s>
+                <div class="cf-hint" tal:content="python:view.lab_at(s['at'], s['at'][:16].replace('T', ' '))">date</div></tal:s>
                 <span class="cf-hint" tal:condition="not:s">not signed</span></td>
             <td tal:define="s r/reviewer"><tal:s condition="s"><span tal:content="s/name">AN2</span>
-                <div class="cf-hint" tal:content="python:s['at'][:16].replace('T', ' ')">date</div></tal:s>
+                <div class="cf-hint" tal:content="python:view.lab_at(s['at'], s['at'][:16].replace('T', ' '))">date</div></tal:s>
                 <span class="cf-hint" tal:condition="not:s">not signed</span></td>
           </tr>
         </tbody>
@@ -140,6 +140,28 @@
       <input type="text" name="qc_type" placeholder="QC type (if QC)" />
       <button type="submit" class="btn-sm btn-secondary">+ Add from the report</button>
     </form>
+
+    <section class="bench-block" id="mi-raw-changes" tal:define="raw view/raw_changes" tal:condition="raw">
+      <h2 class="bench-h">Edited on the Raw Data tab</h2>
+      <table class="pfas-table" data-col-resize="manual-integration-raw">
+        <thead><tr><th>Injection</th><th>Analyte</th><th>Transition</th><th>Change</th>
+                   <th>Automatic</th><th>Now</th><th>Reason</th><th>Initials</th><th>Countersigned</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r raw" tal:attributes="data-mi r/id">
+            <td tal:content="r/injection">S-1</td>
+            <td tal:content="r/analyte">PFOA</td>
+            <td tal:content="r/transition">quantifier</td>
+            <td tal:content="r/kind">re-integrated</td>
+            <td tal:content="r/before">4.10 to 4.40 min</td>
+            <td tal:content="r/after">4.10 to 4.25 min</td>
+            <td tal:content="python:r['reason'] or 'not given'">reason</td>
+            <td tal:content="python:r['analyst'] or 'not initialled'">AN1</td>
+            <td tal:content="python:r['verifier'] or 'not countersigned'">AN2</td>
+            <td><a class="btn-sm btn-secondary" tal:attributes="href r/href">Open in Raw Data</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
 
     <section class="bench-block" tal:condition="python:d['uncovered'] or d['dismissed']">
       <h2 class="bench-h">Unlisted heading pages</h2>
@@ -182,16 +204,16 @@
 
     <details class="mi-history" tal:define="hist view/history" tal:condition="hist">
       <summary class="btn-sm btn-secondary">Change history</summary>
-      <table class="pfas-table">
+      <table class="pfas-table" data-col-resize="manual-integration-1">
         <thead><tr><th>When</th><th>Who</th><th>Record</th><th>What</th><th>Changes</th></tr></thead>
         <tbody>
           <tr tal:repeat="h hist">
-            <td tal:content="python:h['at'][:16].replace('T', ' ')">2026-10-05</td>
+            <td tal:content="python:view.lab_at(h['at'], h['at'][:16].replace('T', ' '))">2026-10-05</td>
             <td tal:content="h/by">AN1</td>
             <td tal:content="h/id">mi-1</td>
             <td tal:content="h/action">edited</td>
             <td><div tal:repeat="c python:sorted((h.get('changes') or {}).items())"
-                     tal:content="python:'%s: %s -> %s' % (c[0], c[1][0], c[1][1])">reason</div></td>
+                     tal:content="python:u'%s: %s \u2192 %s' % (c[0], c[1][0], c[1][1])">reason</div></td>
           </tr>
         </tbody>
       </table>

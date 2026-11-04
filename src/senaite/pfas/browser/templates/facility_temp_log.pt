@@ -4,10 +4,10 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Temperature Log</title>
+  <title metal:fill-slot="title">Facility Monitoring</title>
 </head>
 <body>
-<tal:t metal:fill-slot="header-title">Temperature Log</tal:t>
+<tal:t metal:fill-slot="header-title">Facility Monitoring</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     unit       view/unit;
@@ -27,11 +27,50 @@
     </tal:each>
   </nav>
 
-  <tal:no-unit tal:condition="python:not unit">
-    <div class="pfas-empty is-boxed">
-      Select a unit above, or
-      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
-        >Equipment</a>.
+  <!-- Monitoring: no unit chosen, one card per unit of a kind -->
+  <tal:no-unit tal:condition="python:not unit" tal:define="links view/monitor_links; cards view/monitor_cards">
+    <div class="pfas-filterbar">
+      <div class="pfas-field"><label>Kind</label>
+        <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Kind">
+          <a class="pfas-seg-item" tal:repeat="k links/kinds"
+             tal:attributes="href k/url; aria-selected python:'true' if k['on'] else 'false'" tal:content="k/label">Refrigerators</a>
+        </nav></div>
+      <div class="pfas-field"><label>Period</label>
+        <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Period">
+          <a class="pfas-seg-item" tal:repeat="d links/days"
+             tal:attributes="href d/url; aria-selected python:'true' if d['on'] else 'false'" tal:content="d/label">7d</a>
+        </nav></div>
+      <span class="pfas-filterbar-spacer"></span>
+      <a class="btn btn-primary" tal:attributes="href view/add_sensor_url">+ Add sensor</a>
+    </div>
+    <div class="pfas-mon-grid">
+      <div class="pfas-card pfas-mon-card" tal:repeat="c cards"
+           tal:attributes="data-readings c/readings_json; data-lo c/lo; data-hi c/hi">
+        <div class="pfas-between">
+          <strong tal:content="c/name">Fridge 1</strong>
+          <a class="btn-sm btn-secondary" tal:attributes="href c/url">Open</a>
+        </div>
+        <div class="pfas-hint" tal:content="python:u'Sensor %s' % c['sensor'] if c['sensor'] else u'No sensor ID'">Sensor PI-1</div>
+        <div class="pfas-mon-now">
+          <span class="pfas-mon-value"
+                tal:content="python:u'%.1f \u00b0C' % c['value'] if c['value'] is not None else u'No reading'">4.2 °C</span>
+          <tal:pf define="pf_ok c/ok"><span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span></tal:pf>
+          <span class="pfas-hint" tal:condition="python:c['humidity'] is not None"
+                tal:content="python:u'%.0f %% RH' % c['humidity']">45 % RH</span>
+        </div>
+        <div class="alert alert-warning" tal:condition="c/conflict" tal:content="c/conflict">ranges do not overlap</div>
+        <div class="pfas-hint" tal:condition="not:c/conflict">
+          <tal:r tal:content="python:u'Range %s to %s \u00b0C' % ('%g' % c['lo'] if c['lo'] is not None else u'?', '%g' % c['hi'] if c['hi'] is not None else u'?')">Range 2 to 6 °C</tal:r>
+          <tal:t tal:condition="c/last_ts" tal:content="string: · last ${c/last_ts}">last</tal:t>
+        </div>
+        <div class="cf-chips" tal:condition="c/profiles">
+          <span class="cf-chip" tal:repeat="m c/profiles" tal:content="m">EPA_537_1</span>
+        </div>
+        <div class="pfas-mon-chart"><canvas></canvas></div>
+        <a class="btn-sm btn-secondary" tal:condition="python:c['ok'] is False"
+           tal:attributes="href view/deviation_url">Open deviation</a>
+      </div>
+      <div class="pfas-empty is-boxed" tal:condition="not:cards">None registered.</div>
     </div>
   </tal:no-unit>
 
@@ -66,91 +105,97 @@
         </tal:h>
         <tal:c define="cf view/correction" condition="cf/required">
           &bull; Correction factor:
-          <strong tal:condition="cf/current"
-                  tal:content="python:u'%+.3f \u00b0C (study of %s); the chart and the range check use probe + correction' % (cf['current']['correction'], cf['current']['study_date'])">+0.300 °C</strong>
-          <strong tal:condition="not:cf/current">none yet: no passed study, readings are judged uncorrected</strong>
+          <strong tal:condition="cf/text"
+                  tal:content="python:u'%s. The chart and the range check use the corrected value.' % cf['text']">+0.300 °C</strong>
+          <strong tal:condition="not:cf/text">none yet: no passed study, readings are judged uncorrected</strong>
         </tal:c>
       </div>
     </div>
 
+    <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
     <!-- Temperature studies -->
     <div class="pfas-card">
       <h3>Quarterly Temperature Studies (NIST Verification)</h3>
-      <p class="pfas-note-sm">Four paired readings over two days beside the NIST reference; the correction applies until the next study. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <p class="pfas-note-sm">Four paired readings over two days beside the NIST reference; the correction applies until the next study. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
-      <!-- Existing studies -->
-      <tal:each tal:repeat="s view/studies">
-        <div class="pfas-study-row">
-          <strong tal:content="s/study_date"></strong>
-          <span tal:content="string:NIST: ${s/nist_serial}"></span>
-          <span class="pfas-muted-cell" tal:content="string:Tol: ±${s/tolerance}°C"></span>
-          <span tal:content="s/operator"></span>
-          <span tal:attributes="class python:'badge badge-'+{'pass': 'ok', 'fail': 'fail'}.get(s['status'], 'pending')"
-                tal:content="python:s['status'].upper()"></span>
-          <span tal:condition="python:s.get('correction') is not None"
-                tal:content="python:u'correction %+.3f \u00b0C' % s['correction']">correction +0.300 °C</span>
-          <span tal:condition="python:s.get('reference') and not s['reference']['ok']" class="sur-tag sur-nocore"
-                tal:content="python:u'reference %s: %s' % (s['reference']['name'], s['reference']['why'])">reference not verified</span>
-          <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}"
-            >Enter / view data</a>
-        </div>
-      </tal:each>
+      <!-- Studies: a row opens its readings -->
+      <table class="pfas-table" data-col-resize="facility-temp-log-1" tal:condition="view/studies">
+        <thead><tr><th>Date</th><th>At (&deg;C)</th><th>Operator</th><th>Reference thermometer</th><th>Tolerance (&deg;C)</th>
+          <th>Correction (&deg;C)</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="s view/studies"
+              tal:attributes="data-href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}">
+            <td class="pfas-mono" tal:content="s/study_date">2026-10-01</td>
+            <td class="pfas-mono" tal:content="python:u'%g' % s['study_temp'] if s.get('study_temp') is not None else u'\u2014'">4</td>
+            <td tal:content="s/operator">AN1</td>
+            <td tal:content="s/nist_serial">SN</td>
+            <td tal:content="python:u'\u00b1%s' % s['tolerance']">&#177;0.5</td>
+            <td tal:content="python:u'%+.3f' % s['correction'] if s.get('correction') is not None else u'\u2014'">+0.300</td>
+            <td>
+              <span tal:attributes="class python:'badge badge-'+{'pass': 'ok', 'fail': 'fail'}.get(s['status'], 'pending')"
+                    tal:content="python:s['status'].capitalize()">Pass</span>
+              <span tal:condition="python:s.get('reference') and not s['reference']['ok']" class="sur-tag sur-nocore"
+                    tal:content="python:u'reference %s: %s' % (s['reference']['name'], s['reference']['why'])">reference not verified</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
       <tal:none tal:condition="python:not view.studies()">
         <p class="pfas-note-sm">No studies recorded yet.</p>
       </tal:none>
 
-      <!-- Study detail -->
+      <!-- The open study: its four paired readings, saved at once -->
       <tal:detail tal:define="det view/study_detail" tal:condition="det">
         <div class="pfas-subpanel">
           <strong>
-            Study <tal:d tal:replace="python:det['study']['study_date']"/> —
-            NIST <tal:s tal:replace="python:det['study']['nist_serial']"/>
-            (tol ±<tal:t tal:replace="python:det['study']['tolerance']"/>&deg;C)
+            Study <tal:d tal:replace="python:det['study']['study_date']"/>,
+            reference <tal:s tal:replace="python:det['study']['nist_serial']"/>,
+            tolerance &#177;<tal:t tal:replace="python:det['study']['tolerance']"/>&deg;C
           </strong>
           <tal:ch define="changes view/study_changes" condition="changes">
-            <p class="form-note">Readings changed after they were recorded (kept for audit):</p>
-            <table class="pfas-table">
-              <thead><tr><th>Point</th><th>Was (probe / NIST)</th><th>Recorded</th><th>By</th><th>Changed</th><th>By</th></tr></thead>
+            <p class="form-note">Readings changed after they were recorded, kept for audit:</p>
+            <table class="pfas-table" data-col-resize="facility-temp-log-2">
+              <thead><tr><th>Point</th><th>Was, unit / reference</th><th>Recorded</th><th>By</th><th>Changed</th><th>By</th></tr></thead>
               <tbody><tr tal:repeat="c changes">
                 <td tal:content="c/time_point">1</td>
                 <td tal:content="python:'%s / %s' % (c['old_sensor'], c['old_nist'])">4.0 / 4.4</td>
                 <td tal:content="c/old_recorded_at">2026-07-01T09:00</td>
                 <td tal:content="c/old_entered_by">AN1</td>
-                <td tal:content="c/changed_at">2026-07-02</td>
+                <td tal:content="python:view.lab_at(c.get('changed_at'), c.get('changed_at'))">2026-07-02</td>
                 <td tal:content="c/changed_by">AN1</td>
               </tr></tbody>
             </table>
           </tal:ch>
-          <div class="pfas-point-grid">
-            <tal:each tal:repeat="pt python:det['points']">
-              <div class="pfas-point-cell">
-                <label>Point <tal:n tal:replace="pt/time_point"/></label>
-                <div tal:condition="python:pt.get('sensor_reading') is not None">
-                  Sensor: <strong tal:content="python:'{:.2f}'.format(pt['sensor_reading'])"/>&deg;C<br/>
-                  NIST: <strong tal:content="python:'{:.2f}'.format(pt['nist_reading'])"/>&deg;C<br/>
-                  Dev: <span tal:attributes="class python:'pfas-text-bad' if pt.get('passed')==0 else 'pfas-text-ok'"
-                             tal:content="python:('+' if pt['deviation']>=0 else '')+'{:.3f}'.format(pt['deviation'])"></span>&deg;C
-                </div>
-                <form method="POST"
-                      tal:attributes="action string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${det/study/id}">
-                  <input type="hidden" name="action" value="save_point"/>
-                  <input type="hidden" name="study_id"
-                         tal:attributes="value python:det['study']['id']"/>
-                  <input type="hidden" name="time_point"
-                         tal:attributes="value pt/time_point"/>
-                  <input type="datetime-local" name="recorded_at" title="When this pair was read (the four span two days)"
-                         tal:attributes="value python:pt.get('recorded_at','')[:16] if pt.get('recorded_at') else ''"/>
-                  <input type="number" step="0.01" name="sensor_reading" placeholder="Sensor °C"
-                         tal:attributes="value python:pt.get('sensor_reading','')"/>
-                  <input type="number" step="0.01" name="nist_reading" placeholder="NIST °C"
-                         tal:attributes="value python:pt.get('nist_reading','')"/>
-                  <button type="submit" class="btn-sm btn-primary">
-                    Save
-                  </button>
-                </form>
-              </div>
-            </tal:each>
-          </div>
+          <form method="POST"
+                tal:attributes="action string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${det/study/id}">
+            <input type="hidden" name="action" value="save_points"/>
+            <input type="hidden" name="study_id" tal:attributes="value python:det['study']['id']"/>
+            <table class="pfas-table pfas-table-form" data-col-resize="facility-temp-log-3">
+              <thead><tr><th>Point</th><th>When</th><th>Unit reading (&deg;C)</th><th>Reference reading (&deg;C)</th>
+                <th>Deviation (&deg;C)</th><th class="is-center">Result</th></tr></thead>
+              <tbody>
+                <tr tal:repeat="pt python:det['points']">
+                  <td tal:content="pt/time_point">1</td>
+                  <td><input type="datetime-local"
+                             tal:attributes="name string:recorded_at.${pt/time_point};
+                                             aria-label string:Point ${pt/time_point}, when read;
+                                             value python:pt.get('recorded_at','')[:16] if pt.get('recorded_at') else ''"/></td>
+                  <td><input type="number" step="0.01" class="pfas-input is-num"
+                             tal:attributes="name string:sensor_reading.${pt/time_point};
+                                             aria-label string:Point ${pt/time_point}, unit reading;
+                                             value python:'' if pt.get('sensor_reading') is None else pt['sensor_reading']"/></td>
+                  <td><input type="number" step="0.01" class="pfas-input is-num"
+                             tal:attributes="name string:nist_reading.${pt/time_point};
+                                             aria-label string:Point ${pt/time_point}, reference reading;
+                                             value python:'' if pt.get('nist_reading') is None else pt['nist_reading']"/></td>
+                  <td class="pfas-mono"
+                      tal:content="python:u'%+.3f' % pt['deviation'] if pt.get('deviation') is not None else u'\u2014'">+0.100</td>
+                  <td class="is-center" tal:define="pf_ok python:None if pt.get('passed') is None else bool(pt['passed'])"><span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="form-actions"><button type="submit" class="btn btn-primary">Save readings</button></div>
+          </form>
         </div>
       </tal:detail>
 
@@ -168,17 +213,20 @@
               <input type="date" name="study_date"/></div>
             <div class="pfas-form-field"><label>Operator initials</label>
               <input type="text" name="operator" maxlength="10"/></div>
-            <div class="pfas-form-field"><label>Reference thermometer</label>
-              <select name="reference_uid">
-                <option value="">&mdash; not registered: type its serial &mdash;</option>
-                <option tal:repeat="r view/reference_thermometers"
-                        tal:attributes="value r/id"
-                        tal:content="python:'%s (SN %s)' % (r['name'], r['serial_number'] or '?')">Ref 1</option>
+            <div class="pfas-form-field" tal:define="temps view/working_temps" tal:condition="temps"><label>Working temperature (&deg;C)</label>
+              <select name="study_temp" required="required">
+                <option value="">Choose</option>
+                <option tal:repeat="w temps" tal:attributes="value w" tal:content="python:u'%g' % w">4</option>
               </select></div>
-            <div class="pfas-form-field"><label>NIST thermometer serial</label>
-              <input type="text" name="nist_serial"/></div>
-            <div class="pfas-form-field"><label>NIST cert date</label>
-              <input type="date" name="nist_cert_date"/></div>
+            <div class="pfas-form-field is-wide"><label>Reference thermometer</label>
+              <div class="pfas-inline">
+                <select name="reference_uid" required="required">
+                  <option value="">Choose</option>
+                  <option tal:repeat="r view/reference_options"
+                          tal:attributes="value r/id" tal:content="r/label">REF-1 &#183; S/N 1 &#183; certificate to 2027-01-10</option>
+                </select>
+                <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-reference-thermometers">Reference Thermometers</a>
+              </div></div>
             <div class="pfas-form-field"><label>Tolerance (&deg;C)</label>
               <input type="number" step="0.1" name="tolerance"
                      tal:attributes="value python:unit.get('study_tolerance',1.0)"/></div>
@@ -197,6 +245,36 @@
 </metal:content>
 
 <tal:scripts metal:fill-slot="scripts">
+<!-- Chart.js: the unit chart and the Monitoring cards (it was never loaded here) -->
+<script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chart.js-4.4.3.umd.min.js"></script>
+<script tal:condition="not:view/unit">
+//<![CDATA[
+/* Monitoring cards: each unit's readings with its range as a band */
+(function () {
+  if (!window.Chart) return;
+  var css = getComputedStyle(document.documentElement);
+  function tok(n) { return (css.getPropertyValue(n) || '').trim(); }
+  Array.prototype.forEach.call(document.querySelectorAll('.pfas-mon-card'), function (card) {
+    var data = JSON.parse(card.getAttribute('data-readings') || '[]');
+    var canvas = card.querySelector('canvas');
+    if (!data.length) { canvas.parentNode.textContent = 'No readings in this period.'; return; }
+    var lo = parseFloat(card.getAttribute('data-lo')), hi = parseFloat(card.getAttribute('data-hi'));
+    var pts = data.filter(function (r) { return r.t !== null; }).map(function (r) { return {x: r.ts.replace('T', ' '), y: r.t}; });
+    var sets = [{label: 'Temperature', data: pts, borderColor: tok('--accent'), borderWidth: 1.5, pointRadius: 0, tension: 0.2}];
+    var xs = pts.map(function (p) { return p.x; });
+    if (!isNaN(hi)) sets.push({label: 'Max', data: xs.map(function (x) { return {x: x, y: hi}; }), borderColor: tok('--s-warning'), borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: false});
+    if (!isNaN(lo)) sets.push({label: 'Min', data: xs.map(function (x) { return {x: x, y: lo}; }), borderColor: tok('--s-warning'), borderDash: [4, 4], borderWidth: 1, pointRadius: 0, fill: isNaN(hi) ? false : '-1', backgroundColor: 'rgba(47,168,138,0.08)'});
+    var hum = data.filter(function (r) { return r.h !== null && r.h !== undefined; });
+    if (hum.length) sets.push({label: 'Humidity', data: hum.map(function (r) { return {x: r.ts.replace('T', ' '), y: r.h}; }), borderColor: tok('--s-info'), borderWidth: 1, pointRadius: 0, yAxisID: 'yH'});
+    var scales = {x: {type: 'category', ticks: {display: false}}, y: {ticks: {font: {size: 10}}}};
+    if (hum.length) scales.yH = {position: 'right', ticks: {font: {size: 10}}, grid: {display: false}};
+    new Chart(canvas, {type: 'line', data: {labels: xs, datasets: sets},
+      options: {responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: {legend: {display: false}}, scales: scales}});
+  });
+})();
+//]]>
+</script>
 <script tal:condition="view/unit"
         tal:define="rjson view/readings_json; ujson view/unit_json">
   <tal:v tal:replace="structure string:var _readings = ${rjson};"/>

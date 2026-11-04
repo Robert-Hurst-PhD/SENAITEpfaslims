@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Where a result is put on the sample basis -- a per-method choice
-("Per-sample correction").
+"""Where a result is put on the sample basis -- a per-method choice.
 
-    ""            the method's nominal matrix factor per sample type (the
-                  behaviour before the choice existed)
+    ""            the method's nominal matrix factor per sample type
     "instrument"  in the MS software: the imported concentration is already
                   per sample, so the LIMS applies NO factor (never twice)
     "lims"        back-calculated here, per sample:

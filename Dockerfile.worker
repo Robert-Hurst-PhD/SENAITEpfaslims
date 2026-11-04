@@ -4,4 +4,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY pfas_pipeline/ ./pfas_pipeline/
 COPY run_worker.py ./
+# the raw-data run area: a new named volume takes this owner (the worker runs as 500)
+RUN mkdir -p /data/raw_runs && chown 500:500 /data/raw_runs
 CMD ["python", "run_worker.py"]

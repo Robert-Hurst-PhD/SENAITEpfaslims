@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Schema extender: what a sample asks of homogenisation, and what a
-composite is made of (H2-H3).
+composite is made of.
 
     HomogenisationMethod   the lab's method id (homogenisation.py), prefilled
                            from the matrix's default when the sample is made
@@ -16,10 +16,12 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 from archetypes.schemaextender.field import ExtensionField
 from archetypes.schemaextender.interfaces import IOrderableSchemaExtender
+from Products.Archetypes.Field import BooleanField
 from Products.Archetypes.Field import IntegerField
 from Products.Archetypes.Field import StringField
 from Products.Archetypes.interfaces import IVocabulary
 from Products.Archetypes.utils import DisplayList
+from Products.Archetypes.Widget import BooleanWidget
 from Products.Archetypes.Widget import IntegerWidget
 from bika.lims.browser.widgets import SelectionWidget as BikaSelectionWidget
 from Products.Archetypes.Widget import StringWidget
@@ -33,6 +35,10 @@ from Products.CMFCore.permissions import View
 
 
 class _ExtStringField(ExtensionField, StringField):
+    pass
+
+
+class _ExtBooleanField(ExtensionField, BooleanField):
     pass
 
 
@@ -52,7 +58,7 @@ class HomogenisationVocabulary(object):
         try:
             field = instance.getField(hg.FIELD_METHOD)
             current = field.get(instance) or u"" if field is not None else u""
-        except Exception:                                   # noqa: BLE001
+        except AttributeError:
             pass
         items = [(u"", u"")] + hg.choices(hg.load_methods(api.get_portal()), current)
         return DisplayList(items)
@@ -105,8 +111,8 @@ class SampleExtender(object):
             read_permission=View,
             write_permission=FieldEditComposite,
             widget=IntegerWidget(
-                label="Units combined",
-                description="For a composite: how many units were combined.",
+                label="Items composited",
+                description="For a composite: how many separate items were ground together.",
                 render_own_label=True,
                 size=4,
                 visible={"add": "edit", "header_table": "visible"},
@@ -151,6 +157,37 @@ class SampleExtender(object):
                 format="select",
                 render_own_label=True,
                 visible={"add": "edit", "header_table": "visible"},
+            ),
+        ),
+        # a regulatory compliance sample: received out of compliance with its
+        # method it is held from publishing and a resample is requested
+        # (receipt_compliance; set on its CoC row)
+        _ExtBooleanField(
+            "ComplianceSample",
+            mode="rw",
+            read_permission=View,
+            write_permission=FieldEditComposite,
+            default=False,
+            widget=BooleanWidget(
+                label="Compliance sample",
+                description="Received out of compliance with its method, it is held and a resample is requested.",
+                render_own_label=True,
+                visible={"add": "edit", "header_table": "visible"},
+            ),
+        ),
+        # the sample's sub-type (a sample_subtypes id, from its CoC row): a
+        # regulatory limit that names sub-types applies only to samples of those
+        _ExtStringField(
+            "SampleSubtype",
+            mode="rw",
+            read_permission=View,
+            write_permission=FieldEditComposite,
+            widget=StringWidget(
+                label="Sub-type",
+                description="The sample type's sub-type, as its CoC row names it.",
+                render_own_label=True,
+                size=20,
+                visible={"add": "invisible", "header_table": "visible"},
             ),
         ),
         _ExtStringField(

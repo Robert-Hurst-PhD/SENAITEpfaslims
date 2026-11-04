@@ -17,6 +17,7 @@
   msg_type  view/msg_type;
   msg_text  view/msg_text;
   sel_id    view/selected_sop_id;
+  qam_id    view/lab_qam_id;
   active_tab view/active_tab;
   tabs      view/filter_tabs;
   methods   view/method_options;
@@ -29,7 +30,7 @@
   <!-- ── Unsigned document banner ─────────────────────────────────────────── -->
   <tal:unsigned tal:condition="python:unsigned and not msg">
     <div class="alert alert-warn">
-      &#9888;
+      <svg class="pfas-ico" aria-hidden="true"><use href="#ico-warning"/></svg>
       You have <strong tal:content="python:len(unsigned)">0</strong>
       document<tal:pl tal:condition="python:len(unsigned)!=1">s</tal:pl>
       requiring your sign-off.
@@ -82,7 +83,7 @@
 
   <!-- ── Document table ───────────────────────────────────────────────────── -->
   <div class="table-wrap">
-  <table class="pfas-table sop-table">
+  <table class="pfas-table sop-table" data-col-resize="sop-documents-sop-table">
     <thead>
       <tr>
         <th>ID</th>
@@ -92,8 +93,8 @@
         <th>Method</th>
         <th>Rev</th>
         <th>Activated</th>
-        <th>Sign-offs</th>
-        <th>Actions</th>
+        <th>Status</th>
+        <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
       </tr>
     </thead>
     <tbody>
@@ -122,7 +123,8 @@
               tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
               tal:attributes="onclick string:sopToggle('detail-${sop_id_js}')">
             <td class="cell-nowrap"><strong tal:content="sop/sop_id">SOP-001</strong></td>
-            <td tal:content="sop/title">Title</td>
+            <td><span tal:replace="sop/title">Title</span>
+                <span class="badge badge-active" tal:condition="python:sop['sop_id'] == qam_id">Laboratory QAM</span></td>
             <td tal:content="sop/doc_type_label">SOP</td>
             <td tal:content="sop/category">—</td>
             <td tal:content="sop/method_label">General</td>
@@ -136,21 +138,24 @@
             </td>
             <td>
               <tal:rev tal:condition="sop/active_rev">
-                <tal:d tal:replace="python:sop['active_rev'].get('activated_at','')[:10] or '—'">—</tal:d>
+                <tal:d tal:replace="python:view.lab_at(sop['active_rev'].get('activated_at'), sop['active_rev'].get('activated_at','')[:10], u'%Y-%m-%d') or '—'">—</tal:d>
               </tal:rev>
               <tal:norev tal:condition="python:not sop['active_rev']">—</tal:norev>
             </td>
+            <!-- Active = signed and in force; amber with a "!" naming what is missing -->
             <td>
-              <tal:rev tal:condition="sop/active_rev">
-                <span tal:attributes="class python:'badge badge-ok' if sop['user_signed'] else 'badge badge-warn'">
-                  <tal:t tal:condition="sop/user_signed">Signed &#10003;</tal:t>
-                  <tal:t tal:condition="python:not sop['user_signed']">Not signed</tal:t>
-                </span>
+              <tal:rev tal:condition="sop/active_rev"
+                       tal:define="attn_label string:Active;
+                                   attn_cls string:badge badge-ok;
+                                   attn_reasons python:[] if sop['user_signed'] else [u'You have not signed this revision']">
+                <metal:a use-macro="context/@@pfas-macros/macros/status-attention" />
               </tal:rev>
-              <tal:norev tal:condition="python:not sop['active_rev']">—</tal:norev>
+              <tal:norev tal:condition="python:not sop['active_rev']"><span class="badge badge-draft">Draft</span></tal:norev>
             </td>
-            <td onclick="event.stopPropagation()">
-              <div class="row-actions is-wrap">
+            <td class="row-plus-cell" onclick="event.stopPropagation()">
+             <details class="row-more">
+              <summary class="row-plus" aria-label="Actions for this document" title="Actions">+</summary>
+              <div class="row-more-menu">
                 <tal:hasrev tal:condition="sop/active_rev"
                             tal:define="ar_rev python:sop['active_rev'] and sop['active_rev']['rev_num']">
                   <a class="btn-sm btn-secondary" target="_blank"
@@ -175,11 +180,23 @@
                     </form>
                   </tal:each>
                 </tal:drafts>
+                <form method="POST" class="pfas-inline-form" data-autosubmit="data-autosubmit"
+                      tal:condition="python:can_mgr and sop['doc_type'] != 'QAPP'"
+                      tal:attributes="action string:${purl}/@@pfas-sop">
+                  <input type="hidden" name="action" value="lab_qam"/>
+                  <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
+                  <label class="pfas-switch">
+                    <input type="checkbox" name="on" value="1"
+                           tal:attributes="checked python:'checked' if sop['sop_id'] == qam_id else None"/>
+                    <span class="pfas-switch-track"></span>
+                    <span>Laboratory QAM</span>
+                  </label>
+                </form>
                 <tal:mgr tal:condition="can_mgr">
                   <button type="button" class="btn-sm btn-secondary"
                           tal:define="sop_id_safe sop/sop_id"
                           tal:attributes="onclick string:openSOPModal('${sop_id_safe}')"
-                          >New Revision</button>
+                          >New revision</button>
                   <form method="POST" class="pfas-inline-form"
                         tal:attributes="action string:${purl}/@@pfas-sop"
                         onsubmit="return confirm('Delete this document? It will be moved to Archived; its number is not reused.');">
@@ -189,6 +206,7 @@
                   </form>
                 </tal:mgr>
               </div>
+             </details>
             </td>
           </tr>
           <!-- ── Detail panel ─────────────────────────────────────────────── -->
@@ -253,11 +271,12 @@
                 <div class="pfas-pane"
                      tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-history">
-                  <table class="pfas-table rev-table">
-                    <tr>
+                  <table class="pfas-table rev-table" data-col-resize="sop-documents-rev-table">
+                    <thead><tr>
                       <th>Rev</th><th>Status</th><th>Uploaded</th>
                       <th>Activated</th><th>By</th><th>Release Notes</th>
-                    </tr>
+                    </tr></thead>
+                    <tbody>
                     <tal:each tal:repeat="rev python:list(reversed(sop['all_revs']))">
                       <tr>
                         <td><strong tal:content="rev/rev_num">1</strong></td>
@@ -266,11 +285,12 @@
                                 tal:content="rev/status">draft</span>
                         </td>
                         <td tal:content="python:rev.get('uploaded_at','')">—</td>
-                        <td tal:content="python:(rev.get('activated_at') or '')[:10] or '—'">—</td>
+                        <td tal:content="python:view.lab_at(rev.get('activated_at'), (rev.get('activated_at') or '')[:10], u'%Y-%m-%d') or '—'">—</td>
                         <td tal:content="python:rev.get('uploaded_by','')">—</td>
                         <td tal:content="python:rev.get('release_notes','') or '—'">—</td>
                       </tr>
                     </tal:each>
+                  </tbody>
                   </table>
                 </div>
 
@@ -315,7 +335,7 @@
       <h3 class="pfas-label">
         Archived Documents (<tal:n tal:replace="python:len(arch)">0</tal:n>)
       </h3>
-      <table class="pfas-table sop-table">
+      <table class="pfas-table sop-table" data-col-resize="sop-documents-sop-table-1">
         <thead>
           <tr><th>ID</th><th>Title</th><th>Type</th><th>Category</th><th>Method</th>
               <th>Deleted</th><th>By</th><th></th></tr>
@@ -360,7 +380,7 @@
 
         <div id="sopNewFields">
           <div class="pfas-form-field is-spaced">
-            <label>Title *</label>
+            <label>Title</label>
             <input type="text" name="title" id="sopTitle" placeholder="e.g. PFAS Extraction Procedure"/>
           </div>
           <div class="pfas-form-field is-spaced">

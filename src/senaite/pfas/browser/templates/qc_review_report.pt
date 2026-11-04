@@ -305,6 +305,8 @@
       </table>
     </div>
 
+    <p class="muted" tal:define="zone view/times_line" tal:condition="zone" tal:content="zone">Times are</p>
+
   </tal:d>
   </tal:report>
 </div>

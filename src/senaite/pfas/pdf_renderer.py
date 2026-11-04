@@ -69,5 +69,5 @@ def health(timeout=5, url=None):
     try:
         resp = urlopen((url or RENDER_URL) + "/health", timeout=timeout)
         return json.loads(resp.read().decode("utf-8"))
-    except Exception:                                       # noqa: BLE001
+    except (URLError, IOError, OSError, ValueError):
         return None

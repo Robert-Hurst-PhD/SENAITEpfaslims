@@ -27,10 +27,7 @@ _STAMPS = ("updated_at", "updated_by")
 
 
 def _settings_fingerprint(profile, toggles):
-    try:
-        from senaite.pfas import settings_report as sr
-    except Exception:          # tests: loaded without the package
-        import settings_report as sr
+    from senaite.pfas import settings_report as sr
     p = copy.deepcopy(profile or {})
     for k in _STAMPS:
         p.pop(k, None)

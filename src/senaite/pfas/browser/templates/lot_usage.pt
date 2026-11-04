@@ -31,12 +31,12 @@
     </section>
 
     <section class="bench-block" tal:condition="python:it or q">
-      <table class="pfas-table" tal:condition="rows">
+      <table class="pfas-table" data-col-resize="lot-usage-1" tal:condition="rows">
         <thead><tr><th>Used</th><th>Batch</th><th>Stage</th><th>Item</th><th>Lot</th>
           <th>Amount</th><th>By</th><th></th></tr></thead>
         <tbody>
           <tr tal:repeat="r rows">
-            <td tal:content="python:(r.get('used_at') or '')[:16].replace('T', ' ')">2026-10-02 14:00</td>
+            <td tal:content="python:view.lab_at(r.get('used_at'), (r.get('used_at') or '')[:16].replace('T', ' '))">2026-10-02 14:00</td>
             <td tal:content="r/batch_id">B-1</td>
             <td tal:content="r/stage_name">Extraction</td>
             <td tal:content="python:r.get('item_name') or r.get('role')">Methanol</td>

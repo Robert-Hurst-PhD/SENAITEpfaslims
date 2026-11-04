@@ -14,6 +14,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import homogenisation as hg
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 GATES = {"save": TIER_CONFIG}
 
@@ -39,7 +40,7 @@ def rows_from_form(form):
     return out
 
 
-class PFASHomogenisationSetupView(GateMixin, BrowserView):
+class PFASHomogenisationSetupView(ViewHelpers, GateMixin, BrowserView):
     template = ViewPageTemplateFile("templates/homogenisation_setup.pt")
 
     def __call__(self):
@@ -63,9 +64,6 @@ class PFASHomogenisationSetupView(GateMixin, BrowserView):
             req.response.redirect(self.portal_url() + "/@@pfas-homogenisation-setup?saved=1")
             return ""
         return self.template()
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def saved(self):
         return bool(self.request.form.get("saved"))

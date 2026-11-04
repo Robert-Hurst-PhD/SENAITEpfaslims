@@ -23,6 +23,7 @@ import uuid
 from persistent.mapping import PersistentMapping
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
@@ -58,7 +59,7 @@ STEP_META = [
      "Lab Dept & Analysis Category",
      "Select the Lab Department and Analysis Category for this method. "
      "All Analysis Services must belong to a Category, and Categories to "
-     "a Department.  For most PFAS work, 'PFAS' already exists -- "
+     "a Department.  For most PFAS work, 'PFAS' already exists: "
      "confirm or change the selection.",
      "Method (Step 1)"),
     (3, "services",
@@ -90,9 +91,9 @@ STEP_META = [
      "QC Types (Step 5)"),
     (7, "specs",
      "QC Windows & Limits (Per Matrix)",
-     "QC acceptance windows live on the method profile's Recovery Tiers, "
-     "reporting limits on its Reporting Limits tab and action levels on "
-     "Regulatory Limits -- per matrix. SENAITE's own Analysis Specifications "
+     "QC acceptance windows live on the method profile's QC criteria tab, "
+     "reporting limits on its Analytes tab and action levels on "
+     "Regulatory Limits, per matrix. SENAITE's own Analysis Specifications "
      "are not used: nothing needs creating here.",
      "Analytes (Step 3) + Sample Types (Step 4)"),
     (8, "storage",
@@ -106,7 +107,7 @@ STEP_META = [
      "Instrument Verification Rules",
      "Enable or disable individual instrument verification checks for this "
      "method: calibration r-squared, CCV frequency and recovery window, "
-     "IS response drift, ion-ratio tolerance, RRT/RT confirmation tolerance, "
+     "IS response drift, ion-ratio tolerance, RT deviation tolerance, "
      "and S/N thresholds.  Defaults are pre-loaded from the Method Profile "
      "— review before your first batch.",
      "Method Profile (Step 6)"),
@@ -123,15 +124,13 @@ STEP_META = [
 # Session store helpers
 # ---------------------------------------------------------------------------
 
-def _get_sessions_store(portal):
-    ann = IAnnotations(portal)
-    if WIZARD_SESSIONS_KEY not in ann:
-        ann[WIZARD_SESSIONS_KEY] = PersistentMapping()
-    return ann[WIZARD_SESSIONS_KEY]
+def _get_sessions_store(portal, create=True):
+    from senaite.pfas.annotation_store import mapping
+    return mapping(portal, WIZARD_SESSIONS_KEY, create)
 
 
 def _load_session(portal, wid):
-    store = _get_sessions_store(portal)
+    store = _get_sessions_store(portal, create=False)
     raw = store.get(wid)
     if not raw:
         return {}
@@ -242,7 +241,7 @@ def _as_list(value):
 # View
 # ---------------------------------------------------------------------------
 
-class PFASMethodWizardView(BrowserView):
+class PFASMethodWizardView(ViewHelpers, BrowserView):
     """Association-driven new-method wizard."""
 
     _template = ViewPageTemplateFile("templates/method_wizard.pt")
@@ -279,9 +278,6 @@ class PFASMethodWizardView(BrowserView):
 
     # -- Basic helpers ---------------------------------------------------
 
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
-
     def num_steps(self):
         return NUM_STEPS
 
@@ -290,9 +286,6 @@ class PFASMethodWizardView(BrowserView):
         if lists is not None and name in lists:
             return list(lists[name])
         return _as_list(self.request.form.get(name))
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
 
     def _parse_step(self):
         try:
@@ -304,10 +297,6 @@ class PFASMethodWizardView(BrowserView):
     def _step_url(self, wid, step):
         return "{0}/@@pfas-method-wizard?wid={1}&step={2}".format(
             self.context.absolute_url(), wid, step)
-
-    def _redirect(self, url):
-        self.request.response.redirect(url)
-        return ""
 
     def _redirect_step(self, wid, step, error=""):
         url = self._step_url(wid, step)
@@ -355,7 +344,7 @@ class PFASMethodWizardView(BrowserView):
 
     def existing_sessions(self):
         portal = self._portal()
-        store = _get_sessions_store(portal)
+        store = _get_sessions_store(portal, create=False)
         result = []
         for wid, raw in store.items():
             try:
@@ -591,8 +580,6 @@ class PFASMethodWizardView(BrowserView):
         result.sort(key=lambda x: (x["category"], x["title"]))
         return result
 
-    def step3_data(self):
-        return self.session().get("step3", {})
 
     def _handle_step3(self, wid, sess):
         selected_uids = self._form_list("service_uid")
@@ -648,7 +635,7 @@ class PFASMethodWizardView(BrowserView):
 
     def _qc_type_rows(self, profile):
         """The batch QC types a method can switch on: the rows the method
-        profile's QC Types tab toggles (the tagged QC types plus any the
+        profile's QC criteria tab switches (the tagged QC types plus any the
         profile carries), so both pages offer the same keys."""
         from senaite.pfas.qc_labels import get_qc_label_map
         from senaite.pfas.method_profile_sections import qc_type_rows
@@ -669,8 +656,6 @@ class PFASMethodWizardView(BrowserView):
             })
         return out
 
-    def step5_data(self):
-        return self.session().get("step5", {})
 
     def _handle_step5(self, wid, sess):
         mid = sess.get("method_id")
@@ -695,7 +680,7 @@ class PFASMethodWizardView(BrowserView):
         self._mark_done(sess, 5)
         # the enabled flags are the one source of which QC types a method
         # runs; a type switched on here starts with NO limits (the same
-        # writer as the profile's QC Types tab)
+        # writer as the profile's QC criteria tab)
         from senaite.pfas.method_profile_sections import apply_qc_toggles
         apply_qc_toggles(profile, offered, set(selected_codes))
         profile.pop("associated_qc_types", None)
@@ -703,17 +688,17 @@ class PFASMethodWizardView(BrowserView):
         return self._advance(wid, sess, 6)
 
     def _update_profile(self, sess, profile=None, create=False):
-        """Write the wizard's choices onto the method profile: its label, the
-        matrices ticked at step 4 and the natives linked at step 3 (the core
-        Method <-> Service links). Added, never removed: removing a matrix
-        or an analyte is the profile's own tabs' work, where what it would
-        orphan is checked. Before step 5 a method with no profile is left
-        alone (step 5 creates it)."""
+        """Write the wizard's choices onto the method profile: its label and
+        the matrices ticked at step 4 (added, never removed: removing a
+        matrix is the profile's own tab's work, where what it would orphan
+        is checked); then the analyte panel follows the core Method <->
+        Service links made at step 3 (refresh_analyte_sets). Before step 5 a
+        method with no profile is left alone (step 5 creates it)."""
         mid = sess.get("method_id")
         if not mid:
             return
         from senaite.pfas.method_profile_store import (
-            get_master_analyte_set, save_profile)
+            refresh_analyte_sets, save_profile)
         portal = self._portal()
         if profile is None:
             profile = self._profile(sess)
@@ -732,19 +717,12 @@ class PFASMethodWizardView(BrowserView):
                 matrices.append(title)
                 changed = True
         profile["supported_matrices"] = matrices
-        panel = list(profile.get("master_analyte_set") or [])
-        try:
-            linked = get_master_analyte_set(portal, mid, profile=profile)
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("wizard: natives of %s not read: %s", mid, exc)
-            linked = []
-        for kw in linked:
-            if kw not in panel:
-                panel.append(kw)
-                changed = True
-        profile["master_analyte_set"] = panel
         if changed:
             save_profile(portal, mid, profile)
+        try:
+            refresh_analyte_sets(portal, [mid])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("wizard: analyte panel of %s not refreshed: %s", mid, exc)
 
     # -- Step 6: Method Profile ------------------------------------------
 
@@ -752,14 +730,14 @@ class PFASMethodWizardView(BrowserView):
         sess = self.session()
         mid = sess.get("method_id")
         if not mid:
-            return "Pending -- complete Step 1 first"
-        from senaite.pfas.method_profile_store import get_profile, DEFAULT_PROFILES
+            return "Pending: complete Step 1 first"
+        from senaite.pfas.method_profile_store import get_profile
         portal = self._portal()
         p = get_profile(portal, mid)
         if not p:
             return "No profile found"
         if p.get("_seeded"):
-            return "Default values loaded -- review recommended"
+            return "Default values loaded: review recommended"
         return "Customised and saved"
 
     def profile_edit_url(self):
@@ -807,10 +785,10 @@ class PFASMethodWizardView(BrowserView):
     def ivrules_url(self):
         sess = self.session()
         mid = sess.get("method_id", "")
-        url = "{0}/@@pfas-qc-rules".format(self.context.absolute_url())
         if mid:
-            url += "?method=" + mid
-        return url
+            return "{0}/@@pfas-method-profile-edit?method_id={1}".format(
+                self.context.absolute_url(), mid)
+        return "{0}/@@pfas-method-profiles".format(self.context.absolute_url())
 
     def _handle_step9(self, wid, sess):
         self._mark_done(sess, 9)
@@ -942,9 +920,6 @@ class PFASMethodWizardView(BrowserView):
 
     # -- Wizard complete -------------------------------------------------
 
-    def wizard_complete(self):
-        done = self.session().get("completed_steps", [])
-        return len(done) >= NUM_STEPS
 
     def method_display_name(self):
         sess = self.session()

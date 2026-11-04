@@ -18,10 +18,12 @@ import os
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 from senaite.pfas.browser.perms import refuse
+from senaite.pfas.browser.view_helpers import send_pdf
 
 try:
     from urllib import quote_plus
@@ -30,6 +32,31 @@ except ImportError:                                         # Python 3
 
 logger = logging.getLogger("senaite.pfas.browser.report_template")
 
+# the one sample the certificate is previewed with (portal annotation): a
+# choice of this page, not a print setting, so it is no change to the template
+PREVIEW_KEY = "senaite.pfas.report_preview_sample"
+
+
+def preview_uid(portal):
+    from zope.annotation.interfaces import IAnnotations
+    return IAnnotations(portal).get(PREVIEW_KEY) or u""
+
+
+def set_preview_uid(portal, uid):
+    from zope.annotation.interfaces import IAnnotations
+    from senaite.pfas.config_history import track
+    track(portal, "report_preview", "sample", lambda: preview_uid(portal), u"Certificate preview sample")
+    IAnnotations(portal)[PREVIEW_KEY] = uid or u""
+
+
+def chosen(samples, uid):
+    """The preview sample: the one chosen while it is still listed, else the
+    first."""
+    for s in samples:
+        if s["uid"] == uid:
+            return s
+    return samples[0] if samples else None
+
 _PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAYOUT_FILES = ("templates/reports/CertificateOfAnalysis.pt",
                 "browser/templates/coa_sections.pt",
@@ -37,6 +64,8 @@ LAYOUT_FILES = ("templates/reports/CertificateOfAnalysis.pt",
                 # how numbers are written is part of the certificate too: a
                 # change here is an unissued change
                 "coa_format.py", "rounding.py",
+                # the format settings' built-in defaults
+                "report_format.py",
                 # the surrogate / internal-standard sub-table's rows and words
                 "coa_qc_standards.py")
 
@@ -74,7 +103,7 @@ def designed_draft(portal):
     return entry.get("draft")
 
 
-class PFASReportTemplateView(BrowserView):
+class PFASReportTemplateView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/report_template.pt")
 
@@ -82,13 +111,9 @@ class PFASReportTemplateView(BrowserView):
         flatten_form(self.request)
         if self.request.method == "POST" and self.request.form.get("action") == "issue":
             return self._handle_issue()
+        if self.request.method == "POST" and self.request.form.get("action") == "preview_sample":
+            return self._handle_preview_sample()
         return self.template()
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def portal_url(self):
-        return self._portal().absolute_url()
 
     def draft_designed(self):
         """The next issue will carry a designed certificate (Document
@@ -131,6 +156,22 @@ class PFASReportTemplateView(BrowserView):
             logger.warning("preview samples: %s", exc)
         return out
 
+    def preview_sample(self):
+        return chosen(self.preview_samples(), preview_uid(self._portal()))
+
+    def _handle_preview_sample(self):
+        if not self.can_issue():
+            return refuse(self.request, u"Forbidden")
+        uid = self.request.form.get("uid") or u""
+        if not any(s["uid"] == uid for s in self.preview_samples()):
+            self.request.response.redirect(self.portal_url() + "/@@pfas-report-template?error=" + quote_plus(
+                u"Choose a verified or published sample.".encode("utf-8")))
+            return u""
+        set_preview_uid(self._portal(), uid)
+        self.request.response.redirect(self.portal_url() + "/@@pfas-report-template?ok=" + quote_plus(
+            u"Preview sample saved.".encode("utf-8")))
+        return u""
+
     def message(self):
         return self.request.form.get("ok") or u"", self.request.form.get("error") or u""
 
@@ -152,24 +193,27 @@ class PFASReportTemplateView(BrowserView):
                 u"Nothing to issue: the draft is the issued revision.".encode("utf-8")))
             return u""
         designed = rt.designed_layout(draft)
+        warned = []
         if designed is not None:
             # a designed certificate states everything the standard one does
             from senaite.pfas import document_templates as dt
             problems = dt.validate("coa", designed)
+            # what a layout issued earlier still carries: issued, said once
+            warned = dt.warnings("coa", designed)
             if problems:
                 self.request.response.redirect(url + "?error=" + quote_plus(
                     (u"The designed certificate cannot be issued: " + u" ".join(problems)).encode("utf-8")))
                 return u""
         who = getSecurityManager().getUser().getId()
         rec = rt.issue(portal, draft, who, datetime.datetime.utcnow().isoformat(), note)
-        # the worker judges with the issued format: hand it over now
-        try:
-            from senaite.pfas.method_profile_store import export_profiles_to_file
-            export_profiles_to_file(portal)
-        except Exception as exc:                            # noqa: BLE001
-            logger.error("report template: profiles not re-exported after issue: %s", exc)
-        self.request.response.redirect(url + "?ok=" + quote_plus(
-            (u"Revision %d issued; certificates now use it." % rec["rev"]).encode("utf-8")))
+        # the worker judges with the issued format: handed over on commit
+        from senaite.pfas import after_commit
+        from senaite.pfas.method_profile_store import export_profiles_to_file
+        after_commit.run_once("method profiles export", export_profiles_to_file, portal)
+        done = u"Revision %d issued; certificates now use it." % rec["rev"]
+        if warned:
+            done += u" To update in the designed certificate: " + u" ".join(warned)
+        self.request.response.redirect(url + "?ok=" + quote_plus(done.encode("utf-8")))
         return u""
 
 
@@ -191,11 +235,9 @@ class PFASReportTemplatePreviewView(BrowserView):
                                       request=self.request, preview=True)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("designed certificate preview: %s", exc)
-            from cgi import escape
+            from senaite.pfas.html_text import escape
             return u"<p><strong>The designed certificate could not be produced:</strong> %s</p>" % escape(u"%s" % exc)
-        self.request.response.setHeader("Content-Type", "application/pdf")
-        self.request.response.setHeader("Content-Disposition", 'inline; filename="certificate-preview.pdf"')
-        return pdf
+        return send_pdf(self.request.response, pdf, "certificate-preview.pdf")
 
     def __call__(self):
         flatten_form(self.request)

@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Dashboard tiles viewlet and Worksheet/AR sub-tab views for PFAS features."""
+"""Worksheet and sample sub-tab views for PFAS features."""
 from __future__ import print_function
 
 from bika.lims.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
-from plone.app.layout.viewlets.common import ViewletBase
 from Products.CMFCore.utils import getToolByName
 
 from senaite.pfas.browser.sample_status import _compute_stage, STAGES
@@ -15,130 +14,6 @@ from senaite.pfas.browser.formutil import flatten_form
 def _portal_url(context):
     portal = getToolByName(context, 'portal_url')
     return portal()
-
-
-class PFASDashboardTilesViewlet(ViewletBase):
-    """Renders a PFAS Tools section on the SENAITE dashboard."""
-
-    index = ViewPageTemplateFile('templates/pfas_dashboard_tiles.pt')
-
-    TILES = [
-        {
-            'id':    'pfas-home',
-            'title': 'PFAS Workspace',
-            'desc':  'Role-aware workspace launcher — opens your default workspace',
-            'view':  '@@pfas-home',
-            'icon':  'fa-th-large',
-        },
-        {
-            'id':    'batch-status',
-            'title': 'Batch Status',
-            'desc':  'Five-stage progress for every active worksheet',
-            'view':  '@@pfas-sample-status',
-            'icon':  'fa-tasks',
-        },
-        {
-            'id':    'control-charts',
-            'title': 'Control Charts',
-            'desc':  'QC control charts with Westgard rule evaluation',
-            'view':  '@@pfas-control-chart',
-            'icon':  'fa-chart-line',
-        },
-        {
-            'id':    'calibrations',
-            'title': 'Calibration Archive',
-            'desc':  "Every run's calibration curves; approved in Data Review",
-            'view':  '@@pfas-calibrations',
-            'icon':  'fa-sliders-h',
-        },
-        {
-            'id':    'method-profiles',
-            'title': 'Method Profiles',
-            'desc':  'Per-method QC acceptance criteria',
-            'view':  '@@pfas-method-profiles',
-            'icon':  'fa-cogs',
-        },
-        {
-            'id':    'qc-rules',
-            'title': 'QC Rules',
-            'desc':  'Toggle and configure QC rule library',
-            'view':  '@@pfas-qc-rules',
-            'icon':  'fa-toggle-on',
-        },
-        {
-            'id':    'reagents',
-            'title': 'Reagent Inventory',
-            'desc':  'ISO 17025 lot/expiry tracking with barcode scan & OCR',
-            'view':  '@@pfas-reagents',
-            'icon':  'fa-flask',
-        },
-        {
-            'id':    'import-studio',
-            'title': 'Import Studio',
-            'desc':  'Guided instrument column-mapping & profile editor',
-            'view':  '@@pfas-import-studio',
-            'icon':  'fa-file-import',
-        },
-        {
-            'id':    'sample-tracker',
-            'title': 'Sample Tracker',
-            'desc':  'Public client-facing sample progress lookup',
-            'view':  '@@pfas-track',
-            'icon':  'fa-map-marker-alt',
-        },
-        {
-            'id':    'setup-refs',
-            'title': 'Setup Ref Defs',
-            'desc':  'Sync PFAS QC criteria to SENAITE Reference Definitions',
-            'view':  '@@pfas-setup-references',
-            'icon':  'fa-sync-alt',
-        },
-        {
-            'id':    'extraction-guide',
-            'title': 'Extraction Guide',
-            'desc':  'Step-by-step tablet workflow for extraction analysts',
-            'view':  '@@pfas-extraction-guide',
-            'icon':  'fa-microscope',
-        },
-        {
-            'id':    'logbooks',
-            'title': 'Logbooks',
-            'desc':  'Manage and customise per-batch regulatory logbooks',
-            'view':  '@@pfas-logbook-admin',
-            'icon':  'fa-book',
-        },
-        {
-            'id':    'edd-config',
-            'title': 'EDD Export',
-            'desc':  'EDD export profiles: formats, codes and client fields',
-            'view':  '@@pfas-edd-config',
-            'icon':  'fa-file-export',
-        },
-        {
-            'id':    'edd-batches',
-            'title': 'Batch EDDs',
-            'desc':  'Download EDD files and set per-sample sample-type codes',
-            'view':  '@@pfas-edd-batches',
-            'icon':  'fa-download',
-        },
-    ]
-
-    def portal_url(self):
-        return _portal_url(self.context)
-
-    def tiles(self):
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        # Hide PFAS tools section for unauthenticated users (login page, public views)
-        if 'Authenticated' not in user.getRoles():
-            return []
-        base = _portal_url(self.context)
-        result = []
-        for t in self.TILES:
-            item = dict(t)
-            item['url'] = '{0}/{1}'.format(base, t['view'])
-            result.append(item)
-        return result
 
 
 class PFASWorksheetStageTabView(BrowserView):

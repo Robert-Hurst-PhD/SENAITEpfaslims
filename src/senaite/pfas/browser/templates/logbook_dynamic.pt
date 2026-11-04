@@ -25,10 +25,6 @@
 <body>
   <tal:t metal:fill-slot="header-title" tal:content="view/logbook_title">Logbook</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <nav class="pfas-seg pfas-seg-sm" aria-label="Logbook view" tal:condition="view/has_steps">
-      <a class="pfas-seg-item lbg-seg" aria-selected="false" tal:attributes="href view/guided_url">Guided</a>
-      <a class="pfas-seg-item lbg-seg" aria-selected="true" tal:attributes="href view/concise_url">Concise</a>
-    </nav>
     <a class="btn-sm btn-secondary btn-back"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
   </tal:r>
@@ -76,7 +72,7 @@
 
       <div class="form-actions">
         <button class="btn-save" type="submit">Save Logbook</button>
-        <button type="button" class="btn-print-preview" onclick="window.print()">&#128438; Print Preview</button>
+        <button type="button" class="btn-print-preview" onclick="window.print()">Print Preview</button>
         <a class="btn-sm btn-secondary" target="_blank" tal:condition="view/has_designed_pdf"
            tal:attributes="href string:${view/batch_url}/@@pfas-logbook-pdf?slug=${view/slug}"
            title="This logbook as a PDF, from its issued design (Document Templates)">PDF</a>
@@ -96,7 +92,6 @@
   var LOT_DEFAULTS = <tal:ld tal:replace="structure view/lot_defaults_json" />;
   </script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=${context/@@pfas-macros/asset_version}"></script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_show_if.js?v=${context/@@pfas-macros/asset_version}"></script>
 
   </div><!-- /content slot -->
 </body>

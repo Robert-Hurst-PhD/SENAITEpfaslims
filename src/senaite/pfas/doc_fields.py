@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 """The designer's field categories, once for every document.
 
-the field list is broken down into Sample information,
-Analysis information, Laboratory information, Preparer, Reviewer and
-Director; categories the system's documents need beside those (inferred): Batch & worksheet, Quality control, Traceability, Logbook
-entries, Deviations & corrections, Document control.
-
 Every designable document (certificate, extraction log, QC Review, settings
-report, labels, batch logbooks) lists its fields under these titles, in this
-order; tests/test_doc_fields.py checks each field is in exactly one.
+report, labels, batch logbooks) lists its fields under the CATEGORIES
+titles, in that order; tests/test_doc_fields.py checks each field is in
+exactly one.
 
     grouped(fields, assign)  -> [(category, [(key, title, example)])]
     LAB_FIELDS, people(roles) -> the laboratory identity and signatory fields
@@ -85,3 +81,28 @@ def grouped(fields, assign):
             raise ValueError("field %s has no designer category (%r)" % (f[0], cat))
         by[cat].append(f)
     return [(c, by[c]) for c in CATEGORIES if by[c]]
+
+
+# ── the pdfme fields every document builder places ──────────────────────────
+
+def as_text(v):
+    """A value as a document field's text: "" for None, Yes / No for a flag."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    return "%s" % v
+
+
+def text_field(name, x, y, w, h, size=8, align="left", **kw):
+    f = {"name": name, "type": "text", "position": {"x": x, "y": y}, "width": w,
+         "height": h, "fontSize": size, "alignment": align, "content": ""}
+    f.update(kw)
+    return f
+
+
+def image_field(name, x, y, w, h, **kw):
+    f = {"name": name, "type": "image", "position": {"x": x, "y": y}, "width": w,
+         "height": h, "content": ""}
+    f.update(kw)
+    return f

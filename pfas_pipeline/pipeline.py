@@ -1,20 +1,17 @@
 """
-Pipeline Orchestrator — the master conductor that replaces clicking macro
-buttons in Excel.
-
-End-to-end flow:
+Pipeline orchestrator: one instrument export, end to end.
 
   watcher detects new MS export CSV
       │
       ▼
   run_pipeline(csv_path)
-      1. importer.load_instrument_csv()           ← DATA table
-      2. validate all injection names             ← ValidateInjectionNames
+      1. importer.load_instrument_csv()
+      2. validate all injection names
       3. build Batch object
-      4. RunQueue.auto_evaluate()                 ← all 6 QC sheets at once
+      4. RunQueue.auto_evaluate()                 ← every QC check at once
       5. build Summary results with qualifiers
       6. attach extraction log (if found)
-      7. generate report PDF                      ← RunFullPDFPipeline
+      7. generate report PDF
       8. push everything to SENAITE               ← REST API
       9. notify reviewer queue (pending checks)
 """
@@ -23,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
@@ -32,17 +30,17 @@ from .importer import (
     validate_injection_name, classify_injection,
     group_by_injection,
 )
+from . import dilution_routes
 from .models import Batch, QCFlag, SummaryResult, reported_conc
 from .run_queue import RunQueue
 from .review_checks import REVIEW_CHECKS
-from .analyte_alias import keyword_for
+from .analyte_alias import keyword_for, keyword_of
 from .extraction_log import ExtractionLog
-from .qc_engine import single_transition_confirm_needed, KIND_OVER_RANGE
+from .qc_engine import single_transition_confirm_needed, KIND_OVER_RANGE, raw_is_deleted
 from .report import generate_batch_report
 from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
-    QUALIFIER_CONF,
-    reload_criteria,
+    QUALIFIER_CONF, QUALIFIER_SATURATED,
 )
 from .method_profiles import (
     reload_from_profiles,
@@ -57,6 +55,10 @@ from .method_profiles import (
     get_included_display_analytes as _get_included_analytes,
     get_isomer_summation as _get_isomer_summation,
     get_surrogate_map as _get_surrogate_map,
+    get_integration,
+    get_labelled_links,
+    integration_mode,
+    get_profile,
 )
 
 from .addon import load as _addon
@@ -74,10 +76,14 @@ _NO_SAMPLE_BASIS = frozenset(["Standard", "Quality Control"])
 
 
 # Prepared in solvent: no sample weight stands behind them, whatever the
-# export calls them -- a solvent blank is exported as "Blank" like the method
-# blank, and was put on the sample basis (x500 on the FDA egg runs, found
-# 2026-10-08). The run record's role decides.
+# export calls them (a solvent blank is exported as "Blank" like the method
+# blank). The run record's role decides.
 _NO_SAMPLE_BASIS_ROLES = frozenset(["CAL", "ICV", "CCV", "CCB"])
+
+
+def _is_labelled(name):
+    from .analyte_alias import is_labelled
+    return is_labelled(name)
 
 
 def _has_sample_basis(row):
@@ -119,7 +125,7 @@ def _is_native(row, parts=None):
 
 
 def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
-                              dilutions=None, fallbacks=None):
+                              dilutions=None, fallbacks=None, acid_basis=None):
     """Put every concentration on the reported sample basis, in one place.
 
     Two multiplicative corrections, both configured per method: the per-analyte
@@ -132,23 +138,37 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
     natives, so correcting either would double-count.
 
     Both also apply ONLY to injections that HAVE a sample basis. A calibration
-    standard or a CCV is a prepared solution: there is no sample weight behind
-    it, so converting it to a sample basis is meaningless. Scaling them made
-    every CCV read ~200% of its expected concentration, which stayed invisible
-    for as long as nothing checked CCV recovery -- wiring that check is what
-    exposed it. The method blank keeps the corrections: it is taken through the
-    extraction like a sample and is reported on the same basis.
+    standard or a CCV is a prepared solution with no sample weight behind it:
+    scaling it would misread its recovery. The method blank keeps the
+    corrections: it is taken through the extraction like a sample and is
+    reported on the same basis.
 
-    Named and extracted rather than left inline because "which corrections were
-    applied, in what order" is a question a reviewer asks of every result, and
-    it should have exactly one answer to read.
+    One function, so "which corrections were applied, in what order" has
+    exactly one answer to read.
     """
     # Salt (counter-ion) correction first: it corrects the standard the curve
     # was built from, so it belongs on the extract basis, before the extract is
-    # converted to the sample basis. The two are multiplicative and commute,
-    # but keeping the order meaningful keeps the log readable.
+    # converted to the sample basis. The two commute; the order keeps the log
+    # readable.
     parts = _isomer_parts(method_id)
     salt_factors = _get_salt_factors(method_id) if method_id else {}
+    # An analyte whose calibration lots were made from certificate values as
+    # the acid (the run record's acid_basis_analytes) is already on the acid
+    # basis: its salt factor would correct it twice.
+    # An isomer peak (lr-/br-) takes the basis of the analyte it is reported as.
+    acid = set((a or "").strip().upper() for a in (acid_basis or []))
+    if acid and salt_factors:
+        def on_acid(name):
+            return name.upper() in acid or (parts.get(name) or "").upper() in acid
+        skipped = sorted(a for a in salt_factors if on_acid(a))
+        salt_factors = dict((a, f) for a, f in salt_factors.items() if not on_acid(a))
+        # the value analyser says the factor was not applied, and why
+        for row in rows:
+            if row.compound_name in skipped and _is_native(row, parts) and _has_sample_basis(row):
+                row.salt_basis = "acid"
+        if skipped:
+            logger.info("No salt correction for %s: calibration standards stated as acid",
+                        ", ".join(skipped))
     if salt_factors:
         salted = 0
         for row in rows:
@@ -165,7 +185,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
                     salted, ", ".join(
                         "{0} x {1:g}".format(a, f)
                         for a, f in sorted(salt_factors.items())
-                        if not a.startswith("M")))
+                        if not _is_labelled(a)))
     elif method_id:
         logger.info("No salt correction configured for %s — standards are "
                     "treated as free acids.", method_id)
@@ -222,9 +242,8 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
             if not _has_sample_basis(row):
                 continue
             _scale_row(row, matrix_factor, "matrix_factor")
-            # The row now carries a SAMPLE-basis concentration, so it must say
-            # so: everything downstream that compares against it — the spike
-            # level above all — reads this to know what it is looking at.
+            # The row now carries a SAMPLE-basis concentration and says so:
+            # everything downstream (the spike level above all) reads its unit.
             reported_unit = _get_unit(method_id, matrix)
             if reported_unit:
                 row.conc_units = reported_unit
@@ -245,7 +264,7 @@ def _scale_row(row, factor, kind):
     """Multiply the row's three concentration fields by `factor`, keeping
     what they were before the FIRST correction and which factors were
     applied (value provenance). The scaled fields are what every rule
-    reads, exactly as before."""
+    reads."""
     for field in ("calculated_conc", "measured_conc", "reporting_limit"):
         value = getattr(row, field, None)
         raw_field = "raw_" + field
@@ -283,9 +302,9 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                if classify_injection(r.injection_name, dilutions) == "MB"]
     # Every method blank is JUDGED alike (run_queue's blank check). One is the
     # blank results are compared with and, when the method subtracts, taken
-    # from: the one the extraction batch marks, else the
-    # only one. Several and none marked: nothing is compared or subtracted,
-    # and the run says so -- the blank is never guessed.
+    # from: the one the extraction batch marks, else the only one. Several and
+    # none marked: nothing is compared or subtracted, and the run says so --
+    # the blank is never guessed.
     mb_names = sorted(set(r.injection_name for r in mb_rows))
     chosen_mb = choose_subtraction_blank(mb_names, getattr(batch, "subtraction_blank", "") or "")
     if chosen_mb is None and len(mb_names) > 1:
@@ -294,7 +313,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         batch.unconfigured.append({
             "qc_type": "MB", "analyte": "", "method_id": getattr(batch, "method_id", "") or "",
             "reason": "%d method blanks (%s) and none marked for subtraction: results are not "
-                      "compared with a blank -- choose the subtraction blank on the extraction "
+                      "compared with a blank: choose the subtraction blank on the extraction "
                       "batch and reprocess" % (len(mb_names), ", ".join(mb_names))})
     mb_conc = {r.compound_name: reported_conc(r)
                for r in mb_rows if r.injection_name == chosen_mb}
@@ -307,11 +326,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         for res in batch.is_results if res.flag
     }
 
-    # Field samples AND the QC samples that are registered as samples in their
-    # own right. The method blank and the spikes were getting no result filed
-    # at all, so 96 analyses sat unsubmitted and the worksheet could not be
-    # verified. Each row carries its qc_type so reports and the EDD exclude
-    # them deliberately rather than because they happen to be empty.
+    # Field samples AND the QC samples registered as samples in their own
+    # right: every analysis gets a result filed, or the worksheet cannot be
+    # verified. Each row carries its qc_type, so reports and the EDD exclude
+    # QC by its type.
     REPORTED_ROLES = ("Sample", "MB", "LFSM", "LFSMD")
     sample_rows = [r for r in batch.injections
                    if classify_injection(r.injection_name, dilutions)
@@ -325,8 +343,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             r.injection_name, dilutions)
 
     # Dilution injections, indexed by the sample they were diluted FROM. A
-    # dilution is not a sample of its own — reporting it as one listed Egg-3
-    # and Egg-4 twice, with no indication which row was the answer.
+    # dilution is not a sample of its own: one sample, one reported row.
     dil_rows: dict[str, dict[str, object]] = {}
     dil_meta: dict[str, dict] = {}
     for r in batch.injections:
@@ -336,7 +353,9 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         parent = entry.get("parent") or ""
         dil_rows.setdefault(parent, {})[r.compound_name] = r
         dil_meta[parent] = {"injection": r.injection_name,
-                            "factor": entry.get("factor")}
+                            "factor": entry.get("factor"), "route": entry.get("route") or "",
+                            "sur_handling": entry.get("sur_handling") or "",
+                            "is_handling": entry.get("is_handling") or ""}
 
     _method = getattr(batch, "method_id", "") or ""
     if not _method:
@@ -348,34 +367,31 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     _non_iso = _get_non_iso_set(_method)
     _dil_in_software = _get_sample_correction(_method) == "instrument"
     _subtract_blank = _get_blank_subtraction(_method) if _method else False
-    # FDA §10.2(4) needs the method's confirmation rule. Resolved once here
-    # rather than per result, and None-safe: a batch with no loaded profile
-    # simply raises no confirmation prompt, exactly as before.
-    try:
-        from .method_profiles import get_profile as _get_profile_obj
-        _conf_profile = _get_profile_obj(_method)
-    except Exception:                                      # noqa: BLE001
-        _conf_profile = None
+    # FDA §10.2(4) needs the method's confirmation rule, resolved once per
+    # batch; a batch whose method has no exported profile refuses
+    # (get_profile raises) rather than dropping the prompt.
+    from .method_profiles import get_profile as _get_profile_obj
+    _conf_profile = _get_profile_obj(_method)
+    # the method's dilution settings: a re-spiked result's qualifier, the fold
+    # rule (by the role of the standard quantifying each analyte)
+    _dil_settings = dilution_routes.settings_of(
+        _conf_profile._profile_data() if _conf_profile is not None else {})
+    from .method_profiles import get_labelled_roles as _labelled_roles
+    _std_roles = _labelled_roles(_method)
     # ...and the lab's switch for whether to prompt at all. The OBLIGATION is
-    # method text and not in question; the PROMPT is optional, because PFBA can
-    # be confirmed by routes other than the LC-HRMS the method cites -- a second
-    # column, a different ionisation mode, an alternative transition -- and a lab
-    # doing that may be recording it elsewhere.
+    # method text; the PROMPT is optional, because PFBA can be confirmed by
+    # routes other than the LC-HRMS the method cites (a second column, a
+    # different ionisation mode, an alternative transition) recorded elsewhere.
     #
     # Gated through the same _rule_enabled/_load_rule_toggles pair every other
-    # instrument rule uses, on a key that IS in RULE_LIBRARY, in
-    # DEFAULT_METHOD_RULE_TOGGLES and in LIBRARY_KEY_TO_ENGINE_CHECKS.
-    # is what happens otherwise: `lfsm_recovery` was read by the engine and
-    # present in no library, no defaults and no UI, so the switch the lab was
-    # given did nothing and the switch that worked did not exist.
+    # instrument rule uses, on a key that IS in RULE_LIBRARY and in
+    # LIBRARY_KEY_TO_ENGINE_CHECKS: a switch the engine reads must be one the
+    # lab is given.
     _confirm_on = True
     if _conf_profile is not None:
-        try:
-            from .run_queue import _load_rule_toggles, _rule_enabled
-            _confirm_on = _rule_enabled(_load_rule_toggles(_method),
-                                        "single_transition_confirm")
-        except Exception:                                  # noqa: BLE001
-            _confirm_on = True        # absent must not silently disable a check
+        from .run_queue import _load_rule_toggles, _rule_enabled
+        _confirm_on = _rule_enabled(_load_rule_toggles(_method),
+                                    "single_transition_confirm")
     if not _confirm_on:
         logger.info("%s: single-transition confirmation prompt is switched OFF "
                     "in the QC rules; §10.2(4) positives will carry no "
@@ -385,21 +401,17 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     # by_linear: analyte IS the linear name (e.g. "lr-PFOS" in _analytes)
     # by_reported: analyte IS the reported name (e.g. "PFOA" in _analytes)
     # The METHOD owns the surrogate -> analyte quantification link (§3). The
-    # instrument's own `linked_is` column is the fallback, not the authority:
-    # taking it as the authority meant a lab's drag-and-drop surrogate map had
-    # no effect on any result, and the method's notation never reached the
-    # analysis at all.
+    # instrument's own `linked_is` column is the fallback, not the authority.
     _sur_map = _get_surrogate_map(_method)
     _is_mismatch: dict = {}
 
     def _quantifying_is(analyte_name, irow):
         """The surrogate this analyte is quantified against, as a keyword.
 
-        Both sides are normalised before they are compared: the profile stored
-        "M8PFOA" (a supplier code, renamed 2026-10-08) while the instrument
-        exports "13C8-PFOA" for the same compound,
-        so a raw comparison called all 20 surrogates a disagreement. Returning
-        the keyword also keeps the surrogate-failure lookup spelling-agnostic.
+        Both sides are normalised before they are compared: a profile may hold
+        a supplier code ("M8PFOA") where the instrument exports "13C8-PFOA" for
+        the same compound. Returning the keyword also keeps the
+        surrogate-failure lookup spelling-agnostic.
         """
         configured = keyword_for(_sur_map.get(analyte_name) or "") or None
         reported = keyword_for(getattr(irow, "linked_is", None) or "") or None
@@ -428,10 +440,9 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             f.issue)
 
     def _blank_for(analyte, sample_name):
-        """Method-blank concentration to subtract — but never from the blank
-        itself. Comparing the MB against its own result makes every blank
-        report as < LOD, which hides the very contamination the blank exists
-        to show."""
+        """Method-blank concentration to subtract, never from the blank
+        itself: an MB compared against its own result would report as < LOD
+        and hide the contamination the blank exists to show."""
         if role_of.get(sample_name) == "MB":
             return None
         return mb_conc.get(analyte)
@@ -476,13 +487,19 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         if all(r is None for r in rows):
             return None, QUALIFIER_ND, []
 
+        # An isomer whose stored signal wrapped at the apex has lost its
+        # number: a sum without it is understated and N.D. is false, so the
+        # pair is Saturated, with no number.
+        if any(getattr(irow, "conc_qualifier", "") == QUALIFIER_SATURATED
+               for irow in rows if irow is not None):
+            return None, QUALIFIER_SATURATED, []
+
         total = 0.0
         blank_total = 0.0
         reporting_limit = None
         linked_is = None
         # An isomer the instrument reported as BLoQ contributes no number but
-        # is still a detection. Summing it as absent and calling the pair N.D.
-        # understates the result.
+        # is still a detection: the pair is never N.D. because of it.
         any_bloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_BLOQ
                        for irow in rows if irow is not None)
         any_aloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_ALOQ
@@ -554,11 +571,11 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
 
                 if row is None or reported_conc(row) is None:
                     # No number. What that MEANS is the instrument's to say:
-                    # "BLoQ" is a detection below the quantitation limit, which
-                    # is not the same claim as "not detected". Reporting both
-                    # as N.D. overstated how clean these samples were.
+                    # "BLoQ" is a detection below the quantitation limit, not
+                    # "not detected". A saturated peak is a detection too: its
+                    # number is lost, not absent.
                     qualifier = getattr(row, "conc_qualifier", "") or QUALIFIER_ND
-                    if qualifier not in (QUALIFIER_BLOQ, QUALIFIER_NC):
+                    if qualifier not in (QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_SATURATED):
                         qualifier = QUALIFIER_ND
                 else:
                     conc = reported_conc(row)
@@ -583,10 +600,9 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                             flags.append("SUR")
 
             # A neat injection that read ABOVE the quantitation limit has no
-            # usable number: the analyte is off the top of the calibration
-            # curve. That is exactly why the dilution was run, so the dilution
-            # supplies the reported value — and the over-range neat reading is
-            # kept beside it so the substitution can be checked.
+            # usable number (off the top of the calibration curve): the
+            # dilution supplies the reported value, and the over-range neat
+            # reading is kept beside it so the substitution can be checked.
             source_injection = sample_name
             neat_result = None
             neat_qualifier = ""
@@ -598,10 +614,16 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             meta = dil_meta.get(sample_name)
             # The diluted reading times the fold -- unless the method puts
             # results on the sample basis in the MS software, which then
-            # applied the dilution too. With no usable
-            # fold the dilution is NOT substituted: the neat stays ALoQ.
+            # applied the dilution too. With no usable fold the dilution is NOT
+            # substituted: the neat stays ALoQ.
             dil_scale = (1.0 if _dil_in_software
                          else (meta.get("factor") if meta else None))
+            # the lab's fold rule (Lab Workflow, Dilutions): with "only when
+            # added" and no quantifying standard added, the reading already
+            # is the undiluted one
+            if meta and dil_scale and not _dil_in_software and not dilution_routes.fold_applies(
+                    meta, _dil_settings, _std_roles.get(keyword_for(_sur_map.get(reported_name) or "") or "")):
+                dil_scale = 1.0
             if meta and QUALIFIER_ALOQ in (qualifier or "") and not dil_scale:
                 logger.warning("Dilution %s of %s has no usable fold; the neat "
                                "ALoQ reading is kept", meta.get("injection"), sample_name)
@@ -626,6 +648,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                     dil_factor = meta.get("factor")
                     neat_analysed_at = analysed_at
                     analysed_at = _acq(drow)
+                # a result from a re-spiked dilution is a method modification:
+                # marked for the QAO's qualifier when the method qualifies it
+                if (source_injection != sample_name
+                        and dilution_routes.qualifies_respike(meta, _dil_settings)
+                        and dilution_routes.RESPIKE_FLAG not in flags):
+                    flags.append(dilution_routes.RESPIKE_FLAG)
 
             # FDA §10.2(4): PFBA and PFPeA have one usable MS/MS transition, so
             # their identity cannot be confirmed by ion ratio the way every other
@@ -633,22 +661,14 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             # orthogonal technique (LC-HRMS, agreeing within
             # confirm_pct_diff_max).
             #
-            # `single_transition_confirm_needed` has computed this correctly and
-            # had NO CALLER since it was written -- its own docstring said "NOT
-            # WIRED" and ranked it the most consequential remaining
-            # code gap. This is the call.
+            # It belongs HERE and not in the run queue: detection is decided in
+            # this function, and auto_evaluate() runs BEFORE build_summary (the
+            # summary consumes batch.is_results, which auto_evaluate produces).
+            # One question, one answer.
             #
-            # It belongs HERE and not in the run queue: whether an analyte was
-            # detected is decided in this function, and auto_evaluate() runs
-            # BEFORE build_summary and cannot be reordered after it (the summary
-            # consumes batch.is_results, which auto_evaluate produces). Deciding
-            # detection a second time in the queue would be two answers to one
-            # question.
-            #
-            # Which analytes need it comes from the METHOD's confirmation_rule,
-            # so this is silent on EPA 537.1 and EPA 1633A, whose
-            # single_transition_analytes are empty -- method-conditional by data,
-            # not by an `if method ==` here.
+            # Which analytes need it comes from the METHOD's confirmation_rule
+            # (single_transition_analytes): method-conditional by data, never
+            # by an `if method ==` here.
             if (_confirm_on and _conf_profile is not None
                     and qualifier not in (QUALIFIER_ND, QUALIFIER_LOD)):
                 # Detected. BLoQ and ALoQ count: both are detections, one below
@@ -665,9 +685,9 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                         "prompt": prompt,
                     })
 
-            # The method blank, subtracted when the method says so (off by default). The blank is on the sample basis,
-            # like the result -- also a dilution's, which was scaled above --
-            # so the subtraction comes last. Nothing left reads "< LOD"; a
+            # The method blank, subtracted when the method says so (off by
+            # default). The blank is on the sample basis, like the result (a
+            # dilution's too, scaled above), so the subtraction comes last. Nothing left reads "< LOD"; a
             # remainder under the RL reads BLoQ.
             blank_subtracted = None
             if (_subtract_blank and result is not None
@@ -733,7 +753,7 @@ def _acq(row):
 
 
 def _iso(value):
-    """A sidecar timestamp ("2026-10-02T14:00:00Z") as a datetime, or None."""
+    """A sidecar timestamp ("YYYY-MM-DDTHH:MM:SSZ") as a datetime, or None."""
     if not value:
         return None
     try:
@@ -761,29 +781,12 @@ def run_pipeline(
     batch_id          the WORKSHEET id (e.g. "WS-0005"). Data Review joins the
                       QC database on it, so it must be the worksheet's, not the
                       batch's.
-    senaite_batch_id  the SENAITE Batch this run belongs to, if any. Distinct
-                      from batch_id on purpose: passing the worksheet id into
-                      the batch lookup made the connector create a SECOND Batch
-                      titled after the worksheet on every run.
+    senaite_batch_id  the SENAITE Batch this run belongs to, if any. Never the
+                      worksheet id: a Batch is looked up, never created.
     """
     # ── Run parameters from the extraction sidecar ───────────────────────────
-    #
-    # The sidecar has always carried batch_id, analyst and matrix — but it was
-    # read at step 6, AFTER the import, the corrections, the QC engine and the
-    # summary had all run without them. The watcher passes none of these, so
-    # every automated run silently produced results with no matrix factor, no
-    # salt correction, no dilution handling, no spike evaluation and no unit,
-    # under a batch_id Data Review could not join. Everything validated on this
-    # project used manual invocation with the arguments supplied by hand.
-    #
-    # An EXPLICIT argument always wins: the sidecar fills gaps, it does not
-    # override a caller who knows better.
-    #
-    # Read BEFORE the profile reload below (moved ahead of it so
-    # senaite_batch_id is known in time to overlay that batch's resolved
-    # criteria — see reload_from_profiles(batch_id=...) just below): both
-    # blocks only ever read function arguments/the sidecar file, so this
-    # reordering changes nothing else about either one.
+    # The sidecar fills in batch_id, analyst and matrix before the profile
+    # reload below; an explicit argument always wins.
     sidecar = {}
     if extraction_log_path and Path(extraction_log_path).exists():
         import json as _json
@@ -814,28 +817,10 @@ def run_pipeline(
             "<stem>_extraction.json sidecar, or call run_pipeline with the "
             "arguments.", Path(csv_path).name)
 
-    # Reload QC criteria and full profile data from the exported JSON so
-    # manager changes in the SENAITE UI take effect without a worker restart.
-    # senaite_batch_id (now known, from an explicit argument or the sidecar
-    # above) additionally overlays that batch's RESOLVED (project-aware)
-    # criteria, if senaite.pfas has ever exported any for it — see
-    # reload_from_profiles()'s docstring for the safety property this
-    # preserves when there is none, which is every run today.
-    #
-    # ORDER MATTERS and is NOT enforced by either function: reload_criteria()
-    # is what resets constants.CRITERIA to the plain lab value on every run;
-    # reload_from_profiles()'s overlay then writes a project-tier value over
-    # it for THIS batch only, from the same resolved rows it applies to
-    # _profile_data_cache (see "The CRITERIA wrinkle" there). Swap this pair,
-    # or drop the reload_criteria() call, and a project override resolved for
-    # one batch would silently persist into the next batch's CRITERIA in
-    # this long-lived process — a leak the file-cache side structurally
-    # cannot have (it replaces the whole method entry every reload) but this
-    # one can, because it depends on call ORDER across two modules rather
-    # than a single replace. tests/test_resolved_overlay.py's
-    # test_criteria_does_not_leak_across_batches_in_production_call_order
-    # drives this exact two-call sequence to catch a future reordering.
-    reload_criteria()
+    # The method profiles from the exported JSON, so manager changes in the
+    # SENAITE UI take effect without a worker restart; senaite_batch_id (from
+    # an explicit argument or the sidecar above) also applies that batch's
+    # resolved (project-aware) criteria to its method's profile.
     reload_from_profiles(batch_id=senaite_batch_id or None)
     # a run is judged by ITS method or not at all: refuse, never fall back
     # to another method's criteria
@@ -848,11 +833,6 @@ def run_pipeline(
     resolved = resolve_method_id(method_id)
     if resolved is not None:
         method_id = resolved                 # an alias ("537.1") -> the method's id
-    if method_id and profile_configured(method_id):
-        # the engine's flat CRITERIA = THIS run's method, project changes
-        # included (QC consolidation P2; it was FDA's for every method)
-        from .constants import set_criteria_from_profile
-        set_criteria_from_profile(_profile_data_cache.get(method_id), method_id)
     from .method_profiles import profile_stale
     if profile_stale(method_id):
         raise RuntimeError(
@@ -861,7 +841,7 @@ def run_pipeline(
             "migrates and re-exports the profiles), then run the batch again."
             % method_id)
     if not profile_configured(method_id):
-        # QC consolidation P1: never judge with criteria the lab did not set
+        # never judge with criteria the lab did not set
         raise RuntimeError(
             "No exported method profile for %s: the export (%s) holds %s. Save "
             "the method's profile in SENAITE (Method Profiles) so it is exported, "
@@ -888,11 +868,12 @@ def run_pipeline(
     #    then load the CSV using that profile.  Strict mode: if SENAITE is
     #    offline or no profile is saved, refuse with an informative error.
     import_profile = None
-    if senaite is not None:
-        # Send the file's own headers and let SENAITE identify the instrument.
-        # The pipeline deliberately does NOT detect the vendor itself: two
-        # detectors meant two answers, and the profile key built from the
-        # loser's answer never matched anything Import Studio had saved.
+    # a raw run (its record and one mzML per injection) is integrated here,
+    # with the method's Integration settings: no import layout reads it
+    raw = is_raw_run(csv_path)
+    if senaite is not None and not raw:
+        # SENAITE identifies the instrument; the pipeline never detects the
+        # vendor itself (one detector, one answer).
         # The file's first lines and the run's instrument: SENAITE matches
         # them against the saved import layouts (each read with its own
         # options) and answers the one layout that fits, or a refusal.
@@ -906,12 +887,13 @@ def run_pipeline(
                     import_profile.get("name") or import_profile.get("resolved_vendor_key", "?"),
                     csv_path.name)
 
-    rows = load_instrument_csv(csv_path, profile=import_profile)
+    raw_traces = []                      # a raw run's chromatograms, kept for review
+    rows = load_rows(csv_path, import_profile, method_id, traces=raw_traces)
     refuse_unreadable(rows, import_profile, csv_path)
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
     this_file = set(r.injection_name for r in rows)     # what the plan check compares
-    # A supplementary run (what review asked for, P5 2026-10-06) ADDS to the
+    # A supplementary run (what review asked for) ADDS to the
     # extraction batch's earlier runs: they are processed together, so a
     # dilution meets its neat reading and the worksheet's QC is not replaced.
     for earlier in (sidecar.get("supplementary_of") or []) if sidecar else []:
@@ -919,7 +901,7 @@ def run_pipeline(
         if not path.exists():
             raise RuntimeError("supplementary run %s: the earlier run %s is not in %s"
                                % (csv_path.name, earlier, csv_path.parent))
-        rows = load_instrument_csv(path, profile=import_profile) + rows
+        rows = load_rows(path, import_profile, method_id, traces=raw_traces) + rows
         logger.info("With the earlier run %s: %d rows", earlier, len(rows))
     if (import_profile or {}).get("labelled_from_columns"):
         made = labelled_rows(rows, method_id)
@@ -930,20 +912,16 @@ def run_pipeline(
     #
     # The dilution map comes from the batch's FM-ENV-003 extraction log, which
     # is the only place the parent/factor relationship is recorded. Empty for
-    # any batch that logged none, so those behave exactly as before.
+    # a batch that logged none.
     dilution_map = {}
     spike_map = {}
     field_blanks, field_duplicates, trip_blanks = [], [], []
     mxb_references = {}
     logged_amounts = {}
     if senaite is not None and not senaite_batch_id and not batch_id:
-        # (the worksheet id is enough: it is the extraction batch; D1 -- the
-        # warning used to fire on every worksheet run)
-        # A connector without a batch id silently skips the extraction
-        # pedigree, so matrix spikes and dilutions both vanish and the run
-        # still looks complete -- it just reports "required QC not evaluated"
-        # and folds no dilution into its parent. That is easily
-        # misdiagnosed; say so instead.
+        # (the worksheet id is enough: it is the extraction batch)
+        # Without either id the extraction pedigree is skipped: matrix spikes
+        # and dilutions vanish while the run looks complete, so say so.
         logger.warning(
             "senaite_batch_id was not supplied, so FM-ENV-003 is not read: "
             "matrix spikes and dilutions will be absent, LFSM/LFSMD cannot be "
@@ -1014,7 +992,8 @@ def run_pipeline(
     rows = apply_extract_corrections(rows, method_id, matrix,
                                      sample_amounts=sample_amounts,
                                      dilutions=dilution_map,
-                                     fallbacks=correction_fallbacks)
+                                     fallbacks=correction_fallbacks,
+                                     acid_basis=(sidecar or {}).get("acid_basis_analytes"))
     # spike levels entered before the amount adjustment: each spiked
     # portion's expected level is scaled by nominal / actual amount when its
     # result is on the actual portion (per-sample correction)
@@ -1031,19 +1010,10 @@ def run_pipeline(
         spike_basis = ""
 
 
-    # 2. Injection-name check.
-    #
-    # This used to warn whenever a name failed INJECTION_PATTERNS, a hardcoded
-    # list of regexes encoding one lab's typing conventions. Once runs are
-    # driven from the Run Builder the check is worse than useless: on a
-    # worklist-generated file it fired on 21 of 22 names, every one of them
-    # issued by this system and every one of them binding correctly. A warning
-    # that cries wolf on correct data trains people to ignore the log.
-    #
-    # What actually matters is whether an injection corresponds to something
-    # the LIMS knows about. Sample injections must resolve to a sample; the
-    # pattern result is kept at debug level for the StarLIMS-style
-    # conventions that still rely on it.
+    # 2. Injection-name check: what matters is whether an injection
+    # corresponds to something the LIMS knows about (the run plan; a sample
+    # injection must resolve to a sample). A name pattern miss is logged at
+    # debug level only: Run Builder names are issued by this system.
     planned = []
     if senaite is not None and (senaite_batch_id or batch_id):
         planned = (senaite.get_run_manifest(senaite_batch_id, worksheet_id=batch_id or "") or {}).get(
@@ -1125,9 +1095,9 @@ def run_pipeline(
         batch.unconfigured.append({"qc_type": _SHAPE, "analyte": "", "reason": reason,
                                    "method_id": method_id})
     # the instrument's clock against the run's order: judged in the queue
-    # (run_queue 9a) as a bracketing failure of each injection out of order
-    # After the engine, so the flag informs the reviewer and changes no
-    # automatic verdict: these were corrected with the NOMINAL factor.
+    # (run_queue 9a) as a bracketing failure of each injection out of order.
+    # Samples corrected with the NOMINAL factor: flagged after the engine, so
+    # the flag informs the reviewer and changes no automatic verdict.
     batch.correction_fallbacks = list(correction_fallbacks)
     for inj in correction_fallbacks:
         batch.qc_flags.append(QCFlag(
@@ -1140,17 +1110,20 @@ def run_pipeline(
     # 4b. Above the calibration range: the platform's own judgement (rule
     # switch over_range), so the summary reports the dilution or ALoQ
     batch.qc_flags.extend(over_range(batch.injections, method_id, matrix))
+    # a raw run's result the instrument could not measure: saturated, or
+    # above the highest calibrator still on its own curve
+    batch.qc_flags.extend(raw_range(batch.injections, method_id))
+    # a raw run's native the analyst left unquantified by deleting its
+    # isotope standard's peak: release waits for it
+    batch.qc_flags.extend(raw_is_deleted(batch.injections))
 
     # 5. Summary
     build_summary(batch)
     # the final values' chains, from the summary just built (value provenance)
+    from . import provenance as _prov
+    from .method_profiles import get_profile as _gp
     try:
-        from . import provenance as _prov
-        from .method_profiles import get_profile as _gp
-        try:
-            _prov_profile = _gp(method_id) if method_id else None
-        except Exception:                                   # noqa: BLE001
-            _prov_profile = None
+        _prov_profile = _gp(method_id) if method_id else None
         _prov.record_summary(batch, _prov_profile)
         _prov.record_file(batch, csv_path.name, import_profile)
     except Exception as exc:                                # noqa: BLE001
@@ -1170,17 +1143,43 @@ def run_pipeline(
             "confirmation before the identification can be reported as "
             "confirmed — see the identity_confirmation review checks", n_conf)
 
+    # 5a'. Validation: one side of a run is reported, the other is kept for
+    # the comparison -- its rows only, nothing judged, stored or pushed
+    # the results source the run was built / uploaded under, else the method's
+    mode = (sidecar or {}).get("integration_mode") or integration_mode(method_id)
+    side = comparison_side(raw, mode, supplementary=bool((sidecar or {}).get("supplementary_of")))
+    if side:
+        from .injection_store import injection_dicts, persist_alt_results
+        n_alt = persist_alt_results(getattr(batch, "batch_id", "") or "", side, injection_dicts(batch))
+        if raw:
+            from .injection_store import persist_raw_traces
+            persist_raw_traces(getattr(batch, "batch_id", "") or "", raw_traces)
+        logger.info("%s: %d %s row(s) kept for the comparison, not reported", csv_path.name, n_alt, side)
+        return batch, queue, None
+
     # 5b. Persist per-injection detail for the multi-page Results Review.
     try:
         from .injection_store import persist_injection_results
         n_inj = persist_injection_results(batch)
         logger.info("Persisted %d per-injection rows to injection_results", n_inj)
-    except Exception as e:                            # noqa: BLE001
+    except sqlite3.Error as e:
         logger.error("injection_results persist failed: %s", e)
+    try:
+        # the side now reported: its rows kept apart under an earlier source go
+        from .injection_store import persist_alt_results
+        persist_alt_results(getattr(batch, "batch_id", "") or "", "raw" if raw else "vendor", [])
+    except sqlite3.Error as e:
+        logger.error("alt_results not cleared: %s", e)
+    if raw:
+        try:
+            from .injection_store import persist_raw_traces
+            n_tr = persist_raw_traces(getattr(batch, "batch_id", "") or "", raw_traces)
+            logger.info("Persisted %d raw traces", n_tr)
+        except sqlite3.Error as e:
+            logger.error("raw traces persist failed: %s", e)
 
-    # 5c. Persist the QC verdicts and calibration curves. Data Review's QC
-    # Summary gate and the control charts read these; nothing wrote them, so a
-    # successful import still left the gate reporting "no_batch_record".
+    # 5c. Persist the QC verdicts and calibration curves: Data Review's QC
+    # Summary gate and the control charts read these.
     try:
         from .qc_store import persist_qc_results, persist_calibrations, persist_provenance
         n_qc = persist_qc_results(batch)
@@ -1188,7 +1187,7 @@ def run_pipeline(
         n_prov = persist_provenance(batch)
         logger.info("Persisted %d QC results, %d calibration curves and %d provenance records",
                     n_qc, n_cal, n_prov)
-    except Exception as e:                            # noqa: BLE001
+    except sqlite3.Error as e:
         logger.error("qc_results persist failed: %s", e)
 
     # 6. Extraction log
@@ -1228,9 +1227,8 @@ def run_pipeline(
                     "No SENAITE Worksheet %r — the report cannot be attached "
                     "and Data Review will not find this run.", batch.batch_id)
 
-            # Never invent a Batch. Look up the one named, and say so if it is
-            # missing, rather than creating a duplicate titled after the
-            # worksheet — which is what produced the stray B-00N batches.
+            # Never invent a Batch: look up the one named, and say so if it is
+            # missing.
             buid = ""
             if senaite_batch_id:
                 found = senaite.find_batch(senaite_batch_id)
@@ -1246,15 +1244,9 @@ def run_pipeline(
                 if extraction_log_path:
                     senaite.attach_file(ws_uid, extraction_log_path,
                                         "Extraction Log")
-            # Bind each summary row to its SENAITE sample.
-            #
-            # This used to require validate_injection_name() to yield a
-            # 7-digit StarLIMS id. Real injection names carry no such number,
-            # so nothing ever matched and every sample result was discarded
-            # silently. The injection name IS the client's own name for the
-            # sample, which is exactly what ClientSampleID holds — so look it
-            # up directly, and keep the StarLIMS id as a fallback for labs
-            # that do embed one.
+            # Bind each summary row to its SENAITE sample: the injection name
+            # is the client's own name for the sample (ClientSampleID); an
+            # embedded StarLIMS id is the fallback.
             pushed = locked = 0
             unmatched_samples = set()
             unmatched_analytes = set()
@@ -1322,8 +1314,15 @@ def run_pipeline(
             try:
                 from .push_log import save_pushes
                 save_pushes(batch.batch_id, push_rows)
-            except Exception as exc:             # noqa: BLE001
+            except sqlite3.Error as exc:
                 logger.error("push log not written: %s", exc)
+            # a QC criterion the run could not be judged against is a
+            # deviation, raised here where the run arrives (never by a page),
+            # after the push log is saved: the summary scopes a matrix spike
+            # to its samples through it. The connector logs a failure rather
+            # than retrying the run.
+            if ws_uid and hasattr(senaite, "raise_unconfigured_deviation"):
+                senaite.raise_unconfigured_deviation(ws_uid)
             if unmatched_samples:
                 logger.warning(
                     "No SENAITE sample matches these injections (set the "
@@ -1338,15 +1337,14 @@ def run_pipeline(
         except Exception as e:                       # noqa: BLE001
             logger.error("SENAITE push failed: %s", e)
             # raised: the watcher retries the whole run (a re-import replaces
-            # its rows); swallowed here, a push that stopped partway left
-            # samples half-filled and nothing said so
+            # its rows); a push that stopped partway never passes silently
             raise
 
     return batch, queue, report_path
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Directory watcher  (replaces manual CSV copying)
+# Directory watcher
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _record_import(import_log, name, batch_id, status, attempts, error):
@@ -1379,13 +1377,64 @@ def _save_watched(path, seen):
         logger.warning("watcher record %s not written: %s", path, exc)
 
 
-# the export types the Run Builder's upload accepts
-WATCHED_TYPES = (".csv", ".txt", ".tsv")
+# the export types the Run Builder's upload accepts, and a raw run's record
+WATCHED_TYPES = (".csv", ".txt", ".tsv", ".rawrun")
+# how often the watch loop asks SENAITE to send the due notice e-mails
+NOTICE_TICK_SECONDS = 900
 
 
 def _watched(watch_dir):
     return sorted(p for p in Path(watch_dir).iterdir()
                   if p.is_file() and p.suffix.lower() in WATCHED_TYPES)
+
+
+def load_raw_run(*args, **kwargs):
+    # imported on a raw run only: integration needs scipy, an export does not
+    from .raw_run import load_raw_run as load
+    return load(*args, **kwargs)
+
+
+def comparison_side(raw, mode, supplementary=False):
+    """The side of a run kept for the comparison and not reported: a raw
+    run unless the method's results come from the LIMS integration, an
+    export when they do (but a supplementary run's: those are imported from
+    the export); None for the side that is reported."""
+    if raw:
+        return None if mode == "lims" else "raw"
+    return "vendor" if mode == "lims" and not supplementary else None
+
+
+def is_raw_run(path):
+    return Path(path).suffix.lower() == ".rawrun"
+
+
+def quantitation_map(method_id):
+    """What each compound is quantified on: a native on its surrogate (the
+    surrogate map), an isomer peak on its reported analyte's unless the map
+    names one for the peak itself, a labelled standard on the one it is
+    linked to."""
+    out = dict(_get_surrogate_map(method_id))
+    for pair in _get_isomer_summation(method_id):
+        surrogate = out.get(pair.get("reported"))
+        if not surrogate:
+            continue
+        for name in [pair.get("linear")] + list(pair.get("branched_list") or []):
+            if name:
+                out.setdefault(name, surrogate)
+    for std, ref in get_labelled_links(method_id).items():
+        out.setdefault(std, ref)
+    return out
+
+
+def load_rows(path, import_profile, method_id, traces=None):
+    """The run's rows: an export read with its import layout, or a raw run
+    integrated and quantified with the method's Integration settings (its
+    traces into `traces`)."""
+    if is_raw_run(path):
+        return load_raw_run(str(path), get_integration(method_id),
+                            get_profile(method_id).calibration_rule, quantitation_map(method_id),
+                            traces=traces)
+    return load_instrument_csv(path, profile=import_profile)
 
 
 def refuse_unreadable(rows, profile, path):
@@ -1418,7 +1467,7 @@ def labelled_rows(rows, method_id):
         name = r.linked_is or sur.get(r.compound_name) or sur.get(keyword_for(r.compound_name) or "")
         if not name:
             continue
-        name = labelled_display_name(keyword_for(name) or name)
+        name = labelled_display_name(keyword_of(name) or name)
         if (r.concat_id, name) in have:
             continue
         have.add((r.concat_id, name))
@@ -1442,10 +1491,11 @@ def over_range(rows, method_id, matrix):
     the instrument wrote. An isomer group is judged on its sum. The rows read
     ALoQ, so the summary reports the dilution where there is one. Switched
     by the rule over_range (QC Rules)."""
-    from .run_queue import _load_rule_toggles, _rule_enabled
+    from .run_queue import _load_rule_toggles, _rule_enabled, _rule_state
     from .method_profiles import _profile_data_cache
     if not method_id or not _rule_enabled(_load_rule_toggles(method_id), "over_range"):
         return []
+    evaluate = _rule_state(_load_rule_toggles(method_id), "over_range") == "evaluate"
     data = _profile_data_cache.get(method_id) or {}
     cal = _addon("calibration_levels")
     unit = (data.get("unit_map") or {}).get(matrix) or ""
@@ -1469,7 +1519,52 @@ def over_range(rows, method_id, matrix):
             flags.append(QCFlag(
                 source="Calibration range", check_kind=KIND_OVER_RANGE, analyte=r.compound_name,
                 injection_name=r.injection_name, value="%g %s" % (total, unit),
-                issue="(ALoQ) above the top calibration level %g %s" % (top, unit)))
+                issue="(ALoQ) above the top calibration level %g %s" % (top, unit),
+                advisory=evaluate))
+    return flags
+
+
+OVERFLOW_ABOVE_RANGE = "Overflow at the apex: the stored value is above the file's number range"
+
+
+def raw_range(rows, method_id):
+    """[QCFlag] for each native result of a raw run that is above what the
+    instrument measured: a peak found on a quantifier whose stored signal
+    wrapped at the apex keeps its number, which is understated; a reading
+    above the highest calibrator still on this run's curve (the curve's
+    top_conc: a saturated top calibrator is left off it) is an
+    extrapolation. Either row reads ALoQ, so the summary reports the
+    dilution where there is one; an isomer peak is judged on its own curve
+    and makes its group ALoQ. A vendor export's row is not judged here: its
+    instrument wrote its own ALoQ. Not switched by over_range: switching
+    that rule off must not release an understated number unflagged."""
+    parts = _isomer_parts(method_id)
+    flags = []
+    for r in rows:
+        derived = getattr(r, "derived_from", "") or ""
+        if not derived.startswith("raw:") or reported_conc(r) is None:
+            continue
+        if not _is_native(r, parts) or not _has_sample_basis(r):
+            continue
+        rec = json.loads(derived[len("raw:"):]) or {}
+        curve = (rec.get("quant") or {}).get("curve") or {}
+        top = curve.get("top_conc")
+        # the curve's reading, before any correction to the sample basis
+        reading = r.raw_calculated_conc if r.raw_calculated_conc is not None else r.calculated_conc
+        if rec.get("saturated"):
+            issue = "(ALoQ) " + OVERFLOW_ABOVE_RANGE
+        elif (top is not None and reading is not None and reading > top * (1 + 1e-9)
+              and r.conc_qualifier != QUALIFIER_ALOQ):
+            issue = "(ALoQ) above the highest calibrator on this run's curve, %s at %g" % (
+                curve.get("top_injection") or "", top)
+        else:
+            continue
+        r.conc_qualifier = QUALIFIER_ALOQ
+        flags.append(QCFlag(
+            source="Calibration range", check_kind=KIND_OVER_RANGE, analyte=r.compound_name,
+            injection_name=r.injection_name,
+            value=("%g %s" % (reported_conc(r), getattr(r, "conc_units", "") or "")).strip(),
+            issue=issue))
     return flags
 
 
@@ -1489,21 +1584,18 @@ def start_watcher(
     watch_dir = Path(watch_dir)
     # A file is new when its name OR its modification time is: re-uploading a
     # run under the same name (the Run Builder's reprocess) must run it again.
-    # Keyed by name alone, a reprocess was silently skipped while the upload
-    # page said the worker would import it.
     #
     # What was processed is kept beside the output, so a file that lands
-    # while the worker is down (a restart) is run when it comes back; it used
-    # to be counted as seen at startup and never run. Without a record (the
-    # first start) the files already there are taken as processed, as before.
+    # while the worker is down (a restart) is run when it comes back. Without
+    # a record (the first start) the files already there count as processed.
     state = Path(output_dir) / ".watched.json"
     seen: dict[str, int] = _load_watched(state)
     if seen is None:
         seen = {p.name: p.stat().st_mtime_ns for p in _watched(watch_dir)}
         _save_watched(state, seen)
     else:
-        # the types watched since the Run Builder's .txt / .tsv: one already
-        # here when the worker starts counts as processed, as at a first start
+        # a .txt / .tsv the record does not name counts as processed, as at a
+        # first start
         for p in _watched(watch_dir):
             if p.suffix.lower() != ".csv" and p.name not in seen:
                 seen[p.name] = p.stat().st_mtime_ns
@@ -1511,9 +1603,15 @@ def start_watcher(
     logger.info("Watching %s (every %ds)", watch_dir, poll_seconds)
     from . import import_log
     retries: dict[str, tuple] = {}            # name -> (attempts, next try at, mtime)
+    next_notice_tick = 0.0
 
     while True:
         time.sleep(poll_seconds)
+        if senaite is not None and senaite.warm_caches():
+            logger.info("Site warmed: every open worksheet's method worked out")
+        if senaite is not None and time.time() >= next_notice_tick:
+            next_notice_tick = time.time() + NOTICE_TICK_SECONDS
+            senaite.send_notice_reminders()
         for p in _watched(watch_dir):
             if seen.get(p.name) == p.stat().st_mtime_ns:
                 continue
@@ -1533,8 +1631,8 @@ def start_watcher(
 
             # The sidecar carries the run parameters. The one BESIDE the CSV
             # wins: the Run Builder writes it from the SENAITE guided
-            # extraction at upload. The configured
-            # directory is only a fallback for files dropped by hand.
+            # extraction at upload. The configured directory is only a
+            # fallback for files dropped by hand.
             ext_log = None
             candidates = [p.with_name(f"{p.stem}_extraction.json")]
             if extraction_log_dir:

@@ -113,10 +113,8 @@ def item_index(portal):
 
 
 def _load(portal):
-    try:
-        return json.loads(IAnnotations(portal).get(ROLE_PICKS_KEY) or u"{}")
-    except (TypeError, ValueError):
-        return {}
+    from senaite.pfas.annotation_store import read_json
+    return read_json(portal, ROLE_PICKS_KEY, {})
 
 
 def role_picks(portal, method_id):

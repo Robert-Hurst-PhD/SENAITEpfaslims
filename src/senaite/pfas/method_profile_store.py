@@ -6,10 +6,9 @@ Python 2.7 compatible.  No f-strings, no pathlib, no annotations.
 
 Storage pattern
 ---------------
-  IAnnotations(portal)[PFAS_METHOD_PROFILES_KEY]
-      → PersistentMapping { method_id: json_string, ... }
+  portal.pfas_method_profiles[method_id].profile_json   (a MethodProfile)
 
-JSON strings are replaced in their entirety on every save, which avoids
+The JSON string is replaced in its entirety on every save, which avoids
 nested-persistence dirty-marking issues in ZODB.  Callers always receive
 a fresh dict (via json.loads or copy.deepcopy), never a live reference to
 stored data.
@@ -30,54 +29,15 @@ import os
 
 logger = logging.getLogger("senaite.pfas.method_profile_store")
 
-PFAS_METHOD_PROFILES_KEY = "senaite.pfas.method_profiles"
 PROFILES_EXPORT_PATH = os.environ.get(
     "PFAS_PROFILES_PATH", "/data/qc/method_profiles.json"
 )
 
-# ── Constants used to seed the FDA_32PFAS per-analyte table ───────────────────
-# Derived from analyte_reference.py — single source of truth for is_key_analyte
-# and no_labeled flags. Do not duplicate these lists here.
-
-from senaite.pfas.analyte_reference import (
-    NATIVE_ANALYTES as _NATIVE_ANALYTES,
-    INTERNAL_STANDARDS as _INTERNAL_STANDARDS,
-    get_surrogate_map_by_name as _get_surrogate_map_by_name,
-    derive_surrogate_map as _derive_surrogate_map,
-)
-
-# Native analyte (display name) → surrogate IS keyword — derived from
-# analyte_reference.py. _fda_per_analyte() uses display names, so use the
-# name-keyed map.
-_FDA_SURROGATE_MAP_DICT = _get_surrogate_map_by_name()  # {display_name: M-keyword}
-# M-keyword → 13C display name (for human-readable per_analyte.surrogate column).
-_IS_KW_TO_NAME = {row[0]: row[1] for row in _INTERNAL_STANDARDS}
+# the install seed's surrogate links (analyte_reference.py), copied once
+# into each shipped method's own Surrogate Map
+from senaite.pfas.analyte_reference import derive_surrogate_map as _derive_surrogate_map
 
 
-def _fda_per_analyte():
-    # Build confirm-ion map from PFAS_ANALYTES (canonical MRM source, Decision A).
-    from senaite.pfas.analytes import PFAS_ANALYTES as _pfas_a
-    confirm_map = {name: qls[0] for name, _, qls in _pfas_a if qls}
-
-    master_kws = frozenset(_FDA_MASTER_ANALYTE_KEYWORDS)
-    rows = []
-    for row in _NATIVE_ANALYTES:
-        keyword = row[0]
-        if keyword not in master_kws:
-            continue
-        analyte = row[1]   # display name (e.g. "lr-PFHxS", "GenX (HFPO-DA)")
-        # "no labelled standard", key analyte and tier are derived from the
-        # method's links and key list (consolidation P4) -- not stored here
-        rows.append({
-            "analyte":        analyte,
-            "surrogate":      _IS_KW_TO_NAME.get(_FDA_SURROGATE_MAP_DICT.get(analyte, ""), ""),
-            "confirm_ion_mz": confirm_map.get(analyte, ""),
-            "notes": "",
-        })
-    return rows
-
-
-# ── Spike levels helper ───────────────────────────────────────────────────────
 
 def _per_matrix_spike_levels(matrices):
     """Return spike_levels in per-matrix format with all ppt values null."""
@@ -95,6 +55,11 @@ def _per_matrix_spike_levels(matrices):
     }
 
 
+# keys the Isomers and Isotope standards tabs replaced: a profile holding
+# one is refused at the save
+RETIRED_KEYS = ("isomer_summation", "surrogate_is_chain", "surrogate_is")
+
+
 def _migrate_spike_levels(saved, dflt):
     """Upgrade old flat {LFB:[...], LFSM:[...]} to per-matrix format in-place."""
     sl = saved.get("spike_levels")
@@ -108,8 +73,6 @@ def _migrate_spike_levels(saved, dflt):
     saved["spike_levels"] = {m: copy.deepcopy(sl) for m in matrices}
 
 
-# ── Relational model: canonical matrix vocabulary + analyte × matrix sets ─────
-
 # Canonical FDA matrix names — must match SAMPLE_TYPES titles in analyte_reference.py
 _FDA_MATRICES = [
     "Aquatic Tissue",
@@ -122,7 +85,7 @@ _FDA_MATRICES = [
 
 # 32 reportable native analyte keywords for FDA_32PFAS.
 # br-PFOS and br-PFHxS are EXCLUDED: they are always reported summed with their
-# linear isomers via isomer_summation, never as independent rows in the report.
+# linear isomers (the method's isomers), never as independent rows in the report.
 _FDA_MASTER_ANALYTE_KEYWORDS = [
     "PFBA", "PFPeA", "PFHxA", "PFHpA", "PFOA", "PFNA",
     "PFDA", "PFUDA", "PFDoA", "PFTrDA", "PFTeDA", "PFHxDA", "PFODA",
@@ -137,8 +100,7 @@ _FDA_MASTER_ANALYTE_KEYWORDS = [
 # All other analyte × matrix intersections default to True (included/reportable).
 _FDA_MATRIX_EXCLUSIONS = {
     "PFODA": {"Eggs"},   # FDA carve-out: PFODA not reportable in egg matrix
-    # Flag: additional carve-outs from the method document should be added here.
-    # Any unknown carve-outs are seeded True (included) as a conservative default.
+    # A carve-out not listed here is seeded True (included).
 }
 
 # EPA_537_1: drinking water only; no per-analyte matrix exclusions known.
@@ -178,7 +140,38 @@ _EPA1633A_UNIT_MAP = {
 }
 
 # EPA 1633A — 40 analytes per EPA 820-R-24-007 Table 1, December 2024.
-# br-PFHxS and br-PFOS are excluded here (summed via isomer_summation).
+# br-PFHxS and br-PFOS are excluded here (summed by the method's isomers).
+# EPA 1633A's extracted internal standards per native (EPA 820-R-24-007,
+# Table 6), each a labelled compound of the library; a native with no
+# designation of its own takes the method's "no labelled standard" tier.
+# 13C8-FOSA is the library's keyword for Table 6's 13C8-PFOSA.
+# EPA 1633A §14.9: the window the NIS areas are judged by
+_EPA1633A_NIS_WINDOW_NOTE = (u"EPA 1633A §14.9: the NIS areas in field and QC samples within "
+                             u"50 to 200 % of the mean area of the corresponding NIS in the most "
+                             u"recent initial calibration.")
+# Table 10, the target analytes with no EIS of their own: the EIS used for
+# quantification, by the library's keywords (Table 10 spells ADONA and
+# 9Cl-PF3ONS, the compounds' published names). PFTrDA is quantified on the
+# average of 13C2-PFTeDA and 13C2-PFDoA, which one link cannot say, so it
+# is left to the lab.
+_EPA1633A_SHARED_EIS = [
+    ("PFPeS", "13C3-PFHxS"), ("PFHpS", "13C8-PFOS"), ("PFNS", "13C8-PFOS"), ("PFDS", "13C8-PFOS"),
+    ("PFDoS", "13C8-PFOS"), ("DONA", "13C3-HFPO-DA"), ("PFMPA", "13C5-PFPeA"), ("PFMBA", "13C5-PFPeA"),
+    ("NFDHA", "13C5-PFHxA"), ("9ClPF3ONS", "13C3-HFPO-DA"), ("11ClPF3OUdS", "13C3-HFPO-DA"),
+    ("PFEESA", "13C5-PFHxA"), ("3:3FTCA", "13C5-PFPeA"), ("5:3FTCA", "13C5-PFHxA"), ("7:3FTCA", "13C5-PFHxA"),
+]
+
+_EPA1633A_EIS = [
+    ("PFBA", "13C4-PFBA"), ("PFPeA", "13C5-PFPeA"), ("PFHxA", "13C5-PFHxA"),
+    ("PFHpA", "13C4-PFHpA"), ("PFOA", "13C8-PFOA"), ("PFNA", "13C9-PFNA"),
+    ("PFDA", "13C6-PFDA"), ("PFUDA", "13C7-PFUnA"), ("PFDoA", "13C2-PFDoA"),
+    ("PFTeDA", "13C2-PFTeDA"), ("PFBS", "13C3-PFBS"), ("PFHxS", "13C3-PFHxS"),
+    ("PFOS", "13C8-PFOS"), ("4:2FTS", "13C2-4:2FTS"), ("6:2FTS", "13C2-6:2FTS"),
+    ("8:2FTS", "13C2-8:2FTS"), ("FOSA", "13C8-FOSA"), ("NMeFOSA", "D3-NMeFOSA"),
+    ("NEtFOSA", "D5-NEtFOSA"), ("NMeFOSAA", "D3-NMeFOSAA"), ("NEtFOSAA", "D5-NEtFOSAA"),
+    ("NMeFOSE", "D7-NMeFOSE"), ("NEtFOSE", "D9-NEtFOSE"), ("GenX", "13C3-HFPO-DA"),
+]
+
 _EPA1633A_ANALYTE_KEYWORDS = [
     # PFCAs (11)
     "PFBA", "PFPeA", "PFHxA", "PFHpA", "PFOA", "PFNA",
@@ -220,24 +213,36 @@ def _all_included_matrix(keywords, matrices):
     return {kw: {m: True for m in matrices} for kw in keywords}
 
 
-# ── Default profiles (seeded from all current hardcoded values) ───────────────
-# Behavior is unchanged until a manager edits and saves via the UI.
+# ── Default profiles: the install seeds, edited by a manager in the UI ────────
 
 DEFAULT_PROFILES = {
     "FDA_32PFAS": {
         "method_id": "FDA_32PFAS",
         "display_name": "FDA 32-PFAS in Food and Feed",
-        "description": (
-            "USDA/FDA 32-PFAS in Food v10 (5/5/26) + AOAC SMPR 2023.003; "
-            "LC-MS/MS isotope dilution"
-        ),
+        "description": ("USDA/FDA 32-PFAS in Food v10 (5/5/26) + AOAC SMPR 2023.003; "
+            "LC-MS/MS isotope dilution"),
         "instrument_verification": {
             "calibration": {
-                # the lab's value (C-010.04), confirmed 2026-10-09
+                # the lab's value (C-010.04)
                 "r2_min": 0.990,
-                "force_origin": False,
                 "point_pct_dev_max": 20.0,
                 "low_point_pct_dev_max": None,
+                "level_unit": "ng/mL",
+                "levels": [
+                    {"conc": 0.0390625, "name": "CAL-1"},
+                    {"conc": 0.078125, "name": "CAL-2"},
+                    {"conc": 0.15625, "name": "CAL-3"},
+                    {"conc": 0.3125, "name": "CAL-4"},
+                    {"conc": 0.625, "name": "CAL-5"},
+                    {"conc": 1.25, "name": "CAL-6"},
+                    {"conc": 2.5, "name": "CAL-7"},
+                    {"conc": 5.0, "name": "CAL-8"},
+                    {"conc": 10.0, "name": "CAL-9"},
+                    {"conc": 20.0, "name": "CAL-10"},
+                ],
+                "levels_source": "Lab instruction 2026-10-02: 0.039 to 20 ng/mL, each point double the last (10 points).",
+                "origin": "exclude",
+                "weighting": "1/x",
             },
             "ccv": {
                 "frequency": 6,
@@ -246,7 +251,7 @@ DEFAULT_PROFILES = {
                 "low_level_min": None,
                 "low_level_max": None,
                 # a CCV (after the CCB) opens the bracket: every extracted
-                # injection runs inside one (lab, 2026-10-09)
+                # injection runs inside one
                 "opens_run": "yes",
             },
             "is_response": {
@@ -256,8 +261,7 @@ DEFAULT_PROFILES = {
                 "vs_last_ccv_max": None,
                 "notes": "Lab SOP screen; FDA method sets no numeric IS-area limit",
             },
-            # VERIFY: the lab confirms these against C-010.04;
-            # they were code constants until 2026-10-09
+            # VERIFY: the lab confirms these against C-010.04
             "surrogate_window": {"recovery_min": 50.0, "recovery_max": 150.0},
             "confirmation": {
                 "rrt_tol_pct": 1.0,
@@ -266,7 +270,7 @@ DEFAULT_PROFILES = {
                 "sn_quan_min": 3.0,
                 "sn_confirm_min": 3.0,
                 "require_confirm_ion_check": True,
-                "single_transition_analytes": "PFBA, PFPeA",     # typed as text on the form
+                "single_transition_analytes": ["PFBA", "PFPeA"],   # keywords of the panel
                 "confirm_pct_diff_max": 20.0,
             },
         },
@@ -287,9 +291,15 @@ DEFAULT_PROFILES = {
             "LFSM": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "tier1_key_tight", "analyte_group": "key",
-                     "matrix_scope": "tight",
-                     "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
+                    {
+                        "name": "tier1_key_tight",
+                        "analyte_group": "key",
+                        "matrix_scope": "listed",
+                        "recovery_min": 80.0,
+                        "recovery_max": 120.0,
+                        "rsd_max": 20.0,
+                        "matrices": [],
+                    },
                     {"name": "tier2_linked", "analyte_group": "linked",
                      "matrix_scope": "all",
                      "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
@@ -301,9 +311,15 @@ DEFAULT_PROFILES = {
             "LFSMD": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "tier1_key_tight", "analyte_group": "key",
-                     "matrix_scope": "tight",
-                     "recovery_min": 80.0, "recovery_max": 120.0, "rpd_max": 20.0},
+                    {
+                        "name": "tier1_key_tight",
+                        "analyte_group": "key",
+                        "matrix_scope": "listed",
+                        "recovery_min": 80.0,
+                        "recovery_max": 120.0,
+                        "rpd_max": 20.0,
+                        "matrices": [],
+                    },
                     {"name": "tier2_linked", "analyte_group": "linked",
                      "matrix_scope": "all",
                      "recovery_min": 65.0, "recovery_max": 135.0, "rpd_max": 25.0},
@@ -318,7 +334,6 @@ DEFAULT_PROFILES = {
                            "matrix_scope": "all", "rpd_max": 20.0}],
             },
         },
-        "associated_qc_types": ["MB", "LRB", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [
             {"matrix": "muscle",      "factor": 0.5},
             {"matrix": "meat",        "factor": 0.5},
@@ -334,49 +349,10 @@ DEFAULT_PROFILES = {
             {"matrix": "feed",        "factor": 2.0},
             {"matrix": "animal feed", "factor": 2.0},
         ],
-        # Derived from analyte_reference.NATIVE_ANALYTES -- which labelled
-        # compound quantifies a native is a property of the ANALYTE, not of
-        # the method, and was previously hand-copied here. The copy had also
-        # drifted: four FTS entries and FOSA/GenX held DISPLAY NAMES where the
-        # rest held keywords, so the per_analyte surrogate column resolved
-        # empty for those six. Verified identical (same entries, same order)
-        # to the live FDA and 1633A maps before this replaced them.
+        # the seed's surrogate links, copied once: each method owns its map
         "surrogate_map": _derive_surrogate_map(_FDA_MASTER_ANALYTE_KEYWORDS),
-        "surrogate_is": "13C4-PFOA",
-        # surrogate_is_chain: which injection IS each labeled surrogate quantifies against
-        # For FDA 32-PFAS all 20 surrogates quantify against 13C4-PFOA (FDA Table 9-1)
-        "surrogate_is_chain": {
-            "13C3-PFBA":    "13C4-PFOA",
-            "13C3-PFPeA":   "13C4-PFOA",
-            "13C5-PFHxA":   "13C4-PFOA",
-            "13C4-PFHpA":   "13C4-PFOA",
-            "13C8-PFOA":    "13C4-PFOA",
-            "13C5-PFNA":    "13C4-PFOA",
-            "13C2-PFDA":    "13C4-PFOA",
-            "13C2-PFUDA":    "13C4-PFOA",
-            "13C2-PFDoA":    "13C4-PFOA",
-            "13C2-PFTeDA":  "13C4-PFOA",
-            "13C2-PFHxDA":  "13C4-PFOA",
-            "13C3-PFBS":    "13C4-PFOA",
-            "13C3-PFHxS":   "13C4-PFOA",
-            "13C8-PFOS":    "13C4-PFOA",
-            "13C3-HFPO-DA":    "13C4-PFOA",
-            "13C8-FOSA":    "13C4-PFOA",
-            "13C2-D4-4:2FTS": "13C4-PFOA",
-            "13C2-D4-6:2FTS": "13C4-PFOA",
-            "13C2-D4-8:2FTS": "13C4-PFOA",
-            "13C2-D4-10:2FTS":"13C4-PFOA",
-        },
-        "per_analyte": _fda_per_analyte(),
-        "isomer_summation": [
-            {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
-            {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
-            {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
-            {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
-        ],
-        # ── Relational data model (Round 9) ──────────────────────────────────
         "supported_matrices": list(_FDA_MATRICES),
-        # 32 reportable target analytes (br-isomers excluded; summed via isomer_summation)
+        # 32 reportable target analytes (br-isomers excluded; summed by the method's isomers)
         "master_analyte_set": list(_FDA_MASTER_ANALYTE_KEYWORDS),
         # keyword → {matrix_name → bool}  — the inclusion checkbox grid
         # PFODA × Eggs = False; all other intersections = True
@@ -389,11 +365,9 @@ DEFAULT_PROFILES = {
         # Spike level options for LFSM (and LFB) injections — keyed by matrix.
         # ppt values left as null — the lab enters them via the Method Profile UI.
         "spike_levels": _per_matrix_spike_levels(_FDA_MATRICES),
-        # Holding time (days, collection → extraction) deliberately UNSET. The
-        # FDA methods specify per-matrix holding times, but this project has no
-        # documented value for them and §8 forbids inventing one. Unset means
-        # refuse to judge, not pass — the Data Review CoC gate says so, and a
-        # lab enters its own from the method copy. See holding_time.py.
+        # Holding time (days, collection → extraction) deliberately UNSET: no
+        # documented value, and none is invented. Unset refuses to judge, not
+        # pass; the lab enters its own. See holding_time.py.
         "holding_times": {m: None for m in _FDA_MATRICES},
         "extraction_stages": [
             {
@@ -406,6 +380,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Analytical Balance", "Centrifuge", "Vortex Mixer"],
                 "creates_solution": True,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "weighing",
@@ -413,9 +389,12 @@ DEFAULT_PROFILES = {
                 "name": "Sample Weighing & Aliquoting",
                 "description": "Weigh 1 g (±0.02 g) test portion into 50 mL centrifuge tube",
                 "reagent_roles": [],
-                "equipment": ["Analytical Balance", "50 mL Centrifuge Tubes"],
+                "equipment": ["Analytical Balance"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "amount",
+                "confirmations": [],
+                "consumables": ["50 mL Centrifuge Tubes"],
             },
             {
                 "id": "spike",
@@ -426,6 +405,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Pipette (100-1000 μL)", "Vortex Mixer"],
                 "creates_solution": False,
                 "capture_pedigree": True,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "extraction",
@@ -436,6 +417,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Centrifuge", "Vortex Mixer"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "dspe",
@@ -447,6 +430,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Centrifuge", "Vortex Mixer"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "concentration",
@@ -457,6 +442,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Turbovap / N₂ Evaporator", "Water Bath (40°C)"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "reconstitution",
@@ -467,6 +454,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Vortex Mixer", "Analytical Balance"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "final_volume",
+                "consumables": [],
             },
             {
                 "id": "transfer",
@@ -474,16 +463,119 @@ DEFAULT_PROFILES = {
                 "name": "QC Check & Transfer to Vial",
                 "description": "Filter through PTFE syringe filter; transfer to LC vial",
                 "reagent_roles": ["PTFE Syringe Filter (0.2 μm)"],
-                "equipment": ["1 mL Syringe", "LC Vials"],
+                "equipment": [],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": ["1 mL Syringe", "LC Vials"],
             },
         ],
         # Ordered logbooks required for a batch using this method.
         # 250 = Solvent/Reagent Prep, 252 = Extraction Log (Guided), 251 = Cal Prep, 253 = Sample Processing
-        "required_logbooks": ["250", "252", "251", "253"],
+        "required_logbooks": ["252", "253"],
+        "blank_role_name": "MB",
+        "engine": {
+            "aliases": ["FDA", "FDA32", "C-010.04"],
+            "eis_recovery_limits": False,
+            "eis_verify_flag": False,
+            "inclusion_needs_verification": False,
+            "labelled_compound_fit": "mean_response_factor",
+            "qc_type_aliases": {"duplicate": "Dup"},
+            "required_keys": {
+                "calibration": ["r2_min"],
+                "confirmation": ["ion_ratio_tol_pct", "rrt_tol_pct", "sn_quan_min", "sn_confirm_min"],
+                "is_response": ["vs_ical_avg_min", "vs_ical_avg_max"],
+            },
+            "rule_notes": {
+                "confirmation_rule": "PFBA/PFPeA positives require LC-HRMS confirmation; cholic acid (TDCA/TCDCA/TUDCA) interference transitions monitored for PFOS (§2024.8.5)",
+                "is_rule": "Lab SOP screen; the FDA method sets no numeric IS-area limit",
+                "tier_default": "Table 10-1 tier 2 (other matrices / other analytes)",
+                "tier_key_tight": "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)",
+                "tier_low_level": "low-level window (<= {0:g} x RL)",
+                "tier_no_std": "No matched labeled standard (Table 10-1 footnote a)",
+            },
+            "surrogate_fallback": {
+                "citation": "Surrogate recovery is guidance only (FDA §2024.10.1(5))",
+                "max": 150.0,
+                "min": 50.0,
+            },
+            "surrogate_guidance_only": True,
+        },
+        "isomers": {
+            "PFHxS": {"branched": ["br-PFHxS"], "linear": "lr-PFHxS", "reported": ""},
+            "PFNA": {"branched": ["br-PFNA"], "linear": "lr-PFNA", "reported": ""},
+            "PFOA": {"branched": ["br-PFOA"], "linear": "lr-PFOA", "reported": ""},
+            "PFOS": {"branched": ["br-PFOS"], "linear": "lr-PFOS", "reported": ""},
+        },
+        "key_analytes": ["PFOA", "PFNA", "PFHxS", "PFOS"],
+        "labelled_standards": {
+            "13C2-D4-10:2FTS": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-D4-4:2FTS": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-D4-6:2FTS": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-D4-8:2FTS": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-PFDA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-PFDoA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-PFHxDA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-PFTeDA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C2-PFUDA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C3-HFPO-DA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C3-PFBA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C3-PFBS": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C3-PFHxS": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C3-PFPeA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C4-PFHpA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C4-PFOA": {"reference": "", "role": "injection_is"},
+            "13C5-PFHxA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C5-PFNA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C8-FOSA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C8-PFOA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C8-PFOS": {"reference": "13C4-PFOA", "role": "surrogate"},
+        },
+        "matrix_codes": {
+            "Animal Feed": "AF",
+            "Aquatic Tissue": "AT",
+            "Eggs": "EGG",
+            "Fish / Seafood": "FS",
+            "Meat / Muscle": "MM",
+            "Milk": "MILK",
+        },
+        "qc_name_codes": {"METHOD": "FDA"},
+        "report_format": {"*": {}},
+        "rule_states": {
+            "blank.LRB": "enforced",
+            "blank.MB": "enforced",
+            "cal_r2": "enforced",
+            "ccv_frequency": "enforced",
+            "ccv_recovery": "enforced",
+            "ion_ratio": "enforced",
+            "is_response": "enforced",
+            "is_vs_ccv": "off",
+            "mdl_check": "off",
+            "over_range": "enforced",
+            "qc_type.Dup": "enforced",
+            "qc_type.LFSM": "enforced",
+            "qc_type.LFSMD": "enforced",
+            "rrt_deviation": "enforced",
+            "single_transition_confirm": "enforced",
+            "sn_min": "off",
+            "surrogate_recovery": "enforced",
+        },
+        "rule_toggles": {
+            "cal_r2": True,
+            "ccv_frequency": True,
+            "ccv_recovery": True,
+            "ion_ratio": True,
+            "is_response": True,
+            "is_vs_ccv": False,
+            "mdl_check": False,
+            "over_range": True,
+            "rrt_deviation": True,
+            "single_transition_confirm": True,
+            "sn_min": False,
+            "surrogate_recovery": True,
+        },
+        "study_kinds": ["mdl", "pt"],
     },
-
     "EPA_537_1": {
         "method_id": "EPA_537_1",
         "display_name": "EPA 537.1 Drinking Water",
@@ -491,9 +583,11 @@ DEFAULT_PROFILES = {
         "instrument_verification": {
             "calibration": {
                 "r2_min": 0.990,
-                "force_origin": True,
                 "point_pct_dev_max": 30.0,
                 "low_point_pct_dev_max": 50.0,
+                "level_unit": "ppt",
+                "origin": "force",
+                "weighting": "1/x",
             },
             "ccv": {
                 "frequency": 10,
@@ -501,8 +595,10 @@ DEFAULT_PROFILES = {
                 "recovery_max": 130.0,
                 "low_level_min": 50.0,
                 "low_level_max": 150.0,
-                # §10.3: only field samples count toward the ten
+                #: only field samples count toward the ten
                 "counts_extracted_qc": "no",
+                "opens_run": "yes",
+                "surrogate_recovery": "yes",
             },
             "is_response": {
                 "vs_ical_avg_min": 50.0,
@@ -519,6 +615,7 @@ DEFAULT_PROFILES = {
                 "sn_confirm_min": None,
                 "require_confirm_ion_check": False,
             },
+            "icv": {"criteria": "ccv"},
         },
         "qc_acceptance": {
             "MB": {
@@ -538,9 +635,17 @@ DEFAULT_PROFILES = {
             "LFB": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "low_level", "analyte_group": "all",
-                     "matrix_scope": "all", "description": "At or below MRL",
-                     "recovery_min": 50.0, "recovery_max": 150.0, "rsd_max": None},
+                    {
+                        "name": "low_level",
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "description": "Low level, no more than 2 x MRL (§9.3.3)",
+                        "recovery_min": 50.0,
+                        "recovery_max": 150.0,
+                        "rsd_max": None,
+                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.3",
+                        "low_level_x_rl": 2.0,
+                    },
                     {"name": "mid_high", "analyte_group": "all",
                      "matrix_scope": "all", "description": "Above MRL",
                      "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
@@ -549,37 +654,90 @@ DEFAULT_PROFILES = {
             "LFSM": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "default", "analyte_group": "all",
-                     "matrix_scope": "all",
-                     "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
+                    {
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "name": "default",
+                        "recovery_max": 130.0,
+                        "recovery_min": 70.0,
+                        "rsd_max": None,
+                    },
+                    {
+                        "analyte_group": "all",
+                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.6.3",
+                        "description": "Within 2 x MRL (§9.3.6.3)",
+                        "low_level_x_rl": 2.0,
+                        "matrix_scope": "all",
+                        "name": "low_level",
+                        "recovery_max": 150.0,
+                        "recovery_min": 50.0,
+                    },
                 ],
             },
             "LFSMD": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "default", "analyte_group": "all",
-                     "matrix_scope": "all",
-                     "recovery_min": 70.0, "recovery_max": 130.0, "rpd_max": 30.0},
+                    {
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "name": "default",
+                        "recovery_max": 130.0,
+                        "recovery_min": 70.0,
+                        "rpd_max": 30.0,
+                    },
+                    {
+                        "analyte_group": "all",
+                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.7.4",
+                        "description": "Within 2 x MRL (§9.3.7.4)",
+                        "low_level_x_rl": 2.0,
+                        "matrix_scope": "all",
+                        "name": "low_level",
+                        "rpd_max": 50.0,
+                    },
                 ],
             },
             "Dup": {
                 "enabled": True,
-                "tiers": [{"name": "default", "analyte_group": "all",
-                           "matrix_scope": "all", "rpd_max": 30.0}],
+                "tiers": [
+                    {
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "name": "default",
+                        "rpd_max": 30.0,
+                    },
+                    {
+                        "analyte_group": "all",
+                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.7.2",
+                        "description": "Within 2 x MRL (§9.3.7.2, field duplicate)",
+                        "low_level_x_rl": 2.0,
+                        "matrix_scope": "all",
+                        "name": "low_level",
+                        "rpd_max": 50.0,
+                    },
+                ],
             },
         },
-        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [],
-        "surrogate_map": _derive_surrogate_map(_EPA537_ANALYTE_KEYWORDS),
-        "surrogate_is": "",
-        "per_analyte": [],
-        "isomer_summation": [
-            {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
-            {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
-            {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
-            {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
+        "surrogate_map": [
+            {"analyte": "11ClPF3OUdS", "surrogate_is": "13C4-PFOS"},
+            {"analyte": "9ClPF3ONS", "surrogate_is": "13C4-PFOS"},
+            {"analyte": "DONA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "GenX", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "NEtFOSAA", "surrogate_is": "D3-NMeFOSAA"},
+            {"analyte": "NMeFOSAA", "surrogate_is": "D3-NMeFOSAA"},
+            {"analyte": "PFBS", "surrogate_is": "13C4-PFOS"},
+            {"analyte": "PFDA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFDoA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFHpA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFHxA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFHxS", "surrogate_is": "13C4-PFOS"},
+            {"analyte": "PFNA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFOA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFOS", "surrogate_is": "13C4-PFOS"},
+            {"analyte": "PFTeDA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFTrDA", "surrogate_is": "13C2-PFOA"},
+            {"analyte": "PFUDA", "surrogate_is": "13C2-PFOA"},
         ],
-        # ── Relational data model (Round 9) ──────────────────────────────────
         "supported_matrices": list(_EPA537_MATRICES),
         # EPA 537.1: 18 analytes per EPA/600/R-20/006 Table 1.1
         "master_analyte_set": list(_EPA537_ANALYTE_KEYWORDS),
@@ -587,10 +745,8 @@ DEFAULT_PROFILES = {
             _EPA537_ANALYTE_KEYWORDS, _EPA537_MATRICES
         ),
         "unit_map": {m: "ng/L" for m in _EPA537_MATRICES},
-        # Holding time, days from collection to EXTRACTION. The ONLY method for
-        # which a value is seeded: EPA 537.1 specifies 14 days for drinking
-        # water PFAS, and states it. FDA and 1633A are left unset
-        # rather than guessed (§8 — never fabricate a regulatory value); an
+        # Holding time, days from collection to EXTRACTION: EPA 537.1 specifies
+        # 14 days for drinking water PFAS. The only seeded holding time; an
         # unset limit refuses to judge instead of passing. See holding_time.py.
         "holding_times": {m: 14 for m in _EPA537_MATRICES},
         "spike_levels": _per_matrix_spike_levels(_EPA537_MATRICES),
@@ -604,6 +760,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["pH Meter", "SPE Manifold", "Analytical Balance"],
                 "creates_solution": True,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "ph_adjust",
@@ -614,6 +772,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["pH Meter", "Magnetic Stir Plate"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "spike",
@@ -624,6 +784,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Pipette"],
                 "creates_solution": False,
                 "capture_pedigree": True,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "spe_condition",
@@ -634,6 +796,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["SPE Manifold", "Vacuum Pump"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "loading",
@@ -644,6 +808,9 @@ DEFAULT_PROFILES = {
                 "equipment": ["SPE Manifold", "Vacuum Pump"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "amount",
+                "confirmations": [],
+                "consumables": [],
             },
             {
                 "id": "drying",
@@ -654,6 +821,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["SPE Manifold", "Vacuum Pump"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "elution",
@@ -661,9 +830,11 @@ DEFAULT_PROFILES = {
                 "name": "Elution",
                 "description": "Elute with 2 × 5 mL MeOH into PP tubes",
                 "reagent_roles": ["Methanol (LC-MS grade)"],
-                "equipment": ["SPE Manifold", "50 mL PP Tubes"],
+                "equipment": ["SPE Manifold"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": ["50 mL PP Tubes"],
             },
             {
                 "id": "reconstitution",
@@ -671,28 +842,146 @@ DEFAULT_PROFILES = {
                 "name": "Concentration & Reconstitution",
                 "description": "Evaporate under N₂ to ~0.5 mL; bring to 1 mL with reagent water",
                 "reagent_roles": ["Reagent Water"],
-                "equipment": ["N₂ Evaporator", "1 mL LC Vials"],
+                "equipment": ["N₂ Evaporator"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "final_volume",
+                "consumables": ["1 mL LC Vials"],
             },
         ],
-        "required_logbooks": ["250", "252", "251", "253"],
+        "required_logbooks": ["252", "253"],
+        "blank_role_name": "LRB",
+        "engine": {
+            "aliases": ["537", "537.1", "EPA537"],
+            "eis_recovery_limits": False,
+            "eis_verify_flag": False,
+            "inclusion_needs_verification": True,
+            "required_keys": {
+                "calibration": ["r2_min", "point_pct_dev_max", "low_point_pct_dev_max"],
+                "confirmation": ["rt_tol_abs_min"],
+                "is_response": ["vs_ical_avg_min", "vs_ical_avg_max", "vs_last_ccv_min", "vs_last_ccv_max"],
+            },
+            "rule_notes": {
+                "confirmation_rule": "RT within ±0.05 min of expected; no qual-ion ratio criterion in 537.1",
+                "is_rule": "Both conditions must hold (§9.3.4); on failure re-inject a second aliquot in a fresh vial",
+            },
+            "surrogate_fallback": {"citation": "§9.3.5 surrogates 70–130%", "max": 130.0, "min": 70.0},
+            "surrogate_guidance_only": False,
+        },
+        "extract_holding_times": {"Drinking Water": 28, "Groundwater": 28, "Surface Water": 28},
+        "idc": {
+            "asymmetry": [0.8, 1.5],
+            "elements": [
+                ["isomers", "Branched / linear isomer profile (§9.2.1)"],
+                ["lsb", "Low system background (§9.2.2)"],
+                ["pa", "Precision and accuracy (§9.2.3, §9.2.4)"],
+                ["qcs", "Calibration confirmation, QCS = the ICV (§9.2.7)"],
+                ["asymmetry", "Peak asymmetry (§9.2.5)"],
+                ["mrl", "MRL confirmation (§9.2.6)"],
+            ],
+        },
+        "isomers": {
+            "PFHxS": {"branched": ["br-PFHxS"], "linear": "lr-PFHxS", "reported": ""},
+            "PFNA": {"branched": ["br-PFNA"], "linear": "lr-PFNA", "reported": ""},
+            "PFOA": {"branched": ["br-PFOA"], "linear": "lr-PFOA", "reported": ""},
+            "PFOS": {"branched": ["br-PFOS"], "linear": "lr-PFOS", "reported": ""},
+        },
+        "key_analytes": ["PFOA", "PFNA", "PFHxS", "PFOS"],
+        "labelled_standards": {
+            "13C2-PFDA": {"reference": "13C2-PFOA", "role": "surrogate"},
+            "13C2-PFHxA": {"reference": "13C2-PFOA", "role": "surrogate"},
+            "13C2-PFOA": {"reference": "", "role": "injection_is"},
+            "13C3-HFPO-DA": {"reference": "13C2-PFOA", "role": "surrogate"},
+            "13C4-PFOS": {"reference": "", "role": "injection_is"},
+            "D3-NMeFOSAA": {"reference": "", "role": "injection_is"},
+            "D5-NEtFOSAA": {"reference": "D3-NMeFOSAA", "role": "surrogate"},
+        },
+        "matrix_codes": {"Drinking Water": "DW", "Groundwater": "GW", "Surface Water": "SW"},
+        "qc_name_codes": {"CCV": "CCC", "ICV": "QCS", "METHOD": "537"},
+        "report_format": {"*": {}},
+        "rule_states": {
+            "blank.LRB": "enforced",
+            "blank.MB": "enforced",
+            "cal_r2": "enforced",
+            "ccv_frequency": "enforced",
+            "ccv_recovery": "enforced",
+            "ion_ratio": "off",
+            "is_response": "enforced",
+            "is_vs_ccv": "enforced",
+            "mdl_check": "enforced",
+            "over_range": "enforced",
+            "qc_type.Dup": "enforced",
+            "qc_type.LFB": "enforced",
+            "qc_type.LFSM": "enforced",
+            "qc_type.LFSMD": "enforced",
+            "rrt_deviation": "enforced",
+            "single_transition_confirm": "enforced",
+            "sn_min": "off",
+            "surrogate_recovery": "enforced",
+        },
+        "rule_toggles": {
+            "cal_r2": True,
+            "ccv_frequency": True,
+            "ccv_recovery": True,
+            "ion_ratio": False,
+            "is_response": True,
+            "is_vs_ccv": True,
+            "mdl_check": True,
+            "over_range": True,
+            "rrt_deviation": True,
+            "single_transition_confirm": True,
+            "sn_min": False,
+            "surrogate_recovery": True,
+        },
+        "study_kinds": ["mdl", "pt", "pa", "mrl", "dl", "idc"],
+        "surrogate_failure_scope": "sample",
     },
-
     "EPA_1633A": {
         "method_id": "EPA_1633A",
         "display_name": "EPA 1633A Multi-Matrix",
-        "description": (
-            "EPA 1633A — 40 PFAS in aqueous, solid, biosolid, tissue "
+        "description": ("EPA 1633A — 40 PFAS in aqueous, solid, biosolid, tissue "
             "(Jan 2024 / 2024 update). EIS limits per-analyte and per-matrix "
-            "(Tables 6/8) — VERIFY against method before production use."
-        ),
+            "(Tables 6/8) — VERIFY against method before production use."),
         "instrument_verification": {
             "calibration": {
                 "r2_min": 0.990,
-                "force_origin": False,
                 "point_pct_dev_max": 30.0,
                 "low_point_pct_dev_max": 50.0,
+                "analyte_scale": {
+                    "11ClPF3OUdS": {"factor": 4.0, "max": 250.0},
+                    "3:3FTCA": {"factor": 5.0, "max": 312.0},
+                    "4:2FTS": {"factor": 4.0, "max": 50.0},
+                    "5:3FTCA": {"factor": 25.0, "max": 1560.0},
+                    "6:2FTS": {"factor": 4.0, "max": 50.0},
+                    "7:3FTCA": {"factor": 25.0, "max": 1560.0},
+                    "8:2FTS": {"factor": 4.0, "max": 50.0},
+                    "9ClPF3ONS": {"factor": 4.0, "max": 250.0},
+                    "DONA": {"factor": 4.0, "max": 250.0},
+                    "GenX": {"factor": 4.0, "max": 250.0},
+                    "NEtFOSE": {"factor": 10.0, "max": 625.0},
+                    "NFDHA": {"factor": 2.0, "max": 125.0},
+                    "NMeFOSE": {"factor": 10.0, "max": 625.0},
+                    "PFBA": {"factor": 4.0, "max": 250.0},
+                    "PFEESA": {"factor": 2.0, "max": 125.0},
+                    "PFMBA": {"factor": 2.0, "max": 125.0},
+                    "PFMPA": {"factor": 2.0, "max": 125.0},
+                    "PFPeA": {"factor": 2.0, "max": 125.0},
+                },
+                "level_unit": "ng/mL",
+                "levels": [
+                    {"conc": 0.2, "name": "CAL-1"},
+                    {"conc": 0.4, "name": "CAL-2"},
+                    {"conc": 0.8, "name": "CAL-3"},
+                    {"conc": 1.6, "name": "CAL-4"},
+                    {"conc": 3.2, "name": "CAL-5"},
+                    {"conc": 6.4, "name": "CAL-6"},
+                    {"conc": 12.8, "name": "CAL-7"},
+                    {"conc": 25.6, "name": "CAL-8"},
+                    {"conc": 51.2, "name": "CAL-9"},
+                ],
+                "levels_source": "EPA Method 1633A (December 2024) Table 4: each analyte from its CS1 to its highest listed standard, each point double the last (lab instruction 2026-10-02).",
+                "origin": "exclude",
+                "weighting": "1/x",
             },
             "ccv": {
                 "frequency": 10,
@@ -702,11 +991,12 @@ DEFAULT_PROFILES = {
                 "low_level_max": None,
             },
             "is_response": {
+                # EPA 1633A §14.9: NIS areas within 50-200 % of the ICAL mean area
                 "vs_ical_avg_min": 50.0,
-                "vs_ical_avg_max": 150.0,
+                "vs_ical_avg_max": 200.0,
                 "vs_last_ccv_min": None,
                 "vs_last_ccv_max": None,
-                "notes": "NIS screen; EIS uses per-analyte limits (see eis_overrides)",
+                "notes": _EPA1633A_NIS_WINDOW_NOTE,
             },
             "confirmation": {
                 "rrt_tol_pct": None,
@@ -716,6 +1006,7 @@ DEFAULT_PROFILES = {
                 "sn_confirm_min": 1.0,
                 "require_confirm_ion_check": True,
             },
+            "icv": {"criteria": "ccv"},
         },
         "qc_acceptance": {
             "MB": {
@@ -740,27 +1031,47 @@ DEFAULT_PROFILES = {
             "LFSM": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "default", "analyte_group": "all",
-                     "matrix_scope": "all", "verify_against_method": True,
-                     "recovery_min": 40.0, "recovery_max": 130.0, "rsd_max": None},
+                    {
+                        "name": "default",
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "recovery_min": 40.0,
+                        "recovery_max": 130.0,
+                        "rsd_max": None,
+                        "citation": "The lab's value: EPA 1633A sets no matrix-spike or duplicate criterion (§9.7, §9.9).",
+                    },
                 ],
             },
             "LFSMD": {
                 "enabled": True,
                 "tiers": [
-                    {"name": "default", "analyte_group": "all",
-                     "matrix_scope": "all",
-                     "recovery_min": 40.0, "recovery_max": 130.0, "rpd_max": 30.0},
+                    {
+                        "name": "default",
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "recovery_min": 40.0,
+                        "recovery_max": 130.0,
+                        "rpd_max": 30.0,
+                        "citation": "The lab's value: EPA 1633A sets no matrix-spike or duplicate criterion (§9.7, §9.9).",
+                    },
                 ],
             },
             "Dup": {
                 "enabled": True,
-                "tiers": [{"name": "default", "analyte_group": "all",
-                           "matrix_scope": "all", "rpd_max": 30.0}],
+                "tiers": [
+                    {
+                        "name": "default",
+                        "analyte_group": "all",
+                        "matrix_scope": "all",
+                        "rpd_max": 30.0,
+                        "citation": "The lab's value: EPA 1633A sets no matrix-spike or duplicate criterion (§9.7, §9.9).",
+                    },
+                ],
             },
         },
-        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
-        # EIS recovery limits — from EPA 1633A (December 2024, EPA 820-R-24-007)
+        # EIS recovery limits — from EPA 1633A (December 2024, EPA 820-R-24-007),
+        # keyed by the labelled compound's keyword (Table 6's 13C8-PFOSA is
+        # the library's 13C8-FOSA).
         # eis_overrides: per-analyte aqueous defaults (Table 6, non-leachate column).
         # eis_matrix_overrides: per-analyte limits by matrix class from Tables 6 and 8.
         # Matrix class key: "aqueous" (Table 6 col 1), "leachate" (Table 6 col 2),
@@ -784,7 +1095,7 @@ DEFAULT_PROFILES = {
             {"analyte": "13C2-4:2FTS",   "recovery_min": 40.0, "recovery_max": 200.0},
             {"analyte": "13C2-6:2FTS",   "recovery_min": 40.0, "recovery_max": 200.0},
             {"analyte": "13C2-8:2FTS",   "recovery_min": 40.0, "recovery_max": 300.0},
-            {"analyte": "13C8-PFOSA",    "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C8-FOSA"  ,    "recovery_min": 40.0, "recovery_max": 130.0},
             {"analyte": "D3-NMeFOSA",    "recovery_min": 10.0, "recovery_max": 130.0},
             {"analyte": "D5-NEtFOSA",    "recovery_min": 10.0, "recovery_max": 130.0},
             {"analyte": "D3-NMeFOSAA",   "recovery_min": 40.0, "recovery_max": 170.0},
@@ -818,7 +1129,7 @@ DEFAULT_PROFILES = {
                 "13C2-4:2FTS": {"recovery_min": 40.0, "recovery_max": 165.0},
                 "13C2-6:2FTS": {"recovery_min": 40.0, "recovery_max": 215.0},
                 "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 275.0},
-                "13C8-PFOSA":  {"recovery_min": 40.0, "recovery_max": 130.0},
+                "13C8-FOSA"  :  {"recovery_min": 40.0, "recovery_max": 130.0},
                 "D3-NMeFOSAA": {"recovery_min": 40.0, "recovery_max": 135.0},
                 "D5-NEtFOSAA": {"recovery_min": 40.0, "recovery_max": 150.0},
                 "D7-NMeFOSE":  {"recovery_min": 20.0, "recovery_max": 130.0},
@@ -841,7 +1152,7 @@ DEFAULT_PROFILES = {
                 "13C2-4:2FTS": {"recovery_min": 30.0, "recovery_max": 300.0},
                 "13C2-6:2FTS": {"recovery_min": 35.0, "recovery_max": 300.0},
                 "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 365.0},
-                "13C8-PFOSA":  {"recovery_min": 25.0, "recovery_max": 180.0},
+                "13C8-FOSA"  :  {"recovery_min": 25.0, "recovery_max": 180.0},
                 "D3-NMeFOSA":  {"recovery_min":  5.0, "recovery_max": 130.0},
                 "D5-NEtFOSA":  {"recovery_min":  5.0, "recovery_max": 130.0},
                 "D3-NMeFOSAA": {"recovery_min": 30.0, "recovery_max": 250.0},
@@ -860,7 +1171,7 @@ DEFAULT_PROFILES = {
                 "13C2-4:2FTS": {"recovery_min": 40.0, "recovery_max": 300.0},
                 "13C2-6:2FTS": {"recovery_min": 40.0, "recovery_max": 300.0},
                 "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 300.0},
-                "13C8-PFOSA":  {"recovery_min": 20.0, "recovery_max": 140.0},
+                "13C8-FOSA"  :  {"recovery_min": 20.0, "recovery_max": 140.0},
                 "D3-NMeFOSA":  {"recovery_min": 20.0, "recovery_max": 130.0},
                 "D5-NEtFOSA":  {"recovery_min": 20.0, "recovery_max": 130.0},
                 "D3-NMeFOSAA": {"recovery_min": 30.0, "recovery_max": 150.0},
@@ -870,18 +1181,9 @@ DEFAULT_PROFILES = {
             },
         },
         "matrix_factors": [],
-        "surrogate_map": _derive_surrogate_map(_EPA1633A_ANALYTE_KEYWORDS),
-        "surrogate_is": "",
-        "per_analyte": [],
-        "isomer_summation": [
-            {"linear": "lr-PFOA",      "branched": "br-PFOA",      "reported": "PFOA",      "enabled": True},
-            {"linear": "lr-PFNA",      "branched": "br-PFNA",      "reported": "PFNA",      "enabled": True},
-            {"linear": "lr-PFOS",      "branched": "br-PFOS",      "reported": "PFOS",      "enabled": True},
-            {"linear": "lr-PFHxS",     "branched": "br-PFHxS",     "reported": "PFHxS",     "enabled": True},
-            {"linear": "lr-NEtFOSAA",  "branched": "br-NEtFOSAA",  "reported": "NEtFOSAA",  "enabled": True},
-            {"linear": "lr-NMeFOSAA",  "branched": "br-NMeFOSAA",  "reported": "NMeFOSAA",  "enabled": True},
-        ],
-        # ── Relational data model (Round 9) ──────────────────────────────────
+        # Table 10: each analyte's EIS, and the EIS used for one without its own
+        "surrogate_map": [{"analyte": n, "surrogate_is": l}
+                          for n, l in _EPA1633A_EIS + _EPA1633A_SHARED_EIS],
         "supported_matrices": list(_EPA1633A_MATRICES),
         # EPA 1633A: 40 analytes per EPA 820-R-24-007 Table 1, December 2024
         "master_analyte_set": list(_EPA1633A_ANALYTE_KEYWORDS),
@@ -889,10 +1191,9 @@ DEFAULT_PROFILES = {
             _EPA1633A_ANALYTE_KEYWORDS, _EPA1633A_MATRICES
         ),
         "unit_map": dict(_EPA1633A_UNIT_MAP),
-        # Holding time (days, collection → extraction) deliberately UNSET —
-        # 1633A's limits differ by matrix (aqueous vs solid vs tissue) and this
-        # project has no documented value. §8: never fabricate a regulatory
-        # value. Unset refuses to judge. See holding_time.py.
+        # Holding time (days, collection → extraction) deliberately UNSET:
+        # 1633A's limits differ by matrix and none is invented. Unset refuses
+        # to judge. See holding_time.py.
         "holding_times": {m: None for m in _EPA1633A_MATRICES},
         "spike_levels": _per_matrix_spike_levels(_EPA1633A_MATRICES),
         "extraction_stages": [
@@ -905,6 +1206,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Homogenizer/Blender", "Analytical Balance", "SPE Manifold"],
                 "creates_solution": True,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "homogenization",
@@ -915,6 +1218,9 @@ DEFAULT_PROFILES = {
                 "equipment": ["Homogenizer/Blender", "Analytical Balance"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "amount",
+                "confirmations": [],
+                "consumables": [],
             },
             {
                 "id": "spike",
@@ -925,6 +1231,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Pipette", "Vortex Mixer"],
                 "creates_solution": False,
                 "capture_pedigree": True,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "extraction",
@@ -935,6 +1243,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["Centrifuge", "Orbital Shaker"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "spe_cleanup",
@@ -946,6 +1256,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["SPE Manifold", "Vacuum Pump"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "concentration",
@@ -956,6 +1268,8 @@ DEFAULT_PROFILES = {
                 "equipment": ["N₂ Evaporator", "Water Bath (40°C)"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "",
+                "consumables": [],
             },
             {
                 "id": "reconstitution",
@@ -963,253 +1277,156 @@ DEFAULT_PROFILES = {
                 "name": "Reconstitution & Final Check",
                 "description": "Reconstitute in mobile phase A; vortex; transfer to LC vial",
                 "reagent_roles": ["Mobile Phase A"],
-                "equipment": ["Vortex Mixer", "LC Vials", "PTFE Syringe Filter"],
+                "equipment": ["Vortex Mixer"],
                 "creates_solution": False,
                 "capture_pedigree": False,
+                "captures_samples": "final_volume",
+                "consumables": ["LC Vials", "PTFE Syringe Filter"],
             },
         ],
-        "required_logbooks": ["250", "252", "251", "253"],
+        "required_logbooks": ["252", "253"],
+        "blank_role_name": "MB",
+        "engine": {
+            "aliases": ["1633", "1633A", "EPA1633"],
+            "eis_default_window": "lfsm_tier",
+            "eis_recovery_limits": True,
+            "eis_verify_flag": True,
+            "inclusion_needs_verification": True,
+            "qc_type_aliases": {"IPR": "LFB", "OPR": "LFB"},
+            "required_keys": {
+                "calibration": ["r2_min", "point_pct_dev_max", "low_point_pct_dev_max"],
+                "confirmation": ["ion_ratio_tol_pct", "sn_quan_min", "sn_confirm_min"],
+                "is_response": ["vs_ical_avg_min", "vs_ical_avg_max"],
+            },
+            "rule_notes": {
+                "confirmation_rule": "Ion-ratio window wider in 1633A (50–150% of expected typical)",
+                "eis": "EIS limits per-analyte x matrix class (1633A Tables 6/8, EPA 820-R-24-007) — VERIFY against purchased method copy",
+                "is_rule": "NIS screen; EIS uses per-analyte limits",
+                "tier": "1633A per-analyte (verify against method)",
+            },
+            "surrogate_fallback": None,
+            "surrogate_guidance_only": False,
+        },
+        "isomers": {
+            "NEtFOSAA": {"branched": ["br-NEtFOSAA"], "linear": "lr-NEtFOSAA", "reported": ""},
+            "NMeFOSAA": {"branched": ["br-NMeFOSAA"], "linear": "lr-NMeFOSAA", "reported": ""},
+            "PFHxS": {"branched": ["br-PFHxS"], "linear": "lr-PFHxS", "reported": ""},
+            "PFNA": {"branched": ["br-PFNA"], "linear": "lr-PFNA", "reported": ""},
+            "PFOA": {"branched": ["br-PFOA"], "linear": "lr-PFOA", "reported": ""},
+            "PFOS": {"branched": ["br-PFOS"], "linear": "lr-PFOS", "reported": ""},
+        },
+        "key_analytes": ["PFOA", "PFNA", "PFHxS", "PFOS"],
+        "labelled_standards": {
+            "13C2-4:2FTS": {"reference": "18O2-PFHxS", "role": "surrogate"},
+            "13C2-6:2FTS": {"reference": "18O2-PFHxS", "role": "surrogate"},
+            "13C2-8:2FTS": {"reference": "18O2-PFHxS", "role": "surrogate"},
+            "13C2-PFDA": {"reference": "", "role": "injection_is"},
+            "13C2-PFDoA": {"reference": "13C2-PFDA", "role": "surrogate"},
+            "13C2-PFHxA": {"reference": "", "role": "injection_is"},
+            "13C2-PFTeDA": {"reference": "13C2-PFDA", "role": "surrogate"},
+            "13C3-HFPO-DA": {"reference": "13C2-PFHxA", "role": "surrogate"},
+            "13C3-PFBA": {"reference": "", "role": "injection_is"},
+            "13C3-PFBS": {"reference": "18O2-PFHxS", "role": "surrogate"},
+            "13C3-PFHxS": {"reference": "18O2-PFHxS", "role": "surrogate"},
+            "13C4-PFBA": {"reference": "13C3-PFBA", "role": "surrogate"},
+            "13C4-PFHpA": {"reference": "13C2-PFHxA", "role": "surrogate"},
+            "13C4-PFOA": {"reference": "", "role": "injection_is"},
+            "13C4-PFOS": {"reference": "", "role": "injection_is"},
+            "13C5-PFHxA": {"reference": "13C2-PFHxA", "role": "surrogate"},
+            "13C5-PFNA": {"reference": "", "role": "injection_is"},
+            "13C5-PFPeA": {"reference": "13C2-PFHxA", "role": "surrogate"},
+            "13C6-PFDA": {"reference": "13C2-PFDA", "role": "surrogate"},
+            "13C7-PFUnA": {"reference": "13C2-PFDA", "role": "surrogate"},
+            "13C8-FOSA": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "13C8-PFOA": {"reference": "13C4-PFOA", "role": "surrogate"},
+            "13C8-PFOS": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "13C9-PFNA": {"reference": "13C5-PFNA", "role": "surrogate"},
+            "18O2-PFHxS": {"reference": "", "role": "injection_is"},
+            "D3-NMeFOSA": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "D3-NMeFOSAA": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "D5-NEtFOSA": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "D5-NEtFOSAA": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "D7-NMeFOSE": {"reference": "13C4-PFOS", "role": "surrogate"},
+            "D9-NEtFOSE": {"reference": "13C4-PFOS", "role": "surrogate"},
+        },
+        "matrix_classes": {
+            "Aquatic Tissue": "tissue",
+            "Biosolid": "biosolid",
+            "Drinking Water": "aqueous",
+            "Groundwater": "aqueous",
+            "Landfill Leachate": "leachate",
+            "Sediment": "solid",
+            "Soil": "solid",
+            "Surface Water": "aqueous",
+            "Wastewater": "aqueous",
+        },
+        "matrix_codes": {
+            "Aquatic Tissue": "AT",
+            "Biosolid": "BS",
+            "Drinking Water": "DW",
+            "Groundwater": "GW",
+            "Landfill Leachate": "LL",
+            "Sediment": "SED",
+            "Soil": "SOIL",
+            "Surface Water": "SW",
+            "Wastewater": "WW",
+        },
+        "qc_name_codes": {"METHOD": "1633A"},
+        "report_format": {"*": {}},
+        "rule_states": {
+            "blank.LRB": "enforced",
+            "blank.MB": "enforced",
+            "cal_r2": "enforced",
+            "ccv_frequency": "enforced",
+            "ccv_recovery": "enforced",
+            "ion_ratio": "enforced",
+            "is_response": "enforced",
+            "is_vs_ccv": "off",
+            "mdl_check": "enforced",
+            "over_range": "enforced",
+            "qc_type.Dup": "enforced",
+            "qc_type.LFB": "enforced",
+            "qc_type.LFSM": "enforced",
+            "qc_type.LFSMD": "enforced",
+            "rrt_deviation": "enforced",
+            "single_transition_confirm": "enforced",
+            "sn_min": "enforced",
+            "surrogate_recovery": "enforced",
+        },
+        "rule_toggles": {
+            "cal_r2": True,
+            "ccv_frequency": True,
+            "ccv_recovery": True,
+            "ion_ratio": True,
+            "is_response": True,
+            "is_vs_ccv": False,
+            "mdl_check": True,
+            "over_range": True,
+            "rrt_deviation": True,
+            "single_transition_confirm": True,
+            "sn_min": True,
+            "surrogate_recovery": True,
+        },
+        "study_kinds": ["mdl", "pt"],
     },
 }
-
-# Labelled standards: the seeds are written in the
-# legacy shape above (surrogate_is / surrogate_is_chain) and converted by the
-# SAME migration live profiles go through, so a fresh install and an upgraded
-# one hold the identical grid -- and the export's back-fill from these seeds
-# can never re-add the retired keys.
-def _global_injection_keywords():
-    from senaite.pfas.analyte_reference import INTERNAL_STANDARDS
-    return [row[0] for row in INTERNAL_STANDARDS
-            if len(row) > 3 and row[3] == "injection_is"]
-
-
-def _convert_seeds():
-    from senaite.pfas import isomers, labelled_standards, method_engine
-    for _mid, _data in DEFAULT_PROFILES.items():
-        # how the method is judged (Engine), as the seeded method had it
-        method_engine.migrate(_data, _mid)
-        labelled_standards.migrate(_data, _global_injection_keywords())
-        isomers.migrate(_data)          # isomer_summation -> isomers
-        from senaite.pfas.qc.qc_types import fold_associated_qc_types
-        fold_associated_qc_types(_data)   # one source for "runs QC type X"
-        from senaite.pfas import report_format
-        report_format.migrate(_data, {})  # certificate format: built-in defaults
-        _seed_key_analytes(_data)         # key analytes: per method
-
-
-# (_convert_seeds() runs at the END of this module: the converters it calls
-# are defined further down, and a call here raised NameError at import --
-# which took the whole site down, 2026-10-01.)
-
-
-def _seed_key_analytes(profile, keys=None):
-    """Give a profile its own key-analyte list, from the key-analyte flag
-    (the compound library's, `keys`; the install seed's for the shipped
-    seeds) limited to its panel -- exactly the set the engine used
-    (idempotent)."""
-    if isinstance(profile.get("key_analytes"), list):
-        return False
-    if keys is None:
-        from senaite.pfas.analyte_reference import get_key_analyte_keywords
-        keys = get_key_analyte_keywords()
-    profile["key_analytes"] = [kw for kw in (profile.get("master_analyte_set") or []) if kw in keys]
-    return True
-
-
-def _rename_linear_peak_rows(profile):
-    """per_analyte rows are keyed by the analyte's DISPLAY name, which for
-    PFOS/PFHxS was the linear-peak name "lr-PFOS"/"lr-PFHxS" until
-    2026-10-01; re-key them to the reported name (idempotent)."""
-    from senaite.pfas.analyte_reference import LINEAR_PEAK_ALIASES
-    titles = dict((row[0], row[1]) for row in _NATIVE_ANALYTES)
-    changed = False
-    for row in profile.get("per_analyte") or []:
-        kw = LINEAR_PEAK_ALIASES.get((row or {}).get("analyte"))
-        if kw:
-            row["analyte"] = titles.get(kw, kw)
-            changed = True
-    return changed
-
-
-def migrate_profile_models(portal):
-    """Bring every stored profile to the current models (idempotent; run on
-    every start from setup_handler): the labelled-standards grid replacing
-    surrogate_is / surrogate_is_chain and the isomers model
-    replacing isomer_summation. Saved through save_profile, so
-    the change history records it and the pipeline export is rewritten."""
-    from senaite.pfas import isomers, labelled_standards
-    from senaite.pfas import qc_consolidation
-    saved_rules = _raw_qc_rules()
-    key_keywords = []        # the library's key-analyte flags, read when needed
-
-    def _library_keys():
-        if not key_keywords:
-            from senaite.pfas import compound_library, compound_library_store
-            key_keywords.append(compound_library.key_keywords(
-                compound_library_store.library(portal)))
-        return key_keywords[0]
-    changed = []
-    for method_id in list_method_ids(portal):
-        profile = raw_profile(portal, method_id)
-        if not profile:
-            continue
-        a = labelled_standards.migrate(profile, _global_injection_keywords())
-        b = isomers.migrate(profile)
-        c = _rename_linear_peak_rows(profile)
-        from senaite.pfas.qc.qc_types import fold_associated_qc_types
-        d = fold_associated_qc_types(profile)
-        # certificate format per method x matrix, seeded from the lab's global
-        # Print Settings so no certificate changes until someone edits it
-        from senaite.pfas import report_format
-        from senaite.pfas.print_settings import get_print_settings
-        e = report_format.migrate(profile, get_print_settings(portal))
-        f = (not isinstance(profile.get("key_analytes"), list)
-             and _seed_key_analytes(profile, _library_keys()))
-        from senaite.pfas import low_level_tiers
-        g = low_level_tiers.seed_537_1(profile)       # EPA 537.1 §9.3.3/9.3.6.3/9.3.7.4
-        # calibration levels: unit-aware once; existing
-        # levels kept as ppt, an empty FDA / EPA 1633A ladder seeded in ng/mL
-        from senaite.pfas import calibration_levels
-        h = calibration_levels.migrate(profile, method_id)
-        # QC consolidation P1: keys nothing reads any more; P2: this method's
-        # rule switches / ICV / CCV-warning values move in from qc_rules.json
-        i = qc_consolidation.drop_dead_keys(profile, method_id)
-        from senaite.pfas.qc.rules import method_toggles
-        j = qc_consolidation.move_from_rules(profile, method_id, saved_rules,
-                                             method_toggles({}, method_id))
-        k = qc_consolidation.drop_derived_per_analyte(profile)
-        # bench phase 2: consumables leave "equipment" for a by-lot list
-        from senaite.pfas.stage_consumables import split_consumables
-        l = split_consumables(profile)
-        # per-sample amount / final volume recorded at the stage that takes it
-        from senaite.pfas.sample_table import seed_sample_capture
-        m = seed_sample_capture(profile)
-        # FM-ENV-004 is the processing stage now; its grinder check moves there
-        from senaite.pfas.sample_table import seed_processing_checks
-        n = seed_processing_checks(profile)
-        # EPA 537.1 names its checks CCC and QCS, once
-        o = _seed_qc_name_codes(profile, method_id)
-        # EPA 537.1's own labelled standards (§7.2.1, §7.2.2, Table 3), once
-        from senaite.pfas import epa537_standards
-        p = epa537_standards.seed(profile, method_id)
-        p = epa537_standards.seed_qcs(profile, method_id) or p
-        p = epa537_standards.seed_extract_holding(profile, method_id) or p
-        p = epa537_standards.seed_bracket_rpd(profile, method_id) or p
-        # EPA 1633A: the ICV judged with the CV / CCV window (§14.3.3), once
-        from senaite.pfas import epa1633a_seeds
-        p = epa1633a_seeds.seed_icv_as_ccv(profile, method_id) or p
-        p = epa1633a_seeds.seed_lab_spike_values(profile, method_id) or p
-        # how each shipped method is judged, as settings (Engine), once
-        from senaite.pfas import method_engine
-        p = method_engine.migrate(profile, method_id) or p
-        if a or b or c or d or e or f or g or h or i or j or k or l or m or n or o or p:
-            save_profile(portal, method_id, profile)
-            changed.append(method_id)
-    if changed:
-        logger.info("profile models: migrated %s", ", ".join(changed))
-    # Once EVERY profile holds its rule switches, strip what moved out of
-    # qc_rules.json (it keeps only control-chart presentation).
-    if saved_rules and all("rule_toggles" in raw_profile(portal, m)
-                           for m in list_method_ids(portal)):
-        from senaite.pfas.qc.rules import get_store, strip_moved_sections
-        if strip_moved_sections(saved_rules):
-            get_store().save(saved_rules, updated_by=u"qc consolidation")
-            logger.info("qc_rules.json: criteria and rule switches moved to the method profiles")
-    return changed
-
-
-def _seed_qc_name_codes(profile, method_id):
-    """Once: EPA 537.1's own names for its check standards in injection
-    names -- CCC for the continuing check, QCS for the second-source check.
-    Other methods are left blank (CCV / ICV) until the lab
-    names them. Marked so a name the lab clears is not put back."""
-    if profile.get("qc_name_codes_v") == 1:
-        return False
-    if method_id == "EPA_537_1" and not profile.get("qc_name_codes"):
-        profile["qc_name_codes"] = {"CCV": u"CCC", "ICV": u"QCS"}
-    profile["qc_name_codes_v"] = 1
-    return True
-
-
-def _raw_qc_rules():
-    """qc_rules.json as stored (not merged with defaults), or {}."""
-    try:
-        from senaite.pfas.qc.rules import get_store
-        path = get_store().path
-        if os.path.exists(path):
-            with open(path) as fh:
-                return json.load(fh)
-    except Exception as exc:                              # noqa: BLE001
-        logger.warning("could not read qc_rules.json: %s", exc)
-    return {}
 
 
 # ── ZODB annotation store + Dexterity content path ────────────────────────────
 
-def get_profile_store(portal):
-    """Return the PersistentMapping {method_id: json_string} for this portal.
-
-    Preserved for backward compatibility: migrate_profile_structure.py imports
-    this directly.  In the Dexterity path the mapping may be empty or absent;
-    use get_profile() / save_profile() for all live read/write.
-    """
-    from zope.annotation.interfaces import IAnnotations
-    from persistent.mapping import PersistentMapping
-    annotations = IAnnotations(portal)
-    if PFAS_METHOD_PROFILES_KEY not in annotations:
-        annotations[PFAS_METHOD_PROFILES_KEY] = PersistentMapping()
-    return annotations[PFAS_METHOD_PROFILES_KEY]
-
-
-class StaleProfileStore(RuntimeError):
-    """The Dexterity profile folder is gone but the legacy annotation copy is not.
-
-    The annotation mapping predates the Dexterity store and is no longer kept in
-    step: on 2026-08-04 it held salt=0 while the live profiles held salt=2, so
-    falling back to it silently served a profile with no salt correction and
-    stale acceptance limits. That is the same failure as judging against an
-    unconfigured criterion — a plausible answer nobody chose — so it refuses for
-    the same reason.
-
-    A genuinely fresh install has NEITHER store and is unaffected: it falls
-    through to DEFAULT_PROFILES as before. This fires only when the folder has
-    disappeared from a site that had one, which means a restore or upgrade went
-    wrong and the right response is to say so, not to carry on.
-    """
-
-
-def _refuse_if_stale(portal):
-    """Raise when the live store is missing but a legacy copy could mask it."""
-    if _get_profiles_folder(portal) is not None:
-        return
-    from zope.annotation.interfaces import IAnnotations
-    legacy = IAnnotations(portal).get(PFAS_METHOD_PROFILES_KEY)
-    if legacy:
-        raise StaleProfileStore(
-            "pfas_method_profiles is missing but the legacy annotation store "
-            "still holds {0} profile(s). Reading it would serve stale "
-            "acceptance limits and drop salt corrections. Restore the "
-            "pfas_method_profiles folder, or clear the annotation store at {1} "
-            "if it is known to be obsolete.".format(
-                len(legacy), PFAS_METHOD_PROFILES_KEY))
-
-
 def _get_profiles_folder(portal):
-    """Return pfas_method_profiles Folder at portal root, or None (pre-migration)."""
+    """The pfas_method_profiles folder at the portal root, or None (a fresh
+    install before its install step)."""
     return portal.get("pfas_method_profiles")
 
 
 def _unknown_profile(method_id):
-    """What to return when *method_id* names no configured method.
+    """What to return when *method_id* names no configured method: an EMPTY
+    dict, so every `if profile:` check is false and no criterion is applied
+    by accident.
 
-    An EMPTY dict, deliberately. This used to return {"method_id": method_id},
-    which is TRUTHY — so every `if profile:` caller sailed on with no r2_min,
-    no CCV window, no recovery tiers and no acceptance criteria, and silently
-    applied none of them. An empty dict makes those checks correctly false.
-
-    The usual cause is a caller passing a core Method's Zope id ("method-1")
-    where profiles are keyed by its MethodID ("FDA_32PFAS"); the warning names
-    the id so that mistake is visible instead of merely producing empty QC.
+    The usual cause is a core Method's Zope id ("method-1") where profiles
+    are keyed by its MethodID ("FDA_32PFAS"); the warning names the id.
     """
     logger.warning(
         "No method profile for %r — QC criteria will be empty. Profiles are "
@@ -1219,9 +1436,9 @@ def _unknown_profile(method_id):
 
 
 class ProfileUnreadable(RuntimeError):
-    """A stored method profile that cannot be read. Serving the shipped seed
-    in its place judged runs against criteria nobody configured (review
-    2026-10-09); the lab restores it from Configuration History instead."""
+    """A stored method profile that cannot be read. The shipped seed is never
+    served in its place (criteria nobody configured); the lab restores it from
+    Configuration History."""
 
 
 def _load_saved(method_id, raw):
@@ -1246,22 +1463,15 @@ def get_profile(portal, method_id):
     section for existing profiles comes with a migration.
     """
     folder = _get_profiles_folder(portal)
-    if folder is not None:
-        if method_id in folder:
-            raw = getattr(folder[method_id], "profile_json", None)
-            if raw:
-                return _load_saved(method_id, raw)
-        return _unknown_profile(method_id)
-
-    # Annotation store (a site from before the profile folder; refuses if it
-    # would mask a vanished folder). A fresh install with neither store reads
-    # the seeds until the install step writes them.
-    _refuse_if_stale(portal)
-    raw = get_profile_store(portal).get(method_id)
-    if raw is None:
+    if folder is None:
+        # a fresh install reads the seeds until the install step writes them
         dflt = DEFAULT_PROFILES.get(method_id)
         return copy.deepcopy(dflt) if dflt is not None else _unknown_profile(method_id)
-    return _load_saved(method_id, raw)
+    if method_id in folder:
+        raw = getattr(folder[method_id], "profile_json", None)
+        if raw:
+            return _load_saved(method_id, raw)
+    return _unknown_profile(method_id)
 
 
 def raw_profile(portal, method_id):
@@ -1271,68 +1481,68 @@ def raw_profile(portal, method_id):
     try:
         if folder is not None and method_id in folder:
             return json.loads(folder[method_id].profile_json or "{}")
-        raw = get_profile_store(portal).get(method_id)
-        return json.loads(raw) if raw else {}
     except (ValueError, TypeError):
-        return {}
+        pass
+    return {}
 
 
 def service_index():
-    """{keyword: {role, quant_surrogate, name, uid, url}} for every core
+    """{keyword: {role, name, uid, url}} for every core
     AnalysisService that carries a pfas_role -- the one source for the
     analyte / surrogate / IS lists (the method editor's and the project
     specs' env)."""
+    from bika.lims import api
     out = {}
-    try:
-        from bika.lims import api
-        setup_cat = api.get_tool("senaite_catalog_setup")
-        for b in setup_cat(portal_type="AnalysisService"):
-            o = b.getObject()
-            rf = o.getField("pfas_role")
-            role = (rf.get(o) if rf is not None else "") or ""
-            if not role:
-                continue
-            qf = o.getField("pfas_quant_surrogate")
-            out[o.getKeyword()] = {
-                "role": role,
-                "quant_surrogate": (qf.get(o) if qf is not None else "") or "",
-                "name": o.Title() or o.getKeyword(),
-                "uid": o.UID(),
-                "url": o.absolute_url(),
-            }
-    except Exception as exc:
-        logger.warning("service_index: %s", exc)
+    setup_cat = api.get_tool("senaite_catalog_setup")
+    for b in setup_cat(portal_type="AnalysisService"):
+        o = b.getObject()
+        rf = o.getField("pfas_role")
+        role = (rf.get(o) if rf is not None else "") or ""
+        if not role:
+            continue
+        out[o.getKeyword()] = {
+            "role": role,
+            "name": o.Title() or o.getKeyword(),
+            "uid": o.UID(),
+            "url": o.absolute_url(),
+        }
     return out
 
 
-def save_profile(portal, method_id, data):
+def save_profile(portal, method_id, data, label=None):
     """
     Persist data (dict) for method_id.  Replaces the entire entry atomically.
-    Also exports /data/qc/method_profiles.json for the pipeline worker.
+    `label`: what the change history shows for this save (default the
+    method's name).
+    Also exports /data/qc/method_profiles.json for the pipeline worker, once
+    the save has committed.
 
     Create-on-demand: if method_id has no Dexterity object yet (e.g. wizard
     creating a new method), invokeFactory is called automatically.
     """
-    # Stamp the id explicitly. It used to arrive by accident: get_profile
-    # returned {"method_id": method_id} for an unknown id, so a wizard building
-    # a brand-new profile inherited it from that stub. The stub is gone (it was
-    # truthy, which silently disabled every QC criterion), so the identity has
-    # to be written on purpose.
+    # the id is stamped on purpose: nothing else supplies it for a new profile
     if isinstance(data, dict):
+        legacy = [k for k in RETIRED_KEYS if data.get(k)]
+        if legacy:
+            raise ValueError(
+                "The profile for %s holds %s, from before the Isomers and Isotope "
+                "standards tabs; nothing reads them. Enter the method's isomers and "
+                "isotope standards on those tabs instead." % (method_id, ", ".join(legacy)))
         data["method_id"] = method_id
-    # Change history (R1): one entry per profile per transaction, recording
-    # who changed which criterion from what to what.
-    try:
-        from senaite.pfas import config_history
-        config_history.track(portal, "method_profile", method_id,
-                             lambda: raw_profile(portal, method_id),
-                             label=(data or {}).get("display_name") or method_id)
-    except Exception as exc:                                        # noqa: BLE001
-        logger.warning("save_profile: history not tracked for %s: %s", method_id, exc)
-    # D4: connect matrices to the canonical core SampleType — persist a
-    # title->UID map so each profile's matrices reference the core object.
-    # Additive: supported_matrices stays a list of titles for backward compat;
-    # consumers may resolve via matrix_ref instead of raw string matching.
+        # the on/off switches follow the rule states, which are the truth;
+        # each QC type's enabled flag follows its row's state; the projects'
+        # patches take their tier lists before the method's Tier 1 list goes
+        from senaite.pfas import project_specs
+        project_specs.as_saved_with_projects(portal, method_id, data)
+    # Change history: one entry per profile per transaction, recording who
+    # changed which criterion from what to what. A strict store: when the
+    # entry cannot be prepared, track() refuses and the save does not happen.
+    from senaite.pfas import config_history
+    config_history.track(portal, "method_profile", method_id,
+                         lambda: raw_profile(portal, method_id),
+                         label=label or (data or {}).get("display_name") or method_id)
+    # matrix_uid_map: each matrix title -> its core SampleType UID;
+    # supported_matrices stays a list of titles.
     try:
         # exact titles (the catalog's Title index is a text index, where
         # "Water" matches three Sample Types). The UIDs are what a core rename
@@ -1346,30 +1556,28 @@ def save_profile(portal, method_id, data):
         logger.warning("save_profile: matrix_uid_map build failed for %s: %s",
                        method_id, exc)
 
-    folder = _get_profiles_folder(portal)
-    if folder is not None:
-        if method_id not in folder:
-            display_name = data.get("display_name") or method_id
-            try:
-                folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
-            except Exception as exc:
-                logger.error("save_profile: cannot create MethodProfile %s: %s",
-                             method_id, exc)
-                raise
-        obj = folder[method_id]
-        obj.title = data.get("display_name") or method_id
-        obj.profile_json = json.dumps(data)
-        try:
-            obj.reindexObject()
-        except Exception:
-            pass
-    else:
-        _refuse_if_stale(portal)
-        store = get_profile_store(portal)
-        store[method_id] = json.dumps(data)
+    # an EIS limit row typed under a published spelling is keyed by the
+    # compound at once (the worker looks a row up by keyword)
+    from senaite.pfas import compound_library, compound_library_store
+    conflicts = []
+    compound_library.rekey_eis_rows(data, compound_library_store.library(portal), conflicts)
+    for where, name, kw in conflicts:
+        logger.warning("%s: %s row %s names the compound of row %s; left as typed",
+                       method_id, where, name, kw)
 
-    # No SENAITE AnalysisSpec copy any more: the profile is the
-    # only home of the QC criteria.
+    folder = _get_profiles_folder(portal)
+    if folder is None:
+        raise RuntimeError("The method profiles folder (pfas_method_profiles) is "
+                           "missing: run the add-on's install step.")
+    if method_id not in folder:
+        folder.invokeFactory("MethodProfile", id=method_id,
+                             title=data.get("display_name") or method_id)
+    obj = folder[method_id]
+    obj.title = data.get("display_name") or method_id
+    obj.profile_json = json.dumps(data)
+    obj.reindexObject()
+
+    # the profile is the only home of the QC criteria: no AnalysisSpec copy
 
     # Keep the profile ⇄ core SENAITE Method bridge (method_associations) fresh
     try:
@@ -1398,32 +1606,19 @@ def save_profile(portal, method_id, data):
         logger.warning("Profile %s saved but its Analysis Profiles were not "
                        "written: %s", method_id, exc)
 
-    try:
-        export_profiles_to_file(portal)
-    except Exception as exc:
-        logger.warning(
-            "Profile %s saved but file export failed: %s", method_id, exc
-        )
-
-    # Project-linked batches carry a per-batch file resolved from this profile
-    # (lab-tier criteria, project specs patch): re-export so none goes stale.
-    try:
-        from senaite.pfas.resolved_criteria_store import refresh_linked_batches
-        refresh_linked_batches(portal, method_id=method_id)
-    except Exception as exc:
-        logger.warning(
-            "Profile %s saved but linked batches not refreshed: %s", method_id, exc
-        )
+    # The worker's files follow the commit. Project-linked batches carry a
+    # per-batch file resolved from this profile (lab-tier criteria, project
+    # specs patch): re-exported with it so none goes stale.
+    from senaite.pfas import after_commit
+    from senaite.pfas.resolved_criteria_store import refresh_linked_batches
+    after_commit.run_once("method profiles export", export_profiles_to_file, portal)
+    after_commit.run_once("linked batches %s" % method_id, refresh_linked_batches, portal, method_id)
 
 
 def list_method_ids(portal):
     """Return method IDs that have been explicitly saved (beyond defaults)."""
     folder = _get_profiles_folder(portal)
-    if folder is not None:
-        return list(folder.objectIds())
-    _refuse_if_stale(portal)
-    store = get_profile_store(portal)
-    return list(store.keys())
+    return list(folder.objectIds()) if folder is not None else []
 
 
 def export_profiles_to_file(portal, path=None, extra_service=None):
@@ -1444,17 +1639,15 @@ def export_profiles_to_file(portal, path=None, extra_service=None):
     _library = _cls.library(portal, extra=extra_service)
     _cls.write_export(_library, os.path.join(os.path.dirname(path), _cl.FILE_NAME))
 
+    # what the profiles folder holds is what exists (get_profile serves
+    # nothing else), so a deleted method is not exported again; a fresh
+    # install before the folder exports the seeds
     all_profiles = {}
     folder = _get_profiles_folder(portal)
     if folder is None:
-        # a site before the profile folder: the shipped seeds for any not
-        # stored. With the folder, what it holds is what exists (get_profile
-        # serves nothing else), so a deleted method is not exported again.
         for mid, dflt in DEFAULT_PROFILES.items():
             all_profiles[mid] = copy.deepcopy(dflt)
-
-    if folder is not None:
-        # Dexterity path
+    else:
         for method_id in folder.objectIds():
             obj = folder[method_id]
             raw = getattr(obj, "profile_json", None)
@@ -1470,22 +1663,6 @@ def export_profiles_to_file(portal, path=None, extra_service=None):
                 all_profiles[method_id] = profile
             except (ValueError, TypeError):
                 pass
-    else:
-        _refuse_if_stale(portal)
-        store = get_profile_store(portal)
-        for method_id, raw in store.items():
-            try:
-                profile = json.loads(raw)
-                dflt = DEFAULT_PROFILES.get(method_id, {})
-                # Back-fill new default keys absent from the stored profile
-                for key, default_val in dflt.items():
-                    if key not in profile and key not in _NOT_BACKFILLED:
-                        profile[key] = copy.deepcopy(default_val)
-                # Apply shape-migration so exported file always has new-format spike_levels
-                _migrate_spike_levels(profile, dflt)
-                all_profiles[method_id] = profile
-            except (ValueError, TypeError):
-                pass
 
     # keyword -> display-name map, from the compound library the services
     # hold (the same export the worker reads names from)
@@ -1496,12 +1673,8 @@ def export_profiles_to_file(portal, path=None, extra_service=None):
     # template revision's format, not the live Reporting tab. Before any
     # revision is issued nothing can be published, and the live format is
     # exported as it is (report_format_rev None says so).
-    try:
-        from senaite.pfas.report_templates import issued_snapshot
-        _snap, _rev = issued_snapshot(portal)
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("export: no issued reporting template: %s", exc)
-        _snap, _rev = None, None
+    from senaite.pfas.report_templates import issued_snapshot
+    _snap, _rev = issued_snapshot(portal)
     for method_id, profile in all_profiles.items():
         if _snap is not None:
             profile["report_format"] = copy.deepcopy(
@@ -1510,30 +1683,10 @@ def export_profiles_to_file(portal, path=None, extra_service=None):
 
     # Augment each exported profile with derived fields the pipeline expects.
     for method_id, profile in all_profiles.items():
-        # master_analyte_set: service-derived membership so the pipeline
-        # worker — the real report/EDD consumer — reads the set from the core
-        # AnalysisService.Methods links, not the hardcoded list. Byte-identical
-        # to the stored list post-backfill; get_master_analyte_set falls back to
-        # the stored list if derivation is unavailable, so the export never
-        # regresses to an empty panel.
-        try:
-            profile["master_analyte_set"] = get_master_analyte_set(
-                portal, method_id, profile=profile)
-        except Exception as exc:
-            logger.warning("export: master_analyte_set derivation failed for "
-                           "%s, keeping stored: %s", method_id, exc)
-
-        # display_analyte_set: the pipeline's reported analyte panel, in
-        # display names, DERIVED from the service-derived master_analyte_set via
-        # the analyte library's keyword->name map. This makes the reported set
-        # service-derived for every method (completing D59's "everything from
-        # services"). Byte-identical to the previous per_analyte-derived list for
-        # FDA; also populates EPA 537.1 / 1633A, which carry no per_analyte rows
-        # and previously exported an empty display set. per_analyte remains the
-        # source of per-analyte PARAMETERS (tiers/factors/confirm-ions) only.
-        # how the worker judges the method; exported even when empty (every
-        # feature off), so an export from before the Engine settings is
-        # recognisable to the worker and refused rather than misread
+        # master_analyte_set is exported as stored (refresh_analyte_sets keeps
+        # it current). engine: exported even when empty (every feature off);
+        # the worker refuses an export without it rather than misread it.
+        # display_analyte_set: master_analyte_set in display names.
         if not isinstance(profile.get("engine"), dict):
             profile["engine"] = {}
 
@@ -1561,71 +1714,83 @@ def export_profiles_to_file(portal, path=None, extra_service=None):
 
 
 def get_master_analyte_set(portal, method_id, profile=None):
-    """Return the method's native master analyte set, DERIVED from core services.
-
-    D59: the single source of truth for per-method analyte membership is the
-    native SENAITE Method↔Service relation. The set = every AnalysisService with
-    pfas_role == "analyte" whose getMethods() includes this profile's linked core
-    Method (resolved via method_bridge). Surrogates/IS are NOT natives and carry
-    their own pfas_role, so they are excluded by construction.
-
-    MEMBERSHIP is service-derived; ORDER is preserved from the stored profile's
-    master_analyte_set (deliberate method-document order — see D59), with any
-    extra method-linked native appended in NATIVE_ANALYTES (library) order.
-
-    Falls back to the stored profile list when no core Method is linked or no
-    method-linked analyte services are found (pre-backfill robustness), so the
-    system never returns an empty panel.
-    """
+    """The method's native analyte panel: the CACHE of the services' Method
+    links, in the method's own order (analyte_panel; refreshed by
+    refresh_analyte_sets on every service save and at start). Nothing is
+    derived or filled in here: a method no service carries has an empty
+    panel, and the page says so."""
     if profile is None:
         profile = get_profile(portal, method_id)
-    stored = list(profile.get("master_analyte_set", []))
+    return [kw for kw in profile.get("master_analyte_set") or [] if kw]
 
-    members = None
-    try:
-        from senaite.pfas.method_bridge import get_core_method
-        from bika.lims import api
-        method = get_core_method(portal, method_id)
-        if method is not None:
-            method_uid = method.UID()
-            found = set()
-            setup_cat = api.get_tool("senaite_catalog_setup")
-            for brain in setup_cat(portal_type="AnalysisService"):
-                svc = brain.getObject()
-                rf = svc.getField("pfas_role")
-                role = (rf.get(svc) if rf is not None else "") or ""
-                if role != "analyte":
-                    continue
-                if not hasattr(svc, "getMethods"):
-                    continue
-                try:
-                    svc_method_uids = [m.UID() for m in (svc.getMethods() or [])]
-                except Exception:
-                    svc_method_uids = []
-                if method_uid in svc_method_uids:
-                    found.add(svc.getKeyword())
-            if found:
-                members = found
-    except Exception as exc:
-        logger.warning("get_master_analyte_set(%s): derivation failed, "
-                       "falling back to stored list: %s", method_id, exc)
 
-    if not members:
-        return stored
-
-    # ORDER: stored sequence first (filtered to members), then any extra member
-    # appended in the analyte library's canonical order.
-    ordered = [kw for kw in stored if kw in members]
-    extra = members - set(ordered)
-    if extra:
+def linked_analytes(portal, method_id):
+    """(keyword, sort_key) of every analyte service (pfas_role "analyte")
+    whose core Methods include this profile's core Method; None when the
+    profile has no core Method."""
+    from senaite.pfas.method_bridge import get_core_method
+    from bika.lims import api
+    method = get_core_method(portal, method_id)
+    if method is None:
+        return None
+    method_uid = method.UID()
+    out = []
+    setup_cat = api.get_tool("senaite_catalog_setup")
+    for brain in setup_cat(portal_type="AnalysisService"):
+        svc = brain.getObject()
+        rf = svc.getField("pfas_role")
+        role = (rf.get(svc) if rf is not None else "") or ""
+        if role != "analyte" or not hasattr(svc, "getMethods"):
+            continue
+        svc_method_uids = [m.UID() for m in (svc.getMethods() or [])]
+        if method_uid not in svc_method_uids:
+            continue
+        sort_key = None
         try:
-            from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-            lib_order = [row[0] for row in NATIVE_ANALYTES]
-        except Exception:
-            lib_order = []
-        lib_index = dict((k, i) for i, k in enumerate(lib_order))
-        ordered.extend(sorted(extra, key=lambda k: lib_index.get(k, 10 ** 6)))
-    return ordered
+            sort_key = svc.getSortKey()
+            sort_key = float(sort_key) if sort_key not in (None, "") else None
+        except (TypeError, ValueError):
+            sort_key = None
+        out.append((svc.getKeyword(), sort_key))
+    return out
+
+
+ANALYTE_LINKS_V = 1          # the profile's stored list linked once, then the links own it
+
+
+def refresh_analyte_sets(portal, method_ids=None):
+    """Bring every profile's analyte panel to the services' Method links
+    (analyte_panel.refresh) and save what changed, recorded in configuration
+    history under "Analyte links: +a, -b". A profile seen for the first
+    time first links the services of its stored list to its core Method,
+    then the links own it. Returns {method_id: (dropped, added)} for the
+    profiles that changed."""
+    from senaite.pfas import analyte_panel
+    changed = {}
+    for mid in (method_ids or list_method_ids(portal)):
+        profile = raw_profile(portal, mid)
+        if not profile:
+            continue
+        first = profile.get("analyte_links_v") != ANALYTE_LINKS_V
+        if first:
+            # the version is stamped only on links that were written: a
+            # failed link raises rather than letting the empty links own the panel
+            from senaite.pfas.method_bridge import link_method_analytes
+            link_method_analytes(portal, [mid])
+        linked = linked_analytes(portal, mid)
+        if linked is None:
+            logger.warning("analyte links of %s not read: no core Method", mid)
+            continue
+        dropped, added = analyte_panel.refresh(profile, linked)
+        if first:
+            profile["analyte_links_v"] = ANALYTE_LINKS_V
+        if dropped or added or first:
+            label = analyte_panel.label(dropped, added) if (dropped or added) else None
+            save_profile(portal, mid, profile, label=label)
+            if dropped or added:
+                changed[mid] = (dropped, added)
+                logger.info("%s: %s", mid, label)
+    return changed
 
 
 def get_included_analytes(portal, method_id, matrix):
@@ -1638,75 +1803,41 @@ def get_included_analytes(portal, method_id, matrix):
     Downstream callers (surrogate map, recovery tiers, QC engine, report, EDD)
     must use this function rather than reading master_analyte_set directly so
     that the Method × Matrix panel is always respected.  The master set itself
-    is service-derived (via get_master_analyte_set).
+    is the cache of the services' Method links (get_master_analyte_set).
     """
     profile = get_profile(portal, method_id)
     master = get_master_analyte_set(portal, method_id, profile=profile)
     inclusion = profile.get("analyte_matrix_inclusion", {})
     if not inclusion:
         return list(master)
-    # D4: resolve matrix (a SampleType title OR UID) to the canonical title used
-    # as the inclusion key. Backward-compatible and byte-identical for existing
-    # title callers — a live title resolves to itself; an unknown string (e.g. a
-    # renamed/legacy title) falls through unchanged so nothing is orphaned.
-    try:
-        from senaite.pfas.matrix_ref import resolve
-        matrix_key = resolve(portal, matrix).get("title") or matrix
-    except Exception:
-        matrix_key = matrix
+    # matrix (a SampleType title OR UID) resolves to the title used as the
+    # inclusion key; a live title resolves to itself, an unknown string falls
+    # through unchanged so nothing is orphaned.
+    from senaite.pfas.matrix_ref import resolve
+    matrix_key = resolve(portal, matrix).get("title") or matrix
     return [kw for kw in master
             if inclusion.get(kw, {}).get(matrix_key, True)]
 
 
 def seed_default_profiles(portal):
-    """
-    Seed defaults into ZODB or Dexterity.  Idempotent — never overwrites customised profiles.
-    Called from setup_handler on install/re-install.
-
-    Ordering: on a fresh install, setup_handler runs before post_install creates
-    the Dexterity folder, so seeding writes to the annotation store.  post_install
-    then migrates those annotations into Dexterity objects.  On re-install with
-    the folder already present, this seeds any missing objects directly into the
-    folder.
-    """
+    """A shipped method with no profile gets its seed: never over a profile,
+    never restoring a deleted method. Then the worker's export. Before the
+    install step creates the profiles folder there is nothing to seed into;
+    get_profile reads the seeds as they are until then."""
     folder = _get_profiles_folder(portal)
-    from senaite.pfas.method_delete import deleted_ids
-    deleted = deleted_ids(portal)      # a deleted method is not seeded again
     if folder is not None:
-        # Dexterity path: seed any missing profile objects into the folder.
-        seeded = 0
+        from senaite.pfas.method_delete import deleted_ids
+        deleted = deleted_ids(portal)
         for method_id, data in DEFAULT_PROFILES.items():
-            if method_id not in folder and method_id not in deleted:
-                display_name = data.get("display_name") or method_id
-                try:
-                    folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
-                    obj = folder[method_id]
-                    obj.title = display_name
-                    seeded_data = dict(data)
-                    seeded_data["_seeded"] = True
-                    obj.profile_json = json.dumps(seeded_data)
-                    try:
-                        obj.reindexObject()
-                    except Exception:
-                        pass
-                    seeded += 1
-                except Exception as exc:
-                    logger.warning("Cannot seed MethodProfile %s: %s", method_id, exc)
-        if seeded:
-            logger.info("Seeded %d default method profiles into pfas_method_profiles/", seeded)
-    else:
-        # Annotation fallback (pre-migration / fresh install).
-        store = get_profile_store(portal)
-        seeded = 0
-        for method_id, data in DEFAULT_PROFILES.items():
-            if method_id not in store and method_id not in deleted:
-                seeded_data = dict(data)
-                seeded_data["_seeded"] = True  # cleared when a user saves their own values
-                store[method_id] = json.dumps(seeded_data)
-                seeded += 1
-        if seeded:
-            logger.info("Seeded %d default method profiles into ZODB", seeded)
-
+            if method_id in folder or method_id in deleted:
+                continue
+            display_name = data.get("display_name") or method_id
+            folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
+            obj = folder[method_id]
+            obj.title = display_name
+            obj.profile_json = json.dumps(dict(data, _seeded=True))
+            obj.reindexObject()
+            logger.info("Seeded method profile %s", method_id)
     try:
         export_profiles_to_file(portal)
     except Exception as exc:
@@ -1714,15 +1845,16 @@ def seed_default_profiles(portal):
 
 
 def _register_history():
-    from senaite.pfas import config_history
+    from senaite.pfas import config_history, qc_consolidation
+    # a history entry for a rule switch reverts as that rule's state (the save
+    # derives the switches from the states); a change to the one Tier 1 list is refused,
+    # each tier listing its own
     config_history.register_store(
         "method_profile", raw_profile,
         lambda portal, key, value: save_profile(portal, key, value),
-        title=u"Method profile")
+        title=u"Method profile",
+        map_changes=qc_consolidation.history_changes,
+        as_saved=qc_consolidation.as_saved)
 
 
 _register_history()
-
-
-# Convert the seeds now that every converter above is defined.
-_convert_seeds()

@@ -21,17 +21,19 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from zope.annotation.interfaces import IAnnotations
 from zope.event import notify
 from zope.lifecycleevent import ObjectModifiedEvent
 
-from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas import lab_time
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
+from senaite.pfas.uploads import CONTENT_TYPES, content_type_for
+from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action, signed_in_name
+from senaite.pfas.holding_time import date_to_iso as _date_to_str, parse_date as _str_to_date
 
 logger = logging.getLogger("senaite.pfas.browser.reagents")
 
@@ -41,13 +43,15 @@ STATUS_OPENED     = "opened"
 STATUS_EXHAUSTED  = "exhausted"
 STATUS_EXPIRED    = "expired"
 STATUS_QUARANTINE = "quarantine"
+STATUS_PENDING    = "pending"       # a new lot until verified (lot_status)
 
 ALL_STATUSES = [
-    (STATUS_ACTIVE,     "Active / In Stock"),
+    (STATUS_ACTIVE,     "Active"),
     (STATUS_OPENED,     "Opened"),
     (STATUS_EXHAUSTED,  "Exhausted"),
     (STATUS_EXPIRED,    "Expired"),
     (STATUS_QUARANTINE, "Quarantine"),
+    (STATUS_PENDING,    "Pending verification"),
 ]
 
 # ── Lab settings / archive ────────────────────────────────────────────────────
@@ -57,8 +61,8 @@ _ANN_ARCHIVED_KEY = u"senaite.pfas.reagent.archived"
 # Reagent categories (ISO 17025-friendly)
 # Vocabulary is OWNED by the Reagent content type — single source of truth
 # (was duplicated here). Imported so this view stays in lock-step.
-from senaite.pfas.content.reagent import REAGENT_CATEGORIES  # noqa: F401
 from senaite.pfas.document_templates import script_json
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 # Mobile phase name pattern for auto-expiry (7 days from open date)
 _MOBILE_PHASE_RE = re.compile(
@@ -92,6 +96,18 @@ def get_expiry_defaults(portal):
     return out
 
 
+def _defaults(defaults):
+    """`defaults`, else the lab's saved expiry defaults: one rule for every
+    page (the shipped seeds only where no site is at hand)."""
+    if defaults:
+        return defaults
+    try:
+        from bika.lims import api
+        return get_expiry_defaults(api.get_portal())
+    except Exception:                                       # noqa: BLE001
+        return EXPIRY_DEFAULTS
+
+
 def _auto_expiry_from_open(name, opened_date_str, defaults=None):
     """Calculate auto-expiry from open date.
 
@@ -100,13 +116,13 @@ def _auto_expiry_from_open(name, opened_date_str, defaults=None):
     expiry defaults, not hardcoded.
     Returns ISO date string or empty string if input is invalid.
     """
-    d = defaults or EXPIRY_DEFAULTS
     if not opened_date_str:
         return ""
     try:
         opened = datetime.strptime(opened_date_str, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return ""
+    d = _defaults(defaults)
     if _MOBILE_PHASE_RE.search(name or ""):
         exp = opened + timedelta(days=int(d.get("mobile_phase_open_days", 7)))
     else:
@@ -125,38 +141,13 @@ def _effective_expiry(rec, defaults=None):
         return exp
     received = rec.get("received_date") or ""
     if received:
-        d = defaults or EXPIRY_DEFAULTS
+        d = _defaults(defaults)
         try:
             rd = datetime.strptime(received, "%Y-%m-%d").date()
             return (rd + timedelta(days=int(d.get("reagent_default_days", 365)))
                     ).strftime("%Y-%m-%d")
         except (ValueError, TypeError):
             pass
-    return ""
-
-
-def get_reagent_effective_expiry(portal, lot, name=None):
-    """Public: effective expiry (incl. global-default fallback) of the reagent
-    lot with the given lot number — used by prepared-standards inheritance."""
-    try:
-        folder = _get_reagents_folder(portal)
-    except Exception:
-        return ""
-    defaults = get_expiry_defaults(portal)
-    for obj in folder.objectValues():
-        try:
-            if (obj.lot_number or "") != lot:
-                continue
-            if name and name.strip() and (obj.title or "").strip() != name.strip():
-                continue
-            rec = {
-                "expiry_date": _date_to_str(obj.expiry_date),
-                "manufacturer_expiry": _date_to_str(obj.manufacturer_expiry),
-                "received_date": _date_to_str(obj.received_date),
-            }
-            return _effective_expiry(rec, defaults)
-        except Exception:
-            continue
     return ""
 
 
@@ -177,7 +168,7 @@ def _is_expired(rec, as_of=None):
     exp = _effective_expiry(rec)
     if not exp:
         return False
-    ref = as_of or date.today()
+    ref = as_of or lab_time.today()
     try:
         return datetime.strptime(exp, "%Y-%m-%d").date() < ref
     except (ValueError, TypeError):
@@ -271,7 +262,6 @@ def _is_test_reagent_by_time(obj, prod_since):
     if prod_since is None:
         return True
     try:
-        from DateTime import DateTime  # noqa: F401 — import just to confirm it exists
         created = obj.created()
         cd = datetime(
             created.year(), created.month(), created.day(),
@@ -282,24 +272,8 @@ def _is_test_reagent_by_time(obj, prod_since):
         return False
 
 
-def _date_to_str(d):
-    """Format a datetime.date (or None) as an ISO string."""
-    if not d:
-        return u""
-    try:
-        return d.strftime("%Y-%m-%d")
-    except AttributeError:
-        return unicode(d)[:10] if d else u""
 
 
-def _str_to_date(s):
-    """Parse an ISO date string to datetime.date, or return None."""
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s[:10], "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        return None
 
 
 def _obj_to_dict(obj):
@@ -316,6 +290,7 @@ def _obj_to_dict(obj):
         "expiry_date":        _date_to_str(obj.expiry_date),
         "opened_date":        _date_to_str(obj.opened_date),
         "storage_location":   obj.storage_location or u"",
+        "storage_conditions": getattr(obj, "storage_conditions", None) or u"",
         "barcode":            obj.barcode or u"",
         "quantity":           obj.quantity or u"",
         "unit":               obj.unit or u"",
@@ -356,6 +331,7 @@ def _populate_obj(obj, data):
     obj.cat_number = data.get("cat_number") or u""
     obj.lot_number = data.get("lot_number") or u""
     obj.storage_location = data.get("storage_location") or u""
+    obj.storage_conditions = data.get("storage_conditions") or u""
     obj.barcode = data.get("barcode") or u""
     obj.quantity = data.get("quantity") or u""
     obj.unit = data.get("unit") or u""
@@ -373,7 +349,7 @@ def _populate_obj(obj, data):
             setattr(obj, field_name, raw)
 
     # Auto-compute expiry from opened_date when not supplied
-    defaults = data.get("_expiry_defaults") or EXPIRY_DEFAULTS
+    defaults = _defaults(data.get("_expiry_defaults"))
     if not obj.expiry_date and not obj.manufacturer_expiry and obj.opened_date:
         computed = _auto_expiry_from_open(obj.title, _date_to_str(obj.opened_date),
                                           defaults)
@@ -408,6 +384,9 @@ def _save_reagent(portal, data):
         name = data.get("name") or u"Reagent"
         folder.invokeFactory("Reagent", id=uid, title=name)
         obj = folder[uid]
+        # a new lot is verified before use (lot_status)
+        from senaite.pfas.lot_status import initial_status
+        data["status"] = initial_status(True)
 
     data["_expiry_defaults"] = get_expiry_defaults(portal)
     _populate_obj(obj, data)
@@ -485,7 +464,7 @@ def _save_coa(portal, uid, file_data, filename, content_type, uploaded_by):
                 "filename":     filename,
                 "content_type": content_type,
                 "uploaded_by":  uploaded_by,
-                "uploaded_date":date.today().strftime("%Y-%m-%d"),
+                "uploaded_date":lab_time.today().isoformat(),
                 "path":         dest,
             })
             try:
@@ -498,24 +477,10 @@ def _save_coa(portal, uid, file_data, filename, content_type, uploaded_by):
         return False
 
 
-def _get_scan_log(portal, uid):
-    """Return list of scan log entry dicts for a reagent uid (newest last)."""
-    try:
-        folder = _get_reagents_folder(portal)
-        obj = folder.get(uid)
-        if obj is None:
-            return []
-        ann = IAnnotations(obj)
-        raw = ann.get(_SCAN_LOG_KEY)
-        if raw:
-            return json.loads(raw)
-    except Exception:
-        pass
-    return []
 
-
-def _append_scan_log(portal, uid, entry, max_entries=500):
-    """Append a scan log entry dict and increment scan_count on the Reagent object."""
+def _append_scan_log(portal, uid, entry):
+    """Append a scan log entry dict and increment scan_count on the Reagent
+    object. Every scan is kept: the lot's use record is never trimmed."""
     try:
         folder = _get_reagents_folder(portal)
         obj = folder.get(uid)
@@ -525,8 +490,6 @@ def _append_scan_log(portal, uid, entry, max_entries=500):
         raw = ann.get(_SCAN_LOG_KEY)
         log = json.loads(raw) if raw else []
         log.append(entry)
-        if len(log) > max_entries:
-            log = log[-max_entries:]
         ann[_SCAN_LOG_KEY] = json.dumps(log)
         obj.scan_count = (obj.scan_count or 0) + 1
         try:
@@ -591,22 +554,45 @@ def _restore_reagent(portal, uid):
     return True
 
 
+def _used_reagent_uids(portal):
+    """Reagent lots a record names: the inventory ledger (an extraction, a
+    prep entry) and every prepared standard's parent reagents."""
+    used = set()
+    from senaite.pfas import inventory_ledger
+    for kind, uid in inventory_ledger.uses_for_items():
+        if kind == u"reagent":
+            used.add(uid)
+    from senaite.pfas.browser.prepared_standards import _list as _list_standards
+    for ps in _list_standards(portal):
+        for p in ps.get("parent_reagents") or []:
+            if p.get("uid"):
+                used.add(p["uid"])
+    return used
+
+
 def _purge_test_reagents(portal):
-    """Hard-delete all reagents created before production_since. Returns count."""
+    """Hard-delete the reagents created before production began, except a lot
+    a record names: (deleted, kept). Nothing is deleted outside production or
+    without its start date (every lot would count as before it)."""
     try:
         folder = _get_reagents_folder(portal)
     except RuntimeError:
-        return 0
+        return 0, 0
     prod_since = _get_production_since(portal)
-    to_delete = []
+    if prod_since is None or not _is_production_mode(portal):
+        return 0, 0
+    used = _used_reagent_uids(portal)
+    to_delete, kept = [], 0
     for obj in folder.objectValues():
-        if obj.portal_type != "Reagent":
+        if obj.portal_type != "Reagent" or not _is_test_reagent_by_time(obj, prod_since):
             continue
-        if _is_test_reagent_by_time(obj, prod_since):
+        if obj.UID() in used:
+            kept += 1
+        else:
             to_delete.append(obj.getId())
     if to_delete:
         folder.manage_delObjects(to_delete)
-    return len(to_delete)
+    return len(to_delete), kept
 
 
 def _list_reagents(portal, q="", status_filter="", category_filter="", show_archived=False):
@@ -629,7 +615,8 @@ def _list_reagents(portal, q="", status_filter="", category_filter="", show_arch
         if d.get("is_archived") and not show_archived:
             continue
 
-        if status_filter and d.get("status") != status_filter:
+        from senaite.pfas.lot_status import matches_filter
+        if not matches_filter(d.get("status"), status_filter):
             continue
         if category_filter and d.get("category") != category_filter:
             continue
@@ -661,6 +648,7 @@ def _status_badge_class(status):
         STATUS_EXHAUSTED:  "badge-exhausted",
         STATUS_EXPIRED:    "badge-expired",
         STATUS_QUARANTINE: "badge-quarantine",
+        STATUS_PENDING:    "badge-pending",
     }.get(status, "badge-active")
 
 
@@ -672,7 +660,7 @@ def _expiry_class(rec):
         exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return ""
-    today = date.today()
+    today = lab_time.today()
     if exp_date < today:
         return "exp-expired"
     if (exp_date - today).days <= 30:
@@ -686,14 +674,28 @@ def _expiry_class(rec):
 # here -- add, edit, open, status, CoA upload, scan, and delete (which ARCHIVES
 # in production and is reversible via restore) -- is bench work and stays open,
 # performable by a person or a future service account.
-# `purge_test` hard-deletes every reagent created before production began.
+# `purge_test` hard-deletes the reagents created before production began that
+# no record names; it refuses outside production.
+def _q(text):
+    """Text for a redirect's query string."""
+    try:
+        from urllib import quote_plus            # Python 2
+    except ImportError:                         # Python 3
+        from urllib.parse import quote_plus
+    return quote_plus((u"%s" % text).encode("utf-8"))
+
+
 REAGENT_GATES = {
     "save_expiry_defaults": TIER_CONFIG,
     "purge_test": TIER_CONFIG,
+    # removing or restoring a lot record, and replacing its certificate file
+    "delete": TIER_CONFIG,
+    "restore": TIER_CONFIG,
+    "upload_coa": TIER_CONFIG,
 }
 
 
-class PFASReagentsView(GateMixin, BrowserView):
+class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
     """PFAS Reagent Inventory — add, scan, OCR, track, expire."""
 
     template = ViewPageTemplateFile("templates/reagents.pt")
@@ -718,12 +720,8 @@ class PFASReagentsView(GateMixin, BrowserView):
                 self.context, self.request, action, REAGENT_GATES)
             if denied is not None:
                 return denied
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
             if action in ("add", "edit"):
                 return self._handle_upsert()
             if action == "open":
@@ -742,24 +740,118 @@ class PFASReagentsView(GateMixin, BrowserView):
                 return self._handle_coa_upload()
             if action == "log_scan":
                 return self._handle_log_scan()
+            if action == "save_certificate":
+                return self._handle_save_certificate()
+            if action == "receipt":
+                return self._handle_receipt()
         if action == "coa":
             return self._serve_coa()
         return self.template()
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
+    # ── reference samples: receipt and CoA ────────────────────────────
 
-    def _redirect(self, url):
-        self.request.response.redirect(url)
-        return ""
+    def view_mode(self):
+        """Lots | Reference samples."""
+        return u"reference" if self.request.form.get("view") == "reference" else u"lots"
+
+    def analyte_keywords(self):
+        """Every method's analyte keywords (master_analyte_set): what a
+        certificate's analytes are named by."""
+        if not hasattr(self, "_keywords"):
+            out = set()
+            try:
+                from senaite.pfas.method_profile_store import list_method_ids, raw_profile
+                for mid in list_method_ids(self._portal()):
+                    out.update((raw_profile(self._portal(), mid) or {}).get("master_analyte_set") or [])
+            except Exception:                               # noqa: BLE001
+                logger.warning("analyte keywords", exc_info=True)
+            self._keywords = sorted(out)
+        return self._keywords
+
+    def library_cas(self):
+        """{analyte keyword: CAS} from the compound library, shown read-only
+        beside a certificate's analytes (a placeholder shows as none)."""
+        try:
+            from senaite.pfas import compound_library, compound_library_store
+            return dict((kw, c) for kw, c in compound_library.cas_by_keyword(
+                compound_library_store.library(self._portal()), dashed=True).items()
+                if c and "PLACEHOLDER" not in c.upper())
+        except Exception:                                   # noqa: BLE001
+            logger.warning("library CAS", exc_info=True)
+            return {}
+
+    def reference_category(self):
+        from senaite.pfas.content.reagent import CATEGORY_REFERENCE
+        return CATEGORY_REFERENCE
+
+    def _reference_lots(self):
+        """Usable reference-sample lots: the inventory's reference category."""
+        if not hasattr(self, "_ref_lots"):
+            from senaite.pfas import study_runs as sru
+            from senaite.pfas.browser.bench_inventory import usable_lots
+            from senaite.pfas.content.reagent import CATEGORY_PURCHASED_WATER, CATEGORY_REFERENCE
+            self._ref_lots = sru.lot_choices(usable_lots(self._portal(), lab_time.today().isoformat()),
+                                             sru.REFERENCE_LOT, CATEGORY_REFERENCE, CATEGORY_PURCHASED_WATER)
+        return self._ref_lots
+
+    def _reagent_obj(self, uid):
+        folder = self._portal().get("pfas_reagents")
+        obj = folder.get(uid) if folder is not None and uid else None
+        return obj if getattr(obj, "portal_type", "") == "Reagent" else None
+
+    def reference_samples(self):
+        """Every usable reference-sample lot with its receipt and CoA."""
+        from senaite.pfas import study_runs as sru
+        out = []
+        for l in self._reference_lots():
+            obj = self._reagent_obj(l["uid"])
+            out.append(dict(l, receipt=sru.load_receipt(obj) if obj is not None else None,
+                            coa=_get_coa_meta(self._portal(), l["uid"]) or None))
+        return out
+
+    def _handle_receipt(self):
+        """Record a reference sample's receipt; its CoA goes where every
+        lot's CoA goes (the reagent's own). Checked first, written after: a
+        refused receipt changes nothing."""
+        from senaite.pfas import study_runs as sru
+        from six.moves.urllib.parse import quote_plus
+        f = self.request.form
+        back = u"%s?view=reference" % self._self_url()
+
+        def refused(msg):
+            return self._redirect(u"%s&error=%s" % (back, quote_plus(msg.encode("utf-8"))))
+        uid = (f.get("uid") or u"").strip()
+        if uid not in [l["uid"] for l in self._reference_lots()]:
+            return refused(u"Only a usable reference-sample lot takes a receipt here.")
+        obj = self._reagent_obj(uid)
+        who = signed_in_name(self.context)
+        receipt, error = sru.new_receipt(f, sru.load_receipt(obj), who,
+                                         datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))
+        if error:
+            return refused(error)
+        received = _str_to_date((f.get("received_at") or u"").strip()[:10])
+        if received is None:
+            return refused(u"Give the date it was received as a date.")
+        upload, data = f.get("coa_file"), None
+        if upload is not None and getattr(upload, "filename", u""):
+            data = upload.read()
+            if not data.startswith(b"%PDF"):
+                return refused(u"The CoA must be a PDF.")
+        if data is not None and not _save_coa(self._portal(), uid, data, upload.filename,
+                                              "application/pdf", who):
+            return refused(u"The CoA was not saved.")
+        sru.save_receipt(obj, receipt)
+        # the lot's own Received Date, through the inventory's save (its
+        # derived expiry and its modified event, the audit log's snapshot)
+        lot = _get_reagent(self._portal(), uid)
+        lot["received_date"] = received.isoformat()
+        _save_reagent(self._portal(), lot)
+        return self._redirect(u"%s&ok=Receipt+recorded" % back)
 
     def _self_url(self):
         return "{0}/@@pfas-reagents".format(self.context.absolute_url())
-
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
 
     def ok_msg(self):
         return self.request.form.get("ok", "").replace("+", " ")
@@ -771,7 +863,12 @@ class PFASReagentsView(GateMixin, BrowserView):
         return self.request.form.get("q", "")
 
     def status_filter(self):
-        return self.request.form.get("status", "")
+        """The Status filter: Active until someone chooses ("all" = every
+        status)."""
+        s = self.request.form.get("status")
+        if s is None:
+            return STATUS_ACTIVE
+        return u"" if s == "all" else s
 
     def edit_uid(self):
         return self.request.form.get("edit_uid", "")
@@ -832,19 +929,126 @@ class PFASReagentsView(GateMixin, BrowserView):
     def effective_expiry(self, rec):
         return _effective_expiry(rec)
 
+    # ── Certificate values ────────────────────────────────
+
+    def _certificate_obj(self, uid):
+        try:
+            return _get_reagents_folder(self._portal()).get(uid)
+        except RuntimeError:
+            return None
+
+    def certificate(self):
+        """The certificate dialog's data for ?certificate=<uid>, or None."""
+        from senaite.pfas import certificate_values as cv
+        from senaite.pfas import prep_entries as pe
+        from senaite.pfas.browser.prepared_standards import _get as _get_ps
+        uid = (self.request.form.get("certificate") or u"").strip()
+        obj = self._certificate_obj(uid) if uid else None
+        if obj is None:
+            return None
+        rec = _obj_to_dict(obj) or {}
+        from senaite.pfas.annotation_store import read_json
+        cert = read_json(obj, cv.KEY, {})
+        made = [(_get_ps(self._portal(), u) or {}).get("lot_number") or u for u in
+                cv.made_from(uid, pe.load(self._portal()))]
+        rows = cv.rows(cert) + [{"analyte": u"", "stated_as": u"acid"}]   # one empty row to add to
+        return {"uid": uid, "name": rec.get("name") or u"", "lot": rec.get("lot_number") or u"",
+                "cert": cert, "rows": rows, "made_from": made, "on_file": bool(cert.get("analytes")),
+                "corrections": list(reversed(cert.get("corrections") or []))}
+
+    def _handle_save_certificate(self):
+        """Save a lot's certificate values; a change to a value on file needs a
+        reason, is kept, and flags the lots made from the lot and the runs that
+        used them for review -- nothing is recalculated."""
+        from senaite.pfas import certificate_values as cv
+        from senaite.pfas import inventory_ledger as led
+        from senaite.pfas import prep_entries as pe
+        from senaite.pfas.browser.staff import may_enter
+        from senaite.pfas.entry_rights import REFUSAL
+        f = self.request.form
+        uid = (f.get("uid") or u"").strip()
+        back = u"%s?certificate=%s" % (self._self_url(), uid)
+        if not may_enter():
+            return self._redirect(u"%s&error=%s" % (back, _q(REFUSAL)))
+        obj = self._certificate_obj(uid)
+        if obj is None:
+            return self._redirect(u"%s?error=No+such+lot" % self._self_url())
+        ann = IAnnotations(obj)
+        try:
+            before = json.loads(ann.get(cv.KEY) or "{}")
+        except (TypeError, ValueError):
+            before = {}
+        after, errors = cv.from_form(f, known=self.analyte_keywords() or None)
+        if errors:
+            return self._redirect(u"%s&error=%s" % (back, _q(u" ".join(errors))))
+        who = signed_in_name(self.context)
+        at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M")
+        out, err = cv.correct(before, after, f.get("reason") or u"", who, at)
+        if err:
+            return self._redirect(u"%s&error=%s" % (back, _q(err)))
+        try:
+            from senaite.pfas import config_history
+            config_history.track(self._portal(), "reagent_certificate", uid,
+                                 lambda: json.loads(ann.get(cv.KEY) or "{}"), label=u"Certificate values")
+        except Exception:                                   # noqa: BLE001
+            pass
+        ann[cv.KEY] = json.dumps(out, sort_keys=True)
+        added = len(out.get("corrections") or []) - len(before.get("corrections") or [])
+        if added:
+            from senaite.pfas.browser.prepared_standards import _get_folder as _ps_folder
+            from bika.lims import api
+            rec = _obj_to_dict(obj) or {}
+            entry = cv.flag_entry(u"Certificate values of %s corrected: %s" % (
+                rec.get("lot_number") or uid, (f.get("reason") or u"").strip()), who, at)
+            lots = cv.made_from(uid, pe.load(self._portal()))
+            folder = _ps_folder(self._portal())
+            runs = set()
+            for lot_uid in lots:
+                lot = folder.get(lot_uid)
+                if lot is not None:
+                    cv.add_flag(lot, entry)
+            for kind, u in [(u"reagent", uid)] + [(u"prepared", l) for l in lots]:
+                for use in led.uses_of(None, kind, u):
+                    if not (use.get("batch_uid") or u"").startswith(u"prep:"):
+                        runs.add(use.get("batch_uid"))
+            for ws_uid in sorted(runs):
+                ws = api.get_object_by_uid(ws_uid, None)
+                if ws is not None:
+                    cv.add_flag(ws, entry)
+        return self._redirect(u"%s?ok=Certificate+values+saved" % self._self_url())
+
+
     def label_url(self, rec):
         """Print label: this lot's values on @@pfas-label."""
         from senaite.pfas.browser.label_print import label_href
         vol = u" ".join(x for x in (rec.get("quantity") or u"", rec.get("unit") or u"") if x)
         return label_href(self.portal_url(), back=self._self_url(), name=rec.get("name"),
                           lot=rec.get("lot_number"), exp=self.effective_expiry(rec), vol=vol,
-                          storage=rec.get("storage_location"))
+                          storage=rec.get("storage_conditions") or rec.get("storage_location"))
 
     def expiry_class(self, rec):
         return _expiry_class(rec)
 
+    def prepared_in_house(self):
+        """In-house solvents, buffers and mobile phases: Prepared Standard
+        lots of type Solvent / Reagent (made through FM-ENV-001)."""
+        from senaite.pfas.browser.prepared_standards import _list
+        return _list(self._portal(), status_filter=STATUS_ACTIVE, type_filter=u"Solvent / Reagent")
+
+    def lot_status_label(self, status):
+        return dict(ALL_STATUSES).get(status, (status or u"").capitalize())
+
     def status_badge_class(self, rec):
         return _status_badge_class(rec.get("status", STATUS_ACTIVE))
+
+    def attention(self, rec):
+        """Why an active lot needs attention (lot_attention), else []."""
+        if rec.get("status", STATUS_ACTIVE) != STATUS_ACTIVE or rec.get("is_archived"):
+            return []
+        from senaite.pfas import lot_attention
+        return lot_attention.reasons(expiry=_effective_expiry(rec), quantity=rec.get("quantity"),
+                                     low_stock=rec.get("low_stock_level"),
+                                     coa=bool(self.coa_meta(rec.get("uid", ""))))
 
     def status_label(self, rec):
         status = rec.get("status", STATUS_ACTIVE)
@@ -860,7 +1064,7 @@ class PFASReagentsView(GateMixin, BrowserView):
         return len(_list_reagents(self._portal(), status_filter=STATUS_ACTIVE))
 
     def expiring_soon_count(self):
-        today = date.today()
+        today = lab_time.today()
         cnt = 0
         for rec in _list_reagents(self._portal()):
             exp = _effective_expiry(rec)
@@ -889,6 +1093,7 @@ class PFASReagentsView(GateMixin, BrowserView):
             "manufacturer_expiry": f.get("manufacturer_expiry", "").strip(),
             "expiry_date":         f.get("expiry_date", "").strip(),
             "storage_location":    f.get("storage_location", "").strip(),
+            "storage_conditions":  f.get("storage_conditions", "").strip(),
             "quantity":            f.get("quantity", "").strip(),
             "unit":                f.get("unit", "").strip(),
             "low_stock_level":     f.get("low_stock_level", "").strip(),
@@ -900,11 +1105,12 @@ class PFASReagentsView(GateMixin, BrowserView):
             return self._redirect(url)
         # supplier and storage are core's lists (core_lists.py)
         from senaite.pfas.browser.core_lists import problems
+        from senaite.pfas.browser.core_lists import lot_problems
         from six.moves.urllib.parse import quote_plus
-        bad = problems(data)
+        bad = lot_problems(data) + problems(data)
         if bad:
             return self._redirect("{0}?error={1}".format(self._self_url(), quote_plus(bad[0].encode("utf-8"))))
-        uid = _save_reagent(self._portal(), data)
+        _save_reagent(self._portal(), data)
         url = "{0}?ok=Reagent+saved+%28lot+{1}%29".format(
             self._self_url(), data["lot_number"].replace(" ", "+"))
         return self._redirect(url)
@@ -936,7 +1142,7 @@ class PFASReagentsView(GateMixin, BrowserView):
         rec = _get_reagent(self._portal(), uid)
         if not rec:
             return self._redirect("{0}?error=Reagent+not+found".format(self._self_url()))
-        rec["opened_date"] = opened_date or date.today().strftime("%Y-%m-%d")
+        rec["opened_date"] = opened_date or lab_time.today().isoformat()
         rec["status"] = STATUS_OPENED
         if not rec.get("expiry_date") and not rec.get("manufacturer_expiry"):
             rec["expiry_date"] = _auto_expiry_from_open(
@@ -952,6 +1158,15 @@ class PFASReagentsView(GateMixin, BrowserView):
         rec = _get_reagent(self._portal(), uid)
         if not rec:
             return self._redirect("{0}?error=Reagent+not+found".format(self._self_url()))
+        if new_status not in [k for k, _l in ALL_STATUSES]:
+            return self._redirect("{0}?error=Unknown+status".format(self._self_url()))
+        from senaite.pfas.lot_status import status_change_problem
+        from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
+        why = status_change_problem(rec.get("status") or STATUS_ACTIVE, new_status,
+                                    has_role_at_portal(self.context, MANAGER_ROLES))
+        if why:
+            from six.moves.urllib.parse import quote_plus
+            return self._redirect("{0}?error={1}".format(self._self_url(), quote_plus(why.encode("utf-8"))))
         rec["status"] = new_status
         _save_reagent(self._portal(), rec)
         return self._redirect("{0}?ok=Status+updated".format(self._self_url()))
@@ -981,8 +1196,11 @@ class PFASReagentsView(GateMixin, BrowserView):
 
     def _handle_purge_test_reagents(self):
         self.request.response.setHeader("Content-Type", "application/json")
-        count = _purge_test_reagents(self._portal())
-        return json.dumps({"ok": True, "purged": count})
+        portal = self._portal()
+        if not _is_production_mode(portal) or _get_production_since(portal) is None:
+            return json.dumps({"ok": False, "error": u"Test lots are removed only once production has begun."})
+        count, kept = _purge_test_reagents(portal)
+        return json.dumps({"ok": True, "purged": count, "kept": kept})
 
     def _handle_reagent_suggestions_json(self):
         """Deduplicated name+supplier+cat combos for autofill (non-test, non-archived)."""
@@ -1030,12 +1248,14 @@ class PFASReagentsView(GateMixin, BrowserView):
             return self._redirect("{0}?error=Missing+file+or+uid".format(self._self_url()))
         try:
             file_data = upload.read()
-            filename = getattr(upload, "filename", "coa.pdf")
-            content_type = getattr(upload, "headers", {}).get(
-                "content-type", "application/pdf")
+            filename = os.path.basename(getattr(upload, "filename", "") or "coa.pdf")
         except Exception as exc:
             return self._redirect("{0}?error=Upload+failed%3A+{1}".format(
                 self._self_url(), str(exc).replace(" ", "+")))
+        content_type = content_type_for(filename)
+        if content_type is None:
+            return self._redirect("{0}?error=A+certificate+is+a+PDF+or+an+image+(PDF,+PNG,+JPG)".format(
+                self._self_url()))
 
         from AccessControl import getSecurityManager
         try:
@@ -1056,26 +1276,19 @@ class PFASReagentsView(GateMixin, BrowserView):
         if not path or not os.path.exists(path):
             self.request.response.setStatus(404)
             return "CoA not found"
-        ct = meta.get("content_type", "application/pdf")
-        fn = meta.get("filename", "coa.pdf")
+        fn = os.path.basename(meta.get("filename") or "coa.pdf")
+        # the type the stored file's name says, never the one the browser sent
+        ct = content_type_for(path) or content_type_for(fn) or "application/octet-stream"
         self.request.response.setHeader("Content-Type", ct)
+        self.request.response.setHeader("X-Content-Type-Options", "nosniff")
         self.request.response.setHeader(
             "Content-Disposition",
-            'inline; filename="{}"'.format(fn)
+            '{0}; filename="{1}"'.format("inline" if ct in CONTENT_TYPES.values() else "attachment",
+                                         fn.replace('"', ""))
         )
         with open(path, "rb") as fh:
             return fh.read()
 
-    def scan_log_count(self, uid):
-        """Return the current scan_count integer for a reagent uid."""
-        try:
-            folder = _get_reagents_folder(self._portal())
-            obj = folder.get(uid)
-            if obj is None:
-                return 0
-            return obj.scan_count or 0
-        except Exception:
-            return 0
 
     def _handle_barcode_lookup(self):
         """Exact-match lookup of a scanned value against barcode, lot_number, cat_number."""

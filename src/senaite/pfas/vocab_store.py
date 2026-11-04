@@ -148,4 +148,6 @@ def get(portal):
 
 def save(portal, data):
     from zope.annotation.interfaces import IAnnotations
+    from senaite.pfas import config_history
+    config_history.track(portal, "vocabularies", "all", lambda: get(portal), label=u"Lists")
     IAnnotations(portal)[KEY] = json.dumps(data)

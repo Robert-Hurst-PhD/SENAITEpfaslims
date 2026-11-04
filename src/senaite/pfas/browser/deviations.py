@@ -2,14 +2,17 @@
 from __future__ import print_function
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime
 
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
-from zope.annotation.interfaces import IAnnotations
+from senaite.pfas import lab_time
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import ALLOWED_ROLES, has_role_at_portal
+from senaite.pfas.browser.perms import (ALLOWED_ROLES, TIER_CONFIG, deny_gated_action,
+                                        disable_csrf, has_role_at_portal, user_fullname,
+                                        user_roles_at)
 from senaite.pfas.qc_deviation import (
     get_registry as _get_registry,
     save_registry as _save_registry,
@@ -21,6 +24,10 @@ logger = logging.getLogger("senaite.pfas.deviations")
 # the shipped event types; the lab's list is vocab_store "deviation_event_types"
 from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
 EVENT_TYPES = list(_VOCAB["deviation_event_types"][1])
+
+# The lab roles that may edit an open deviation (closing is the manager's).
+EDIT_ROLES = frozenset(("LabManager", "Manager", "LabAnalyst", "Analyst",
+                        "Verifier", "LabClerk"))
 
 
 def _event_label(key):
@@ -73,8 +80,33 @@ def _risk_label(score):
 # string plus an identical accessor pair; senaite.pfas.qc_deviation owns both.
 
 
+def _created_range(date_from, date_to):
+    """The `created` bounds of a worksheet search from From and To: the start
+    of From to the start of the day after To, both the laboratory's days while
+    the zone converts (a day of 23 or 25 hours is whole); the process clock's
+    days otherwise. With no To the search runs on. None when there is no From
+    or a day cannot be read: then nothing is filtered by date."""
+    from datetime import timedelta
+    from DateTime import DateTime
+    if not date_from:
+        return None
+    try:
+        if lab_time.active():
+            def start(day, days=0):
+                d = datetime.strptime(day, "%Y-%m-%d") + timedelta(days=days)
+                return lab_time.typed(u"{0} 00:00".format(d.date().isoformat()))
+            q_from = start(date_from)
+            q_to = start(date_to, 1) if date_to else DateTime("2099/12/31")
+            return [q_from, q_to] if q_from is not None and q_to is not None else None
+        q_from = DateTime(date_from)
+        q_to = (DateTime(date_to) + 1) if date_to else DateTime("2099/12/31")
+        return [q_from, q_to]
+    except Exception:
+        return None
+
+
 def _next_dev_id(registry, dev_type):
-    year = date.today().year
+    year = lab_time.today().year
     prefix = "CAR" if dev_type == "car" else "DEV"
     existing = [
         e["dev_id"] for e in registry
@@ -86,7 +118,24 @@ def _next_dev_id(registry, dev_type):
 
 # ── View class ────────────────────────────────────────────────────────────────
 
-class PFASDeviationView(BrowserView):
+# Filing a deviation and acknowledging training are everyone's; judging
+# its scale, the corrective actions, notifications and closure are the
+# manager's (the handlers check can_manage again).
+DEVIATION_GATES = {
+    "update_scale_rootcause": TIER_CONFIG,
+    "add_corrective_action": TIER_CONFIG,
+    "complete_ca": TIER_CONFIG,
+    "mark_notification_sent": TIER_CONFIG,
+    "close_deviation": TIER_CONFIG,
+}
+
+
+# the scale and root-cause fields an edit may change (each change is kept)
+_SCALE_FIELDS = ("affected_worksheets", "affected_date_from", "affected_date_to", "scale_description",
+                 "root_cause", "likelihood", "severity")
+
+
+class PFASDeviationView(ViewHelpers, BrowserView):
 
     def __call__(self):
         flatten_form(self.request)
@@ -96,16 +145,11 @@ class PFASDeviationView(BrowserView):
         if action == "lookup_worksheets":
             return self._handle_lookup_worksheets()
         if self.request.method == "POST":
-            # PFAS forms don't carry a CSRF _authenticator token; every other
-            # PFAS POST view disables plone.protect the same way. Without this a
-            # browser-session POST (cookie auth) is blocked/rolled back while
-            # basic-auth works — so filing a deviation/CAR failed only in the UI.
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            denied = deny_gated_action(
+                self.context, self.request, action, DEVIATION_GATES)
+            if denied is not None:
+                return denied
+            disable_csrf(self.request)
             if action == "file_deviation":
                 return self._handle_file()
             if action == "update_scale_rootcause":
@@ -124,9 +168,6 @@ class PFASDeviationView(BrowserView):
 
     # ── Data helpers ──────────────────────────────────────────────────────────
 
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
     def _portal_url(self):
         return getToolByName(self.context, "portal_url")()
 
@@ -136,25 +177,7 @@ class PFASDeviationView(BrowserView):
     def _current_user_id(self):
         return self._current_user().getId() or ""
 
-    def _current_user_fullname(self):
-        user = self._current_user()
-        portal = self._portal()
-        mt = getToolByName(portal, "portal_membership", None)
-        if mt:
-            member = mt.getMemberById(user.getId())
-            if member:
-                full = member.getProperty("fullname", "")
-                if full:
-                    return full
-        return user.getUserName() or user.getId() or "Unknown"
 
-    def _user_roles(self):
-        portal = self._portal()
-        user = self._current_user()
-        try:
-            return list(user.getRolesInContext(portal))
-        except Exception:
-            return list(user.getRoles())
 
     def can_manage(self):
         # The same portal-anchored tier as every other configuration gate
@@ -162,11 +185,9 @@ class PFASDeviationView(BrowserView):
         return has_role_at_portal(self.context, ALLOWED_ROLES)
 
     def can_edit(self):
-        """Any lab role may edit open/in-progress records; only managers may close."""
-        roles = self._user_roles()
-        _LAB_ROLES = {"LabManager", "Manager", "LabAnalyst", "Analyst",
-                      "Verifier", "LabClerk", "RegulatoryInspector"}
-        return bool(_LAB_ROLES & set(roles))
+        """Any lab role may edit open/in-progress records; only managers may
+        close. The Regulatory Inspector reads them and changes nothing."""
+        return bool(EDIT_ROLES & set(user_roles_at(self._portal(), self._current_user())))
 
     def portal_url(self):
         return self._portal_url()
@@ -175,7 +196,7 @@ class PFASDeviationView(BrowserView):
         return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _today(self):
-        return date.today().isoformat()
+        return lab_time.today().isoformat()
 
     # ── Template data methods ─────────────────────────────────────────────────
 
@@ -227,28 +248,14 @@ class PFASDeviationView(BrowserView):
         from senaite.pfas import vocab_store as vs
         return vs.choices(vs.get(api.get_portal()), "deviation_event_types")
 
-    def likelihood_range(self):
-        return list(range(1, 6))
-
-    def severity_range(self):
-        return list(range(1, 6))
 
     def likelihood_label(self, n):
         return LIKELIHOOD_LABELS.get(n, str(n))
 
-    def severity_label(self, n):
-        return SEVERITY_LABELS.get(n, str(n))
 
     def risk_colour_for(self, l, s):
         return _risk_colour(l * s)
 
-    def risk_colour_css(self, colour):
-        return {
-            "green":  "#28a745",
-            "yellow": "#ffc107",
-            "orange": "#fd7e14",
-            "red":    "#dc3545",
-        }.get(colour, "#6c757d")
 
     def recent_worksheets(self):
         """Recent open/to_be_verified worksheets for affected_worksheets picker."""
@@ -295,7 +302,6 @@ class PFASDeviationView(BrowserView):
 
     def _handle_lookup_worksheets(self):
         """Return JSON list of worksheets matching a method and optional date range."""
-        from DateTime import DateTime
         method_id = (self.request.form.get("method_id") or "").strip()
         date_from  = (self.request.form.get("date_from") or "").strip()
         date_to    = (self.request.form.get("date_to")   or "").strip()
@@ -308,13 +314,9 @@ class PFASDeviationView(BrowserView):
         try:
             cat = getToolByName(self.context, "senaite_catalog_worksheet")
             query = {"portal_type": "Worksheet"}
-            if date_from:
-                try:
-                    q_from = DateTime(date_from)
-                    q_to   = (DateTime(date_to) + 1) if date_to else DateTime("2099/12/31")
-                    query["created"] = {"query": [q_from, q_to], "range": "minmax"}
-                except Exception:
-                    pass
+            rng = _created_range(date_from, date_to)
+            if rng:
+                query["created"] = {"query": rng, "range": "minmax"}
             brains = cat(**query)
         except Exception as exc:
             return json.dumps({"error": str(exc), "results": []})
@@ -342,7 +344,7 @@ class PFASDeviationView(BrowserView):
                 if ws_method_id == method_id:
                     created_str = ""
                     try:
-                        created_str = str(ws.created())[:10]
+                        created_str = self.lab_at(ws.created(), str(ws.created())[:10], u"%Y/%m/%d")
                     except Exception:
                         pass
                     results.append({
@@ -359,8 +361,6 @@ class PFASDeviationView(BrowserView):
     def current_user_id(self):
         return self._current_user_id()
 
-    def current_user_fullname(self):
-        return self._current_user_fullname()
 
     def active_tab(self):
         return self.request.form.get("tab", "overview")
@@ -479,6 +479,7 @@ class PFASDeviationView(BrowserView):
         registry = _get_registry(portal)
         for dev in registry:
             if dev["dev_id"] == dev_id:
+                before = dict((k, dev.get(k)) for k in _SCALE_FIELDS)
                 dev["affected_worksheets"] = [
                     w.strip() for w in form.get("affected_worksheets", "").split(",")
                     if w.strip()
@@ -499,6 +500,12 @@ class PFASDeviationView(BrowserView):
                     pass
                 if dev.get("status") == "open":
                     dev["status"] = "in_progress"
+                # an edit keeps what it replaced: who, when, each field from -> to
+                changes = [{"field": k, "before": before[k], "after": dev.get(k)}
+                           for k in _SCALE_FIELDS if before[k] != dev.get(k)]
+                if changes:
+                    from senaite.pfas.config_history import actor, now
+                    dev.setdefault("history", []).append({"at": now(), "by": actor(), "changes": changes})
                 break
         _save_registry(portal, registry)
         return self._redirect(
@@ -610,7 +617,7 @@ class PFASDeviationView(BrowserView):
                 acks = ca.get("acknowledgments", {})
                 acks[uid] = {
                     "acked_at":  self._now_iso(),
-                    "full_name": self._current_user_fullname(),
+                    "full_name": user_fullname(self._portal(), self._current_user()),
                 }
                 ca["acknowledgments"] = acks
                 # auto-complete when all required users have acknowledged
@@ -748,7 +755,7 @@ class PFASDeviationView(BrowserView):
 
         # ISO 8601, like every other date this system prints. "September 27,
         # 2026" is month-name- and locale-dependent on a controlled record.
-        today_str = date.today().strftime("%Y-%m-%d")
+        today_str = lab_time.today().isoformat()
 
         from senaite.pfas import print_doc
         dev_type = u"Corrective Action Report (CAR)" if dev.get("type") == "car" else u"Deviation"
@@ -757,7 +764,8 @@ class PFASDeviationView(BrowserView):
             print_doc.print_settings(self.context), subject_line,
             [(u"Reference", dev_id), (u"Type", dev_type), (u"Date", today_str),
              (u"Event date", dev.get("event_date", u"")), (u"Printed by", printed_by)],
-            subtitle=u"Laboratory notification", logo=True)
+            subtitle=u"Laboratory notification", logo=True,
+            portal_url=self._portal_url())
         css = print_doc.document_css(dev_id, None, printed_by, fonts=False)
         purl = self._portal_url()
         esc = print_doc.esc

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">People &amp; Roles</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">People &amp; Roles</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-terminals">Lab terminals</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Laboratory Director</a>
+  </tal:r>
+
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; token context/@@authenticator/token; rows view/visible_rows;
+                          action string:${view/portal_url}/@@pfas-people">
+    <div class="alert alert-success" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+
+    <p class="bench-sub">Each person&#8217;s sign-in, Lab Contact, roles and badge. <tal:h define="hid string:people-roles"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h> <tal:h define="hid string:sign-rights"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+
+    <ul class="bench-alerts" tal:define="todo view/checklist" tal:condition="todo">
+      <li class="bench-warn" tal:repeat="t todo" tal:content="t">No director</li>
+    </ul>
+
+    <div class="pfas-filterbar">
+      <form method="get" tal:attributes="action action">
+        <label class="pfas-switch">
+          <input type="checkbox" name="inactive" value="1" onchange="this.form.submit()"
+                 tal:attributes="checked python:'checked' if view.show_inactive() else None" />
+          <span class="pfas-switch-track"></span>
+          <span class="pfas-switch-word">Show inactive</span>
+        </label>
+      </form>
+      <button type="button" class="btn-sm btn-primary" data-modal-open="people-add">Add person</button>
+    </div>
+
+    <p class="bench-sub" tal:condition="not:rows">Nobody to show.</p>
+    <div class="table-wrap" tal:condition="rows">
+    <table class="pfas-table" data-col-resize="people-1">
+      <thead><tr><th>Name</th><th>User name</th><th>Initials</th><th>Roles</th>
+                 <th>Signature</th><th>Can enter data</th><th>Status</th>
+                 <th class="row-actions-cell"><span class="pfas-sr-hide">Edit</span></th>
+                 <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
+      <tbody>
+        <tr tal:repeat="r rows" tal:attributes="id python:r['userid'] or r['contact_uid'] or None">
+          <td><strong tal:content="r/fullname">Ana Demo</strong>
+            <div class="cf-hint dt-problem" tal:condition="r/issues" tal:content="python: u', '.join(r['issues'])">no signature</div></td>
+          <td tal:content="python:r['username'] or u'—'">an1</td>
+          <td tal:content="python:r['initials'] or u'—'">AD</td>
+          <td tal:content="python:u', '.join(r['roles']) or u'—'">Analyst</td>
+          <td tal:content="python:u'✓' if r['has_signature'] else u'✗'">&#10003;</td>
+          <td tal:content="python:u'✓' if r['can_enter'] else u'✗'">&#10003;</td>
+          <td><span tal:content="r/status"
+                    tal:attributes="class python:'badge badge-active' if r['status'] == 'Active' else 'badge badge-archived'">Active</span></td>
+          <td class="row-actions-cell">
+            <button type="button" class="btn-sm btn-secondary"
+                    tal:attributes="data-modal-open string:person-${repeat/r/number}">Edit</button>
+          </td>
+          <td class="row-plus-cell">
+            <details class="row-more">
+              <summary class="row-plus" aria-label="Actions for this person" title="Actions">+</summary>
+              <div class="row-more-menu">
+                <form method="post" tal:condition="python: r['status'] != 'Inactive'" tal:attributes="action action">
+                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                  <input type="hidden" name="action" value="deactivate" />
+                  <input type="hidden" name="userid" tal:attributes="value r/userid" />
+                  <input type="hidden" name="contact_uid" tal:attributes="value r/contact_uid" />
+                  <label class="mp-issue-label">Reason
+                    <input type="text" name="reason" class="pfas-input" required="required" /></label>
+                  <button class="btn-sm btn-danger" type="submit">Deactivate</button>
+                </form>
+                <form method="post" tal:condition="python: r['status'] == 'Inactive'" tal:attributes="action action">
+                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                  <input type="hidden" name="action" value="reactivate" />
+                  <input type="hidden" name="userid" tal:attributes="value r/userid" />
+                  <input type="hidden" name="contact_uid" tal:attributes="value r/contact_uid" />
+                  <label class="mp-issue-label">Reason
+                    <input type="text" name="reason" class="pfas-input" required="required" /></label>
+                  <button class="btn-sm btn-secondary" type="submit">Reactivate</button>
+                </form>
+              </div>
+            </details>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <!-- one dialog per person: sign-in, Lab Contact, roles; each part posts on its own -->
+    <div class="pfas-modal" tal:repeat="r rows" tal:attributes="id string:person-${repeat/r/number}">
+      <div class="pfas-modal-box is-wide" tal:define="info r/info">
+        <h2 tal:content="r/fullname">Ana Demo</h2>
+
+        <h3 class="pfas-card-head">Sign-in</h3>
+        <p class="bench-sub" tal:condition="not:r/userid">No sign-in account is linked to this Lab Contact.</p>
+        <tal:s condition="r/userid">
+          <form method="post" tal:attributes="action action">
+            <input type="hidden" name="_authenticator" tal:attributes="value token" />
+            <input type="hidden" name="action" value="set_email" />
+            <input type="hidden" name="userid" tal:attributes="value r/userid" />
+            <div class="pfas-form-row">
+              <div class="pfas-form-field"><label>User name</label>
+                <input type="text" class="pfas-input" readonly="readonly" tal:attributes="value r/username" /></div>
+              <div class="pfas-form-field is-wide"><label>E-mail</label>
+                <input type="text" name="email" class="pfas-input" tal:attributes="value r/email" /></div>
+            </div>
+            <div class="form-actions is-end">
+              <button class="btn-sm btn-primary" type="submit">Save e-mail</button>
+            </div>
+          </form>
+          <form method="post" tal:attributes="action action">
+            <input type="hidden" name="_authenticator" tal:attributes="value token" />
+            <input type="hidden" name="action" value="send_reset" />
+            <input type="hidden" name="userid" tal:attributes="value r/userid" />
+            <div class="form-actions is-end">
+              <button class="btn-sm btn-secondary" type="submit">Send reset e-mail</button>
+            </div>
+          </form>
+        </tal:s>
+
+        <h3 class="pfas-card-head">Lab Contact</h3>
+        <form method="post" tal:condition="python: r['userid'] and not info['has_contact']" tal:attributes="action action">
+          <input type="hidden" name="_authenticator" tal:attributes="value token" />
+          <input type="hidden" name="action" value="link" />
+          <input type="hidden" name="userid" tal:attributes="value r/userid" />
+          <div class="form-actions is-end">
+            <button class="btn-sm btn-secondary" type="submit">Create &amp; link Lab Contact</button>
+          </div>
+        </form>
+        <tal:c condition="python: r['userid'] and info['has_contact']">
+          <form method="post" tal:attributes="action action">
+            <input type="hidden" name="_authenticator" tal:attributes="value token" />
+            <input type="hidden" name="action" value="save_staff" />
+            <input type="hidden" name="userid" tal:attributes="value r/userid" />
+            <input type="hidden" name="signs_as" tal:attributes="id string:signs-${repeat/r/number}; value python:view.signs_as_key(info)" />
+            <div class="pfas-form-row">
+              <div class="pfas-form-field is-wide"><label>Name</label>
+                <input type="text" name="fullname" class="pfas-input" tal:attributes="value r/fullname" /></div>
+              <div class="pfas-form-field"><label>Initials</label>
+                <input type="text" name="initials" class="pfas-input is-upper" tal:attributes="value r/initials" /></div>
+            </div>
+            <div class="pfas-form-row">
+              <div class="pfas-form-field"><label>Title</label>
+                <input type="text" name="jobtitle" class="pfas-input" tal:attributes="value info/jobtitle" /></div>
+              <div class="pfas-form-field"><label>Credentials</label>
+                <input type="text" name="credentials" class="pfas-input" tal:attributes="value info/credentials" /></div>
+            </div>
+            <div class="pfas-form-field is-full"><label>Signs as</label>
+              <div class="pfas-seg pfas-seg-sm is-fit" role="group" data-field="data-field"
+                   tal:define="key python:view.signs_as_key(info)"
+                   tal:attributes="data-input string:signs-${repeat/r/number}; aria-label string:Signs as, ${r/fullname}">
+                <button type="button" class="pfas-seg-item" tal:repeat="c view/signs_as"
+                        tal:attributes="data-value python:c[0]; aria-pressed python:'true' if c[0] == key else 'false'"
+                        tal:content="python:c[1]">None</button>
+              </div>
+            </div>
+            <div class="form-actions is-end">
+              <button class="btn-sm btn-primary" type="submit">Save Lab Contact</button>
+            </div>
+          </form>
+          <form method="post" enctype="multipart/form-data" tal:attributes="action action">
+            <input type="hidden" name="_authenticator" tal:attributes="value token" />
+            <input type="hidden" name="action" value="upload_signature" />
+            <input type="hidden" name="userid" tal:attributes="value r/userid" />
+            <div class="pfas-form-field is-full"><label>Signature</label>
+              <img class="staff-sig" alt="Signature" tal:condition="info/signature" tal:attributes="src info/signature" />
+              <input type="file" name="signature" accept="image/png,image/jpeg" aria-label="Signature picture" /></div>
+            <div class="form-actions is-end">
+              <button class="btn-sm btn-secondary" type="submit">Upload signature</button>
+            </div>
+          </form>
+          <form method="post" tal:condition="info/signature" tal:attributes="action action">
+            <input type="hidden" name="_authenticator" tal:attributes="value token" />
+            <input type="hidden" name="action" value="remove_signature" />
+            <input type="hidden" name="userid" tal:attributes="value r/userid" />
+            <div class="form-actions is-end">
+              <button class="btn-sm btn-secondary" type="submit">Remove signature</button>
+            </div>
+          </form>
+        </tal:c>
+
+        <tal:roles condition="r/userid">
+          <h3 class="pfas-card-head">Roles</h3>
+          <form method="post" data-roles-form="data-roles-form" tal:attributes="action action">
+            <input type="hidden" name="_authenticator" tal:attributes="value token" />
+            <input type="hidden" name="action" value="set_roles" />
+            <input type="hidden" name="userid" tal:attributes="value r/userid" />
+            <div class="pfas-pill-row">
+              <button type="button" class="pfas-chip-toggle" tal:repeat="c view/role_choices"
+                      tal:attributes="data-group python:c[0]; aria-pressed python:'true' if c[0] in r['groups'] else 'false'"
+                      tal:content="python:c[1]">Analyst</button>
+            </div>
+            <div class="pfas-form-field is-full"><label>Reason for the change</label>
+              <input type="text" name="reason" class="pfas-input" /></div>
+            <div class="form-actions is-end">
+              <button class="btn-sm btn-primary" type="submit">Save roles</button>
+            </div>
+          </form>
+          <div class="form-actions is-end" tal:define="b r/badge" tal:condition="b">
+            <span class="pfas-muted" tal:condition="b/active" tal:content="python: u'Badge issued %s' % view.lab_at(b['issued_at'], b['issued_at'][:10], u'%Y-%m-%d')">Issued</span>
+            <span class="pfas-muted" tal:condition="not:b/active">No badge</span>
+            <form method="post" tal:attributes="action action">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <input type="hidden" name="action" value="issue_badge" />
+              <button class="btn-sm btn-secondary" type="submit"
+                      tal:content="python: 'Replace badge' if b['active'] else 'Issue badge'">Issue badge</button>
+            </form>
+            <form method="post" tal:condition="b/active" tal:attributes="action action">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <input type="hidden" name="action" value="revoke_badge" />
+              <button class="btn-sm btn-danger" type="submit">Revoke badge</button>
+            </form>
+          </div>
+        </tal:roles>
+
+        <div class="form-actions is-end">
+          <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add person: the account is made with a random password; the person sets theirs from the reset e-mail -->
+    <div class="pfas-modal" id="people-add">
+      <div class="pfas-modal-box is-narrow">
+        <h2>Add person</h2>
+        <form method="post" tal:attributes="action action">
+          <input type="hidden" name="_authenticator" tal:attributes="value token" />
+          <input type="hidden" name="action" value="add_person" />
+          <div class="pfas-form-field"><label for="people-add-name">Full name</label>
+            <input type="text" name="fullname" id="people-add-name" required="required" class="pfas-input" /></div>
+          <div class="pfas-form-field"><label for="people-add-user">User name</label>
+            <input type="text" name="username" id="people-add-user" required="required" class="pfas-input" /></div>
+          <div class="pfas-form-field"><label for="people-add-email">E-mail</label>
+            <input type="text" name="email" id="people-add-email" required="required" class="pfas-input" /></div>
+          <p class="fld-help">A reset e-mail is sent so the person sets their own password. Set their roles afterwards.</p>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add person</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+    /* a role pill toggles; the pressed ones post as `group` fields */
+    document.querySelectorAll('.pfas-chip-toggle[data-group]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      });
+    });
+    document.querySelectorAll('form[data-roles-form]').forEach(function (f) {
+      f.addEventListener('submit', function () {
+        f.querySelectorAll('input[name="group"]').forEach(function (i) { i.remove(); });
+        f.querySelectorAll('.pfas-chip-toggle[aria-pressed="true"]').forEach(function (b) {
+          var i = document.createElement('input');
+          i.type = 'hidden'; i.name = 'group'; i.value = b.getAttribute('data-group');
+          f.appendChild(i);
+        });
+      });
+    });
+    </script>
+  </metal:fill>
+</body>
+</html>

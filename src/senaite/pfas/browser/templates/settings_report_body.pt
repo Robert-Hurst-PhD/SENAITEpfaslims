@@ -14,7 +14,7 @@
     <span>by <strong tal:content="report/user">admin</strong></span>
     <span>configuration <code tal:content="report/fingerprint">abc123</code></span>
   </div>
-  <p class="sr-intro">Every quality-control setting, and whether the pipeline judges it. <tal:h define="hid string:settings-report"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+  <p class="sr-intro">Every quality-control setting, and whether the pipeline judges it. <tal:h define="hid string:settings-report"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
   <tal:m repeat="m report/methods">
   <section class="sr-method">
@@ -31,7 +31,7 @@
     </p>
 
     <h3>How QC criteria are applied</h3>
-    <table class="sr-table">
+    <table class="sr-table" data-col-resize="settings-report-body-sr-table">
       <thead><tr><th>QC type</th><th>Criterion</th><th>On for this method</th>
                  <th>Judged by the pipeline</th><th>Tiers (criterion &#183; applies to &#183; source)</th></tr></thead>
       <tbody>
@@ -54,7 +54,7 @@
     </table>
 
     <h3>Instrument checks</h3>
-    <table class="sr-table">
+    <table class="sr-table" data-col-resize="settings-report-body-sr-table-1">
       <thead><tr><th>Check</th><th>Criterion</th><th>Rule switch</th><th>Judged by the pipeline</th></tr></thead>
       <tbody>
         <tr tal:repeat="c m/instrument">
@@ -74,7 +74,7 @@
     </p>
 
     <h3>Recovery window applied (LFSM)</h3>
-    <table class="sr-table" tal:condition="m/grid/rows">
+    <table class="sr-table" data-col-resize="settings-report-body-sr-table-2" tal:condition="m/grid/rows">
       <thead><tr><th>Analytes</th><th tal:repeat="x m/grid/matrices" tal:content="x">Eggs</th></tr></thead>
       <tbody>
         <tr tal:repeat="row m/grid/rows">
@@ -89,7 +89,7 @@
 
     <tal:h condition="m/revisions">
       <h3>Issued revisions</h3>
-      <table class="sr-table">
+      <table class="sr-table" data-col-resize="settings-report-body-sr-table-3">
         <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Reason</th></tr></thead>
         <tbody><tr tal:repeat="r m/revisions">
           <td tal:content="r/rev">3</td><td tal:content="r/issued_at">date</td>
@@ -99,7 +99,7 @@
 
     <tal:s repeat="sec m/sections">
       <h3 tal:content="sec/title">Calibration &amp; CCV</h3>
-      <table class="sr-table">
+      <table class="sr-table" data-col-resize="settings-report-body-sr-table-4">
         <thead><tr><th tal:repeat="col sec/columns" tal:content="col">Setting</th></tr></thead>
         <tbody><tr tal:repeat="row sec/rows"><td tal:repeat="v row" tal:content="v">value</td></tr></tbody>
       </table>
@@ -111,7 +111,7 @@
     <h2>Regulatory limits</h2>
     <p class="sr-meta">A limit reaches a certificate only when it is marked verified, and only for
       the methods and matrices whose Reporting tab evaluates it.</p>
-    <table class="sr-table">
+    <table class="sr-table" data-col-resize="settings-report-body-sr-table-5">
       <thead><tr><th>Program</th><th>Limit</th><th>Analytes</th><th>Matrices</th><th>Value</th>
                  <th>Kind</th><th>Verified</th><th>Citation</th></tr></thead>
       <tbody>
@@ -142,7 +142,7 @@
       <tal:pm repeat="pm pj/methods">
         <p class="sr-meta"><strong tal:content="pm/method_id">FDA</strong> specs for:
           <span tal:replace="python:', '.join(pm['scopes'])">All matrices</span></p>
-        <table class="sr-table" tal:condition="pm/departures">
+        <table class="sr-table" data-col-resize="settings-report-body-sr-table-6" tal:condition="pm/departures">
           <thead><tr><th>Looser than the method</th><th>Method</th><th>Project</th><th>Where</th><th>Published method</th></tr></thead>
           <tbody><tr tal:repeat="d pm/departures">
             <td tal:content="d/what">x</td><td tal:content="d/method">x</td><td tal:content="d/project">x</td>
@@ -166,7 +166,7 @@
     </table>
     <h3>Equipment types</h3>
     <p class="sr-meta" tal:condition="not:eq/types">No instrument types.</p>
-    <table class="sr-table" tal:condition="eq/types">
+    <table class="sr-table" data-col-resize="settings-report-body-sr-table-7" tal:condition="eq/types">
       <thead><tr><th>Type</th><th>Kind</th><th>Check every</th><th>Correction factor</th>
                  <th>External certificate</th><th>Unit</th><th>Tolerance</th><th>In worksheets</th></tr></thead>
       <tbody>
@@ -182,7 +182,7 @@
     </table>
     <h3>Instruments</h3>
     <p class="sr-meta" tal:condition="not:eq/instruments">No instruments.</p>
-    <table class="sr-table" tal:condition="eq/instruments">
+    <table class="sr-table" data-col-resize="settings-report-body-sr-table-8" tal:condition="eq/instruments">
       <thead><tr><th>Instrument</th><th>Type</th><th>Location</th><th>Internal check</th>
                  <th>External certificate</th><th>Correction factor</th><th>Status</th></tr></thead>
       <tbody>

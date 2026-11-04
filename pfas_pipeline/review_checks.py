@@ -1,25 +1,18 @@
 """The QC checks a reviewer must make on each injection role -- what the run
-queue prompts for at review time.
-
-Moved out of injection_builder.py (reuse review R10): that
-module's sequence builder was used only by tests (production runs come from
-the Run Builder in SENAITE) and is deleted; this table is live.
-"""
+queue prompts for at review time."""
 
 from __future__ import annotations
 
 
 # Map QC type → list of review checks the analyst must perform.
-# This is what drives the "run queue prompts what QC to look for" requirement.
 REVIEW_CHECKS: dict[str, list[str]] = {
     "CAL":    ["calibration_pct_dev", "r_squared", "rt_deviation", "ion_ratio"],
     "ICV":    ["ccv_pct_dev", "is_response", "rt_deviation"],
     "CCV":    ["ccv_pct_dev", "is_response", "rt_deviation", "ion_ratio"],
     "MB":     ["blank_contamination", "is_response", "lod_check",
               "surrogate_recovery", "identity_confirmation"],
-    # The other blanks. Without these, classify_injection's new roles fell back
-    # to REVIEW_CHECKS["Sample"] and a blank was given the CHECKS OF A CLIENT
-    # SAMPLE — bloq/lod qualifiers instead of a contamination check.
+    # The other blanks: a contamination check, never a client sample's
+    # bloq/lod qualifiers.
     "MxB":    ["blank_contamination", "is_response", "surrogate_recovery"],
     "LRB":    ["blank_contamination", "is_response", "surrogate_recovery"],
     "CCB":    ["blank_contamination", "is_response"],

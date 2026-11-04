@@ -1,5 +1,4 @@
-/* Logbook field widgets — shared by the concise form (logbook_dynamic.pt) and the
- * guided step view (logbook_guided.pt).
+/* Logbook field widgets — the logbook form (logbook_dynamic.pt).
  *
  * These rules style the markup emitted by the `logbook_field` METAL macro
  * (templates/logbook_field_macros.pt) AND the markup injected at runtime by
@@ -114,5 +113,4 @@
 .lb-choice legend { font-weight: var(--fw-strong); font-size: var(--fs-sm); color: var(--text); margin-bottom: var(--sp-1); padding: 0; }
 .lb-opt { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--ctl-h-sm); font-weight: var(--fw-body); color: var(--text); cursor: pointer; }
 .lb-opt input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
-.lb-req { color: var(--s-danger-dk); }
 .lb-help { margin: 2px 0 var(--sp-3); color: var(--text-muted); font-size: var(--fs-sm); }

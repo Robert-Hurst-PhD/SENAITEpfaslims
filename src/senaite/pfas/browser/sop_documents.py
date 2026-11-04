@@ -4,20 +4,26 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, date
+from datetime import datetime
 
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas import lab_time
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import refuse
+from senaite.pfas.browser.perms import refuse, user_fullname, user_roles_at
+from senaite.pfas.uploads import content_type_for
 
 logger = logging.getLogger("senaite.pfas.sop")
 
 _ANN_REGISTRY  = u"senaite.pfas.sop.registry"
 _ANN_REVISIONS = u"senaite.pfas.sop.{sop_id}.revisions"
 _ANN_SIGNOFFS  = u"senaite.pfas.sop.{sop_id}.signoffs"
+# the one controlled document that is the laboratory's QAM (its id): the
+# certificate's internal quality-system statement names it
+_ANN_LAB_QAM   = u"senaite.pfas.sop.lab_qam"
 
 SOP_DIR = os.environ.get("PFAS_SOP_DIR", "/data/sops")
 
@@ -127,6 +133,32 @@ def _save_registry(portal, data):
     ann[_ANN_REGISTRY] = json.dumps(data)
 
 
+def lab_qam_id(portal):
+    return IAnnotations(portal).get(_ANN_LAB_QAM) or u""
+
+
+def set_lab_qam(portal, sop_id):
+    """Mark one document as the laboratory's QAM ("" clears the mark)."""
+    try:
+        from senaite.pfas import config_history
+        config_history.track(portal, "lab_qam", "default", lambda: {"qam": lab_qam_id(portal)},
+                             label=u"Laboratory QAM")
+    except Exception:                                       # noqa: BLE001
+        logger.warning("lab QAM change not tracked", exc_info=True)
+    IAnnotations(portal)[_ANN_LAB_QAM] = sop_id or u""
+
+
+def lab_qam(portal):
+    """The laboratory's QAM as {"id", "title", "rev"} (rev None without an
+    active revision), or None when no document in force is marked."""
+    sop_id = lab_qam_id(portal)
+    entry = next((e for e in _get_registry(portal) if e.get("sop_id") == sop_id), None) if sop_id else None
+    if entry is None or entry.get("status") == "archived":
+        return None
+    rev = next((r.get("rev_num") for r in _get_revisions(portal, sop_id) if r.get("status") == "active"), None)
+    return {"id": sop_id, "title": entry.get("title") or sop_id, "rev": rev}
+
+
 def _rev_key(sop_id):
     return _ANN_REVISIONS.format(sop_id=sop_id)
 
@@ -179,7 +211,7 @@ def _next_sop_id(registry, doc_type=_DEFAULT_DOC_TYPE):
 
 # ── View class ────────────────────────────────────────────────────────────────
 
-class PFASSOPView(BrowserView):
+class PFASSOPView(ViewHelpers, BrowserView):
 
     def __call__(self):
         flatten_form(self.request)
@@ -195,14 +227,13 @@ class PFASSOPView(BrowserView):
                 return self._handle_delete()
             if action == "restore_sop":
                 return self._handle_restore()
+            if action == "lab_qam":
+                return self._handle_lab_qam()
         if action == "download_sop":
             return self._handle_download()
         return self.index()
 
     # ── Data access ──────────────────────────────────────────────────────────
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
 
     def _portal_url(self):
         return getToolByName(self.context, "portal_url")()
@@ -214,28 +245,10 @@ class PFASSOPView(BrowserView):
     def _current_user_id(self):
         return self._current_user().getId() or ""
 
-    def _current_user_fullname(self):
-        user = self._current_user()
-        portal = self._portal()
-        mt = getToolByName(portal, "portal_membership", None)
-        if mt:
-            member = mt.getMemberById(user.getId())
-            if member:
-                full = member.getProperty("fullname", "")
-                if full:
-                    return full
-        return user.getUserName() or user.getId() or "Unknown"
 
-    def _user_roles(self):
-        portal = self._portal()
-        user = self._current_user()
-        try:
-            return list(user.getRolesInContext(portal))
-        except Exception:
-            return list(user.getRoles())
 
     def can_manage(self):
-        roles = self._user_roles()
+        roles = user_roles_at(self._portal(), self._current_user())
         return "LabManager" in roles or "Manager" in roles
 
     def portal_url(self):
@@ -297,33 +310,6 @@ class PFASSOPView(BrowserView):
             })
         return result
 
-    def get_sop(self, sop_id):
-        portal = self._portal()
-        registry = _get_registry(portal)
-        entry = next((e for e in registry if e["sop_id"] == sop_id), None)
-        if not entry:
-            return None
-        revs = _get_revisions(portal, sop_id)
-        sigs = _get_signoffs(portal, sop_id)
-        uid = self._current_user_id()
-        active_rev = next((r for r in revs if r.get("status") == "active"), None)
-        rev_num = active_rev["rev_num"] if active_rev else None
-        user_signed = uid in sigs and sigs[uid].get("rev_num") == rev_num
-        return {
-            "sop_id":      sop_id,
-            "title":       entry.get("title", ""),
-            "doc_type":       _entry_doc_type(entry),
-            "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
-            "method_slug": method_key(entry.get("method_slug")),
-            "method_label": method_label(entry.get("method_slug")),
-            "category":    entry.get("category", ""),
-            "description": entry.get("description", ""),
-            "status":      entry.get("status", "active"),
-            "active_rev":  active_rev,
-            "all_revs":    revs,
-            "signoffs":    sigs,
-            "user_signed": user_signed,
-        }
 
     def unsigned_sops(self):
         """Return SOPs with an active revision the current user hasn't signed."""
@@ -352,7 +338,8 @@ class PFASSOPView(BrowserView):
                 "method_label": method_label(entry.get("method_slug"), choices),
                 "category":     entry.get("category", ""),
                 "archived_by":  entry.get("archived_by", ""),
-                "archived_at":  (entry.get("archived_at", "") or "")[:10],
+                "archived_at":  self.lab_at(entry.get("archived_at"), (entry.get("archived_at", "") or "")[:10],
+                                            u"%Y-%m-%d"),
             })
         return result
 
@@ -468,6 +455,9 @@ class PFASSOPView(BrowserView):
         file_data = upload.read()
         raw_name  = os.path.basename(getattr(upload, "filename", "") or "sop.pdf")
         ext       = os.path.splitext(raw_name)[1].lower() or ".pdf"
+        ct = content_type_for(raw_name)
+        if ct is None:
+            return self._redirect("?msg=not_pdf&msg_type=error")
         safe_name = re.sub(r"[^\w\.\-]", "_", raw_name) or "sop{0}".format(ext)
         sop_dir   = os.path.join(SOP_DIR, sop_id)
         if not os.path.isdir(sop_dir):
@@ -479,14 +469,13 @@ class PFASSOPView(BrowserView):
             fh.write(file_data)
         os.rename(tmp_path, dest_path)
 
-        ct = getattr(upload, "headers", {}).get("content-type", "application/octet-stream")
         revs.append({
             "rev_num":       rev_num,
             "filename":      safe_name,
             "filepath":      dest_path,
             "content_type":  ct,
             "uploaded_by":   self._current_user_id(),
-            "uploaded_at":   date.today().isoformat(),
+            "uploaded_at":   lab_time.today().isoformat(),
             "status":        "draft",
             "activated_by":  None,
             "activated_at":  None,
@@ -541,6 +530,26 @@ class PFASSOPView(BrowserView):
         _save_registry(portal, registry)
         return self._redirect("?msg=restored&msg_type=success")
 
+    def lab_qam_id(self):
+        return lab_qam_id(self._portal())
+
+    def _handle_lab_qam(self):
+        """The "Laboratory QAM" switch: on marks this document (and unmarks
+        any other), off clears the mark."""
+        if not self.can_manage():
+            return self._redirect("?msg=permission_denied&msg_type=error")
+        sop_id = (self.request.form.get("sop_id") or "").strip()
+        portal = self._portal()
+        entry = next((e for e in _get_registry(portal) if e["sop_id"] == sop_id), None)
+        if entry is None or _entry_doc_type(entry) == "QAPP":
+            return self._redirect("?msg=not_found&msg_type=error")
+        if self.request.form.get("on") == "1":
+            set_lab_qam(portal, sop_id)
+            return self._redirect("?msg=qam_marked&msg_type=success")
+        if lab_qam_id(portal) == sop_id:
+            set_lab_qam(portal, u"")
+        return self._redirect("?msg=qam_cleared&msg_type=success")
+
     def _handle_activate(self):
         if not self.can_manage():
             return self._redirect("?msg=permission_denied&msg_type=error")
@@ -576,9 +585,8 @@ class PFASSOPView(BrowserView):
                 entry["current_rev"] = rev_num
                 break
         _save_registry(portal, registry)
-
-        # clear all sign-offs — everyone must re-sign new revision
-        _save_signoffs(portal, sop_id, {})
+        # the sign-offs stay on record: only those on the active revision
+        # count as signed, so everyone signs the new revision again
 
         return self._redirect("?msg=activated&msg_type=success&sop_id={0}".format(sop_id))
 
@@ -596,11 +604,12 @@ class PFASSOPView(BrowserView):
 
         uid  = self._current_user_id()
         sigs = _get_signoffs(portal, sop_id)
-        sigs[uid] = {
+        from senaite.pfas.records import with_earlier
+        sigs[uid] = with_earlier(sigs.get(uid), {        # an earlier revision's sign-off is kept
             "rev_num":   active["rev_num"],
             "signed_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "full_name": self._current_user_fullname(),
-        }
+            "full_name": user_fullname(self._portal(), self._current_user()),
+        })
         _save_signoffs(portal, sop_id, sigs)
         return self._redirect("?msg=signed&msg_type=success&sop_id={0}".format(sop_id))
 
@@ -634,18 +643,21 @@ class PFASSOPView(BrowserView):
             self.request.response.setStatus(404)
             return "File not on disk"
 
-        ct = rev.get("content_type", "application/octet-stream")
-        disposition = "inline" if inline else "attachment"
-        fname = rev.get("filename", "sop.pdf")
+        fname = os.path.basename(rev.get("filename") or "sop.pdf")
+        # the type the stored file's name says, never the one the browser sent
+        ct = content_type_for(filepath) or content_type_for(fname)
+        disposition = "inline" if (inline and ct) else "attachment"
+        ct = ct or "application/octet-stream"
 
         with open(filepath, "rb") as fh:
             data = fh.read()
 
         response = self.request.response
         response.setHeader("Content-Type", ct)
+        response.setHeader("X-Content-Type-Options", "nosniff")
         response.setHeader(
             "Content-Disposition",
-            '{0}; filename="{1}"'.format(disposition, fname)
+            '{0}; filename="{1}"'.format(disposition, fname.replace('"', ""))
         )
         response.setHeader("Content-Length", str(len(data)))
         return data
@@ -678,6 +690,8 @@ class PFASSOPView(BrowserView):
         "not_found":        "Document not found.",
         "archived":         "Document deleted — moved to Archived.",
         "restored":         "Document restored to the active list.",
+        "qam_marked":       "Marked as the laboratory's QAM; certificates name it.",
+        "qam_cleared":      "No document is marked as the laboratory's QAM.",
     }
 
     def msg_text(self):

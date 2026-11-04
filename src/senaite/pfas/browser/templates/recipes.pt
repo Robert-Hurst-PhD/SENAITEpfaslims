@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Logbooks: recipes</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-flow" /></tal:tabs>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="ed view/editing; cd python:None if ed else view.card()">
+
+    <div class="alert alert-success" tal:condition="view/ok_msg" tal:content="view/ok_msg">saved</div>
+    <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg">error</div>
+
+    <nav class="pfas-seg pfas-seg-strip is-spaced" aria-label="Methods">
+      <a class="pfas-seg-item" tal:repeat="m view/methods"
+         tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${m/id};
+                         aria-selected python:'true' if m['id'] == view.method_id() else 'false'"
+         tal:content="m/label">EPA 537.1</a>
+    </nav>
+
+    <!-- the list: each recipe of the method, what it is made from and what is made from it -->
+    <tal:list condition="python:not ed and not cd and not view.is_print()">
+      <p class="pane-intro" tal:content="view/method_label"></p>
+      <div class="table-wrap">
+      <table class="pfas-table" data-col-resize="recipes-1">
+        <thead><tr><th>Makes</th><th>Made from</th><th>Log</th><th>Used in</th><th class="row-action"></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r view/rows">
+            <td><strong tal:content="r/name">537 calibration stock</strong>
+                <div class="pfas-sub" tal:condition="r/makes" tal:content="r/makes">makes CAL-1 to CAL-7</div></td>
+            <td tal:content="r/made_from">DEMO PFAS native mix CRM</td>
+            <td class="cell-nowrap" tal:content="r/log">FM-ENV-002</td>
+            <td tal:content="r/used_in">537_CAL series</td>
+            <td class="row-action"><a class="btn-sm btn-secondary" tal:attributes="href r/url">Open</a></td>
+          </tr>
+          <tr tal:condition="not:view/rows"><td colspan="5" class="pfas-muted">No recipes yet for this method.</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="form-actions">
+        <a class="btn btn-primary" tal:condition="view/can_edit"
+           tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}&amp;new=1">+ New recipe</a>
+        <a class="btn btn-secondary" tal:condition="view/rows"
+           tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}&amp;print=1">Print recipes</a>
+        <tal:h define="hid string:recipes"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
+      </div>
+    </tal:list>
+
+    <!-- a recipe's card, or every card to print -->
+    <tal:cards repeat="c python:view.cards() if view.is_print() else ([cd] if cd else [])">
+      <section class="pfas-card rc-card">
+        <div class="pfas-between">
+          <h3 tal:content="python:u'%s · %s · revision %s' % (c['name'], c['log'], c['revision'])">537_CAL</h3>
+          <div class="pfas-actions" tal:condition="not:view/is_print">
+            <a class="btn-sm btn-secondary" tal:condition="view/can_edit" tal:attributes="href c/edit_url">Edit recipe</a>
+            <button type="button" class="btn-sm btn-secondary" onclick="window.print()">Print card</button>
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">All recipes</a>
+          </div>
+        </div>
+        <dl class="rc-facts">
+          <div><dt>Made from</dt><dd tal:content="python:c['made_from'] or u'—'">537 calibration stock</dd></div>
+          <div><dt>Makes</dt><dd tal:content="c/makes">7 levels in one sitting</dd></div>
+          <div><dt>Shelf life</dt><dd tal:content="python:(u'%s days after preparation' % c['shelf_life']) if c['shelf_life'] else u'not set'">30 days</dd></div>
+          <div><dt>Storage</dt><dd tal:content="python:c['storage'] or u'not set'">Fridge</dd></div>
+        </dl>
+        <table class="pfas-table" data-col-resize="recipes-2" tal:condition="c/steps">
+          <thead><tr><th>Step</th><th>Instruction</th><th>Amount</th><th>Equipment</th><th>Check</th></tr></thead>
+          <tbody><tr tal:repeat="s c/steps">
+            <td tal:content="repeat/s/number">1</td><td tal:content="s/instruction|nothing">Take the parent lots</td>
+            <td tal:content="s/amount|nothing">10 uL</td><td tal:content="s/equipment|nothing">Pipette</td>
+            <td tal:content="s/check|nothing">Done</td></tr></tbody>
+        </table>
+        <h4 class="rc-h">Concentrations <small tal:content="python:u'(%s, as acid)' % c['unit']">(ng/mL)</small>
+          <tal:h define="hid string:recipes"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h4>
+        <div class="table-wrap">
+        <table class="pfas-table" data-col-resize="recipes-3" data-cells="plain">
+          <thead><tr><th>Analyte</th><th tal:repeat="l c/levels" tal:content="l">CAL-1</th></tr></thead>
+          <tbody>
+            <tr><td class="pfas-muted">Volume taken</td><td tal:repeat="v c/taken" tal:content="python:view.fmt(v)">10</td></tr>
+            <tr><td class="pfas-muted">Final volume</td><td tal:repeat="v c/final" tal:content="python:view.fmt(v)">10</td></tr>
+            <tr tal:repeat="a c/conc"><td tal:content="a/analyte">PFOA</td>
+              <td tal:repeat="v a/values" tal:content="python:view.fmt(v)">2.0</td></tr>
+            <tr tal:condition="not:c/conc"><td tal:attributes="colspan python:len(c['levels']) + 1" class="pfas-muted">Calculated once the purchased lot's certificate values are on file.</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+    </tal:cards>
+    <script tal:condition="view/is_print">window.addEventListener('load', function () { window.print(); });</script>
+
+    <!-- the editor: saving issues a new revision; preps already made keep theirs -->
+    <tal:ed condition="ed">
+    <form method="post" class="pfas-card rc-edit"
+          tal:define="r ed/rev"
+          tal:attributes="action string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">
+      <input type="hidden" name="recipe" tal:attributes="value ed/id" />
+      <div class="pfas-settings-grid">
+        <label>Makes <input type="text" name="name" required="required" tal:attributes="value r/name|nothing" /></label>
+        <label>Log <select name="log">
+          <option tal:repeat="l view/logs" tal:attributes="value python:l[0]; selected python:'selected' if l[0] == r.get('log') else None"
+                  tal:content="python:l[1]">FM-ENV-002</option></select></label>
+        <label>Concentration unit <select name="unit">
+          <option tal:repeat="u python:(u'ng/mL', u'ug/mL')" tal:attributes="value u; selected python:'selected' if u == r.get('unit') else None"
+                  tal:content="u">ng/mL</option></select></label>
+        <label>Shelf life (days) <input type="number" min="0" step="1" name="shelf_life_days" placeholder="the log's default"
+               tal:attributes="value r/shelf_life_days|nothing" /></label>
+        <label>Storage location <input type="text" name="storage_location" tal:attributes="value python:(r.get('storage') or {}).get('location')" /></label>
+        <label>Storage conditions <input type="text" name="storage_conditions" tal:attributes="value python:(r.get('storage') or {}).get('conditions')" /></label>
+        <label>Loaded on <select name="slot">
+          <option value="">Not loaded on the LC</option>
+          <option tal:repeat="c view/channel_choices" tal:attributes="value c; selected python:'selected' if c == r.get('slot') else None"
+                  tal:content="c">Mobile phase B</option></select></label>
+      </div>
+      <fieldset class="field-wide"><legend>Methods that list it</legend>
+        <div class="cf-chips">
+          <label class="pfas-switch cf-chip" tal:repeat="m view/methods">
+            <input type="checkbox" value="on" tal:attributes="name string:method.${m/id}; checked python:'checked' if m['id'] in (r.get('methods') or []) else None" /><span class="pfas-switch-track"></span>
+            <span tal:replace="m/label">EPA 537.1</span></label>
+        </div>
+      </fieldset>
+
+      <h4 class="rc-h">Made from</h4>
+      <table class="pfas-table" data-col-resize="recipes-4" data-cells="plain"><thead><tr><th>From</th><th>Product or recipe</th><th>Volume taken</th><th>Unit</th></tr></thead>
+        <tbody class="rc-rows"><tr tal:repeat="m python:r.get('made_from') or [{}]">
+          <tal:i define="i repeat/m/index">
+          <td><select tal:attributes="name string:mf_kind.${i}">
+            <option value="purchased" tal:attributes="selected python:'selected' if m.get('kind') != 'recipe' else None">Purchased</option>
+            <option value="recipe" tal:attributes="selected python:'selected' if m.get('kind') == 'recipe' else None">A recipe</option></select></td>
+          <td><input type="text" list="rc-recipes" placeholder="product name, or a recipe"
+                     tal:attributes="name string:mf_ref.${i}; value m/ref|nothing" /></td>
+          <td><input type="number" step="any" min="0" tal:attributes="name string:mf_take.${i}; value m/take|nothing" /></td>
+          <td><select tal:attributes="name string:mf_take_unit.${i}">
+            <option tal:repeat="u python:(u'mL', u'uL', u'L')" tal:attributes="value u; selected python:'selected' if u == (m.get('take_unit') or u'mL') else None" tal:content="u">mL</option></select></td>
+          </tal:i></tr></tbody>
+      </table>
+      <datalist id="rc-recipes"><option tal:repeat="x view/recipe_choices" tal:attributes="value python:x[0]" tal:content="python:x[1]">stock</option></datalist>
+      <div class="pfas-settings-grid">
+        <label>Final volume <input type="number" step="any" min="0" name="final_volume" placeholder="one lot; a series sets each level's"
+               tal:attributes="value r/final_volume|nothing" /></label>
+        <label>Final volume unit <select name="final_unit">
+          <option tal:repeat="u python:(u'mL', u'uL', u'L')" tal:attributes="value u; selected python:'selected' if u == (r.get('final_unit') or u'mL') else None" tal:content="u">mL</option></select></label>
+        <label>A series is made <select name="series_mode" tal:define="mode python:(r.get('series') or {}).get('mode') or u'serial'">
+          <option value="serial" tal:attributes="selected python:'selected' if mode == 'serial' else None">Serially, each level from the one before</option>
+          <option value="independent" tal:attributes="selected python:'selected' if mode == 'independent' else None">Independently, each level from the stock</option></select></label>
+      </div>
+
+      <h4 class="rc-h">Levels made in one sitting</h4>
+      <table class="pfas-table" data-col-resize="recipes-5" data-cells="plain"><thead><tr><th>Level</th><th>Volume taken</th><th>Unit</th><th>Final volume</th><th>Unit</th></tr></thead>
+        <tbody class="rc-rows" id="rc-levels"><tr tal:repeat="lv python:((r.get('series') or {}).get('levels') or []) + [{}]">
+          <tal:i define="i repeat/lv/index">
+          <td><input type="text" placeholder="CAL-1" tal:attributes="name string:lv_name.${i}; value lv/level|nothing" /></td>
+          <td><input type="number" step="any" min="0" tal:attributes="name string:lv_take.${i}; value lv/take|nothing" /></td>
+          <td><select tal:attributes="name string:lv_take_unit.${i}"><option tal:repeat="u python:(u'mL', u'uL', u'L')" tal:attributes="value u; selected python:'selected' if u == (lv.get('take_unit') or u'mL') else None" tal:content="u">mL</option></select></td>
+          <td><input type="number" step="any" min="0" tal:attributes="name string:lv_final.${i}; value lv/final|nothing" /></td>
+          <td><select tal:attributes="name string:lv_final_unit.${i}"><option tal:repeat="u python:(u'mL', u'uL', u'L')" tal:attributes="value u; selected python:'selected' if u == (lv.get('final_unit') or u'mL') else None" tal:content="u">mL</option></select></td>
+          </tal:i></tr></tbody>
+      </table>
+      <button type="button" class="btn-sm btn-secondary rc-add" data-target="rc-levels">+ Add level</button>
+
+      <h4 class="rc-h">Steps</h4>
+      <table class="pfas-table" data-col-resize="recipes-6" data-cells="plain"><thead><tr><th>Instruction</th><th>Amount</th><th>Equipment</th><th>Check</th></tr></thead>
+        <tbody class="rc-rows" id="rc-steps"><tr tal:repeat="s python:(r.get('steps') or []) + [{}]">
+          <tal:i define="i repeat/s/index">
+          <td><input type="text" class="is-wide" tal:attributes="name string:step_text.${i}; value s/instruction|nothing" /></td>
+          <td><input type="text" tal:attributes="name string:step_amount.${i}; value s/amount|nothing" /></td>
+          <td><input type="text" tal:attributes="name string:step_equipment.${i}; value s/equipment|nothing" /></td>
+          <td><input type="text" placeholder="Done" tal:attributes="name string:step_check.${i}; value s/check|nothing" /></td>
+          </tal:i></tr></tbody>
+      </table>
+      <button type="button" class="btn-sm btn-secondary rc-add" data-target="rc-steps">+ Add step</button>
+
+      <div class="form-actions is-bar">
+        <button class="btn-primary" type="submit">Save recipe</button>
+        <a class="btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">Cancel</a>
+      </div>
+    </form>
+    </tal:ed>
+    <script tal:condition="ed">
+    /* + Add: a copy of the table's last row, numbered on */
+    document.querySelectorAll('.rc-add').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var body = document.getElementById(b.getAttribute('data-target')), last = body.lastElementChild;
+        var n = body.children.length, row = last.cloneNode(true);
+        row.querySelectorAll('input, select').forEach(function (el) {
+          el.name = el.name.replace(/\.\d+$/, '.' + n);
+          if (el.tagName === 'INPUT') { el.value = ''; }
+        });
+        body.appendChild(row);
+      });
+    });
+    </script>
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

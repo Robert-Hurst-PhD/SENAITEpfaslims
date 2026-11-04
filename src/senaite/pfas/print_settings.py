@@ -20,28 +20,27 @@ logger = logging.getLogger("senaite.pfas.print_settings")
 
 PRINT_SETTINGS_KEY = "senaite.pfas.print_settings"
 
-try:
-    from senaite.pfas import qs_statement as _qs
-except Exception:          # tests: loaded without the package
-    import qs_statement as _qs
+from senaite.pfas import qs_statement as _qs
 
 DEFAULTS = {
-    "lab_name":        "",          # shown from core's Laboratory, never stored
+    # the six identity keys are core's Laboratory and site logo, read through
+    # lab_identity on every call and never stored here
+    "lab_name":        "",
     "lab_address":     "",
     "lab_phone":       "",
     "lab_email":       "",
-    "logo_url":        "",            # absolute or portal-relative image URL
-    "accreditation":   "",            # e.g. "ISO/IEC 17025:2017 — Cert #XXXX"
+    "logo_url":        "",
+    "accreditation":   "",
     "footer_text":     "Controlled document — printed copies are uncontrolled unless stamped.",
     "show_form_code":  True,          # FM-ENV-xxx block top-right
     "show_print_date": True,
     "show_page_footer": True,
     # QA sign-off attestation (rendered on SOPs, prep logs, prepared standards):
-    # who signs as Quality Assurance Officer and Laboratory Director. Stored as
-    # the LabContact's initials (staff pool key); their uploaded Signature image
-    # is the stamp. Empty → the sign-off block prints a blank ruled line.
+    # who signs as Quality Assurance Officer, stored as the LabContact's
+    # initials (staff pool key); their uploaded Signature image is the stamp.
+    # The Laboratory Director is the Laboratory page's (one place). Empty → the
+    # sign-off block prints a blank ruled line.
     "qao_initials":       "",
-    "director_initials":  "",
     "show_signoff":       True,
     # Certificate sign-off layout (lab-wide). The certificate's results-table
     # format (CAS / MDL / dilution columns, non-detect format, significant
@@ -55,65 +54,63 @@ DEFAULTS = {
 
 
 def get_signoff_signers(portal):
-    """Resolve the QAO + Laboratory Director attestation signers from the saved
-    print settings, as staff dicts ({fullname, signature_url, job_title,
-    placeholder, ...}) or None. Single source: Print Settings; stamps: staff
-    pool (LabContact Signature). See [[project-pfas-lims]]."""
+    """Resolve the QAO + Laboratory Director attestation signers, as staff
+    dicts ({fullname, signature_url, job_title, placeholder, ...}) or None:
+    the QAO from Print Settings, the Director from Laboratory; stamps:
+    staff pool (LabContact Signature)."""
     from senaite.pfas.staff import find_by_initials
     ps = get_print_settings(portal)
     return {
         "qao": find_by_initials(portal, ps.get("qao_initials")),
-        "director": find_by_initials(portal, ps.get("director_initials")),
+        "director": director_staff(portal),
     }
 
 
-# The laboratory's name has ONE owner: core SENAITE's Laboratory (Setup ->
-# Laboratory), which the sign-in page, the EDD e-mail and every core screen
-# show. Print Settings shows it and saves to it; it is never stored here
-# (core integration).
+def director_staff(portal):
+    """The Laboratory page director as a staff dict, or None."""
+    from senaite.pfas.browser.staff import contact_for, director_userid
+    from senaite.pfas.staff import staff_record
+    contact = contact_for(director_userid())
+    return staff_record(contact) if contact is not None else None
 
 
-def core_lab_name(portal):
-    try:
-        from bika.lims import api
-        return api.get_setup().laboratory.Title() or u""
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("core laboratory name unreadable: %s", exc)
-        return u""
+IDENTITY_KEYS = ("lab_name", "lab_address", "lab_phone", "lab_email",
+                 "logo_url", "accreditation")
 
 
-def set_core_lab_name(portal, name):
-    from bika.lims import api
-    lab = api.get_setup().laboratory
-    if name and lab.Title() != name:
-        lab.setTitle(name)
-        lab.reindexObject()
+def logo_src(settings, portal_url):
+    """The logo as an <img src>: a relative value (the site logo) is resolved
+    against the portal, so it works under any page URL; the stored value
+    stays portal-relative so a frozen revision carries no host name."""
+    value = (settings.get("logo_url") or u"").strip()
+    if not value or value.startswith(("http://", "https://", "//", "data:")):
+        return value
+    return u"{}/{}".format(portal_url.rstrip("/"), value.lstrip("/"))
 
 
 def get_print_settings(portal):
-    """Merged settings dict (saved values over DEFAULTS); lab_name is core's."""
+    """Merged settings dict (saved values over DEFAULTS); the identity keys
+    are always core's, whatever is stored."""
+    from senaite.pfas import lab_identity
     from zope.annotation.interfaces import IAnnotations
     out = dict(DEFAULTS)
     try:
         raw = IAnnotations(portal).get(PRINT_SETTINGS_KEY)
         if raw:
             out.update(json.loads(raw))
-    except Exception as exc:
+    except (ValueError, TypeError) as exc:
         logger.warning("get_print_settings: %s", exc)
-    out["lab_name"] = core_lab_name(portal) or out.get("lab_name") or u""
+    out.update(lab_identity.print_fields(portal))
     return out
 
 
 def save_print_settings(portal, data):
-    """Persist settings (only known keys; replaces entry atomically)."""
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(portal, 'print_settings', "lab", lambda: get_print_settings(portal), label=u"Print & certificate settings")
-    except Exception:
-        pass
+    """Persist settings (only known, non-identity keys; replaces entry atomically)."""
+    # the change history is strict: when its entry cannot be prepared the
+    # save does not happen
+    from senaite.pfas import config_history
+    config_history.track(portal, 'print_settings', "lab", lambda: get_print_settings(portal), label=u"Print & certificate settings")
     from zope.annotation.interfaces import IAnnotations
-    clean = {k: data[k] for k in DEFAULTS if k in data and k != "lab_name"}
-    if (data.get("lab_name") or u"").strip():
-        set_core_lab_name(portal, data["lab_name"].strip())
+    clean = {k: data[k] for k in DEFAULTS if k in data and k not in IDENTITY_KEYS}
     IAnnotations(portal)[PRINT_SETTINGS_KEY] = json.dumps(clean)
     return clean

@@ -3,13 +3,13 @@
 <metal:results define-macro="results" tal:define="rec view/record; applied view/applied">
   <tal:lv repeat="lv view/level_rows">
   <h3 class="bench-h" tal:condition="python:lv[0]" tal:content="python:u'%s (%s)' % (lv[0], view.fmt(view.fortified(lv[0])))">Low</h3>
-  <table class="pfas-table" tal:condition="python:rec['kind'] == 'pt'">
+  <table class="pfas-table" data-col-resize="method-study-macros-1" tal:condition="python:rec['kind'] == 'pt'">
     <thead><tr><th>Analyte</th><th>Reported</th><th>Assigned</th><th>Verdict</th></tr></thead>
     <tbody><tr tal:repeat="row python:lv[1]">
       <td tal:content="python:row[0]">PFOA</td><td tal:content="python:row[1].get('reported')">5</td>
       <td tal:content="python:row[1].get('assigned')">5.2</td><td tal:content="python:row[1].get('verdict')">acceptable</td></tr></tbody>
   </table>
-  <table class="pfas-table" tal:condition="python:rec['kind'] != 'pt'">
+  <table class="pfas-table" data-col-resize="method-study-macros-2" tal:condition="python:rec['kind'] != 'pt'">
     <thead><tr><th>Analyte</th><th>n</th><th>Mean</th><th>s</th><th>Figure</th><th>Value</th><th>In force</th><th>Verdict</th><th>Notes</th></tr></thead>
     <tbody>
       <tr tal:repeat="row python:lv[1]">

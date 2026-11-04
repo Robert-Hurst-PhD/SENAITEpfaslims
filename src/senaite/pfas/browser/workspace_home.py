@@ -8,6 +8,7 @@ from AccessControl import getSecurityManager
 from bika.lims.interfaces import IFrontPageAdapter
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from zope.interface import implementer
@@ -20,17 +21,33 @@ def _portal(context):
 
 
 # Role -> landing, in precedence order: the ONE place that decides where a
-# role lands. The launcher redirects with it and the sidebar
-# pins it, so the two cannot disagree. Bench Chemist = LabClerk (decided
-# 2026-09-30). `group` is the sidebar group opened by default for that role.
+# role lands. The launcher redirects with it, so a role always lands on
+# its own workspace. The Bench Chemist is the LabClerk role. `group` is the
+# navigation section (page_groups.SECTIONS) the panel shows on a page that
+# is in none of the person's sections.
 LANDINGS = (
-    (("LabManager", "Manager"), u"QC Management", "@@pfas-qc-management", "pfas-sg-qc"),
-    (("Analyst", "Verifier"),   u"Data Review",   "@@pfas-data-review-home", "pfas-sg-qc"),
-    (("LabClerk",),             u"Bench",         "@@pfas-bench", "pfas-sg-bench"),
+    (("LabManager", "Manager"), u"QC Management", "@@pfas-qc-management", "qc"),
+    (("Analyst", "Verifier"),   u"Data Review",   "@@pfas-data-review-home", "qc"),
+    (("LabClerk",),             u"Bench",         "@@pfas-bench", "bench"),
     (("Client",),               u"Sample Tracker", "@@pfas-track", ""),
 )
 # anyone else (no lab role): the public tracker, never a staff board
 DEFAULT_LANDING = (u"Sample Tracker", "@@pfas-track", "")
+
+
+def _my_notices(context):
+    """The signed-in person's open notices (notices.py), newest first."""
+    from AccessControl import getSecurityManager
+    from senaite.pfas import notices as nt
+    try:
+        mine = nt.open_for(nt.load(_portal(context)), getSecurityManager().getUser().getId())
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("notices: %s", exc)
+        return []
+    base = _portal(context).absolute_url()
+    return [dict(n, title=nt.KINDS.get(n.get("kind"), u""),
+                 url=u"%s/@@pfas-data-review?batch_id=%s" % (base, n.get("ws_id")))
+            for n in sorted(mine, key=lambda n: n.get("raised_at") or u"", reverse=True)]
 
 
 def landing_for(roles):
@@ -74,7 +91,6 @@ class PFASFrontPage(object):
             return ""
         return front_page_for(roles, STAFF_ROLES)
 
-
 class PFASWorkspaceHomeView(BrowserView):
     """Role-aware launcher — redirects to the user's default workspace."""
 
@@ -94,7 +110,7 @@ class PFASWorkspaceHomeView(BrowserView):
         return self.request.response.redirect(target)
 
 
-class PFASQCManagementView(BrowserView):
+class PFASQCManagementView(ViewHelpers, BrowserView):
     """QC Management workspace landing page — tile grid for the Manager/QAO role."""
 
     template = ViewPageTemplateFile("templates/pfas_qc_management.pt")
@@ -102,9 +118,6 @@ class PFASQCManagementView(BrowserView):
     def __call__(self):
         flatten_form(self.request)
         return self.template()
-
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
 
     def attention(self):
         """What needs a manager's action (attention.items): the downstream
@@ -138,6 +151,12 @@ class PFASQCManagementView(BrowserView):
                     state = "error"
                 if state in BLOCKS_PUBLISHING or state in ("method", "error"):
                     held.setdefault(state, []).append(api.get_id(sample))
+                try:
+                    from senaite.pfas.browser.guards import receipt_hold
+                    if receipt_hold(sample):
+                        held.setdefault("resample", []).append(api.get_id(sample))
+                except Exception:                           # noqa: BLE001
+                    logger.warning("attention: receipt hold of %s", api.get_id(sample), exc_info=True)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("attention: held samples: %s", exc)
             held["error"] = [u"(the sample list could not be read)"]
@@ -145,8 +164,10 @@ class PFASQCManagementView(BrowserView):
         try:
             from senaite.pfas.edd_store import get_edd_profiles
             from senaite.pfas.edd_store import profile_qualifier_dict as get_profile_qualifier_dict
+            from senaite.pfas.coa_format import D_CODE
             from senaite.pfas.qc_qualification import FAILURE_TYPES
-            codes = [u"N.D."] + sorted(set(c for _k, _l, _d, c in FAILURE_TYPES if c))
+            # D never reaches an EDD (its dilution factor says it)
+            codes = [u"N.D."] + sorted(set(c for _k, _l, _d, c in FAILURE_TYPES if c and c != D_CODE))
             missing = {}
             for pid, prof in sorted(get_edd_profiles(portal).items()):
                 mapped = get_profile_qualifier_dict(prof)
@@ -159,7 +180,7 @@ class PFASQCManagementView(BrowserView):
         try:
             from senaite.pfas import regulatory_limits
             facts["unverified"] = len([l for l in regulatory_limits.get_store(portal).get("limits") or []
-                                       if not l.get("verified")])
+                                       if not l.get("verified") and regulatory_limits.is_active(l)])
         except Exception as exc:                            # noqa: BLE001
             logger.warning("attention: regulatory limits: %s", exc)
         try:
@@ -175,6 +196,15 @@ class PFASQCManagementView(BrowserView):
             facts["methods_changed"] = changed
         except Exception as exc:                            # noqa: BLE001
             logger.warning("attention: method revisions: %s", exc)
+        try:
+            from senaite.pfas import settings_adapters
+            from senaite.pfas import settings_registry as reg
+            settings_adapters.declare_all(portal)
+            facts["unconfigured"] = [(r.get("label") or r.get("key"),
+                                      (u"@@%s" % r["owner_view"].lstrip("@")) if r.get("owner_view") else u"")
+                                     for r in reg.unconfigured(portal)]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("attention: unconfigured settings: %s", exc)
         base = portal.absolute_url()
         out = attention.items(facts)
         for it in out:
@@ -186,56 +216,50 @@ class PFASQCManagementView(BrowserView):
         return [
             {
                 "url":   u"{0}/@@pfas-method-profiles".format(base),
-                "icon":  u"⚙",
+                "icon":  u"ico-method-profiles",
                 "title": u"Method Profiles",
                 "desc":  u"QC rules, recovery tiers, analyte factors per method",
             },
             {
-                "url":   u"{0}/@@pfas-qc-rules".format(base),
-                "icon":  u"☑",
-                "title": u"QC Rules",
-                "desc":  u"Toggle Westgard rules and set per-analyte acceptance limits",
-            },
-            {
                 "url":   u"{0}/@@pfas-control-chart".format(base),
-                "icon":  u"↗",
+                "icon":  u"ico-control-charts",
                 "title": u"Control Charts",
                 "desc":  u"QC control charts across all methods",
             },
             {
                 "url":   u"{0}/@@pfas-calibrations".format(base),
-                "icon":  u"◈",
+                "icon":  u"ico-calibrations",
                 "title": u"Calibration Archive",
                 "desc":  u"Every run's curves; a run's curve is approved in Data Review",
             },
             {
                 "url":   u"{0}/@@pfas-data-review".format(base),
-                "icon":  u"✓",
+                "icon":  u"ico-data-review",
                 "title": u"Data Review",
                 "desc":  u"Worksheets awaiting analyst sign-off or manager approval",
             },
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
-                "icon":  u"⚠",
+                "icon":  u"ico-warning",
                 "title": u"Deviations / CARs",
                 "desc":  u"Non-conformance tracking, root cause, corrective actions",
             },
             {
                 "url":   u"{0}/@@pfas-facility-qc".format(base),
-                "icon":  u"⌂",
+                "icon":  u"ico-daily-checklist",
                 "title": u"Equipment & daily checks",
                 "desc":  u"Temperatures, balances, pipettes, water, eye wash; what is due",
             },
             {
                 "url":   u"{0}/@@pfas-sop".format(base),
-                "icon":  u"❐",
+                "icon":  u"ico-book",
                 "title": u"Controlled Documents",
                 "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
         ]
 
 
-class PFASBenchHomeView(BrowserView):
+class PFASBenchHomeView(ViewHelpers, BrowserView):
     """Bench landing: the extraction queue, what needs attention, then the
     Bench tiles (phase 1)."""
 
@@ -245,8 +269,8 @@ class PFASBenchHomeView(BrowserView):
         flatten_form(self.request)
         return self.template()
 
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
+    def notices(self):
+        return _my_notices(self.context)
 
     def extractions(self):
         """Open batches with where their extraction stands, in progress first."""
@@ -278,11 +302,11 @@ class PFASBenchHomeView(BrowserView):
     def alerts(self):
         """Reagents and prepared standards that are expired, expiring within
         30 days, quarantined or low on stock."""
-        from datetime import date
+        from senaite.pfas import lab_time
         from senaite.pfas.bench_queue import inventory_alerts
         from senaite.pfas.browser.bench_inventory import inventory_items
         items = inventory_items(_portal(self.context))
-        return inventory_alerts(items, date.today())
+        return inventory_alerts(items, lab_time.today())
 
     def awaiting_homogenisation(self):
         """Received samples with a method requested and no record (H-P3)."""
@@ -300,10 +324,19 @@ class PFASBenchHomeView(BrowserView):
             logger.warning("homogenisation count: %s", exc)
         return n
 
+    def ready_to_build(self):
+        """Extraction batches finalized with no run built yet."""
+        try:
+            from senaite.pfas.browser.run_builder import ready_batches
+            return len(ready_batches(_portal(self.context), self.request))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("ready to build: %s", exc)
+            return 0
+
     def balances_today(self):
         """[{name, serial, verified}] for each registered balance: was it
         verified today? None when no balance is registered."""
-        from datetime import date
+        from senaite.pfas import lab_time
         try:
             from senaite.pfas import facility_qc as fq
             # balance_analytical / balance_prep (facility_qc.UNIT_TYPES): an
@@ -315,7 +348,7 @@ class PFASBenchHomeView(BrowserView):
             return None
         if not units:
             return None
-        today = date.today().strftime("%Y-%m-%d")
+        today = lab_time.today().isoformat()
         return [{"name": u.get("name"), "serial": u.get("serial_number"),
                  "verified": fq.balance_verified_on(u["id"], today)[0]}
                 for u in units]
@@ -325,44 +358,50 @@ class PFASBenchHomeView(BrowserView):
         return [
             {
                 "url":   u"{0}/@@pfas-reagents".format(base),
-                "icon":  u"⚗",
+                "icon":  u"ico-reagents",
                 "title": u"Reagent Inventory",
                 "desc":  u"Create reagent lots, track CoA, expiry, and storage location",
             },
             {
                 "url":   u"{0}/@@pfas-prep-standards".format(base),
-                "icon":  u"⚖",
+                "icon":  u"ico-prep-standards",
                 "title": u"Prepared Standards",
                 "desc":  u"Prepared standards with parent-reagent traceability",
             },
             {
                 "url":   u"{0}/@@pfas-homogenisation".format(base),
-                "icon":  u"⚙",
+                "icon":  u"ico-extraction",
                 "title": u"Homogenisation",
                 "desc":  u"{0} sample(s) awaiting homogenisation".format(self.awaiting_homogenisation()),
             },
             {
+                "url":   u"{0}/@@pfas-run-builder".format(base),
+                "icon":  u"ico-instrument-setup",
+                "title": u"Run Builder",
+                "desc":  u"{0} batch(es) ready to build".format(self.ready_to_build()),
+            },
+            {
                 "url":   u"{0}/@@pfas-logbook-batches".format(base),
-                "icon":  u"✎",
+                "icon":  u"ico-book-open",
                 "title": u"Logbooks",
                 "desc":  u"Fill in and correct FM-ENV logbooks for a batch",
             },
             {
                 "url":   u"{0}/@@pfas-sop".format(base),
-                "icon":  u"❐",
+                "icon":  u"ico-book",
                 "title": u"Controlled Documents",
                 "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
-                "icon":  u"⚠",
+                "icon":  u"ico-warning",
                 "title": u"Deviations / CARs",
                 "desc":  u"Non-conformance tracking, root cause, corrective actions",
             },
         ]
 
 
-class PFASDataReviewHomeView(BrowserView):
+class PFASDataReviewHomeView(ViewHelpers, BrowserView):
     """Data Review workspace landing page — tile grid for the Analyst/Verifier role."""
 
     template = ViewPageTemplateFile("templates/pfas_data_review_home.pt")
@@ -371,33 +410,33 @@ class PFASDataReviewHomeView(BrowserView):
         flatten_form(self.request)
         return self.template()
 
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
+    def notices(self):
+        return _my_notices(self.context)
 
     def sections(self):
         base = _portal(self.context).absolute_url()
         return [
             {
                 "url":   u"{0}/@@pfas-data-review".format(base),
-                "icon":  u"✓",
+                "icon":  u"ico-data-review",
                 "title": u"Data Review",
                 "desc":  u"Worksheets awaiting analyst sign-off or manager approval",
             },
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
-                "icon":  u"⚠",
+                "icon":  u"ico-warning",
                 "title": u"Deviations / CARs",
                 "desc":  u"Non-conformance tracking, root cause, corrective actions",
             },
             {
                 "url":   u"{0}/@@pfas-control-chart".format(base),
-                "icon":  u"↗",
+                "icon":  u"ico-control-charts",
                 "title": u"Control Charts",
                 "desc":  u"QC control charts across all methods",
             },
             {
                 "url":   u"{0}/@@pfas-calibrations".format(base),
-                "icon":  u"◈",
+                "icon":  u"ico-calibrations",
                 "title": u"Calibration Archive",
                 "desc":  u"Every run's curves; a run's curve is approved in Data Review",
             },

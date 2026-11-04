@@ -26,7 +26,9 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import coa_format
 from senaite.pfas import coa_qc_standards
+from senaite.pfas import lab_time
 from senaite.pfas import regulatory_limits
+from senaite.pfas.print_settings import logo_src
 from senaite.pfas import report_limits
 
 logger = logging.getLogger("senaite.pfas.coa_sections")
@@ -36,8 +38,13 @@ _EXCLUDED_STATES = ("retracted", "rejected", "cancelled", "invalid")
 
 
 def _fmt_date(value):
+    """A time on the certificate, on the laboratory's clock. While no zone
+    converts it is the DateTime's own strftime, which formats on the
+    server's clock, as it always printed."""
     if not value:
         return u""
+    if lab_time.active():
+        return lab_time.show(value, "utc", u"%Y-%m-%d %H:%M")
     try:
         return value.strftime("%Y-%m-%d %H:%M")
     except Exception:
@@ -89,6 +96,21 @@ def qc_standards_state(sample):
     rows, sid = injection_rows(sample)
     return coa_qc_standards.build(rows, sid, int(fmt.get("coa_sig_figs") or 3),
                                   fmt.get("coa_rounding") or u"epa", ROLE_LABELS)["state"]
+
+
+def _sample_subtype(sample):
+    """The sample's sub-type id (SampleSubtype; sample_subtypes), or None."""
+    fld = sample.getField("SampleSubtype") if hasattr(sample, "getField") else None
+    return (fld.get(sample) if fld is not None else None) or None
+
+
+def _sample_type_uid(sample):
+    """The sample's core Sample Type UID: a limit names its matrices by it."""
+    try:
+        st = sample.getSampleType()
+        return st.UID() if st is not None else None
+    except Exception:                                       # noqa: BLE001
+        return None
 
 
 class PFASCoASectionsView(BrowserView):
@@ -143,13 +165,13 @@ class PFASCoASectionsView(BrowserView):
         return {"name": s.get("lab_name") or u"",
                 "contact": u" · ".join(contact),
                 "accreditation": s.get("accreditation") or u"",
-                "logo": s.get("logo_url") or u""}
+                "logo": logo_src(s, api.get_portal().absolute_url())}
 
     def doc_meta(self):
         """Report ID (with its prospective revision) and issue date for the
         header -- the same identity the controlled-document stamp prints."""
         from DateTime import DateTime
-        meta = {"report_id": u"", "issued": DateTime().strftime("%Y-%m-%d"),
+        meta = {"report_id": u"", "issued": lab_time.today().isoformat(),
                 "template_rev": self.template_revision()[1]}
         try:
             att = api.get_portal().restrictedTraverse("@@pfas-coa-attestation")
@@ -204,7 +226,6 @@ class PFASCoASectionsView(BrowserView):
         return identify_from(analyses)[0]
 
     def _sample(self, sample):
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
         from senaite.pfas.method_profile_store import get_profile
         from senaite.pfas.qc_qualification import parse_remark_codes
 
@@ -231,12 +252,13 @@ class PFASCoASectionsView(BrowserView):
         # LINEAR peak, "lr-PFOS", which is not what a summed result is.
         from senaite.pfas.method_profile_sections import _analyte_titles
         titles = _analyte_titles(profile or {})
-        # A placeholder CAS in the analyte reference must never print as a
-        # CAS number; the EDD refuses it separately (REPORT).
-        cas = dict((r[0], r[2] if r[2] and "PLACEHOLDER" not in r[2].upper() else u"\u2014")
-                   for r in NATIVE_ANALYTES)
+        # A placeholder CAS on the service must never print as a CAS number;
+        # the EDD refuses it separately (REPORT).
+        from senaite.pfas import compound_library, compound_library_store
+        cas = dict((kw, c if c and "PLACEHOLDER" not in c.upper() else u"\u2014")
+                   for kw, c in compound_library.cas_by_keyword(compound_library_store.library(), dashed=True).items())
 
-        data, analysed, dates = [], [], {}
+        data, analysed, dates, times = [], [], {}, {}
         for an in analyses:
             kw = an.getKeyword()
             try:
@@ -253,15 +275,13 @@ class PFASCoASectionsView(BrowserView):
             # a retest replaces its original in this list, so a diluted
             # result carries the retest's own date
             dates[kw] = _fmt_date(when)[:10]            # the row shows the day
+            times[kw] = _fmt_date(when)                 # a dilution's footnote: day and time
         # this sample's certificate format: its method x matrix (Reporting tab)
-        from senaite.pfas import report_format
         # the format comes from the issued reporting-template revision
+        # (report_templates.certificate_format, shared with Data Review)
+        from senaite.pfas.report_templates import certificate_format
         snap, _rev = self.template_revision()
-        fmt = report_format.resolve(
-            {report_format.KEY: (snap.get("report_formats") or {}).get(method_id) or {}}
-            if snap is not None else profile, matrix)
-        merged = dict(self.settings())
-        merged.update(fmt)
+        merged, fmt = certificate_format(snap, method_id, profile, matrix, self.settings())
         rows = coa_format.build_rows(data, profile, matrix, merged, cas)
         regulatory = (self._regulatory(sample, data, profile, matrix, rows, fmt)
                       if fmt.get("coa_show_regulatory") else None)
@@ -270,7 +290,7 @@ class PFASCoASectionsView(BrowserView):
         # designed certificate refuses (coa_document.data)
         enrich_error = u""
         try:
-            self._enrich_rows(sample, rows, data, profile, matrix, fmt, dates)
+            self._enrich_rows(sample, rows, data, profile, matrix, fmt, dates, times)
         except Exception as exc:                            # noqa: BLE001
             logger.exception("coa_sections: designed-certificate fields of %s", api.get_id(sample))
             enrich_error = u"%s" % exc
@@ -284,6 +304,8 @@ class PFASCoASectionsView(BrowserView):
             qc_standards = {"state": "error", "rows": [], "injections": 0}
             qc_error = u"%s" % exc
         units = sorted(set(r["unit"] for r in rows if r["unit"]))
+        # the method x matrix reporting unit: one per sample, the Result heading
+        result_unit = ((profile or {}).get("unit_map") or {}).get(matrix) or u", ".join(units)
         contact = sample.getContact()
         batch = sample.getBatch()
         return {
@@ -304,7 +326,9 @@ class PFASCoASectionsView(BrowserView):
             "analysed": _fmt_date(max(analysed)) if analysed else u"",
             "method": method.Title() if method is not None else u"",
             "units": u", ".join(units),
+            "result_unit": result_unit,
             "rows": rows,
+            "rule_codes": self._rule_codes(rows),
             "any_rl": any(r["rl"] for r in rows),
             "codes": sorted(set(c for d in data for c in d["codes"])),
             "regulatory": regulatory,
@@ -352,25 +376,40 @@ class PFASCoASectionsView(BrowserView):
         return coa_qc_standards.build(rows, sid, int(fmt.get("coa_sig_figs") or 3),
                                       fmt.get("coa_rounding") or u"epa", ROLE_LABELS)
 
-    def _enrich_rows(self, sample, rows, data, profile, matrix, fmt, dates):
-        """Each results row's full name (isomer-aware), date of analysis and
+    def _rule_codes(self, rows):
+        """The legend's J and D lines, in the QC Qualifiers library's wording,
+        for the codes the rows carry."""
+        from senaite.pfas import qc_qualification
+        try:
+            library = qc_qualification.get_library(api.get_portal())
+        except Exception:                                   # noqa: BLE001
+            logger.warning("coa_sections: qualifier library unreadable; seed wording", exc_info=True)
+            library = qc_qualification.DEFAULT_LIBRARY
+        wording = {coa_format.J_CODE: (library.get("between_mdl_rl") or {}).get("statement"),
+                   coa_format.D_CODE: (library.get("dilution") or {}).get("statement")}
+        return coa_format.rule_codes(rows, wording)
+
+    def _enrich_rows(self, sample, rows, data, profile, matrix, fmt, dates, times=None):
+        """Each results row's full name (isomer-aware), date of analysis (the
+        day, and the date and time for a dilution's footnote) and
         MCL / action level, for designed certificates. The action
         level is the same set of limits the regulatory comparison uses --
         verified, this sample's programs and matrix, switched on for this
         method x matrix -- and only when the format shows the comparison."""
         from senaite.pfas import coa_document, isomers
         from senaite.pfas import report_format
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-        names = dict((r[0], r[3]) for r in NATIVE_ANALYTES)
+        from senaite.pfas import compound_library, compound_library_store
+        names = compound_library.full_names(compound_library_store.library())
         full = dict((d["keyword"], isomers.full_name(profile or {}, d["keyword"], names)) for d in data)
         levels = {}
         if fmt.get("coa_show_regulatory"):
             store = regulatory_limits.get_store(api.get_portal())
             limits = regulatory_limits.applicable(store.get("limits"), self._programs(sample),
-                                                  sample.getSampleTypeTitle())
+                                                  sample.getSampleTypeTitle(), _sample_type_uid(sample),
+                                                  subtype=_sample_subtype(sample))
             limits = [l for l in limits if report_format.limit_applies(profile, matrix, l.get("id"))]
             levels = coa_document.action_levels(limits, store.get("programs"))
-        coa_document.enrich_rows(rows, full, dates, levels)
+        coa_document.enrich_rows(rows, full, dates, levels, times)
 
     # ── quality system statement ──────────────────
 
@@ -385,7 +424,8 @@ class PFASCoASectionsView(BrowserView):
 
     def _quality_system(self, batch):
         """The statement for a sample in `batch`: the project's QAPP (title,
-        controlled id, ACTIVE revision) or the lab's internal system."""
+        controlled id, ACTIVE revision) or the lab's internal system (naming
+        the document marked as the laboratory's QAM)."""
         from senaite.pfas import qs_statement
         qapp = None
         try:
@@ -402,7 +442,13 @@ class PFASCoASectionsView(BrowserView):
                 qapp["project"] = qapp["project"].strip()
         except Exception as exc:                            # noqa: BLE001
             logger.warning("coa_sections: quality system not resolved: %s", exc)
-        return qs_statement.render(self.settings(), qapp)
+        qam = None
+        try:
+            from senaite.pfas.browser.sop_documents import lab_qam
+            qam = lab_qam(api.get_portal())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("coa_sections: laboratory QAM not resolved: %s", exc)
+        return qs_statement.render(self.settings(), qapp, qam)
 
     # ── regulatory notes (part B) ─────────────────────────────────────────
 
@@ -427,7 +473,8 @@ class PFASCoASectionsView(BrowserView):
         store = regulatory_limits.get_store(api.get_portal())
         programs = self._programs(sample)
         limits = regulatory_limits.applicable(store.get("limits"), programs,
-                                              sample.getSampleTypeTitle())
+                                              sample.getSampleTypeTitle(), _sample_type_uid(sample),
+                                              subtype=_sample_subtype(sample))
         # this method x matrix may switch a limit off (Reporting tab)
         from senaite.pfas import report_format
         limits = [l for l in limits if report_format.limit_applies(profile, matrix, l.get("id"))]
@@ -444,8 +491,10 @@ class PFASCoASectionsView(BrowserView):
                 continue                                    # unrecognised text: not compared
             lim = report_limits.limits_for(profile, matrix, d["keyword"])
             lim["rl"] = report_limits.scaled_rl(lim["rl"], d.get("dilution"))
+            # a J value (below the RL) is compared as a result below the RL,
+            # as before the J rule: the comparison is not changed by it
             results[d["keyword"]] = {
-                "value": float(row["result"]) if row["detected"] else None,
+                "value": float(row["result"]) if row["detected"] and not row.get("estimated") else None,
                 "rl": lim["rl"]}
         n = int((fmt or self.settings()).get("coa_sig_figs") or 3)
         rule = (fmt or self.settings()).get("coa_rounding") or u"epa"

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Where a lot was used, and a search by lot number
 (@@pfas-lot-usage; phase 3). Reached from each
-lot's "Where used" button; not a sidebar item (2026-10-03: useful; but
-the lab does not issue recalls --).
+lot's "Where used" button; not a sidebar item: useful, but the lab does
+not issue recalls.
 
     ?kind=reagent&uid=<id>   one lot: every batch and stage that used it
     ?q=<lot text>            every use of any lot whose number
@@ -17,22 +17,20 @@ import logging
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.lot_usage")
 
 
-class PFASLotUsageView(BrowserView):
+class PFASLotUsageView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/lot_usage.pt")
 
     def __call__(self):
         flatten_form(self.request)
         return self.template()
-
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url").getPortalObject().absolute_url()
 
     def query(self):
         return (self.request.form.get("q") or u"").strip()

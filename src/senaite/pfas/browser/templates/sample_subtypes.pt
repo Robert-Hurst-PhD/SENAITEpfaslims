@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Sample sub-types</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Sample sub-types</tal:t>
+  <div metal:fill-slot="content">
+  <div class="page-body">
+    <div class="alert alert-success" tal:condition="view/ok_msg" tal:content="view/ok_msg"></div>
+    <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <!-- each core Sample Type with its sub-types (sample_subtypes) -->
+    <div class="table-wrap">
+      <table class="pfas-table" data-col-resize="sample-subtypes-1">
+        <thead><tr><th>Sample type</th><th>Sub-types</th><th>Method profiles</th>
+          <th class="row-action"><span class="pfas-sr-hide">Sub-types</span></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="t view/types">
+            <td class="pfas-cell-name" tal:content="t/title">Meat / Muscle</td>
+            <td tal:content="t/names">Beef, Pork</td>
+            <td tal:content="python:u', '.join(p[1] for p in t['profiles']) or u'—'">FDA 32-PFAS in Food</td>
+            <td class="row-action"><a class="btn-sm btn-secondary" tal:attributes="href t/url">Sub-types</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- a type's sub-types (?type=<uid>) -->
+    <tal:e condition="view/editing">
+    <div class="pfas-modal open" tal:define="e view/editing">
+      <div class="pfas-modal-box is-md" role="dialog" aria-modal="true" aria-labelledby="st-h">
+        <h2 id="st-h" tal:content="string:Sample type &#183; ${e/title}">Sample type &#183; Meat / Muscle</h2>
+        <form method="POST" tal:attributes="action string:${view/portal_url}/@@pfas-sample-subtypes">
+          <input type="hidden" name="type" tal:attributes="value e/uid" />
+          <div class="pfas-form-field is-full pfas-rows" data-rows="data-rows">
+            <label>Sub-types
+              <tal:h define="hid string:sample-subtypes"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
+            <table class="pfas-table" data-col-resize="sample-subtypes-2">
+              <thead><tr><th>Sub-type</th><th>Method profiles</th><th>Regulatory limits</th>
+                <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
+              <tbody data-row-list="data-row-list">
+                <tr data-row="data-row" tal:repeat="r e/rows">
+                  <td tal:define="i repeat/r/index">
+                    <input type="hidden" tal:attributes="name string:st.${i}.id; value r/id" />
+                    <input type="text" class="pfas-input" aria-label="Sub-type" tal:attributes="name string:st.${i}.name; value r/name" /></td>
+                  <td class="cf-chips" tal:define="i repeat/r/index">
+                    <label class="pfas-switch cf-chip" tal:repeat="p e/profiles">
+                      <input type="checkbox" value="on"
+                             tal:attributes="name python:'st.%s.on.%s' % (i, p[0]); checked python:'checked' if p[0] in r['on'] else None" /><span class="pfas-switch-track"></span>
+                      <span tal:replace="python:p[1]">FDA 32-PFAS in Food</span></label></td>
+                  <td tal:content="python:(u'%d limit%s' % (r['limits'], u'' if r['limits'] == 1 else u's')) if r['limits'] else u'—'">1 limit</td>
+                  <td class="row-plus-cell">
+                    <details class="row-more">
+                      <summary class="row-plus" aria-label="Actions for this sub-type" title="Actions">+</summary>
+                      <div class="row-more-menu">
+                        <button type="button" class="btn-sm btn-danger" data-row-remove="data-row-remove">Remove</button>
+                      </div>
+                    </details></td>
+                </tr>
+              </tbody>
+            </table>
+            <template data-row-template="data-row-template">
+              <tr data-row="data-row">
+                <td><input type="hidden" name="st.__i__.id" value="" />
+                  <input type="text" class="pfas-input" aria-label="Sub-type" name="st.__i__.name" /></td>
+                <td class="cf-chips">
+                  <label class="pfas-switch cf-chip" tal:repeat="p e/profiles">
+                    <input type="checkbox" value="on" checked="checked" tal:attributes="name python:'st.__i__.on.%s' % p[0]" /><span class="pfas-switch-track"></span>
+                    <span tal:replace="python:p[1]">FDA 32-PFAS in Food</span></label></td>
+                <td>&#8212;</td>
+                <td class="row-plus-cell"><button type="button" class="btn-sm btn-secondary" data-row-remove="data-row-remove">Remove</button></td>
+              </tr>
+            </template>
+            <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add">+ Add sub-type</button>
+          </div>
+          <div class="pfas-form-field is-full">
+            <label tal:content="string:Method profiles that analyse ${e/title}">Method profiles that analyse Meat / Muscle</label>
+            <div tal:repeat="p e/profiles"><span tal:replace="python:p[1]">FDA 32-PFAS in Food</span>
+              <a class="btn-sm btn-secondary" tal:attributes="href python:'%s/@@pfas-method-profile-edit?method_id=%s' % (view.portal_url(), p[0])">Open profile</a></div>
+            <div class="pfas-muted" tal:condition="not:e/profiles">&#8212;</div>
+          </div>
+          <div class="form-actions is-end">
+            <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-sample-subtypes">Cancel</a>
+            <button type="submit" class="btn btn-primary" tal:attributes="disabled python:None if view.can_edit() else 'disabled'">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    </tal:e>
+  </div>
+  </div>
+</body>
+</html>

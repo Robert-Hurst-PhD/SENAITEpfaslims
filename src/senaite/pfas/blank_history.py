@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Blank history and the lots behind a change in background (Part 2).
+"""Blank history and the lots behind a change in background.
 
 A blank's results (qc_results) belong to a run; the run's lots are the ones
 its extraction batch recorded (inventory_ledger: reagents, standards and
@@ -13,7 +13,7 @@ in background.
     runs(rows)                          [{batch_id, run_date, method, matrix,
                                           qc_type, values: {analyte: value}, failed}]
     previous(runs, current)             the comparable run before `current`
-    lots_of(ledger_rows, fm251)         [{kind, lot, name, role, stage}]
+    lots_of(ledger_rows)                [{kind, lot, name, role, stage}]
     lot_diff(current, previous)         {"changed", "new", "gone", "shared"}
     rise(current, previous)             [(analyte, now, before)] that went up
 
@@ -22,23 +22,18 @@ Pure; Python 2.7 and 3.
 from __future__ import absolute_import, unicode_literals
 
 # extracted blanks, the solvent (instrument) blank, the matrix blank and the
-# field blanks: ONE list for Blank History's data, the control charts and
-# the blanks mode (two lists differed, 2026-10-11)
+# field blanks: one list for Blank History's data, the control charts and
+# the blanks mode
 BLANK_TYPES = ("MB", "LRB", "CCB", "MxB", "FRB", "TB")
-
-# FM-ENV-002 lot fields (the same list Data Review's traceability walk reads)
-FM251_FIELDS = (("pds_a_lot", u"PDS-A"), ("pds_b_lot", u"PDS-B"),
-                ("analyte_pds_lot", u"Analyte PDS"), ("analyte_spike_lot", u"Surrogate Spike"),
-                ("cal_a_lot", u"CAL-A"))
 
 
 def runs(rows):
     """One entry per (run, blank kind) from qc_results rows ({batch_id,
     run_date, method, matrix, qc_type, analyte, value, passed, qc_level,
     units}), newest first. An isomer component is kept under its own name.
-    Every blank is one entry per injection (its qc_level; rows stored before
-    2026-10-09 have none but a matrix blank's): two method blanks of one run
-    are two entries, and a matrix blank is compared with its own lot's
+    Every blank is one entry per injection (its qc_level; an older row may
+    have none): two method blanks of one run are two entries, and a matrix
+    blank is compared with its own lot's
     assigned levels (matrix_blank.py)."""
     by = {}
     for r in rows or []:
@@ -73,9 +68,9 @@ def previous(all_runs, current):
     return max(earlier, key=k) if earlier else None
 
 
-def lots_of(ledger_rows, fm251=None):
-    """Every lot the run used: the extraction's (ledger) and the calibration
-    prep's prepared standards (FM-ENV-002), each once."""
+def lots_of(ledger_rows):
+    """Every lot the run used, each once: the usage ledger holds the
+    extraction's stages and the run's own lots (Run Builder, stage "Run")."""
     out, seen = [], set()
     for r in ledger_rows or []:
         lot = (r.get("lot") or u"").strip()
@@ -84,12 +79,6 @@ def lots_of(ledger_rows, fm251=None):
         seen.add((r.get("kind"), lot))
         out.append({"kind": r.get("kind") or u"", "lot": lot, "name": r.get("item_name") or u"",
                     "role": r.get("role") or r.get("item_name") or u"", "stage": r.get("stage_name") or u""})
-    for field, label in FM251_FIELDS:
-        lot = ((fm251 or {}).get(field) or u"").strip()
-        if lot and ("prepared_standard", lot) not in seen:
-            seen.add(("prepared_standard", lot))
-            out.append({"kind": u"prepared_standard", "lot": lot, "name": label, "role": label,
-                        "stage": u"Calibration prep (FM-ENV-002)"})
     return out
 
 
@@ -130,7 +119,7 @@ def lot_markers(order, lots_by_run):
     out, prev = [], None
     for i, run in enumerate(order):
         if prev is None or run == prev:
-            prev = run                                   # the first run, or the same run again
+            prev = run
             continue
         d = lot_diff(lots_by_run.get(run) or [], lots_by_run.get(prev) or [])
         prev = run

@@ -13,111 +13,153 @@
     <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
     <div class="alert alert-error" tal:repeat="e view/errors" tal:content="e">error</div>
 
-    <p class="form-note">MCLs and action levels certificates compare results with; only limits marked Verified are used. <tal:h define="hid string:action-level"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-
-    <tal:view condition="not:view/edit_mode" define="names view/program_names">
-      <p tal:condition="editable">
-        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits?edit=1">Edit limits</a>
-      </p>
-      <table class="pfas-table">
+    <tal:view condition="not:view/edit_mode" define="names view/program_names; token context/@@authenticator/token">
+      <!-- the intro, with the page's actions at its right -->
+      <div class="pfas-intro-row">
+        <p class="form-note">MCLs and action levels certificates compare results with; only active limits marked Verified are used. <tal:h define="hid string:action-level"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+        <span tal:condition="editable">
+          <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits?edit=programs">Program links</a>
+          <a class="btn btn-primary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits?edit=new">+ Add limit</a>
+        </span>
+      </div>
+      <div class="pfas-filterbar">
+        <div class="pfas-field"><label>Status</label>
+          <nav class="pfas-seg" aria-label="Status">
+            <a class="pfas-seg-item" tal:repeat="w view/status_links"
+               tal:attributes="href w/url; aria-selected python:'true' if w['on'] else 'false'"
+               tal:content="w/label">Active</a>
+          </nav></div>
+      </div>
+      <table class="pfas-table" data-col-resize="regulatory-limits-1">
         <thead>
-          <tr><th>Limit</th><th>Program</th><th>Analytes</th><th>Matrices</th>
-              <th class="num">Value</th><th>Type</th><th>Status</th><th>Source</th></tr>
+          <tr><th>Analyte</th><th>Program</th><th>Matrices</th>
+              <th class="num">Value</th><th>Type</th><th>Status</th><th>Source</th>
+              <th class="row-plus-cell" tal:condition="editable"><span class="pfas-sr-hide">Actions</span></th></tr>
         </thead>
         <tbody>
-          <tr tal:repeat="r view/rows">
-            <td><strong tal:content="r/label">PFOA</strong>
-                <div class="cf-hint" tal:condition="r/status_note|nothing" tal:content="r/status_note">note</div></td>
+          <tr tal:repeat="r view/rows" tal:attributes="class python:'is-warn' if r['no_matrix'] else None">
+            <!-- the analyte only; the limit's name stays on the limit (its editor,
+                 the certificate's exceedance line) -->
+            <td><strong tal:content="r/analyte_column" tal:attributes="title r/label">PFOA</strong></td>
             <td tal:content="python:names.get(r.get('program'), r.get('program'))">US EPA</td>
-            <td tal:content="r/analytes_text">PFOA</td>
-            <td tal:content="r/matrices_text">Drinking Water</td>
+            <td><span tal:replace="r/matrices_text">Drinking Water</span>
+                <div class="pfas-sub" tal:condition="r/subtypes_text">Sub-type: <span tal:replace="r/subtypes_text">Beef</span></div>
+                <span class="badge badge-warn" tal:condition="r/no_matrix">No matrix</span></td>
             <td class="num" tal:content="python:'%s %s' % (r.get('value'), r.get('unit') or '')">4 ng/L</td>
             <td tal:content="r/kind">MCL</td>
-            <td><span class="badge badge-success" tal:condition="r/verified">verified</span>
-                <span class="badge badge-quarantine" tal:condition="not:r/verified">unverified</span>
-                <div class="cf-hint" tal:condition="r/effective|nothing" tal:content="r/effective">2029</div></td>
-            <td><span class="cf-hint" tal:content="r/citation|nothing">40 CFR 141</span>
-                <a class="btn-sm btn-secondary" tal:condition="r/url|nothing" tal:attributes="href r/url" target="_blank">Source</a></td>
+            <td><span class="badge badge-archived" tal:condition="r/retired|nothing"
+                      tal:attributes="title python:u'%(by)s %(at)s: %(why)s' % r['retired']">retired</span>
+                <tal:a condition="not:r/retired|nothing">
+                <span class="badge badge-success" tal:condition="r/verified">verified</span>
+                <span class="badge badge-quarantine" tal:condition="not:r/verified">unverified</span></tal:a></td>
+            <td><span class="cf-hint" tal:content="r/citation|nothing">40 CFR 141</span></td>
+            <td class="row-plus-cell" tal:condition="editable">
+              <details class="row-more" tal:condition="not:r/retired|nothing">
+                <summary class="row-plus" aria-label="Actions for this limit" title="Actions">+</summary>
+                <div class="row-more-menu">
+                  <a class="btn-sm btn-secondary" tal:condition="r/url|nothing" tal:attributes="href r/url" target="_blank">Open the source</a>
+                  <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits?edit=${r/id}">Update</a>
+                  <form method="post" tal:condition="not:r/verified"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-regulatory-limits">
+                    <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                    <input type="hidden" name="action" value="verify" />
+                    <input type="hidden" name="id" tal:attributes="value r/id" />
+                    <button class="btn-sm btn-secondary" type="submit">Mark verified</button>
+                  </form>
+                  <form method="post" class="mp-issue-form"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-regulatory-limits">
+                    <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                    <input type="hidden" name="action" value="retire" />
+                    <input type="hidden" name="id" tal:attributes="value r/id" />
+                    <label class="mp-issue-label">Why
+                      <input type="text" name="why" class="pfas-input" required="required" /></label>
+                    <button class="btn-sm btn-danger" type="submit">Retire</button>
+                  </form>
+                </div>
+              </details>
+            </td>
           </tr>
         </tbody>
       </table>
-      <p class="form-note" tal:condition="not:view/rows">No limits yet.</p>
+      <p class="form-note" tal:condition="not:view/rows">No limits.</p>
     </tal:view>
 
-    <form method="post" tal:condition="view/edit_mode">
+    <form method="post" tal:condition="python:view.edit_mode() and view.editing() != 'programs'"
+          tal:define="rows view/edit_rows">
       <input type="hidden" name="action" value="save" />
+      <input type="hidden" name="edit" tal:attributes="value view/editing" />
+      <p class="form-note" tal:condition="not:rows">There is no such limit.</p>
+      <tal:r repeat="r rows">
+      <div class="pfas-card" tal:define="i r/index; progs view/program_ids; units view/units">
+        <input type="hidden" tal:attributes="name string:lim.${i}.id; value r/id" />
+        <div class="pfas-cols-2">
+          <label class="field-row">Program
+            <select tal:attributes="name string:lim.${i}.program">
+              <option tal:repeat="p progs" tal:attributes="value p; selected python:'selected' if p == r.get('program') else None"
+                      tal:content="python:view.program_names().get(p, p)">US EPA</option>
+            </select></label>
+          <label class="field-row">Name on the certificate
+            <input type="text" tal:attributes="name string:lim.${i}.label; value r/label" /></label>
+        </div>
+        <label class="field-row">Analytes (keywords)
+          <input type="text" tal:attributes="name string:lim.${i}.analytes; value r/analytes_text" /></label>
+        <div class="field-row"><span class="pfas-label">Matrices</span>
+          <div class="cf-chips">
+            <label class="pfas-switch cf-chip" tal:repeat="st view/sample_types">
+              <input type="checkbox" value="1"
+                     tal:attributes="name python:'lim.%s.mx.%s' % (i, st[0]); checked python:'checked' if view.ticked(r, st[0], st[1]) else None" /><span class="pfas-switch-track"></span>
+              <span tal:replace="python:st[1]">Drinking Water</span></label>
+          </div></div>
+        <!-- a limit that names sub-types applies only to those samples (sample_subtypes) -->
+        <div class="field-row" tal:condition="view/subtype_choices"><span class="pfas-label">Sub-types</span>
+          <div class="cf-chips">
+            <label class="pfas-switch cf-chip" tal:repeat="sub view/subtype_choices">
+              <input type="checkbox" value="1"
+                     tal:attributes="name python:'lim.%s.st.%s' % (i, sub[0]); checked python:'checked' if sub[0] in (r.get('subtype_ids') or []) else None" /><span class="pfas-switch-track"></span>
+              <span tal:replace="python:sub[1]">Beef</span></label>
+          </div></div>
+        <div class="pfas-cols-2">
+          <label class="field-row">Limit
+            <input type="number" step="any" min="0" tal:attributes="name string:lim.${i}.value; value r/value" /></label>
+          <label class="field-row">Unit
+            <select tal:attributes="name string:lim.${i}.unit">
+              <option tal:repeat="u units" tal:attributes="value u; selected python:'selected' if u == r.get('unit') else None" tal:content="u">ng/L</option>
+            </select></label>
+          <label class="field-row">Type
+            <select tal:attributes="name string:lim.${i}.kind">
+              <option tal:repeat="k python:view.kind_choices(r.get('kind'))"
+                      tal:attributes="value python:k[0]; selected python:'selected' if k[0] == r.get('kind') else None" tal:content="python:k[1]">MCL</option>
+            </select></label>
+          <label class="field-row">Effective / compliance date
+            <input type="text" tal:attributes="name string:lim.${i}.effective; value r/effective" /></label>
+          <label class="field-row">Citation
+            <input type="text" tal:attributes="name string:lim.${i}.citation; value r/citation" /></label>
+          <label class="field-row">Source link
+            <input type="url" tal:attributes="name string:lim.${i}.url; value r/url" /></label>
+        </div>
+        <label class="field-row">Status note
+          <input type="text" tal:attributes="name string:lim.${i}.status_note; value r/status_note" /></label>
+        <label class="pfas-switch pfas-check">
+          <input type="checkbox" value="1" tal:attributes="name string:lim.${i}.verified; checked python:'checked' if r.get('verified') else None" /><span class="pfas-switch-track"></span>
+          Verified against its source</label>
+        <div class="form-note" tal:condition="r/verified_by|nothing"
+             tal:content="python:u'%s %s' % (r['verified_by'], view.lab_at(r.get('verified_at'), r.get('verified_at')))">by</div>
+      </div>
+      </tal:r>
+      <div class="pfas-action-bar" tal:condition="rows">
+        <button type="submit" class="btn btn-primary">Save limit</button>
+        <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Cancel</a>
+      </div>
+    </form>
 
-      <h3>Limits</h3>
-      <table class="pfas-table pfas-table-form">
-        <colgroup>
-          <col width="11%" /><col width="16%" /><col width="16%" /><col width="13%" />
-          <col width="8%" /><col width="9%" /><col width="13%" /><col width="8%" /><col width="6%" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Program</th><th>Label</th><th>Analytes (keywords)</th>
-            <th>Matrices (sample types)</th><th>Limit</th><th>Unit</th>
-            <th>Type</th><th>Verified</th><th>Delete</th>
-          </tr>
-        </thead>
-        <tbody tal:define="progs view/program_ids; kinds view/kinds; units view/units">
-          <tal:r repeat="r python:view.rows() + [{'index': len(view.rows()), 'id': '', 'program': 'federal', 'label': '', 'analytes_text': '', 'matrices_text': '', 'value': '', 'unit': 'ng/L', 'kind': 'MCL', 'citation': '', 'effective': '', 'status_note': '', 'url': '', 'verified': False}]">
-          <tr tal:define="i r/index">
-            <td>
-              <input type="hidden" tal:attributes="name string:lim.${i}.id; value r/id" />
-              <select tal:attributes="name string:lim.${i}.program; disabled python:not editable">
-                <option tal:repeat="p progs" tal:attributes="value p; selected python:p == r.get('program')"
-                        tal:content="python:view.program_names().get(p, p)">US EPA</option>
-              </select>
-            </td>
-            <td><input type="text" size="22" tal:attributes="name string:lim.${i}.label; value r/label; placeholder python:'new limit' if not r['id'] else None" /></td>
-            <td><input type="text" size="22" tal:attributes="name string:lim.${i}.analytes; value r/analytes_text" /></td>
-            <td><input type="text" size="16" tal:attributes="name string:lim.${i}.matrices; value r/matrices_text" /></td>
-            <td><input type="number" step="any" min="0" size="6" tal:attributes="name string:lim.${i}.value; value r/value" /></td>
-            <td>
-              <select tal:attributes="name string:lim.${i}.unit">
-                <option tal:repeat="u units" tal:attributes="value u; selected python:u == r.get('unit')" tal:content="u">ng/L</option>
-              </select>
-            </td>
-            <td>
-              <select tal:attributes="name string:lim.${i}.kind">
-                <option tal:repeat="k python:view.kind_choices(r.get('kind'))"
-                        tal:attributes="value python:k[0]; selected python:k[0] == r.get('kind')" tal:content="python:k[1]">MCL</option>
-              </select>
-            </td>
-            <td>
-              <input type="checkbox" value="1" tal:attributes="name string:lim.${i}.verified; checked r/verified" />
-              <div class="form-note" tal:condition="r/verified_by|nothing"
-                   tal:content="string:${r/verified_by} ${r/verified_at}">by</div>
-              <span class="badge badge-quarantine" tal:condition="python:r['id'] and not r.get('verified')">unverified</span>
-            </td>
-            <td><input type="checkbox" value="1" tal:condition="r/id" tal:attributes="name string:lim.${i}.delete" /></td>
-          </tr>
-          <tr>
-            <td></td>
-            <td colspan="3">
-              <input type="text" placeholder="Citation"
-                     tal:attributes="name string:lim.${r/index}.citation; value r/citation" />
-              <input type="url" placeholder="https://..."
-                     tal:attributes="name string:lim.${r/index}.url; value r/url" />
-            </td>
-            <td colspan="5">
-              <input type="text" placeholder="Effective / compliance date"
-                     tal:attributes="name string:lim.${r/index}.effective; value r/effective" />
-              <input type="text" placeholder="Status note (e.g. proposed rescission)"
-                     tal:attributes="name string:lim.${r/index}.status_note; value r/status_note" />
-            </td>
-          </tr>
-          </tal:r>
-        </tbody>
-      </table>
-
-      <h3>Program links</h3>
+    <form method="post" tal:condition="python:view.editing() == 'programs'">
+      <input type="hidden" name="action" value="save_programs" />
+      <input type="hidden" name="edit" value="programs" />
       <p class="form-note">
         Printed under the certificate's regulatory notes as "for more
         information". One link per line, written <code>label | https://address</code>.
       </p>
-      <table class="pfas-table pfas-table-form">
+      <table class="pfas-table pfas-table-form" data-col-resize="regulatory-limits-2">
         <colgroup><col width="14%" /><col width="22%" /><col width="64%" /></colgroup>
         <thead><tr><th>Program</th><th>Name on the certificate</th><th>Links</th></tr></thead>
         <tbody>
@@ -129,10 +171,9 @@
           </tr>
         </tbody>
       </table>
-
-      <div class="pfas-action-bar" tal:condition="editable">
-        <button type="submit" class="btn btn-primary">Save limits</button>
-        <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Done</a>
+      <div class="pfas-action-bar">
+        <button type="submit" class="btn btn-primary">Save program links</button>
+        <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Cancel</a>
       </div>
     </form>
   </div>

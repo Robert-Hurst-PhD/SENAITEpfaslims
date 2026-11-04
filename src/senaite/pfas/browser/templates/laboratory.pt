@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Laboratory</title>
+  <metal:fill fill-slot="header-title">Laboratory</metal:fill>
+
+  <div metal:fill-slot="content">
+  <div class="page-body-narrow" tal:define="lab view/lab; diffs view/revision_differences">
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-error" tal:condition="view/message" tal:content="view/message">Not saved.</div>
+
+    <div class="pfas-card" id="sec-revision" tal:condition="diffs">
+      <h3 class="pfas-card-head">Changed since the last issued revision</h3>
+      <p class="form-note">Reports use the values issued with the reporting template. These differ now:</p>
+      <table class="pfas-table" data-col-resize="laboratory-changes">
+        <thead><tr><th>Field</th><th>Issued</th><th>Now</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="d diffs">
+            <td tal:content="d/field">Phone</td>
+            <td tal:content="d/issued">555 0199</td>
+            <td tal:content="d/now">555 0100</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="form-actions">
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-report-template">Issue a new revision</a>
+      </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" tal:attributes="action string:${view/portal_url}/@@pfas-laboratory">
+      <input type="hidden" name="action" value="save" tal:condition="view/can_configure" />
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <div class="pfas-settings-grid">
+
+      <div class="pfas-card" id="sec-identity">
+        <h3 class="pfas-card-head">Identity <tal:h define="hid string:laboratory-page"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+        <div class="field-row">
+          <label for="name">Laboratory name</label>
+          <input type="text" name="name" id="name"
+                 tal:attributes="value lab/name; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="tax_number">Registration number</label>
+          <input type="text" name="tax_number" id="tax_number"
+                 tal:attributes="value lab/tax_number; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="supervisor">Laboratory Director</label>
+          <select name="supervisor" id="supervisor" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+            <option value="">None</option>
+            <option tal:repeat="c view/director_choices"
+                    tal:attributes="value python:c[0]; selected python:'selected' if c[0] == lab['supervisor_uid'] else None"
+                    tal:content="python:c[1]">AN3</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="pfas-card" id="sec-address">
+        <h3 class="pfas-card-head">Address and contact</h3>
+        <tal:w tal:repeat="which python:(('physical_address', 'Physical address'), ('postal_address', 'Postal address'))">
+          <h4 class="pfas-subhead" tal:content="python:which[1]">Physical address</h4>
+          <div class="field-row" tal:repeat="f view/address_fields">
+            <label tal:attributes="for python:which[0] + '.' + f[0]" tal:content="python:f[1]">City</label>
+            <input type="text"
+                   tal:attributes="name python:which[0] + '.' + f[0]; id python:which[0] + '.' + f[0];
+                                   value python:lab[which[0]][f[0]];
+                                   disabled python:None if view.can_configure() else 'disabled'" />
+          </div>
+        </tal:w>
+        <div class="field-row">
+          <label for="phone">Phone</label>
+          <input type="text" name="phone" id="phone"
+                 tal:attributes="value lab/phone; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="fax">Fax</label>
+          <input type="text" name="fax" id="fax"
+                 tal:attributes="value lab/fax; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="email">E-mail</label>
+          <input type="text" name="email" id="email"
+                 tal:attributes="value lab/email; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="url">Web address</label>
+          <input type="text" name="url" id="url"
+                 tal:attributes="value lab/url; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+      </div>
+
+      <div class="pfas-card" id="sec-accreditation">
+        <h3 class="pfas-card-head">Accreditation</h3>
+        <div class="field-row">
+          <label class="pfas-switch">
+            <input type="checkbox" name="accredited" value="on"
+                   tal:attributes="checked python:'checked' if lab['accredited'] else None;
+                                   disabled python:None if view.can_configure() else 'disabled'" />
+            <span class="pfas-switch-track"></span>
+            <span>Accredited</span>
+          </label>
+        </div>
+        <div class="field-row">
+          <label for="accreditation_body">Accreditation body</label>
+          <input type="text" name="accreditation_body" id="accreditation_body"
+                 tal:attributes="value lab/accreditation_body; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="accreditation_body_url">Accreditation body web address</label>
+          <input type="text" name="accreditation_body_url" id="accreditation_body_url"
+                 tal:attributes="value lab/accreditation_body_url; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="accreditation">Accreditation standard</label>
+          <input type="text" name="accreditation" id="accreditation"
+                 tal:attributes="value lab/accreditation; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <label for="accreditation_reference">Accreditation reference</label>
+          <input type="text" name="accreditation_reference" id="accreditation_reference"
+                 tal:attributes="value lab/accreditation_reference; disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+        <div class="field-row">
+          <span class="pfas-label">Logo</span>
+          <div>
+            <img class="pfas-print-logo" tal:condition="lab/logo_url"
+                 tal:attributes="src string:${view/portal_url}/@@site-logo" alt="Laboratory logo" />
+            <span tal:condition="not:lab/logo_url">None</span>
+          </div>
+        </div>
+        <div class="field-row" tal:condition="view/can_configure">
+          <label for="logo">New logo</label>
+          <input type="file" name="logo" id="logo" accept="image/png,image/jpeg" />
+          <p class="form-note">PNG or JPEG, up to 1 MB. Saved with the page.</p>
+        </div>
+      </div>
+
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button></div>
+    </form>
+  </div>
+  </div>
+</html>

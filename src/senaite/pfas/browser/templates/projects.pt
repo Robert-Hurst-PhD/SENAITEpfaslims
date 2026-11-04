@@ -15,16 +15,42 @@
     <div tal:condition="view/ok_msg"    class="alert alert-success" tal:content="view/ok_msg"></div>
     <div tal:condition="view/error_msg" class="alert alert-error"   tal:content="view/error_msg"></div>
 
-    <!-- ─── Create / edit form ─ manager only (: never show a
-         control the current user cannot use) ──────────────────────────── -->
-    <div class="pfas-card" tal:condition="view/can_manage"
-         tal:define="editing view/edit_project">
-      <div class="pfas-card-head">
-        <span tal:condition="not:editing">New Project</span>
-        <span tal:condition="editing">Edit Project
-          <tal:c tal:content="python:editing['project_code']"></tal:c></span>
+    <!-- ─── Filters, and the one create action on the right ──────────── -->
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+          tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+      <div class="pfas-field">
+        <label for="pj-f-client">Client</label>
+        <select id="pj-f-client" name="client" class="pfas-select">
+          <option value="">All clients</option>
+          <option tal:repeat="c view/clients"
+                  tal:attributes="value c/uid; selected python:view.client_filter() == c['uid']"
+                  tal:content="c/title"></option>
+        </select>
       </div>
-      <div class="pfas-card-body">
+      <div class="pfas-field">
+        <label for="pj-f-status">Status</label>
+        <select id="pj-f-status" name="status" class="pfas-select">
+          <option value="">All statuses</option>
+          <option tal:repeat="pair view/all_statuses"
+                  tal:attributes="value python:pair[0]; selected python:view.status_filter() == pair[0]"
+                  tal:content="python:pair[1]"></option>
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+      <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-projects">Clear</a>
+      <span class="pfas-filterbar-spacer"></span>
+      <button type="button" class="btn btn-primary" data-modal-open="pj-modal" data-new="data-new" tal:condition="view/can_manage">+ New Project</button>
+    </form>
+
+    <!-- ─── Create / edit dialog, manager only ─────────────────────────── -->
+    <div class="pfas-modal" id="pj-modal" tal:condition="view/can_manage"
+         tal:define="editing view/edit_project"
+         tal:attributes="class python:'pfas-modal open' if view.form_open() else 'pfas-modal'">
+      <div class="pfas-modal-box" role="dialog" aria-modal="true" aria-labelledby="pj-modal-title">
+        <h2 id="pj-modal-title">
+          <tal:n tal:condition="not:editing">New Project</tal:n>
+          <tal:e tal:condition="editing">Edit Project <tal:c tal:content="python:editing['project_code']"></tal:c></tal:e>
+        </h2>
         <form method="post"
               tal:attributes="action string:${view/portal_url}/@@pfas-projects">
           <input type="hidden" name="action"
@@ -46,7 +72,7 @@
             <div class="field-row">
               <label for="pj-client">Client</label>
               <select id="pj-client" class="pfas-select" name="client_uid" required="required">
-                <option value="">-- Select client --</option>
+                <option value="">Choose a client</option>
                 <tal:opts tal:repeat="c view/clients">
                   <option tal:attributes="value c/uid;
                                           selected python:editing and editing['client_uid'] == c['uid']"
@@ -58,19 +84,15 @@
               </div>
             </div>
             <div class="field-row">
-              <label for="pj-qapp">QAPP document</label>
+              <label for="pj-qapp">QAPP document <tal:h define="hid string:project-qapp"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
               <select id="pj-qapp" class="pfas-select" name="qapp_document_id">
-                <option value="">None: the laboratory&#8217;s internal quality system</option>
+                <option value="">None (internal quality system)</option>
                 <tal:opts tal:repeat="q view/qapp_docs">
                   <option tal:attributes="value q/sop_id;
                                           selected python:editing and editing['qapp_document_id'] == q['sop_id']"
                           tal:content="python:u'%s — %s' % (q['sop_id'], q['title'])"></option>
                 </tal:opts>
               </select>
-              <div class="hint">
-                A QAPP belongs to a client but can be reused by other projects, so it is
-                not filtered by the client chosen above.
-              </div>
             </div>
             <div class="field-row">
               <label for="pj-start">Start date</label>
@@ -99,30 +121,20 @@
             </div>
           </div>
 
-          <div class="form-actions pfas-mt">
+          <div class="form-actions">
             <button type="submit" class="btn btn-primary">
               <span tal:condition="not:editing">Create Project</span>
               <span tal:condition="editing">Save Changes</span>
             </button>
-            <a tal:condition="editing" class="btn btn-secondary"
-               tal:attributes="href string:${view/portal_url}/@@pfas-projects">Cancel</a>
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
           </div>
         </form>
       </div>
     </div>
 
-    <div class="pfas-card" tal:condition="not:view/can_manage">
-      <div class="pfas-card-body">
-        <span class="pfas-muted">
-          Only a lab manager can create or edit projects. Contact your QAO/Manager
-          to add a new project or change one on file.
-        </span>
-      </div>
-    </div>
-
     <!-- ─── Project list ────────────────────────────────────────────────── -->
     <div class="table-wrap">
-      <table class="pfas-table">
+      <table class="pfas-table" data-col-resize="projects-1">
         <thead>
           <tr>
             <th>Project Code</th>
@@ -184,6 +196,7 @@
     </div>
 
   </div>
+
   </div>
 </body>
 </html>

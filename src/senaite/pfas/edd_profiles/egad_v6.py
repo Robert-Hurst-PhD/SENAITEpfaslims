@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-"""The EGAD EDD v6.0 format, as an EDD export profile
-(2026-10-08: EGAD exists only as a profile of
-the EDD export). Everything specific to this format lives here and nowhere
-else:
+"""The EGAD EDD v6.0 format, as an EDD export profile. Everything specific
+to this format lives here and nowhere else:
 
   the row format   the 53 columns in template order, the fields required
                    for lab and QC rows, date/time formatting (MM/DD/YYYY,
@@ -259,12 +257,11 @@ ANALYTE_OVERLAY = {
     "DONA":        {"parameter_name": "ADONA_A",         "override_note": ""},
     "PFBS":        {"parameter_name": "PFBS_A",          "override_note": ""},
     "PFPeS":       {"parameter_name": "PFPES_A",         "override_note": ""},
-    # PFHxS / PFOS are reported as the SUMMED analyte (:
-    # one analyte out). EGAD CAS_LUP lists the plain acid (355464
-    # PFHXS_A, 1763231 PFOS_A) besides the -LINEAR / -BRANCHED / "linear and
-    # branched" entries; the plain acid matches how the other summed analytes
-    # (PFOA_A, PFNA_A, N-EtFOSAA_A, N-MeFOSAA_A) are exported. CAS from the
-    # master table.
+    # PFHxS / PFOS are reported as the summed analyte, one analyte out. EGAD
+    # CAS_LUP lists the plain acid (355464 PFHXS_A, 1763231 PFOS_A) besides
+    # the -LINEAR / -BRANCHED / "linear and branched" entries; the plain acid
+    # matches the other summed analytes (PFOA_A, PFNA_A, N-EtFOSAA_A,
+    # N-MeFOSAA_A). CAS from the master table.
     "PFHxS":       {"parameter_name": "PFHXS_A",         "override_note": ""},
     "br-PFHxS":    {"parameter_name": "PFHXS_A_BR", "override_note": "branched isomer", "cas_override": "DEP18023"},
     "PFHpS":       {"parameter_name": "PFHPS_A",         "override_note": ""},
@@ -274,10 +271,9 @@ ANALYTE_OVERLAY = {
     "PFDS":        {"parameter_name": "PFDS_A",          "override_note": ""},
     "PFUnDS":      {"parameter_name": "PFUNDS_A",        "override_note": "VERIFY: CAS 749786-16-1 is not in EGAD CAS_LUP (checked 2026-10-01); ask the state agency for the code before an EDD"},
     "PFDoS":       {"parameter_name": "PFDOS_A",         "override_note": ""},
-    "PFTrDS":      {"parameter_name": "PFTRDS_A",   "override_note": "VERIFY: CAS 791563-89-8 is not in EGAD CAS_LUP (checked 2026-10-01); ask the state agency for the code before an EDD", "cas_override": "791563898"},
-    # Names below were blank. Each is the VALUE EGAD CAS_LUP gives for
-    # the CAS the master table already holds (EGAD_Lookup_Tables.xlsx,
-    # the state agency's lookup workbook, downloaded 2026-10-01).
+    "PFTrDS":      {"parameter_name": "PFTRDS_A",   "override_note": "VERIFY: CAS 791563-89-8 is not in EGAD CAS_LUP (checked 2026-10-01); ask the state agency for the code before an EDD"},
+    # Each name below is the value EGAD CAS_LUP gives for the CAS the master
+    # table holds (EGAD_Lookup_Tables.xlsx, the state agency's lookup workbook).
     "3:3FTCA":     {"parameter_name": "3:3 FTC_A",       "override_note": ""},
     "5:3FTCA":     {"parameter_name": "5:3 FTC_A",       "override_note": ""},
     "7:3FTCA":     {"parameter_name": "7:3 FTC_A",       "override_note": ""},
@@ -332,11 +328,10 @@ QUALIFIER_MAP = [
     {"our_qualifier": "TIC",    "code": "N",    "description": "Tentatively identified"},
     {"our_qualifier": "*",      "code": "*",    "description": "QC outside control limits"},
     {"our_qualifier": "J*",     "code": "J*",   "description": "Estimated + QC out of limits"},
-    # Qualified-release codes (qc_qualification.FAILURE_TYPES). They are OUR
-    # vocabulary for the certificate; the EDD carries the nearest EGAD code
-    # that already exists rather than a new one invented here. Without these
-    # entries `_translate_qualifier` passes an unknown code through unchanged
-    # and "M" would land in LAB_QUALIFIER, which is not a valid EGAD value.
+    # Qualified-release codes (qc_qualification.FAILURE_TYPES) are the
+    # certificate's vocabulary: the EDD carries the nearest existing EGAD
+    # code. An unmapped code passes through `_translate_qualifier` unchanged,
+    # and "M" is not a valid EGAD LAB_QUALIFIER.
     {"our_qualifier": "M",      "code": "*",    "description": "Matrix effect — QC outside control limits"},
     {"our_qualifier": "P",      "code": "*",    "description": "Precision (RPD) outside control limits"},
 ]
@@ -414,9 +409,6 @@ QC_TYPE_LIST = "qc_types"
 CLIENT_FIELDS = [
     {"key": "project_site", "label": u"Project / site (PROJECT/SITE)",
      "hint": u"The EGAD project or site name for this client's samples."},
-    {"key": "default_sample_type", "label": u"Default sample type (SAMPLE_TYPE)",
-     "list": "sample_types", "default": "GW",
-     "hint": u"Used when a sample's matrix has no code in the profile's matrix map."},
     {"key": "analysis_lab_override", "label": u"Analysis lab code (ANALYSIS_LAB) override",
      "list": "analysis_labs", "hint": u"Leave blank to use the profile's laboratory code."},
 ]
@@ -425,18 +417,17 @@ CLIENT_FIELDS = [
 DEFAULT_FIELDS = [
     {"key": "analysis_lab_code", "label": u"Laboratory code (ANALYSIS_LAB)", "list": "analysis_labs",
      "hint": u"Assigned by the state agency; must match ANALYSIS_LAB_LUP exactly."},
-    {"key": "sampled_by", "label": u"Sampled by (default)", "hint": u"Can be overridden per sample."},
-    {"key": "default_prep_method", "label": u"Preparation method (default)", "list": "prep_methods",
+    {"key": "sampled_by", "label": u"Sampled by", "hint": u"Can be overridden per sample."},
+    {"key": "default_prep_method", "label": u"Preparation method", "list": "prep_methods",
      "hint": u"PREP_METHOD_LUP, e.g. SW3535 (solid phase extraction)."},
-    {"key": "default_sample_collection_method", "label": u"Collection method (default)",
+    {"key": "default_sample_collection_method", "label": u"Collection method",
      "list": "sample_collection_methods", "hint": u"LFS = low-flow sampling; QC rows use NA."},
-    {"key": "default_treatment_status", "label": u"Treatment status (default)",
+    {"key": "default_treatment_status", "label": u"Treatment status",
      "list": "treatment_statuses", "hint": u"N = not treated."},
-    {"key": "default_parameter_filtered", "label": u"Filtered (default)",
+    {"key": "default_parameter_filtered", "label": u"Filtered",
      "options": ["U", "NA", "FL", "FF"], "hint": u"U = unfiltered; QC rows use NA."},
-    {"key": "sdg_prefix", "label": u"Sample delivery group prefix"},
-    {"key": "sdg_format", "label": u"Sample delivery group format",
-     "hint": u"Tokens {prefix} and {batch_id}."},
+    {"key": "sdg_prefix", "label": u"Sample delivery group ID", "suffix": u"+ the batch ID",
+     "hint": u"The samples delivered together in one file share this ID."},
 ]
 
 # the form for each method's codes
@@ -514,61 +505,53 @@ def refresh_from_upload(current, xlsx_bytes):
         vals = []
         for i, row in enumerate(ws.iter_rows(values_only=True)):
             if i == 0:
-                continue  # skip header
+                continue
             v = row[col_idx]
             if v is not None and str(v).strip():
                 vals.append(str(v).strip())
         return vals
 
-    # CONCENTRATION_QUALIFIER_LUP
     quals = _read_lup("CONCENTRATION_QUALIFIER_LUP", 0)
     if quals:
         lookups["concentration_qualifiers"] = quals
         updated.append("concentration_qualifiers")
 
-    # QA_QC_TYPE_LUP
     qcs = _read_lup("QA_QC_TYPE_LUP", 0)
     if qcs:
         lookups["qc_types"] = qcs
         updated.append("qc_types")
 
-    # PARAMETER_UNITS_LUP
     units = _read_lup("PARAMETER_UNITS_LUP", 0)
     if units:
         lookups["units"] = units
         updated.append("units")
 
-    # SAMPLE_TYPE_LUP
     stypes = _read_lup("SAMPLE_TYPE_LUP", 0)
     if stypes:
         lookups["sample_types"] = stypes
         updated.append("sample_types")
 
-    # ANALYSIS_LAB_LUP
     labs = _read_lup("ANALYSIS_LAB_LUP", 0)
     if labs:
         lookups["analysis_labs"] = labs
         updated.append("analysis_labs")
 
-    # TEST_LUP
     tests = _read_lup("TEST_LUP", 0)
     if tests:
         lookups["tests"] = tests
         updated.append("tests")
 
-    # PREP_METHOD_LUP
     preps = _read_lup("PREP_METHOD_LUP", 0)
     if preps:
         lookups["prep_methods"] = preps
         updated.append("prep_methods")
 
-    # SAMPLE_COLLECTION_METHOD_LUP
     scms = _read_lup("SAMPLE_COLLECTION_METHOD_LUP", 0)
     if scms:
         lookups["sample_collection_methods"] = scms
         updated.append("sample_collection_methods")
 
-    from datetime import date
-    lookups["last_refresh"] = date.today().isoformat()
+    from senaite.pfas import lab_time
+    lookups["last_refresh"] = lab_time.today().isoformat()
     lookups["last_refresh_filename"] = VALUE_LIST_SOURCE["file"]
     return lookups, {"updated": updated, "errors": errors}

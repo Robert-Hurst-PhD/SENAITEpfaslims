@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""What a manager must act on, for the QC Management landing: the downstream effects of configuration, in one queue.
+"""What a manager must act on, for the QC Management landing: the
+downstream effects of configuration, in one queue.
 
     items(facts) -> [{"level": "bad" | "warn", "title", "detail",
                       "actions": [(label, path)], "help": entry id}]
@@ -11,6 +12,10 @@
     edd_missing   {EDD profile title: [internal codes without a state code]}
     unverified    number of regulatory limits not verified
     methods_changed  [method titles changed since their last issued revision]
+    unconfigured  [(setting label, editor path)] -- judging settings with no
+                  value: each blocks the runs it judges
+    backup        backup_log.summary(...): the last failed backup, whether
+                  the quarterly restore test is due
 
 Pure: Python 2.7 and 3.
 """
@@ -23,6 +28,7 @@ HELD_TEXT = {
     "rule_changed": "rounding rule changed since the run",
     "unjudged": "nothing judged for the injection",
     "error": "the QC data could not be read",
+    "resample": "compliance sample received out of compliance with its method, resample requested",
 }
 
 
@@ -71,4 +77,25 @@ def items(facts):
                     "detail": "Issue a new method revision to record the change.",
                     "actions": [("Method Profiles", "@@pfas-method-profiles")],
                     "help": "method-profile"})
+    unset = facts.get("unconfigured") or []
+    if unset:
+        names = [label for label, _p in unset]
+        out.append({"level": "bad",
+                    "title": "%d judging setting%s not set" % (len(unset), "" if len(unset) == 1 else "s"),
+                    "detail": "A run they judge is refused until each has a value: %s." % _ids(names),
+                    "actions": [("Open editor", unset[0][1] or "@@pfas-lab-settings"),
+                                ("Settings reference", "@@pfas-lab-settings")],
+                    "help": "rule-switches"})
+    backup = facts.get("backup") or {}
+    failed = backup.get("last_failed")
+    if failed:
+        out.append({"level": "bad", "title": "Backup failed",
+                    "detail": "The %s backup of %s failed: %s." % (
+                        failed.get("level") or "", (failed.get("ended") or "")[:16].replace("T", " "),
+                        "; ".join(failed.get("failures") or []) or "see the Backups page"),
+                    "actions": [("Backups", "@@pfas-backups")], "help": "backups"})
+    if backup.get("restore_test_due"):
+        out.append({"level": "warn", "title": "Restore test due",
+                    "detail": "A key holder restores a backup into a test stack once a quarter.",
+                    "actions": [("Backups", "@@pfas-backups")], "help": "backups"})
     return out

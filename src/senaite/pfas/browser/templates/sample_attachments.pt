@@ -1,0 +1,10 @@
+<html metal:use-macro="context/main_template/macros/master"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<metal:core fill-slot="content-core">
+  <div tal:replace="structure view/panel"></div>
+</metal:core>
+</body>
+</html>

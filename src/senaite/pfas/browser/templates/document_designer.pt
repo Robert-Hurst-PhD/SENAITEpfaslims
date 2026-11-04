@@ -38,7 +38,7 @@
               title="Repeat the selected fields on every page (letterhead, report number, page numbers)">On every page</button>
     </div>
     <p class="cf-hint" id="dt-every-list"></p>
-    <p class="bench-sub">Data fields show each document&#8217;s own values; everything else you place is fixed content. <tal:h define="hid string:document-designs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="bench-sub">Data fields show each document&#8217;s own values; everything else you place is fixed content. <tal:h define="hid string:document-designs"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
     <ul class="bench-alerts" id="dt-problems"></ul>
     <span class="cf-hint" id="dt-saved"></span>
 

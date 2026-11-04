@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
-"""The run's extraction record, built from the SENAITE guided extraction
-(phase 1).
+"""The run's extraction record, built from the SENAITE guided extraction.
 
 The pipeline worker reads `{run_stem}_extraction.json` beside the instrument
 CSV for the run parameters (worksheet, batch, method, matrix, analyst) and
 for the extraction pedigree it prints in the batch report (steps, lots used,
-sign-off). That file used to come from the separate extraction-ui tablet
-service, with its own reagent catalogue -- a second inventory. The guided
-extraction is now the only extraction record, so the Run Builder writes the
-file from it when the export is uploaded.
+sign-off). The guided extraction is the only extraction record, so the Run
+Builder writes the file from it when the export is uploaded.
 
     build_sidecar(session, stage_names, ...) -> dict (the worker's shape)
     extraction_progress(session)             -> {"started", "completed",

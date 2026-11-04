@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """A designed certificate's data, from the certificate's own assembly.
 
-
 The HTML certificate is drawn from PFASCoASectionsView (lab(), doc_meta(),
 _sample()) and PFASCoAAttestationView (signatories, QC qualifications,
 accreditation scope, the controlled stamp). A designed certificate takes the
@@ -15,25 +14,14 @@ Pure: Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas.print_style import PALETTE as _P
-except ImportError:                                          # loaded by path (tests)
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-    from print_style import PALETTE as _P
+from senaite.pfas.print_style import PALETTE as _P
 
-try:
-    from senaite.pfas import coa_qc_standards as _qcs
-    from senaite.pfas import doc_fields as _df
-except ImportError:                                         # loaded by path (tests)
-    import os, sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import coa_qc_standards as _qcs
-    import doc_fields as _df
+from senaite.pfas import coa_qc_standards as _qcs
+from senaite.pfas import doc_fields as _df
 
 # The data fields, grouped as the designer offers them under the shared
-# categories (doc_fields; 2026-10-05: sample; analysis; laboratory; preparer / reviewer / director; plus quality control and document control).
+# categories (doc_fields: sample; analysis; laboratory; preparer / reviewer /
+# director; quality control; document control).
 # (key, title, example). Image fields (logo, signatures) are listed in IMAGES.
 GROUPS = [
     (_df.SAMPLE, [
@@ -50,6 +38,8 @@ GROUPS = [
         ("method", "Method", "EPA 537.1"),
         ("analysed", "Date of analysis", "2026-10-03 14:00"),
         ("units", "Units", "ng/L"),
+        ("result_unit", "Result unit", "ng/L"),
+        ("dilution_notes", "Dilution notes", "\u00b9 Re-analysed at a 1:5 dilution on 2026-10-07 09:12"),
         ("legend", "Legend (qualifiers, RL, MDL)", "U = not detected at or above the reporting limit (RL)."),
         ("note", "Standard note", "DEMO standard note"),
         ("regulatory", "MCL / action level comparison", "DEMO regulatory comparison"),
@@ -73,6 +63,7 @@ GROUPS = [
         ("accreditation", "Accreditation scope (this sample)", "DEMO accreditation scope"),
     ]),
     (_df.PREPARER, [
+        ("preparer_label", "Preparer heading", "Prepared by"),
         ("preparer_name", "Preparer", "AN1"),
         ("preparer_title", "Preparer title", "Analyst"),
         ("preparer_credentials", "Preparer credentials", "B.Sc."),
@@ -81,6 +72,7 @@ GROUPS = [
         ("prepared_by", "Prepared by (everyone, with dates)", "AN1 2026-10-03"),
     ]),
     (_df.REVIEWER, [
+        ("reviewer_label", "Reviewer heading", "Reviewed by"),
         ("reviewer_name", "Reviewer", "AN2"),
         ("reviewer_title", "Reviewer title", "QA Officer"),
         ("reviewer_credentials", "Reviewer credentials", "M.Sc."),
@@ -89,11 +81,19 @@ GROUPS = [
         ("verified_by", "Verified by (everyone, with dates)", "AN2 2026-10-04"),
     ]),
     (_df.DIRECTOR, [
+        ("director_label", "Director heading", "Laboratory Director"),
         ("director_name", "Laboratory Director", "AN3"),
         ("director_title", "Director title", "Director, DEMO Laboratory"),
         ("director_credentials", "Director credentials", "Ph.D."),
         ("director_signature", "Director signature", ""),
+        # the director's own block: empty when the director reviewed, whose
+        # one block is then "Reviewed and authorized by"
+        ("director2_name", "Director block: name", "AN3"),
+        ("director2_title", "Director block: title", "Director, DEMO Laboratory"),
+        ("director2_credentials", "Director block: credentials", "Ph.D."),
+        ("director2_signature", "Director block: signature", ""),
         ("authorized_by", "Authorized by (who published)", "AN3 2026-10-05"),
+        ("authorizer", "Authorizing person: name and role", "AN3 \u00b7 Laboratory Director"),
     ]),
     (_df.DOCUMENT, [
         ("report_id", "Report", "DEMO-0001-R1"),
@@ -106,28 +106,45 @@ FIELDS = [f for _g, fs in GROUPS for f in fs]
 
 # Image fields: the value is a picture (PNG / JPEG data URI); the designer
 # places them as images bound to the data.
-IMAGES = ("lab_logo", "preparer_signature", "reviewer_signature", "director_signature")
+IMAGES = ("lab_logo", "preparer_signature", "reviewer_signature", "director_signature",
+          "director2_signature")
 
-# (column key, title, example). "analyte" is the REPORTED name (the
-# abbreviation, e.g. PFOS; a summed analyte's reported label); "analyte_name"
-# the full name, isomer-aware (isomers.full_name).
+# (column key, title, example), in the lab's order. "analyte" is the REPORTED
+# name (the abbreviation, e.g. PFOS; a summed analyte's reported label);
+# "analyte_name" the full name, isomer-aware (isomers.full_name). The unit is
+# not a column: one per matrix, it is data()["result_unit"], for the Result
+# heading.
 RESULT_COLUMNS = [
     ("analyte_name", "Analyte", "Perfluorooctanoic acid"),
     ("analyte", "Abbreviation", "PFOA"),
     ("cas", "CAS No.", "335-67-1"),
-    ("analysis_date", "Date of analysis", "2026-10-03"),
+    ("analysis_date", "Analysed", "2026-10-03"),
     ("result", "Result", "4.2"),
-    ("dil", "Dilution", "1"),
     ("qual", "Qualifier", "J"),
-    ("unit", "Units", "ng/L"),
-    ("rl", "RL", "2.0"),
     ("mdl", "MDL", "0.5"),
-    ("action_level", "MCL / action level", "4 ng/L (US EPA MCL)"),
+    ("rl", "RL", "2.0"),
+    ("action_level", "MCL", "4 ng/L (US EPA MCL)"),
+    ("dil", "Dilution", "1"),
 ]
 RESULT_COLUMN_GROUPS = [
     (_df.SAMPLE, ("analyte_name", "analyte", "cas")),
-    (_df.ANALYSIS, ("analysis_date", "result", "dil", "qual", "unit", "rl", "mdl", "action_level")),
+    (_df.ANALYSIS, ("analysis_date", "result", "qual", "mdl", "rl", "action_level", "dil")),
 ]
+# printed in an MDL or MCL cell with no value: no limit is ever invented
+NONE_MARK = "\u2014"
+# Columns a layout issued earlier may still carry: they keep printing (each
+# results row keeps its "unit") and re-issue with a warning, not a refusal.
+RETIRED_COLUMNS = {"results": {"unit": "the unit now heads the Result column, from the Result unit field"}}
+# A heading names its column: it contains the column's title or a title the
+# column had before (a layout issued earlier keeps its headings), also for a
+# retired column. document_templates.column_for and the designer match so.
+# A heading that names two columns ("Analyte") keeps the one it is linked to.
+COLUMN_ALIASES = {"results": {"analysis_date": ("Date of analysis",), "unit": ("Units",),
+                              "analyte": ("Analyte",), "qual": ("Qual",), "dil": ("Dil.",)},
+                  "qc_standards": {"standard": ("Labelled standard",)}}
+# Signer headings that layouts issued earlier print as fixed text: a warning
+# on re-issue, not a refusal (document_templates.warnings).
+HEADING_FIELDS = ("preparer_label", "reviewer_label", "director_label")
 
 # the surrogate / internal-standard sub-table
 QC_STANDARD_COLUMNS = _qcs.COLUMNS
@@ -136,15 +153,20 @@ QC_STANDARD_COLUMNS = _qcs.COLUMNS
 # hides them); dropped from that sample's table when the format says so.
 _FORMAT_COLUMNS = (("cas", "coa_show_cas"), ("mdl", "coa_show_mdl"), ("dil", "coa_show_dilution"))
 
-# A designed certificate cannot be issued without these: everything today's
+# A designed certificate cannot be issued without these: everything the standard
 # certificate states, disclosures included (an empty one prints nothing), and
-# the three signatories with their signatures.
+# the three signatories with their signatures. A tuple is one part shown by
+# any of its fields (each signer's block, or the lines of names and dates
+# layouts issued earlier print; the authorizing person as name and role, or
+# in the older shape; the director's own block, or the director's fields).
 REQUIRED_FIELDS = ("report_id", "issued", "lab_name", "sample_id", "client", "matrix",
                    "method", "legend", "note", "qc_standards_note", "qs_statement", "departures", "regulatory",
-                   "accreditation", "qc_qualifications", "remarks", "interpretation", "prepared_by",
-                   "verified_by", "authorized_by", "stamp",
-                   "preparer_signature", "reviewer_signature", "director_name", "director_signature")
-REQUIRED_COLUMNS = {"results": ("analyte", "result", "qual", "rl", "unit"),
+                   "accreditation", "qc_qualifications", "remarks", "interpretation",
+                   ("preparer_name", "prepared_by"), ("reviewer_name", "verified_by"),
+                   ("authorizer", "authorized_by"), "stamp",
+                   "preparer_signature", "reviewer_signature", ("director2_name", "director_name"),
+                   ("director2_signature", "director_signature"))
+REQUIRED_COLUMNS = {"results": ("analyte", "result", "qual", "rl"),
                     "qc_standards": _qcs.REQUIRED}
 
 # words copied from the templates (test_coa_document checks they are there)
@@ -179,6 +201,9 @@ def _s(v):
 
 def legend(smp):
     parts = [LEGEND_U, LEGEND_MDL]
+    # the J and D lines, in the lab's wording (QC Qualifiers), when a row
+    # carries them
+    parts += [c.get("line") or "" for c in smp.get("rule_codes") or [] if c.get("line")]
     if smp.get("codes"):
         parts.append(LEGEND_CODES)
     if not smp.get("any_rl"):
@@ -324,15 +349,112 @@ def action_levels(limits, programs=None):
     return out
 
 
-def enrich_rows(rows, full_names, dates, levels):
-    """Add the full name, date of analysis and action level to each results
-    row (by its keyword), in place; returns rows."""
+def enrich_rows(rows, full_names, dates, levels, times=None):
+    """Add the full name, date of analysis (the day), the analysis' date and
+    time and the action level to each results row (by its keyword), in
+    place; returns rows."""
+    times = times or {}
     for r in rows or []:
         kw = r.get("keyword")
         r["analyte_name"] = full_names.get(kw) or ""
         r["analysis_date"] = dates.get(kw) or ""
+        r["analysed_at"] = times.get(kw) or ""
         r["action_level"] = levels.get(kw) or ""
     return rows
+
+
+_SUPERSCRIPT = dict(zip("0123456789", "\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079"))
+
+
+def superscript(n):
+    """A footnote mark: 1 is '\u00b9', 12 is '\u00b9\u00b2'."""
+    return "".join(_SUPERSCRIPT[c] for c in "%d" % n)
+
+
+DILUTION_NOTE = "Re-analysed at a 1:%s dilution"
+
+
+def dilution_notes(rows):
+    """(marks, notes): one footnote per diluted row, numbered in row order;
+    marks[i] is row i's superscript ("" for a row not diluted)."""
+    marks, notes = [], []
+    for r in rows or []:
+        fold = _s(r.get("dilution"))
+        if not fold:
+            marks.append("")
+            continue
+        mark = superscript(len(notes) + 1)
+        when = _s(r.get("analysed_at")) or _s(r.get("analysis_date"))
+        text = DILUTION_NOTE % fold + (" on %s" % when if when else "")
+        marks.append(mark)
+        notes.append("%s %s" % (mark, text))
+    return marks, notes
+
+
+def signers(preparer=None, reviewer=None, director=None, reviewer_is_director=False):
+    """{role: signatory fields + "label"}. The fields keep their meaning in
+    every case (a layout issued earlier prints them): the director's are the
+    director's even when the director also reviewed. The labels say how the
+    roles fall: when the reviewer is the Laboratory Director the reviewer's
+    heading is "Reviewed and authorized by", with the director's title when
+    the reviewer has none, and the director's heading is empty."""
+    empty = signatory(None)
+    out = {"preparer": dict(preparer or empty, label="Prepared by"),
+           "reviewer": dict(reviewer or empty, label="Reviewed by"),
+           "director": dict(director or empty, label="Laboratory Director")}
+    if reviewer_is_director and reviewer:
+        d = director or {}
+        out["reviewer"] = dict(reviewer, label="Reviewed and authorized by",
+                               title=reviewer.get("title") or d.get("title") or "")
+        out["director"]["label"] = ""
+    return out
+
+
+AUTHORIZING_PLACEHOLDER = "[authorizing person]"
+# a submitter or verifier with neither a Lab Contact name nor a full name
+NO_STAFF_RECORD = "[no lab staff record]"
+NO_PUBLISHER = "The person publishing has no lab staff record; add one in People & Roles"
+
+
+def staff_name(info, userid):
+    """A staff member as a message names them: the full name staff_info
+    found, else the placeholder; never the account id it falls back to."""
+    name = (info or {}).get("fullname") or ""
+    return name if name and name != (userid or "") else NO_STAFF_RECORD
+
+
+def authorizing_role(jobtitle, is_director=False, sign_as=None):
+    """The role printed beside the authorizing person's name: their job
+    title on People & Roles, else Laboratory Director when they are the one the
+    Laboratory page names, else the roles they sign as."""
+    if jobtitle:
+        return jobtitle
+    if is_director:
+        return "Laboratory Director"
+    names = {"preparer": "Preparer", "reviewer": "Reviewer"}
+    return " and ".join(names[r] for r in ("preparer", "reviewer") if r in (sign_as or []))
+
+
+def _authorizing_name(info):
+    """The publishing person's name from their People & Roles record, or the
+    placeholder: never an account id."""
+    return _s(info.get("fullname")) if info.get("has_contact") else AUTHORIZING_PLACEHOLDER
+
+
+def authorized_line(info):
+    """"Name \u00b7 Role" of the person who publishes (the authorizer field)."""
+    if not info:
+        return ""
+    return " \u00b7 ".join(x for x in (_authorizing_name(info), _s(info.get("role"))) if x)
+
+
+def authorized_by(info):
+    """The authorized_by field in the shape layouts issued earlier print:
+    name, job title and date, the name from People & Roles."""
+    if not info:
+        return ""
+    return _people([dict(info, fullname=_authorizing_name(info),
+                         jobtitle=info.get("jobtitle") if info.get("has_contact") else "")])
 
 
 def image_data_uri(raw):
@@ -407,7 +529,15 @@ def data(lab, meta, smp, signatories=None, quals=None, accred=None, remarks="", 
         # the lab's preview shows why; a certificate is refused
         raise ValueError("%s: %s" % (smp.get("id"), _qcs.note({}, qcs["state"])[len(_qcs.DEFAULT_NOTE):].strip()))
     extra = extra or {}
-    people = dict((role, extra.get(role) or signatory(None)) for role in ("preparer", "reviewer", "director"))
+    authorized = sig.get("authorized")
+    if signatories is not None and not preview and not (authorized or {}).get("has_contact"):
+        # the authorizing line names the person and role on their People & Roles
+        # record, never an account
+        raise ValueError(NO_PUBLISHER)
+    people = signers(extra.get("preparer"), extra.get("reviewer"), extra.get("director"),
+                     extra.get("reviewer_is_director"))
+    rows = smp.get("rows") or []
+    marks, notes = dilution_notes(rows)
     out = {
         "lab_name": _s(lab.get("name")), "lab_contact": _s(lab.get("contact")),
         "lab_accreditation": _s(lab.get("accreditation")),
@@ -419,20 +549,30 @@ def data(lab, meta, smp, signatories=None, quals=None, accred=None, remarks="", 
         "sampled": _s(smp.get("sampled")), "received": _s(smp.get("received")),
         "analysed": _s(smp.get("analysed")), "method": _s(smp.get("method")),
         "units": _s(smp.get("units")), "note": _s(fmt.get("coa_note")),
+        "result_unit": _s(smp.get("result_unit") or smp.get("units")),
+        "dilution_notes": notes,
         "legend": legend(smp), "qs_statement": _s(smp.get("qs")),
         "departures": departures(smp), "regulatory": regulatory(smp.get("regulatory")),
         "accreditation": accreditation(accred), "qc_qualifications": qc_qualifications(quals),
         "remarks": _s(remarks), "interpretation": _s(interpretation_text),
         "prepared_by": _people(sig.get("prepared") or []),
         "verified_by": _people(sig.get("verified") or []),
-        "authorized_by": _people([sig.get("authorized")] if sig.get("authorized") else []),
+        "authorized_by": authorized_by(authorized),
+        "authorizer": authorized_line(authorized),
         "stamp": stamp(_s(meta.get("report_id"))),
+        # "unit" stays on each row for a layout issued with a Units column
         "results": [{"analyte": _s(r.get("title")), "analyte_name": _s(r.get("analyte_name")),
                      "cas": _s(r.get("cas")), "analysis_date": _s(r.get("analysis_date")),
+                     "analysed_at": _s(r.get("analysed_at")),
                      "result": _s(r.get("result")), "qual": _s(r.get("qualifiers")),
-                     "rl": _s(r.get("rl")), "mdl": _s(r.get("mdl")), "unit": _s(r.get("unit")),
-                     "dil": _s(r.get("dilution")), "action_level": _s(r.get("action_level"))}
-                    for r in smp.get("rows") or []],
+                     "rl": _s(r.get("rl")), "mdl": _s(r.get("mdl")) or NONE_MARK,
+                     "unit": _s(r.get("unit")), "dil": _s(r.get("dilution")),
+                     "action_level": _s(r.get("action_level")) or NONE_MARK}
+                    for r in rows],
+        # a diluted row's mark on its date prints only on a layout that
+        # prints the notes it points to (document_templates.compile_document)
+        "_footnotes": {"field": "dilution_notes", "table": "results", "column": "analysis_date",
+                       "marks": marks},
         "qc_standards": [dict((k, _s(q.get(k))) for k, _t, _e in QC_STANDARD_COLUMNS)
                          for q in qcs.get("rows") or []],
         "qc_standards_note": _s(smp.get("qc_note")) or _qcs.note(fmt, qcs.get("state")),
@@ -443,56 +583,73 @@ def data(lab, meta, smp, signatories=None, quals=None, accred=None, remarks="", 
         "lab_email": _s(extra.get("lab_email")), "lab_logo": extra.get("lab_logo") or "",
     }
     for role, p in people.items():
-        for k in ("name", "title", "credentials", "date", "signature"):
+        for k in ("label", "name", "title", "credentials", "date", "signature"):
             if role == "director" and k == "date":
                 continue
             out["%s_%s" % (role, k)] = p.get(k) or ""
+    # the director's own block prints only when the director did not review
+    own = people["director"] if people["director"]["label"] else {}
+    for k in ("name", "title", "credentials", "signature"):
+        out["director2_%s" % k] = own.get(k) or ""
     return out
 
 
 # ── a starting layout ───────────────────────────────────────────────────────
 
 def _t(name, x, y, w, h, size=9, align="left", **kw):
-    f = {"name": name, "type": "text", "position": {"x": x, "y": y}, "width": w,
-         "height": h, "fontSize": size, "alignment": align, "content": ""}
-    f.update(kw)
-    return f
+    return _df.text_field(name, x, y, w, h, size, align, **kw)
 
 
-def _image(name, x, y, w, h, **kw):
-    f = {"name": name, "type": "image", "position": {"x": x, "y": y}, "width": w,
-         "height": h, "content": ""}
-    f.update(kw)
-    return f
+_image = _df.image_field
 
 
 def _fixed(name, text, x, y, w, h, size=8, align="left", **kw):
     return _t(name, x, y, w, h, size, align, readOnly=True, content=text, **kw)
 
 
+# the results table: each column's share of the width (Analyte, the full
+# name, widest) and the columns whose numbers align right
+RESULT_WIDTHS = {"analyte_name": 21.5, "analyte": 11, "cas": 9, "analysis_date": 10, "result": 9,
+                 "qual": 7, "mdl": 6, "rl": 6, "action_level": 14.5, "dil": 6}
+RIGHT_ALIGNED = ("result", "mdl", "rl", "action_level")
+# the columns the designer's table chooser starts ticked: the starting
+# layout's, Dilution included (it prints only where Certificate format
+# shows it)
+RESULT_DEFAULT_COLUMNS = ("analyte_name", "analyte", "cas", "analysis_date", "result", "qual", "mdl", "rl",
+                          "action_level", "dil")
+# a heading may name a data field in braces: the Result heading carries the
+# unit ("Result ng/L"; document_templates.compile_document)
+RESULT_HEADING = "Result {result_unit}"
+
+
 def starter(width=210.0, height=297.0):
     """A certificate laid out like the standard one, with every required part
     in place, for the lab to rearrange (the designer offers it when a
-    certificate design is empty). pdfme fills in each field's other settings
-    when the designer opens it. Coordinates in mm; content flows below the
-    header and above the footer on every page."""
+    certificate design is empty, and Document Templates starts a draft from
+    it). pdfme fills in each field's other settings when the designer opens
+    it. Coordinates in mm; content flows below the header and above the
+    footer on every page."""
     every = {"pfasEveryPage": True}
     right = width - 10.0
     wide = width - 20.0
     header = [
         _image("lab_logo", 10, 8, 28, 18, **every),
-        _t("lab_name", 42, 8, 80, 7, 14, **every),
-        _t("lab_address", 42, 15.5, 80, 4.5, 7.5, **every),
+        # two fixed lines: a long name or address prints smaller, never over
+        # the line under it
+        _t("lab_name", 42, 8, 80, 7, 14, dynamicFontSize={"min": 9, "max": 14, "fit": "horizontal"},
+           **every),
+        _t("lab_address", 42, 15.5, 80, 4.5, 7.5,
+           dynamicFontSize={"min": 6, "max": 7.5, "fit": "horizontal"}, **every),
         _t("lab_phone", 42, 20, 38, 4.5, 7.5, **every),
         _t("lab_email", 81, 20, 41, 4.5, 7.5, **every),
         _t("lab_accreditation", 42, 24.5, 80, 4.5, 7.5, **every),
-        _fixed("title", "Certificate of Analysis", right - 80, 10, 80, 7, 13, "right", **every),
-        _fixed("label_report", "Report", right - 80, 18, 25, 5, **every),
-        _t("report_id", right - 55, 18, 55, 5, 9, "right", **every),
-        _fixed("label_issued", "Issued", right - 80, 23, 25, 5, **every),
-        _t("issued", right - 55, 23, 55, 5, 9, "right", **every),
-        _fixed("label_template_rev", "Template revision", right - 80, 28, 30, 5, **every),
-        _t("template_rev", right - 50, 28, 50, 5, 9, "right", **every),
+        _fixed("title", "Certificate of Analysis", right - 76, 10, 76, 7, 13, "right", **every),
+        _fixed("label_report", "Report", right - 76, 18, 25, 5, **every),
+        _t("report_id", right - 51, 18, 51, 5, 9, "right", **every),
+        _fixed("label_issued", "Issued", right - 76, 23, 25, 5, **every),
+        _t("issued", right - 51, 23, 51, 5, 9, "right", **every),
+        _fixed("label_template_rev", "Template revision", right - 76, 28, 30, 5, **every),
+        _t("template_rev", right - 46, 28, 46, 5, 9, "right", **every),
         dict({"name": "header_rule", "type": "line", "position": {"x": 10, "y": 34},
               "width": wide, "height": 0.4, "readOnly": True, "color": _P["s-body"]}, **every),
     ]
@@ -506,15 +663,14 @@ def starter(width=210.0, height=297.0):
         y = 40 + i * 6
         block += [_fixed("label_" + k1, l1, 10, y, 28, 5), _t(k1, 38, y, 62, 5),
                   _fixed("label_" + k2, l2, 105, y, 30, 5), _t(k2, 135, y, right - 135, 5)]
-    # the lab's column list: sample information then analysis
-    # information; drop any in the designer
-    cols = ("analyte_name", "analyte", "cas", "analysis_date", "result", "dil", "qual",
-            "unit", "rl", "mdl", "action_level")
+    # the lab's column list, in its order; drop any in the designer
+    cols = list(RESULT_DEFAULT_COLUMNS)
     titles = dict((k, t) for k, t, _e in RESULT_COLUMNS)
+    titles["result"] = RESULT_HEADING
     table = {"name": "results", "type": "table", "position": {"x": 10, "y": 72},
              "width": wide, "height": 20, "showHead": True, "repeatHead": True,
              "head": [titles[k] for k in cols],
-             "headWidthPercentages": [21, 9, 10, 10, 9, 6, 6, 6, 7, 7, 9],
+             "headWidthPercentages": [RESULT_WIDTHS[k] for k in cols],
              "pfasColumns": list(cols),
              "content": "[]",
              # the standard certificate's table: small, black on white, ruled
@@ -525,11 +681,15 @@ def starter(width=210.0, height=297.0):
                             "padding": {"top": 1.5, "right": 1.5, "bottom": 1.5, "left": 1.5}},
              "bodyStyles": {"fontSize": 7, "borderColor": _P["s-border"], "alternateBackgroundColor": "",
                             "borderWidth": {"top": 0, "right": 0, "bottom": 0.1, "left": 0},
-                            "padding": {"top": 1, "right": 1.5, "bottom": 1, "left": 1.5}}}
+                            "padding": {"top": 1, "right": 1.5, "bottom": 1, "left": 1.5}},
+             "columnStyles": {"alignment": dict((str(i), "right") for i, k in enumerate(cols)
+                                                if k in RIGHT_ALIGNED)}}
     flow = []
-    y = 96
-    for key in ("note", "legend"):
-        flow.append(_t(key, 10, y, wide, 5, 8, overflow="expand"))
+    # under the table: the dilution notes its marks point to, then the legend
+    flow.append(_t("dilution_notes", 10, 93, wide, 3.5, 7, overflow="expand"))
+    y = 97
+    for key in ("legend", "note"):
+        flow.append(_t(key, 10, y, wide, 5, 8 if key == "note" else 7.5, overflow="expand"))
         y += 6
     # surrogates and internal standards: their own table and note
     qtitles = dict((k, ti) for k, ti, _e in QC_STANDARD_COLUMNS)
@@ -540,7 +700,7 @@ def starter(width=210.0, height=297.0):
     y += 6
     qtable.update(name="qc_standards", position={"x": 10, "y": y + 1}, height=10,
                   head=[qtitles[k] for k in qcols], headWidthPercentages=[18, 18, 17, 17, 9, 10, 11],
-                  pfasColumns=list(qcols))
+                  pfasColumns=list(qcols), columnStyles={})
     flow.append(qtable)
     y += 13                 # the table grows with its rows and moves what follows down
     flow.append(_t("qc_standards_note", 10, y, wide, 5, 7.5, overflow="expand"))
@@ -550,22 +710,22 @@ def starter(width=210.0, height=297.0):
         flow.append(_t(key, 10, y, wide, 5, 8, overflow="expand"))
         y += 6
     y += 4
-    # signatories: name, title, credentials and date, the signature beside them
-    for label, role, everyone in (("Prepared by", "preparer", "prepared_by"),
-                                  ("Reviewed by", "reviewer", "verified_by"),
-                                  ("Laboratory Director", "director", None)):
-        flow += [_fixed("label_" + role, label, 10, y, 30, 5),
-                 _t(role + "_name", 40, y, 70, 5, 9),
-                 _t(role + "_title", 40, y + 5, 70, 4.5, 7.5),
-                 _t(role + "_credentials", 40, y + 9.5, 70, 4.5, 7.5),
-                 _image(role + "_signature", right - 55, y, 55, 16)]
+    # one block per role: name, title, credentials and date, the signature
+    # beside them. The headings are data ("Reviewed and authorized by" when
+    # the reviewer is the Laboratory Director); the director's own block is
+    # then empty.
+    for role, who in (("preparer", "preparer"), ("reviewer", "reviewer"), ("director", "director2")):
+        flow += [_t(role + "_label", 10, y, 30, 5, 8),
+                 _t(who + "_name", 40, y, 70, 5, 9),
+                 _t(who + "_title", 40, y + 5, 70, 4.5, 7.5),
+                 _t(who + "_credentials", 40, y + 9.5, 70, 4.5, 7.5),
+                 _image(who + "_signature", right - 55, y, 55, 16)]
         if role != "director":
             flow.append(_t(role + "_date", 40, y + 14, 70, 4.5, 7.5))
-        if everyone:
-            flow.append(_t(everyone, 10, y + 19, wide, 4.5, 7, overflow="expand"))
-        y += 25
-    flow += [_fixed("label_authorized_by", "Authorized by", 10, y, 30, 5),
-             _t("authorized_by", 40, y, wide - 30, 5)]
+        y += 21
+    # who published: name and role from People & Roles
+    flow += [_fixed("label_authorizer", "Authorized by", 10, y, 30, 5),
+             _t("authorizer", 40, y, wide - 30, 5)]
     footer = [
         dict({"name": "footer_rule", "type": "line", "position": {"x": 10, "y": height - 17},
               "width": wide, "height": 0.3, "readOnly": True, "color": _P["s-input-border"]}, **every),

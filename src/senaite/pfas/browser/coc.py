@@ -21,11 +21,13 @@ from datetime import datetime
 from bika.lims import api
 from DateTime import DateTime
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import coc_entry as ce
 from senaite.pfas import coc_records as cr
 from senaite.pfas import homogenisation as hg
+from senaite.pfas import lab_time
 from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.coc")
@@ -41,7 +43,7 @@ def _setup(portal_type):
     return [(api.get_uid(b), api.get_title(b)) for b in brains]
 
 
-class PFASCoCView(BrowserView):
+class PFASCoCView(ViewHelpers, BrowserView):
     template = ViewPageTemplateFile("templates/coc.pt")
 
     def __call__(self):
@@ -60,9 +62,6 @@ class PFASCoCView(BrowserView):
         return self.template()
 
     # ── who ───────────────────────────────────────────────────────────────
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def is_staff(self):
         from senaite.pfas.browser.perms import is_staff
@@ -139,6 +138,27 @@ class PFASCoCView(BrowserView):
             "field_qc": cr.FIELD_QC_TYPES}
         return self._choices
 
+    def subtypes_by_type(self):
+        """{sample type uid: its sub-types} (sample_subtypes)."""
+        if getattr(self, "_subtypes", None) is None:
+            from senaite.pfas import sample_subtypes as ss
+            out = {}
+            for uid, _title in self.choices()["sampletypes"]:
+                try:
+                    subs = ss.load(api.get_object_by_uid(uid))
+                except Exception:                           # noqa: BLE001
+                    subs = []
+                if subs:
+                    out[uid] = subs
+            self._subtypes = out
+        return self._subtypes
+
+    def subtype_options(self):
+        """Every sub-type as a row's select offers it: its type and the
+        profiles turned off (coc_subtypes.js shows those that fit the row)."""
+        return [{"id": x["id"], "name": x["name"], "type": uid, "off": u" ".join(x.get("off") or [])}
+                for uid, subs in sorted(self.subtypes_by_type().items()) for x in subs]
+
     def rows(self):
         """The rows to draw: what was typed when a save was refused, else the
         record's (sample rows, from the samples once they exist)."""
@@ -191,7 +211,7 @@ class PFASCoCView(BrowserView):
         rows = ce.rows_from_form(f)
         header = ce.header_from_form(f)
         if submit or rec["status"] != cr.OPEN:
-            problems = ce.row_problems(rows, cr.FIELD_QC_TYPES)
+            problems = ce.row_problems(rows, cr.FIELD_QC_TYPES) + ce.subtype_problems(rows, self.subtypes_by_type())
             if problems:
                 self.errors.extend(problems)
                 return
@@ -265,7 +285,7 @@ class PFASCoCView(BrowserView):
         # the analyses carry the profile's method (analysis_profiles): the
         # transition subscriber does not see the profile on a sample made by
         # code, so it is applied here -- without it the sample's method is
-        # not identified (no receipt range, no certificate; found 2026-10-06)
+        # not identified (no receipt range, no certificate)
         from senaite.pfas.analysis_profiles import apply_method
         apply_method(sample)
         sample.reindexObject()
@@ -276,14 +296,17 @@ class PFASCoCView(BrowserView):
                 "preservation": "setPreservation"}
     _FIELDS = {"homogenisation": hg.FIELD_METHOD, "composite": "Composite",
                "units": hg.FIELD_UNITS, "description": hg.FIELD_DESCRIPTION,
-               "field_qc": "FieldQCType", "field_qc_of": "FieldQCOf"}
+               "field_qc": "FieldQCType", "field_qc_of": "FieldQCOf",
+               "compliance": "ComplianceSample", "subtype": "SampleSubtype"}
 
     def _apply(self, uid, row, changes):
         sample = api.get_object_by_uid(uid)
         for key in changes:
             value = row.get(key)
             if key == "sampled":
-                sample.setDateSampled(DateTime((value or u"").replace(u"T", u" ")))
+                # typed on the laboratory's clock
+                text = (value or u"").replace(u"T", u" ")
+                sample.setDateSampled(lab_time.typed(text) or DateTime(text))
             elif key in self._SETTERS:
                 getattr(sample, self._SETTERS[key])(value or None)
             elif key in self._FIELDS:

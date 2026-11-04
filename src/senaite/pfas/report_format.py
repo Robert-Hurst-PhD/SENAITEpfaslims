@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 """Certificate format per method x matrix.
 
-Lab: "The reporting page should be tied to each method as it changes by method
-and matrix." The certificate settings that were one global block in Print
-Settings live on each method profile, with an "All matrices" row and optional
-per-matrix rows; a blank cell inherits:
+The certificate settings live on each method profile, with an "All matrices"
+row and optional per-matrix rows; a blank cell inherits:
 
     matrix row  ->  "All matrices" row  ->  built-in default
 
@@ -38,45 +36,59 @@ SETTINGS = [
     ("coa_show_dilution", "Dilution column", YES_NO, "no"),
     ("coa_nd_format", "Non-detects print as",
      [("lt_rl", "< RL, U"), ("nd", "ND, U"), ("raw", "As stored")], "lt_rl"),
+    # a value at or above the MDL and below the RL (coa_format); with no MDL
+    # set no J is possible
+    ("coa_between_mdl_rl", "Between MDL and RL",
+     [("j", "Value with J"), ("lt_rl", "< RL with U")], "j"),
     ("coa_sig_figs", "Significant figures", [("2", "2"), ("3", "3"), ("4", "4")], "3"),
-    # results, RL and MDL (rounding.py; lab assignment 2026-10-05).
-    # Built-in default = round half up, what certificates did before.
+    # results, RL and MDL (rounding.py). Built-in default = round half up.
     ("coa_rounding", "Rounding rule",
      [("epa", "EPA: round half up"), ("fda", "FDA: round half up"),
       ("iso", "ISO: round half to even (ISO 80000-1)")], "epa"),
     ("coa_show_regulatory", "Regulatory-limit notes", YES_NO, "yes"),
     ("coa_note", "Standard note", None, ""),
     # under the surrogate / internal-standard sub-table; the
-    # default is drafted from the lab's words of 2026-10-05
+    # default is drafted from the lab's words
     ("coa_qc_note", "Surrogate / internal-standard note", None, QC_NOTE),
 ]
 BOOLEAN = set(k for k, _l, c, _d in SETTINGS if c is YES_NO)
-# the global Print Settings keys these came from (the migration's source)
-LEGACY_KEYS = ("coa_show_cas", "coa_show_mdl", "coa_show_dilution", "coa_nd_format",
-               "coa_sig_figs")
+# A reporting-template revision prints as it did when issued. A setting added
+# after revisions were first issued reads, for a revision that does not record
+# it, the rule in force before it existed; a revision records the built-in
+# default of each of these (report_templates.snapshot).
+# Rules the code applies, not settings the lab sets, recorded the same way:
+# coa_mdl_dilution "yes" = a diluted result's MDL scales with the fold, as
+# its RL does (printed, and for the J decision); coa_dilution_code "yes" = a
+# diluted result carries D (and the legend its line).
+RULE_DEFAULTS = {"coa_mdl_dilution": "yes", "coa_dilution_code": "yes"}
+LEGACY_DEFAULTS = {"coa_between_mdl_rl": "lt_rl", "coa_mdl_dilution": "no", "coa_dilution_code": "no"}
+
+
+def recorded_defaults():
+    """{setting or rule: built-in default} a revision records when issued."""
+    out = dict((k, d) for k, _l, _c, d in SETTINGS if k in LEGACY_DEFAULTS)
+    out.update(RULE_DEFAULTS)
+    return out
+
+
+def rules(defaults=None):
+    """The code's rules a certificate prints by: an issued revision's
+    (issued_defaults), else the current ones."""
+    return dict((k, (defaults or {}).get(k, v)) for k, v in RULE_DEFAULTS.items())
+
+
+def issued_defaults(recorded):
+    """The defaults an issued revision prints with: what it recorded, else
+    the rule in force before the setting existed."""
+    out = dict(LEGACY_DEFAULTS)
+    out.update(recorded or {})
+    return out
 
 
 def _stored(value, key):
     if key in BOOLEAN and isinstance(value, bool):
         return "yes" if value else "no"
     return "%s" % value if value is not None else None
-
-
-def from_print_settings(print_settings):
-    """The "All matrices" row that reproduces today's global settings."""
-    row = {}
-    for key in LEGACY_KEYS:
-        if key in (print_settings or {}):
-            row[key] = _stored(print_settings[key], key)
-    return {ALL: row}
-
-
-def migrate(profile, print_settings):
-    """True if `profile` gained its report_format (idempotent)."""
-    if KEY in profile:
-        return False
-    profile[KEY] = from_print_settings(print_settings)
-    return True
 
 
 LIMITS_OFF = "limits_off"
@@ -110,13 +122,14 @@ def set_limit(profile, matrix, limit_id, applies):
     return profile
 
 
-def resolve(profile, matrix):
+def resolve(profile, matrix, defaults=None):
     """The effective settings for one method x matrix, as the certificate
-    reads them (booleans as True/False)."""
+    reads them (booleans as True/False). `defaults` replaces a setting's
+    built-in default (an issued revision's, issued_defaults)."""
     fmt = (profile or {}).get(KEY) or {}
     out = {}
     for key, _label, _choices, default in SETTINGS:
-        value = default
+        value = (defaults or {}).get(key, default)
         for scope in (ALL, matrix):
             v = (fmt.get(scope) or {}).get(key)
             if v not in (None, ""):

@@ -20,9 +20,12 @@ from __future__ import absolute_import
 import json
 import os
 import re
-from datetime import date, datetime
+from datetime import datetime
 
 from zope.annotation.interfaces import IAnnotations
+
+from senaite.pfas import lab_time
+from senaite.pfas.paths import is_plain_name
 
 LOGBOOK_DOC_DIR = os.environ.get("PFAS_LOGBOOK_DOC_DIR", "/data/logbook_docs")
 
@@ -70,6 +73,9 @@ def upload_doc(portal, slug, upload, notes, uid):
     if not is_pdf(fname):
         return (False, "not_pdf")
 
+    if not is_plain_name(slug):
+        return (False, "bad_request")
+
     revs = get_doc_revisions(portal, slug)
     rev_num = len(revs) + 1              # numbering iterates, never reused
 
@@ -89,7 +95,7 @@ def upload_doc(portal, slug, upload, notes, uid):
         "filepath":     dest,
         "content_type": "application/pdf",
         "uploaded_by":  uid,
-        "uploaded_at":  date.today().isoformat(),
+        "uploaded_at":  lab_time.today().isoformat(),
         "status":       "draft",
         "activated_by": None,
         "activated_at": None,
@@ -124,11 +130,12 @@ def sign_doc(portal, slug, uid, fullname):
     if not active:
         return (False, "no_active_rev")
     sigs = get_doc_signoffs(portal, slug)
-    sigs[uid] = {
+    from senaite.pfas.records import with_earlier
+    sigs[uid] = with_earlier(sigs.get(uid), {            # an earlier revision's sign-off is kept
         "rev_num":   active["rev_num"],
         "signed_by": fullname,
         "signed_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
+    })
     save_doc_signoffs(portal, slug, sigs)
     return (True, "signed")
 
@@ -188,8 +195,13 @@ def doc_info(portal, slug, uid):
 
 
 def resolve_download(portal, slug, rev_num):
-    """Return (filepath, filename) for a revision, or (None, None)."""
+    """Return (filepath, filename) for a revision, or (None, None). A stored
+    path outside the logbook documents folder is never served."""
+    root = os.path.join(os.path.realpath(LOGBOOK_DOC_DIR), "")
     for r in get_doc_revisions(portal, slug):
         if r["rev_num"] == rev_num:
-            return (r.get("filepath"), r.get("filename"))
+            path = os.path.realpath(r.get("filepath") or "")
+            if not path.startswith(root):
+                return (None, None)
+            return (path, r.get("filename"))
     return (None, None)

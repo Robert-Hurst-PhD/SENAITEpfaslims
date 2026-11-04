@@ -5,9 +5,12 @@ The worker has ONE rule interpreter for every method
 (pfas_pipeline.method_profiles.ConfiguredProfile); what differs between
 methods is read here, from the profile:
 
-  engine.grouped_recovery_tiers  bool   tiers chosen by analyte group and
-                                        Tier 1 matrices (else the first
-                                        ordinary tier for every analyte)
+  grouped_recovery_tiers         bool   tiers chosen by analyte group and
+                                        each tier's own matrices (else the first
+                                        ordinary tier for every analyte):
+                                        derived, never stored -- on when
+                                        any QC type's tier names an analyte
+                                        group or matrix scope other than all
   engine.qc_type_aliases         {qc: qc}  a QC type judged as another
                                         ({"OPR": "LFB"})
   engine.surrogate_guidance_only bool   surrogate recovery is guidance only
@@ -37,17 +40,15 @@ no surrogate fallback, no EIS limits, nothing required beyond what a rule
 cannot be built without, no notes. Nothing here borrows another method's
 values.
 
-migrate(profile, method_id) writes, once, the behaviour the three shipped
-methods had when they were code -- no number changes.
+migrate(profile, method_id) writes, once, the shipped methods' engine
+settings into a profile.
 
 Pure; Python 2.7 and 3 (the worker loads it by path).
 """
 from __future__ import absolute_import, unicode_literals
 
-import copy
 
 ENGINE_KEY = "engine"
-VERSION_KEY = "engine_v"
 STUDY_KINDS = ("mdl", "pt", "pa", "mrl", "dl", "idc")
 EIS_WINDOWS = ("lfsm_tier", "surrogate_window")
 RULES = ("calibration", "is_response", "confirmation")
@@ -62,7 +63,7 @@ NOT_BACKFILLED = ("blank_role_name", "study_kinds", "idc", "matrix_classes")
 def _text(v):
     try:
         return u"%s" % v if v is not None else u""
-    except Exception:                                     # noqa: BLE001
+    except UnicodeError:
         return u""
 
 
@@ -98,13 +99,7 @@ def _pairs(v):
     return out
 
 
-def _num(v):
-    if v in (None, u"", ""):
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _num
 
 
 def _fallback(v):
@@ -129,14 +124,42 @@ def _notes(v):
     return dict((_text(k), _text(x)) for k, x in v.items() if x not in (None, u"", ""))
 
 
+def tiers_grouped(tiers):
+    """Does any of these tiers pick by analyte group or matrix scope? A
+    missing or blank group / scope is "all"."""
+    for t in tiers or []:
+        if not isinstance(t, dict):
+            continue
+        if (t.get("analyte_group") or "all") != "all" or (t.get("matrix_scope") or "all") != "all":
+            return True
+    return False
+
+
+def profile_tiers(profile, replace=None):
+    """Every QC type's tiers in the profile; `replace` {qc: tiers} stands in
+    for the stored tiers of those QC types (a save being checked)."""
+    replace = replace or {}
+    qca = (profile or {}).get("qc_acceptance")
+    qca = qca if isinstance(qca, dict) else {}
+    out = []
+    for qc in set(qca) | set(replace):
+        if qc in replace:
+            out.extend(replace[qc] or [])
+            continue
+        entry = qca.get(qc)
+        if isinstance(entry, dict) and isinstance(entry.get("tiers"), list):
+            out.extend(entry["tiers"])
+    return out
+
+
 def engine(profile):
     """The profile's Engine settings, normalised, every feature OFF when
-    unset."""
+    unset; grouped recovery tiers derived from the tiers themselves."""
     e = (profile or {}).get(ENGINE_KEY)
     e = e if isinstance(e, dict) else {}
     window = e.get("eis_default_window")
     return {
-        "grouped_recovery_tiers": _bool(e.get("grouped_recovery_tiers")),
+        "grouped_recovery_tiers": tiers_grouped(profile_tiers(profile)),
         "qc_type_aliases": _pairs(e.get("qc_type_aliases")),
         "surrogate_guidance_only": _bool(e.get("surrogate_guidance_only")),
         "surrogate_fallback": _fallback(e.get("surrogate_fallback")),
@@ -253,50 +276,6 @@ def default_matrix_class(matrix):
     return u"aqueous"
 
 
-# ── what the shipped methods did as code (migrate) ─────────────────────────
-# Moved, not changed: the values and texts the engine classes held.
-
-def _load_shipped():
-    import io
-    import json
-    import os
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "method_engine_shipped.json")
-    with io.open(path, encoding="utf-8") as fh:
-        return json.load(fh)["methods"]
+# ── the shipped methods' engine settings (migrate) ─────────────────────────
 
 
-# {method id: {"engine": {...}, "blank_role_name", "study_kinds", "idc",
-# "matrix_classes_from_titles"}} -- data (method_engine_shipped.json)
-SHIPPED = _load_shipped()
-
-
-def migrate(profile, method_id):
-    """Once (VERSION_KEY): the Engine settings, blank role, study kinds, IDC
-    and matrix classes the shipped method had as code. A setting the profile
-    already holds is kept. A method this does not know gets nothing."""
-    spec = SHIPPED.get(method_id)
-    if spec is None or profile.get(VERSION_KEY) == 1:
-        return False
-    eng = profile.get(ENGINE_KEY)
-    eng = eng if isinstance(eng, dict) else {}
-    for key, value in spec["engine"].items():
-        if key not in eng:
-            eng[key] = copy.deepcopy(value)
-    profile[ENGINE_KEY] = eng
-    for key in ("blank_role_name", "study_kinds", "idc"):
-        if key in spec and key not in profile:
-            profile[key] = copy.deepcopy(spec[key])
-    if spec.get("matrix_classes_from_titles"):
-        classes = profile.get("matrix_classes")
-        classes = classes if isinstance(classes, dict) else {}
-        for m in profile.get("supported_matrices") or []:
-            classes.setdefault(m, default_matrix_class(m))
-        profile["matrix_classes"] = classes
-    if method_id == "EPA_537_1":
-        # the engine read an absent force-through-origin as on for this
-        # method; written down so the profile says what applies
-        cal = (profile.get("instrument_verification") or {}).get("calibration")
-        if isinstance(cal, dict) and "force_origin" not in cal:
-            cal["force_origin"] = True
-    profile[VERSION_KEY] = 1
-    return True

@@ -35,6 +35,7 @@
     </div>
   </tal:no-unit>
 
+  <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
   <tal:has-unit tal:condition="unit">
     <!-- Entry form -->
     <div class="pfas-card">
@@ -43,11 +44,11 @@
             tal:attributes="action string:${purl}/@@pfas-balance-log">
         <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
         <div class="pfas-form-row">
-          <div class="pfas-form-field"><label>Date *</label>
+          <div class="pfas-form-field"><label>Date</label>
             <input type="date" name="verified_date" id="vDate" required/></div>
-          <div class="pfas-form-field"><label>Operator initials *</label>
+          <div class="pfas-form-field"><label>Operator initials</label>
             <input type="text" name="operator" maxlength="10" required/></div>
-          <div class="pfas-form-field is-wide"><label>Reference weight set *</label>
+          <div class="pfas-form-field is-wide"><label>Reference weight set</label>
             <select name="weight_set_id" required="required">
               <option value="">&mdash; select the set used &mdash;</option>
               <option tal:repeat="w view/weight_sets"
@@ -67,14 +68,15 @@
         <div class="pfas-form-field is-spaced"><label>Notes</label>
           <input type="text" name="notes"/></div>
 
-        <table class="pfas-table">
-          <tr>
+        <table class="pfas-table" data-col-resize="facility-balance-1">
+          <thead><tr>
             <th>Nominal</th>
-            <th>Tolerance (g)</th>
+            <th>Tolerance</th>
             <th>Actual Reading (g)</th>
             <th>Deviation</th>
-            <th>Pass?</th>
-          </tr>
+            <th class="is-center">Result</th>
+          </tr></thead>
+          <tbody>
           <!-- `i` is defined on the <tr>, NOT on the repeat element. TAL executes
                tal:define BEFORE tal:repeat on the same tag, so `repeat/wp` does
                not exist yet there and the page raises
@@ -87,19 +89,19 @@
           <tal:each tal:repeat="wp wpts">
             <tr tal:define="i repeat/wp/index">
               <td><strong tal:content="python:wp[1]">10 mg</strong></td>
-              <td class="pfas-muted-cell">
-                ±<tal:t tal:replace="python:('%.6f' % wp[2]).rstrip('0').rstrip('.')"/>g
-              </td>
+              <td class="pfas-muted-cell" tal:content="python:view.tolerance_text(wp)">&#177;0.02 mg</td>
               <td>
-                <input type="number" step="any" class="pfas-num-in"
+                <input type="number" step="any" class="pfas-num-in" required="required" placeholder="required"
                        tal:attributes="name string:actual_${i};
+                                       value python:request.form.get('actual_%d' % i, '') if view.error else '';
                                        id string:act_${i};
                                        onchange string:calcDev(this,${i})"/>
               </td>
               <td class="pfas-dev" tal:attributes="id string:dev_${i}">—</td>
-              <td tal:attributes="id string:pass_${i}">—</td>
+              <td class="is-center" tal:attributes="id string:pass_${i}">—</td>
             </tr>
           </tal:each>
+        </tbody>
         </table>
 
         <div class="pfas-mt-md">
@@ -110,9 +112,13 @@
       </form>
     </div>
 
-    <!-- History -->
-    <div class="pfas-card">
-      <h3>Verification History</h3>
+    <!-- History: the 10 most recent, newest first -->
+    <details class="pfas-card">
+      <summary><strong>Verification history</strong> <span class="pfas-muted">the 10 most recent</span></summary>
+      <div class="pfas-between">
+        <span></span>
+        <button type="button" class="btn-sm btn-secondary" onclick="window.print()">Print history</button>
+      </div>
       <tal:no-hist tal:condition="python:not view.history()">
         <p class="pfas-note-sm">No verifications recorded yet.</p>
       </tal:no-hist>
@@ -122,8 +128,7 @@
             <strong tal:content="v/verified_date"></strong>
             <span class="pfas-muted"
                   tal:content="string:by ${v/operator}"></span>
-            <span tal:attributes="class python:'badge badge-ok' if v['passed'] else 'badge badge-fail'"
-                  tal:content="python:'PASS' if v['passed'] else 'FAIL'"></span>
+            <tal:pf define="pf_ok python:bool(v['passed'])"><span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span></tal:pf>
             <span class="pfas-hint"
                   tal:content="python:v.get('notes','')"></span>
           </div>
@@ -137,8 +142,9 @@
               nothing and blocks release for any work it supports.
             </span>
           </div>
-          <table class="pfas-table history-table">
-            <tr><th>Nominal</th><th>Actual (g)</th><th>Deviation (g)</th><th>Tol (g)</th><th>Result</th></tr>
+          <table class="pfas-table history-table" data-col-resize="facility-balance-history-table">
+            <thead><tr><th>Nominal</th><th>Actual (g)</th><th>Deviation (g)</th><th>Tol (g)</th><th class="is-center">Result</th></tr></thead>
+            <tbody>
             <tal:each tal:repeat="pt python:v.get('points',[])">
               <tr>
                 <td tal:content="pt/label"></td>
@@ -146,14 +152,14 @@
                 <td tal:attributes="class python:'pfas-text-bad' if pt.get('passed')==0 else 'pfas-text-ok'"
                     tal:content="python:('+' if pt['deviation_g']>=0 else '')+'{:.6g}'.format(pt['deviation_g']) if pt.get('deviation_g') is not None else '—'"></td>
                 <td tal:content="python:'±{}'.format(pt['tolerance_g']) if pt.get('tolerance_g') is not None else '—'"></td>
-                <td><span tal:attributes="class python:'badge badge-ok' if pt.get('passed') else 'badge badge-fail'"
-                          tal:content="python:'Pass' if pt.get('passed') else 'Fail'"></span></td>
+                <td class="is-center" tal:define="pf_ok python:None if pt.get('passed') is None else bool(pt['passed'])"><span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span></td>
               </tr>
             </tal:each>
+          </tbody>
           </table>
         </div>
       </tal:each>
-    </div>
+    </details>
 
   </tal:has-unit>
   </tal:def>
@@ -167,7 +173,10 @@
 <script tal:condition="view/unit">
 //<![CDATA[
 // Set today's date
-document.getElementById('vDate').valueAsDate = new Date();
+(function () {
+  var today = PFAS.components.labToday(), vDate = document.getElementById('vDate');
+  if (today) { vDate.value = today; } else { vDate.valueAsDate = new Date(); }
+})();
 
 function calcDev(input, idx) {
   var wp = _WP[idx];
@@ -186,8 +195,8 @@ function calcDev(input, idx) {
   devCell.textContent = (dev >= 0 ? '+' : '') + dev.toFixed(6) + ' g';
   devCell.className = 'pfas-dev ' + (pass ? 'is-pass' : 'is-fail');
   passCell.innerHTML = pass
-    ? '<span class="badge badge-ok">Pass</span>'
-    : '<span class="badge badge-fail">Fail</span>';
+    ? '<span class="badge badge-ok pfas-mark" role="img" title="Pass" aria-label="Pass">\u2713</span>'
+    : '<span class="badge badge-fail pfas-mark" role="img" title="Fail" aria-label="Fail">\u2717</span>';
 }
 //]]>
 </script>

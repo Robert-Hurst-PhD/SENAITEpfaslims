@@ -1,13 +1,13 @@
 """Value provenance: every judged value records what it was computed from.
 
-Decided 2026-10-11. A record names the value, the formula it came from, each
+A record names the value, the formula it came from, each
 term with its value and its SOURCE (an imported row's cell by file and line,
 a profile criterion by key, the extraction record, another recorded value),
 the steps of a chain (the final sample value) and the rule with its verdict.
 Data Review opens a value's record in a drawer and lights the imported rows
 and the terms that made it; the records are the run's own, taken from the
 same objects the checks judged, in the same process, before anything is
-pushed. Nothing here changes a value: the golden masters stay at 0 differ.
+pushed. Nothing here changes a value.
 
 Keys: "<kind>|<injection>|<analyte>", the same string a qc_results or
 injection_results row carries in prov_key. Kinds: IS, RT, ION, CAL, CCV, ICV,
@@ -33,14 +33,60 @@ def term(symbol, label, value, unit="", source=None):
             "source": source or {}}
 
 
+def peak_text(peak):
+    """A raw row's peak as one line: where it was integrated, over which
+    baseline, its area and how it was measured, and the settings."""
+    rev = "(settings %s)" % (peak.get("settings_revision") or "not recorded")
+    lo, hi = (peak.get("window") or [None, None])[:2]
+    if peak.get("area") is None:
+        sn = peak.get("sn")
+        return "no peak in %.2f–%.2f min%s %s" % (
+            lo, hi, " (signal-to-noise %.1f)" % sn if isinstance(sn, (int, float)) else "", rev)
+    b0, b1 = peak.get("base_start"), peak.get("base_end")
+    base = ("a flat baseline at {0:,.0f}".format(b0) if b0 == b1
+            else "a straight baseline from {0:,.0f} to {1:,.0f}".format(b0, b1))
+    return "apex %.2f min; integrated %.2f–%.2f min over %s; area %s by %s %s" % (
+        peak["apex"], peak["start"], peak["end"], base, "{0:,.0f}".format(peak["area"]),
+        peak.get("area_method") or "", rev)
+
+
+def raw_terms(row):
+    """(terms, steps) of a value the LIMS calculated from raw data: the
+    peak's area over its labelled standard's, read on this run's curve;
+    ([], []) for an imported value."""
+    derived = getattr(row, "derived_from", "") or ""
+    if not derived.startswith("raw:"):
+        return [], []
+    quant = (json.loads(derived[len("raw:"):]) or {}).get("quant") or {}
+    curve = quant.get("curve") or {}
+    if quant.get("ratio") is None or not curve.get("slope"):
+        return [], []
+    terms = [term("A", "area of the peak", getattr(row, "response", None), "counts", src_row(row, "response")),
+             term("A_IS", "area of %s, its labelled standard" % (quant.get("is") or ""), quant.get("is_area"),
+                  "counts", {"computed": True}),
+             term("m", "slope of this run's curve (%s, %s, origin %s, r² %s)" % (
+                 curve.get("kind"), curve.get("weighting"), curve.get("origin"), curve.get("r2")),
+                 curve.get("slope"), "", {"computed": True}),
+             term("b", "intercept of this run's curve", curve.get("intercept"), "", {"computed": True})]
+    steps = [{"label": "response ratio", "expression": "R = A ÷ A_IS", "value": quant["ratio"]},
+             {"label": "read on this run's curve", "expression": "(R − b) ÷ m",
+              "value": (quant["ratio"] - (curve.get("intercept") or 0.0)) / curve["slope"]}]
+    return terms, steps
+
+
 def src_row(row, column):
-    """A cell of an imported row: the file and line it was read from."""
+    """A cell of an imported row: the file and line it was read from; a row
+    integrated from raw data names its peak instead of a line."""
     if row is None:
         return {}
-    return {"file": getattr(row, "source_file", "") or "", "line": getattr(row, "source_row", None),
-            "injection": getattr(row, "injection_name", "") or "",
-            "compound": getattr(row, "compound_name", "") or "", "column": column,
-            "derived_from": getattr(row, "derived_from", "") or ""}
+    derived = getattr(row, "derived_from", "") or ""
+    out = {"file": getattr(row, "source_file", "") or "", "line": getattr(row, "source_row", None),
+           "injection": getattr(row, "injection_name", "") or "",
+           "compound": getattr(row, "compound_name", "") or "", "column": column,
+           "derived_from": derived}
+    if derived.startswith("raw:"):
+        out["peak"] = peak_text(json.loads(derived[len("raw:"):]))
+    return out
 
 
 def src_profile(method_id, path, label=""):
@@ -203,15 +249,17 @@ def record_run(batch, rows, profile, matrix):
 
     for res in getattr(batch, "lfsmd_results", None) or []:
         drow = by.get((res.lfsmd_injection, res.analyte))
-        basis = "concentrations" if getattr(profile, "lfsmd_rpd_from_concentrations", lambda: False)() else "recoveries"
-        record(batch, "LFSMD", res.lfsmd_injection, res.analyte, res.rpd_pct,
-               "RPD = |a − b| ÷ ((a + b) ÷ 2) × 100, of the two %s" % basis, [
-                   term("a", "LFSM %s" % basis[:-1], res.recovery_lfsm, "%" if basis == "recoveries" else "",
-                        src_record("LFSM", res.lfsm_injection, res.analyte)),
-                   term("b", "LFSMD %s" % basis[:-1], res.recovery_lfsmd, "%" if basis == "recoveries" else "",
-                        src_row(drow, "calc_conc")),
-                   term("W", "the RPD limit at this level", "", "%", src_profile(method, "qc_acceptance.LFSMD.tiers"))],
-               "%", _verdict(res.flag), rule=dict(_window(res.window), text=res.flag.issue if res.flag else ""))
+        # an RPD not judged has no value to trace
+        if getattr(res, "rpd_judged", True):
+            record(batch, "LFSMD", res.lfsmd_injection, res.analyte, res.rpd_pct,
+                   "RPD = |a − b| ÷ ((a + b) ÷ 2) × 100, of the two concentrations", [
+                       term("a", "LFSM concentration", res.conc_lfsm, "",
+                            src_record("LFSM", res.lfsm_injection, res.analyte)),
+                       term("b", "LFSMD concentration", res.conc_lfsmd, "",
+                            src_row(drow, "calc_conc")),
+                       term("W", "the RPD limit at this level", "", "%",
+                            src_profile(method, "qc_acceptance.LFSMD.tiers"))],
+                   "%", _verdict(res.flag), rule=dict(_window(res.window), text=res.flag.issue if res.flag else ""))
         if getattr(res, "recovery_judged", False):
             record(batch, "LFSMD_REC", res.lfsmd_injection, res.analyte, res.recovery_lfsmd,
                    "R = (F − U) ÷ S × 100 (the duplicate, at the LFSM's spike)", [
@@ -227,8 +275,9 @@ def record_run(batch, rows, profile, matrix):
         record(batch, d.get("qc_type") or "LFB", inj, an, d.get("recovery"), "R = C ÷ S × 100", [
                    term("C", "measured concentration", reported_conc(row) if row is not None else None, "",
                         src_row(row, "calc_conc")),
-                   term("S", "spike added (the extraction record, else the method's level)", None, "",
-                        src_extraction("spikes[%s]" % inj)),
+                   term("S", "the lot's reference value" if d.get("qc_type") == "MxB"
+                        else "spike added (the extraction record, else the method's level)",
+                        d.get("spike"), d.get("spike_unit") or "", src_extraction("spikes[%s]" % inj)),
                    term("W", d.get("basis") or "the recovery window", "%s–%s" % (d.get("lo"), d.get("hi")), "%",
                         src_profile(method, "qc_acceptance.%s.tiers" % (d.get("qc_type") or "LFB")))],
                "%", "within" if d.get("passed") else "outside", rule={"text": d.get("issue") or ""})
@@ -298,14 +347,21 @@ def record_summary(batch, profile=None):
         if raw is None and conc is not None:
             raw = conc
         if not parts:
-            terms.append(term("c₀", "concentration the instrument reported", raw,
+            raw_t, raw_s = raw_terms(src) if src is not None else ([], [])
+            terms.extend(raw_t)
+            steps.extend(raw_s)
+            terms.append(term("c₀", "concentration this LIMS calculated from the raw data" if raw_t
+                              else "concentration the instrument reported", raw,
                               getattr(src, "conc_units", "") if src is not None else "", src_row(src, "calc_conc")))
-            steps.append({"label": "as imported", "expression": "c₀", "value": raw})
+            steps.append({"label": "as calculated" if raw_t else "as imported", "expression": "c₀", "value": raw})
         if src is not None and getattr(src, "salt_factor", None):
             terms.append(term("f_salt", "salt (counter-ion) factor", src.salt_factor, "",
                               src_profile(method, "salt_factors.%s" % s.analyte)))
             steps.append({"label": "salt correction", "expression": "c₀ × f_salt",
                           "value": (raw or 0) * src.salt_factor if raw is not None else None})
+        elif src is not None and getattr(src, "salt_basis", None) == "acid":
+            terms.append(term("f_salt", "salt factor not applied: the calibration standards are stated as acid",
+                              None, "", src_profile(method, "salt_factors.%s" % s.analyte)))
         if src is not None and getattr(src, "matrix_factor", None):
             terms.append(term("f_m", "matrix / per-sample factor (sample amount and final volume)", src.matrix_factor,
                               "", src_extraction("samples[%s]" % s.sample_injection)))
@@ -328,10 +384,7 @@ def record_summary(batch, profile=None):
             terms.append(term("RL", "reporting limit on the sample basis", rl, "", src_row(src, "reporting_limit")))
         judged = None
         if profile is not None and s.result_ppt is not None:
-            try:
-                judged = profile.judged_conc(s.result_ppt, matrix)
-            except Exception:                                   # noqa: BLE001
-                judged = None
+            judged = profile.judged_conc(s.result_ppt, matrix)
         if judged is not None:
             steps.append({"label": "rounded by the method's rule", "expression": "round(c)", "value": judged})
         text = s.display() if hasattr(s, "display") else ""

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Not recorded</title>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Not recorded</tal:t>
+<metal:content metal:fill-slot="content">
+  <div class="page-body-narrow">
+    <div class="pfas-card">
+      <p tal:content="view/reason"></p>
+      <h3 tal:condition="view/status_label" tal:content="view/status_label">status</h3>
+      <div class="form-actions">
+        <a class="btn btn-primary" tal:attributes="href string:${view/portal_url}/@@pfas-people">People &amp; Roles</a>
+        <button type="button" class="btn btn-secondary" onclick="history.back()">Back</button>
+      </div>
+    </div>
+  </div>
+</metal:content>
+</body>
+</html>

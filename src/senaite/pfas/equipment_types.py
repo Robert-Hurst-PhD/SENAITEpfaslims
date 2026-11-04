@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""What an equipment TYPE obliges ("UI
-consistency ... equipment").
+"""What an equipment TYPE obliges.
 
 Every piece of equipment is a core SENAITE Instrument with a core Instrument
 Type, as the LC-MS/MS already is. The type carries the obligations; this is the
@@ -13,7 +12,8 @@ pure model of them. Stored per InstrumentType (annotation, browser/equipment.py)
                                 held as SENAITE's certificate on the instrument
     unit                        the unit it reads in
     tolerance_pct               acceptance, % of nominal
-    in_worksheets               offered in SENAITE's worksheet instrument picker
+    (which instruments run samples is the kind: an "Analytical instrument" is
+    offered as a worksheet's instrument and listed in Import Studio)
 
 Seeds are only what the lab has stated: balances read in grams
 with an acceptance of 0.2 % of nominal; temperature probes are corrected to a
@@ -21,21 +21,24 @@ NIST reference by a study every quarter (90 days); analytical instruments are
 offered in worksheets. Every other value is the lab's to enter -- blank means
 "not set", never a guessed frequency.
 
-Due dates (decided 2026-10-03, "both, split"): the external certificate's own
-valid-to date, when the type requires one; the internal check every
+Due dates: the external certificate's own valid-to date, when the type
+requires one; the internal check every
 cal_frequency_days since the last PFAS record. Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
 import datetime
 
+from senaite.pfas import lab_time
+
 KINDS = [
-    ("analytical", u"Analytical instrument (LC-MS/MS ...)"),
-    ("balance_analytical", u"Balance — analytical"),
-    ("balance_prep", u"Balance — preparatory"),
+    ("analytical", u"Analytical instrument"),
+    ("balance_analytical", u"Analytical balance"),
+    ("balance_prep", u"Top-loading balance"),
     ("pipette", u"Pipette"),
     ("refrigerator", u"Refrigerator"),
     ("freezer", u"Freezer"),
+    ("water_bath", u"Water bath"),
     ("room_sensor", u"Room sensor"),
     # Spot-use temperature instruments: the thermometer requirements apply
     # (corrected by the quarterly NIST study), no daily check.
@@ -45,33 +48,59 @@ KINDS = [
     # The NIST-traceable reference the studies are read against: no quarterly
     # study of its own; verified externally (its SENAITE certificate).
     ("reference_thermometer", u"Reference thermometer (NIST-traceable)"),
-    # Mills and cryogrinders: named on each sample's
-    # homogenisation record; they measure nothing, so no calibration chain.
+    # Mills and cryogrinders: named on each sample's homogenisation record;
+    # they measure nothing, so no calibration chain.
     ("homogeniser", u"Homogeniser (mill, cryogrinder)"),
     ("water_system", u"Type 1 water system"),
     ("eyewash", u"Eye wash station"),
+    # satellite accumulation areas: registered so the Waste log lists them
+    ("saa", u"SAA (waste container)"),
     ("other", u"Other"),
 ]
 KIND_KEYS = [k for k, _l in KINDS]
 BALANCE_KINDS = ("balance_analytical", "balance_prep")
 # Kinds with no DAILY check: tracked by their due dates on the Equipment page,
 # not listed on the Daily Checklist.
-NOT_DAILY_KINDS = ("analytical", "pipette", "other", "thermometer", "ir_gun",
+NOT_DAILY_KINDS = ("analytical", "pipette", "other", "saa", "thermometer", "ir_gun",
                    "nitrogen_evaporator", "reference_thermometer", "homogeniser")
 FIELDS = ("kind", "cal_frequency_days", "correction_factor_required",
-          "external_cert_required", "unit", "tolerance_pct", "in_worksheets")
+          "external_cert_required", "unit", "tolerance_pct", "correction_model")
+# how a corrected thermometer is corrected (temp_calibration): one factor, or a
+# multi-point calibration over its working temperatures
+CORRECTION_MODELS = [(u"single", u"Single factor"), (u"multi_point", u"Multi-point")]
+MULTI_POINT_KINDS = ("ir_gun", "thermometer")
 
 # Kinds the thermometer requirements apply to: corrected to the NIST reference
 # by the quarterly two-day study.
-TEMPERATURE_KINDS = ("refrigerator", "freezer", "room_sensor", "thermometer", "ir_gun",
+TEMPERATURE_KINDS = ("refrigerator", "freezer", "water_bath", "room_sensor", "thermometer", "ir_gun",
                      "nitrogen_evaporator")
 # Monitored continuously (sensor readings against a range).
-MONITORED_KINDS = ("refrigerator", "freezer", "room_sensor")
+MONITORED_KINDS = ("refrigerator", "freezer", "water_bath", "room_sensor")
 # Instruments a temperature can be taken with at sample receipt (the CoC).
 RECEIPT_KINDS = ("ir_gun", "thermometer")
 REFERENCE_KIND = "reference_thermometer"
 STUDY_EVERY_DAYS = 90                 # "performed quarterly"
 BALANCE_UNIT = u"g"
+
+# the units a type reads in, grouped by quantity (Equipment Types' picker)
+UNIT_GROUPS = [
+    (u"Mass", [u"g", u"mg", u"\u00b5g", u"kg"]),
+    (u"Volume", [u"\u00b5L", u"mL", u"L"]),
+    (u"Temperature", [u"\u00b0C"]),
+    (u"Conductivity", [u"\u00b5S/cm", u"M\u03a9\u00b7cm"]),
+    (u"Concentration", [u"ppb", u"ppm", u"ng/L", u"\u00b5g/L"]),
+    (u"Humidity", [u"%RH"]),
+    (u"Time and speed", [u"min", u"h", u"rpm"]),
+]
+
+
+def unit_choices(current):
+    """The picker's groups; a stored unit not in them is kept, under Other."""
+    known = set(u for _g, us in UNIT_GROUPS for u in us)
+    cur = (current or u"").strip()
+    if cur and cur not in known:
+        return UNIT_GROUPS + [(u"Other", [cur])]
+    return list(UNIT_GROUPS)
 BALANCE_TOLERANCE_PCT = 0.2          # the "balances ... 0.2%"
 DUE_SOON_DAYS = 14
 
@@ -80,19 +109,27 @@ def seed(kind):
     """The requirements a new type of this kind starts with."""
     req = {"kind": kind if kind in KIND_KEYS else "other", "cal_frequency_days": None,
            "correction_factor_required": False, "external_cert_required": False,
-           "unit": u"", "tolerance_pct": None, "in_worksheets": kind == "analytical"}
+           "unit": u"", "tolerance_pct": None, "correction_model": u"single"}
     if kind in BALANCE_KINDS:
         req.update(unit=BALANCE_UNIT, tolerance_pct=BALANCE_TOLERANCE_PCT)
     if kind in TEMPERATURE_KINDS:
-        # the probes are corrected to a NIST reference by a
-        # quarterly two-day study (facility_qc)
+        # the probes are corrected to a NIST reference by a quarterly
+        # two-day study (facility_qc)
         req.update(unit=u"\u00b0C", correction_factor_required=True,
-                   cal_frequency_days=STUDY_EVERY_DAYS)
+                   cal_frequency_days=STUDY_EVERY_DAYS,
+                   correction_model=u"multi_point" if kind in MULTI_POINT_KINDS else u"single")
     if kind == REFERENCE_KIND:
-        # the exempt from the quarterly study, sent for an
+        # the reference is exempt from the quarterly study, sent for an
         # external verification (its certificate's valid-to is the due date)
         req.update(unit=u"\u00b0C", external_cert_required=True)
     return req
+
+
+def runs_samples(req):
+    """An instrument of this type runs samples: offered as a worksheet's
+    instrument and listed in Import Studio. The kind decides; a stored
+    in_worksheets flag is ignored."""
+    return (req or {}).get("kind") == "analytical"
 
 
 def normalise(raw, kind=None):
@@ -134,12 +171,34 @@ def parse(form, label=u"type"):
         errors.append(u"%s: tolerance must be a positive %%" % label)
         pct = None
     on = lambda k: form.get(k) in (u"on", u"1", u"true", True, 1)  # noqa: E731
-    req = {"kind": kind, "cal_frequency_days": days,
+    model = (form.get("correction_model") or u"").strip() or None
+    if model is not None and model not in dict(CORRECTION_MODELS):
+        errors.append(u"%s: unknown correction %s" % (label, model))
+        model = None
+    req = {"kind": kind, "cal_frequency_days": days, "correction_model": model,
            "correction_factor_required": on("correction_factor_required"),
            "external_cert_required": on("external_cert_required"),
-           "unit": (form.get("unit") or u"").strip(), "tolerance_pct": pct,
-           "in_worksheets": on("in_worksheets")}
+           "unit": (form.get("unit") or u"").strip(), "tolerance_pct": pct}
     return normalise(req), errors
+
+
+def working_temps(raw):
+    """A unit's working temperatures (deg C) from its stored JSON list or a
+    typed comma list; what is not a number is dropped."""
+    import json
+    vals = raw
+    if isinstance(raw, (type(u""), str)):
+        try:
+            vals = json.loads(raw)
+        except ValueError:
+            vals = raw.split(u",")
+    out = []
+    for v in vals if isinstance(vals, list) else []:
+        try:
+            out.append(float(u"%s" % v))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 # ── acceptance ───────────────────────────────────────────────────────────────
@@ -180,7 +239,7 @@ def due(req, last_internal=None, cert_valid_to=None, today=None):
       not_set  -- nothing to judge (no frequency, no certificate required)
     """
     req = normalise(req)
-    today = _date(today) or datetime.date.today()
+    today = _date(today) or lab_time.today()
     out = {"internal": None, "external": None}
     states = []
     days = req.get("cal_frequency_days")

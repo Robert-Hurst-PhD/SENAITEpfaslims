@@ -16,46 +16,23 @@ for both. Examples are DEMO. Pure: Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas.print_style import PALETTE as _P
-except ImportError:                                          # loaded by path (tests)
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-    from print_style import PALETTE as _P
+from senaite.pfas.print_style import PALETTE as _P
 
-try:
-    from senaite.pfas import doc_fields as _df
-except ImportError:                                         # loaded by path (tests)
-    import os, sys
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import doc_fields as _df
+from senaite.pfas import doc_fields as _df
+from senaite.pfas import print_doc as _pd
 
 
-def _s(v):
-    if v is None:
-        return ""
-    if isinstance(v, bool):
-        return "Yes" if v else "No"
-    return "%s" % v
+_s = _df.as_text
 
 
-def _t(name, x, y, w, h, size=8, align="left", **kw):
-    f = {"name": name, "type": "text", "position": {"x": x, "y": y}, "width": w,
-         "height": h, "fontSize": size, "alignment": align, "content": ""}
-    f.update(kw)
-    return f
+_t = _df.text_field
 
 
 def _fixed(name, text, x, y, w, h, size=7.5, align="left", **kw):
     return _t(name, x, y, w, h, size, align, readOnly=True, content=text, **kw)
 
 
-def _image(name, x, y, w, h, **kw):
-    f = {"name": name, "type": "image", "position": {"x": x, "y": y}, "width": w,
-         "height": h, "content": ""}
-    f.update(kw)
-    return f
+_image = _df.image_field
 
 
 def _rule(name, x, y, w, **kw):
@@ -253,8 +230,8 @@ def coc_data(record, samples, lab, printed):
         "holding_time_ok": _yes(record.get("holding_time_ok")),
         "condition_notes": _s(record.get("condition_notes")),
         "printed": _s(printed),
-        # a CoC logbook from before CoC records has no electronic relinquish,
-        # receipt flags or transcription
+        # a CoC logbook entry has no electronic relinquish, receipt flags or
+        # transcription: those are a CoC record's (coc_record_data)
         "relinquished_line": "", "receipt_flags": "", "transcription": "",
         "samples": rows,
         "field_qc": [dict((k, _s(r.get(k))) for k, _t2, _e in COC_TABLES["field_qc"])
@@ -341,7 +318,10 @@ def sop_data(entry, revisions, lab, printed, names=None):
     active = [r for r in revs if r.get("status") == "active"]
     cur = (active or revs or [{}])[-1]
     who = lambda u: _s(names.get(u) or u)                   # noqa: E731
-    day = lambda v: _s(v)[:10]                              # noqa: E731
+
+    def day(v):
+        """The laboratory's day of a stamp; a bare date as stored."""
+        return _pd.lab_or(v, _s(v)[:10], "%Y-%m-%d")
     approvals = [{"role": "Prepared by", "name": who(cur.get("uploaded_by")),
                   "date": day(cur.get("uploaded_at")), "signature": ""}]
     if cur.get("activated_by"):
@@ -426,7 +406,13 @@ def coc_record_data(record, samples, lab, printed):
                                (" (corrected %s)" % c) if c is not None and _s(c) != _s(t.get("observed")) else "")
     def when(v):
         return _s(v)[:16].replace("T", " ")
-    transfers = [dict((k, when(t.get(k)) if k.endswith("_at") else _s(t.get(k)))
+
+    def stamped(v):
+        """A relinquish is stamped on the server's clock (UTC); a receipt
+        time is typed on the laboratory's and prints as typed."""
+        return _pd.lab_or(v, when(v))
+    transfers = [dict((k, (stamped if k == "relinquished_at" else when)(t.get(k)) if k.endswith("_at")
+                       else _s(t.get(k)))
                       for k, _t2, _e in COC_TABLES["transfers"])
                  for t in record.get("transfers") or []]
     first = (record.get("transfers") or [{}])[0] if record.get("transfers") else {}
@@ -447,7 +433,7 @@ def coc_record_data(record, samples, lab, printed):
         "condition_notes": _s(rc.get("note")),
         "receipt_flags": ("Receipt flags: " + "; ".join(rc.get("flags"))) if rc.get("flags") else "",
         "relinquished_line": (("Relinquished electronically by %s on %s (signed in)"
-                               % (_s(first.get("relinquished_by")), _s(first.get("relinquished_at"))[:16].replace("T", " ")))
+                               % (_s(first.get("relinquished_by")), stamped(first.get("relinquished_at"))))
                               if record.get("origin") != "paper" and first.get("relinquished_by") else ""),
         "transcription": _transcription(record),
         "printed": _s(printed),
@@ -459,8 +445,5 @@ def coc_record_data(record, samples, lab, printed):
 
 def _transcription(record):
     """One wording, coc_records.transcription_line."""
-    try:
-        from senaite.pfas import coc_records as cr
-    except ImportError:                                     # loaded by path (tests)
-        import coc_records as cr
+    from senaite.pfas import coc_records as cr
     return cr.transcription_line(record)

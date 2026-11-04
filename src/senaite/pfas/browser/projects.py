@@ -29,19 +29,18 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
-import urllib
 import uuid
-from datetime import datetime
 
 from zope.event import notify
 from zope.lifecycleevent import ObjectModifiedEvent
 
-from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import require_manager
+from senaite.pfas.holding_time import date_to_iso as _date_to_str, parse_date as _str_to_date
 from senaite.pfas.content.project import STATUS_ACTIVE, STATUS_CLOSED
 from senaite.pfas import method_profile_store
 from senaite.pfas.browser.perms import refuse
@@ -62,12 +61,6 @@ def _blank(s):
     return s is None or (isinstance(s, basestring) and s.strip() == "")
 
 
-def _url_quote(s):
-    try:
-        return urllib.quote((s or u"").encode("utf-8"))
-    except Exception:
-        return u""
-
 
 def _method_ids(portal):
     """Every configured method id (a stored method profile)."""
@@ -76,22 +69,8 @@ def _method_ids(portal):
 
 # ── Date helpers ─────────────────────────────────────────────────────────────
 
-def _date_to_str(d):
-    if not d:
-        return u""
-    try:
-        return d.strftime("%Y-%m-%d")
-    except AttributeError:
-        return unicode(d)[:10] if d else u""
 
 
-def _str_to_date(s):
-    if not s:
-        return None
-    try:
-        return datetime.strptime(s[:10], "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        return None
 
 
 # ── Content-object store helpers ──────────────────────────────────────────────
@@ -280,7 +259,7 @@ def _list_projects(portal):
 
 # ── View ──────────────────────────────────────────────────────────────────────
 
-class PFASProjectsView(BrowserView):
+class PFASProjectsView(ViewHelpers, BrowserView):
     """Projects management -- list, create, edit."""
 
     template = ViewPageTemplateFile("templates/projects.pt")
@@ -294,12 +273,8 @@ class PFASProjectsView(BrowserView):
             if action in ("add", "edit", "delete"):
                 if not require_manager(self.context, self.request):
                     return refuse(self.request, "Forbidden")
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
             if action in ("add", "edit"):
                 return self._handle_upsert()
             if action == "delete":
@@ -308,18 +283,8 @@ class PFASProjectsView(BrowserView):
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
     def _self_url(self):
         return "{0}/@@pfas-projects".format(self._portal().absolute_url())
-
-    def _redirect(self, url):
-        self.request.response.redirect(url)
-        return ""
-
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
 
     def can_manage(self):
         return require_manager(self.context, self.request)
@@ -333,7 +298,22 @@ class PFASProjectsView(BrowserView):
     # ── Template data ─────────────────────────────────────────────────────────
 
     def projects(self):
-        return _list_projects(self._portal())
+        client, status = self.client_filter(), self.status_filter()
+        return [p for p in _list_projects(self._portal())
+                if (not client or p.get("client_uid") == client)
+                and (not status or p.get("status") == status)]
+
+    def client_filter(self):
+        return (self.request.form.get("client") or "").strip()
+
+    def status_filter(self):
+        s = (self.request.form.get("status") or "").strip()
+        return s if s in [k for k, _l in ALL_STATUSES] else ""
+
+    def form_open(self):
+        """The dialog opens on load to edit a project, or from the top bar's
+        "+" menu (?new=1)."""
+        return bool(self.edit_project()) or self.request.form.get("new") == "1"
 
     def clients(self):
         return [{"uid": uid, "title": title}

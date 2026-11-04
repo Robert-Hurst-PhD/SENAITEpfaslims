@@ -21,9 +21,11 @@ import re
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import edd_profiles
+from senaite.pfas import lab_time
 from senaite.pfas import edd_store as store
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import refuse
@@ -103,7 +105,7 @@ def read_weight_basis(form, allowed):
     return dict((k, v) for k, v in zip(keys, vals) if k and v in allowed)
 
 
-class PFASEDDConfigView(BrowserView):
+class PFASEDDConfigView(ViewHelpers, BrowserView):
     """The selected profile's tabs: Defaults, Methods, Analytes, Qualifiers,
     QC types, Value lists, Test export, Profiles."""
 
@@ -118,9 +120,6 @@ class PFASEDDConfigView(BrowserView):
         return self.template()
 
     # selection
-    def portal_url(self):
-        return _portal(self.context).absolute_url()
-
     def profiles(self):
         return store.get_edd_profiles(_portal(self.context))
 
@@ -150,12 +149,27 @@ class PFASEDDConfigView(BrowserView):
         if current and options and current not in options:
             options = [current] + options      # never hide what is stored
         return {"key": spec["key"], "name": _safe(spec["key"]), "label": spec.get("label", spec["key"]),
-                "hint": spec.get("hint", u""), "value": current or u"", "options": options}
+                "hint": spec.get("hint", u""), "value": current or u"", "options": options,
+                "suffix": spec.get("suffix", u"")}
 
     # tabs
     def default_fields(self):
-        values = store.section(self.profile(), "defaults") or {}
+        values = dict(store.section(self.profile(), "defaults") or {})
+        values["sdg_prefix"] = store.sdg_prefix(values)
         return [self._field(s, values.get(s["key"], u"")) for s in getattr(self.fmt(), "DEFAULT_FIELDS", [])]
+
+    def example_batch_id(self):
+        """A batch ID to show what an ID built from it looks like."""
+        try:
+            from bika.lims import api
+            brains = api.search({"portal_type": "Worksheet", "sort_on": "created",
+                                 "sort_order": "descending", "sort_limit": 1},
+                                "senaite_catalog_worksheet")
+            if brains:
+                return api.get_id(brains[0])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("example batch id: %s", exc)
+        return u"WS-001"
 
     def method_rows(self):
         codes = store.section(self.profile(), "method_codes") or {}
@@ -283,6 +297,12 @@ class PFASEDDConfigView(BrowserView):
     def newlines(self):
         from senaite.pfas import edd_delimited
         return self._choices(edd_delimited.NEWLINES)
+
+    def name_tokens_json(self):
+        """A file or package name's fill-in parts, for its chip editor."""
+        import json
+        from senaite.pfas import edd_delimited
+        return json.dumps([list(t) for t in edd_delimited.NAME_TOKENS])
 
     def package(self):
         return self.profile().get("package") or u""
@@ -427,13 +447,28 @@ class PFASEDDConfigView(BrowserView):
 
         if section == "profiles":
             act = form.get("edd_action", "")
+            # the New profile dialog: start from an agency's lookup tables, a
+            # copy of a profile, or empty
+            start = form.get("start", "")
+            if start == "copy":
+                act = "clone"
+            elif start in ("lookup", "empty"):
+                act = "new"
             if act == "new":
                 name = (form.get("new_name") or "").strip() or "New EDD profile"
+                uploaded = self.request.get("upload") if start == "lookup" else None
+                if start == "lookup" and not (uploaded and hasattr(uploaded, "read") and uploaded.filename):
+                    return self._back("profiles", error=u"Choose the agency's lookup tables file.")
                 new_id = store.new_edd_profile(portal, name, form.get("new_type") or "")
                 if new_id is None:
                     return self._back("profiles", error=u"Choose the type of the new profile.")
-                self.request.response.redirect("%s/@@pfas-edd-config?profile=%s&tab=files"
-                                               % (portal.absolute_url(), new_id))
+                tab = "files"
+                if uploaded is not None:
+                    # created with the file's value lists, then opened for editing
+                    store.refresh_value_lists(portal, new_id, uploaded.read())
+                    tab = "value_lists"
+                self.request.response.redirect("%s/@@pfas-edd-config?profile=%s&tab=%s"
+                                               % (portal.absolute_url(), new_id, tab))
                 return u""
             if act == "delete":
                 target = form.get("profile_id", "")
@@ -484,6 +519,8 @@ class PFASEDDConfigView(BrowserView):
             for s in getattr(self.fmt(), "DEFAULT_FIELDS", []):
                 if _safe(s["key"]) in form:
                     values[s["key"]] = (form.get(_safe(s["key"])) or u"").strip()
+            if _safe("sdg_prefix") in form:
+                values.pop("sdg_format", None)     # the ID is the prefix + the batch ID
             store.save_profile_section(portal, pid, "defaults", values)
         elif section == "methods":
             codes = store.section(prof, "method_codes") or {}
@@ -547,7 +584,7 @@ class PFASEDDConfigView(BrowserView):
 
 # ── A client's EDD settings ─────────────────────────────────────────────────
 
-class PFASEDDClientConfigView(BrowserView):
+class PFASEDDClientConfigView(ViewHelpers, BrowserView):
     """On/off, the client's profile and the fields that profile asks for."""
 
     template = ViewPageTemplateFile("templates/edd_client_config.pt")
@@ -611,9 +648,6 @@ class PFASEDDClientConfigView(BrowserView):
         self.request.response.redirect(self.context.absolute_url() + "/@@pfas-edd-client-config?saved=1"
                                        + ("&fields_of=%s" % form.get("fields_of") if form.get("fields_of") else ""))
         return u""
-
-    def portal_url(self):
-        return _portal(self.context).absolute_url()
 
     def saved(self):
         return bool(self.request.get("saved"))
@@ -698,14 +732,12 @@ class PFASEDDExportView(BrowserView):
         return csv_str
 
 
-# ── Batch EDD dashboard + per-sample sample-type codes ───────────────────────
+# ── Batch EDD dashboard ───────────────────────────────────────────────────────
 
-class PFASEDDBatchesView(BrowserView):
-    """
-    Without ?batch_id: recent batches with their EDD state and downloads.
-    With ?batch_id=X: each sample's sample-type code (override) for the batch.
-    POST: saves the overrides.
-    """
+class PFASEDDBatchesView(ViewHelpers, BrowserView):
+    """Recent batches with their EDD state and downloads. A sample's
+    sample-type code is its matrix through the profile's matrix map; a wrong
+    one is fixed on the CoC or in the map, not per batch."""
 
     template = ViewPageTemplateFile("templates/edd_batches.pt")
 
@@ -713,54 +745,13 @@ class PFASEDDBatchesView(BrowserView):
         flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             return refuse(self.request, "Forbidden")
-        if self.request.method == "POST":
-            return self._handle_post()
         return self.template()
-
-    def _handle_post(self):
-        from senaite.pfas.browser.edd_publish import set_ar_sample_type
-        portal = _portal(self.context)
-        cat = getToolByName(portal, "senaite_catalog_sample")
-        batch_id = self.request.form.get("batch_id", "")
-        saved = 0
-        for key, value in self.request.form.items():
-            if key.startswith("sampletype_") and value:
-                ar_id = key[len("sampletype_"):]
-                try:
-                    brains = cat(portal_type="AnalysisRequest", getId=ar_id)
-                    if brains:
-                        set_ar_sample_type(brains[0].getObject(), value.strip().upper())
-                        saved += 1
-                except Exception as exc:                     # noqa: BLE001
-                    logger.warning("Cannot save the sample-type code for %s: %s", ar_id, exc)
-        self.request.response.redirect("{0}/@@pfas-edd-batches?batch_id={1}&saved={2}".format(
-            self.portal_url(), batch_id, saved))
-        return ""
-
-    def portal_url(self):
-        return _portal(self.context).absolute_url()
 
     def profile_options(self):
         """Every profile, for choosing the one an export uses (the batch's
         client's is preselected)."""
         profs = store.get_edd_profiles(_portal(self.context))
         return [{"id": k, "name": v.get("name", k)} for k, v in sorted(profs.items())]
-
-    def batch_id(self):
-        return self.request.get("batch_id", "")
-
-    def saved_count(self):
-        try:
-            return int(self.request.get("saved", 0))
-        except (ValueError, TypeError):
-            return 0
-
-    def _batch(self, bid):
-        try:
-            from senaite.pfas.batch_ref import get_batch
-            return get_batch(_portal(self.context), bid)
-        except Exception:                                    # noqa: BLE001
-            return None
 
     def recent_batches(self):
         """The 60 newest batches with their EDD state."""
@@ -785,55 +776,17 @@ class PFASEDDBatchesView(BrowserView):
                 rows.append({
                     "batch_id": bid, "title": batch_obj.Title() or bid,
                     "edd_profile": store.get_edd_profile_for_client(portal, cfg)[0],
-                    "created": batch_obj.created().strftime("%Y-%m-%d"),
+                    "created": lab_time.show(batch_obj.created(), "utc", "%Y-%m-%d"),
                     "client_title": client_obj.Title() if client_obj else "",
                     "edd_enabled": bool(cfg.get("edd_enabled")),
                     "has_edd": stored is not None,
-                    "edd_generated": (stored or {}).get("generated", "")[:10],
+                    "edd_generated": lab_time.show((stored or {}).get("generated", ""), "utc", "%Y-%m-%d"),
                     "edd_filename": (stored or {}).get("filename", ""),
                     "edd_error_count": (stored or {}).get("error_count", 0),
                     "edd_blocking": (stored or {}).get("blocking_count", 0),
                     "download_url": "{0}/@@pfas-edd-export?batch_id={1}".format(base, bid),
                     "preview_url": "{0}/@@pfas-edd-export?batch_id={1}&preview=1".format(base, bid),
-                    "sampletype_url": "{0}/@@pfas-edd-batches?batch_id={1}".format(base, bid),
                 })
             except Exception as exc:                         # noqa: BLE001
                 logger.warning("EDD batch dashboard: %s", exc)
         return rows
-
-    def _client_cfg(self, batch_obj):
-        try:
-            client_obj = batch_obj.getClient()
-        except AttributeError:
-            client_obj = None
-        return store.get_client_settings(client_obj) if client_obj else {}
-
-    def batch_sample_types(self):
-        """Each sample's sample-type code for the batch's editor."""
-        from senaite.pfas.browser.edd_publish import get_ar_sample_type
-        bid = self.batch_id()
-        batch_obj = self._batch(bid) if bid else None
-        if batch_obj is None:
-            return []
-        default_type = store.client_field(self._client_cfg(batch_obj), "default_sample_type", "GW")
-        cat = getToolByName(_portal(self.context), "senaite_catalog_sample")
-        rows = []
-        for brain in cat(portal_type="AnalysisRequest", getBatchUID=batch_obj.UID()):
-            try:
-                ar = brain.getObject()
-                st = ar.getSampleType()
-                rows.append({"ar_id": ar.getId(), "ar_title": ar.Title() or ar.getId(),
-                             "senaite_sample_type": st.Title() if st else "",
-                             "sample_type_code": get_ar_sample_type(ar, default=default_type),
-                             "field_name": "sampletype_{0}".format(ar.getId())})
-            except Exception as exc:                         # noqa: BLE001
-                logger.warning("EDD sample-type editor: %s", exc)
-        return rows
-
-    def sample_type_options(self):
-        """The sample-type codes of the batch's client's profile."""
-        bid = self.batch_id()
-        batch_obj = self._batch(bid) if bid else None
-        cfg = self._client_cfg(batch_obj) if batch_obj is not None else {}
-        prof = store.get_edd_profile_for_client(_portal(self.context), cfg)[1]
-        return (store.section(prof, "value_lists") or {}).get("sample_types") or []

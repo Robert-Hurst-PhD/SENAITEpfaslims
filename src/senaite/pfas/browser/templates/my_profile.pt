@@ -23,7 +23,7 @@
       </p>
       <p class="bench-sub">Signed in as <strong tal:content="view/userid">an1</strong>; roles:
         <span tal:replace="python: u', '.join(view.roles()) or u'none'">Analyst</span>.
-        Job title, credentials and what you may sign are set by a manager on Lab Staff.</p>
+        Job title, credentials and what you may sign are set by a manager on People &amp; Roles.</p>
       <p class="bench-sub">May sign documents as:
         <strong tal:content="python: u', '.join(info['sign_as']) or u'nothing yet'">preparer</strong></p>
     </section>
@@ -32,7 +32,7 @@
       <h2 class="bench-h">Signature</h2>
       <p class="alert alert-warning rt-line" tal:condition="not:info/has_contact">
         Your account is not linked to a Lab Contact yet, so there is nowhere to keep a signature:
-        ask a manager (Lab Staff).</p>
+        ask a manager on People &amp; Roles.</p>
       <tal:has condition="info/has_contact">
         <img class="staff-sig staff-sig-lg" alt="Your signature" tal:condition="info/signature"
              tal:attributes="src info/signature" />
@@ -72,8 +72,8 @@
     <section class="bench-block" tal:define="b view/badge">
       <h2 class="bench-h">Badge</h2>
       <p class="bench-sub" tal:condition="python: b and b['active']"
-         tal:content="python: u'A badge was issued to you on %s. Scan it at a registered lab terminal to sign in.' % b['issued_at'][:10]">issued</p>
-      <p class="bench-sub" tal:condition="python: not (b and b['active'])">No badge: a manager issues badges on Lab Staff.</p>
+         tal:content="python: u'A badge was issued to you on %s. Scan it at a registered lab terminal to sign in.' % view.lab_at(b['issued_at'], b['issued_at'][:10], u'%Y-%m-%d')">issued</p>
+      <p class="bench-sub" tal:condition="python: not (b and b['active'])">No badge: a manager issues badges on People &amp; Roles.</p>
     </section>
 
     <section class="bench-block">
@@ -81,7 +81,7 @@
       <p class="bench-sub">What your roles let you do, from the same rules the pages apply. Bench work
         (logbooks, extractions, inventory) is open to every signed-in user.</p>
       <div class="table-wrap">
-      <table class="pfas-table">
+      <table class="pfas-table" data-col-resize="my-profile-1">
         <thead><tr><th>Page</th><th>You may</th><th>Managers only</th></tr></thead>
         <tbody>
           <tr tal:repeat="p view/permissions">

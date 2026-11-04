@@ -20,6 +20,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import homogenisation as hg
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import GateMixin
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 logger = logging.getLogger("senaite.pfas.homogenisation")
 
@@ -30,7 +31,7 @@ def _now():
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
 
-class PFASHomogenisationView(GateMixin, BrowserView):
+class PFASHomogenisationView(ViewHelpers, GateMixin, BrowserView):
     template = ViewPageTemplateFile("templates/homogenisation_bench.pt")
 
     def __call__(self):
@@ -41,9 +42,6 @@ class PFASHomogenisationView(GateMixin, BrowserView):
         return self.template()
 
     # ── data ──────────────────────────────────────────────────────────────
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def methods(self):
         if not hasattr(self, "_methods"):
@@ -77,7 +75,11 @@ class PFASHomogenisationView(GateMixin, BrowserView):
                 continue
             st = s.getSampleType()
             last = hg.latest(records) or {}
-            rows.append({"uid": api.get_uid(s), "id": s.getId(), "url": api.get_url(s),
+            try:
+                coc = s.getField("CoCNumber").get(s) or u""
+            except Exception:                               # noqa: BLE001
+                coc = u""
+            rows.append({"uid": api.get_uid(s), "id": s.getId(), "url": api.get_url(s), "coc": coc,
                          "csid": s.getClientSampleID() or u"",
                          "matrix": api.get_title(st) if st else u"",
                          "method": req["method"], "method_title": hg.title_of(self.methods(), req["method"]),
@@ -90,6 +92,55 @@ class PFASHomogenisationView(GateMixin, BrowserView):
 
     def awaiting(self):
         return [r for r in self._samples() if r["awaiting"]]
+
+    STATUSES = ((u"active", u"Active"), (u"pending", u"Pending"), (u"recorded", u"Recorded"))
+
+    def status_filter(self):
+        s = self.request.form.get("status") or u"active"
+        return s if s in dict(self.STATUSES) else u"active"
+
+    def status_links(self):
+        base = self.portal_url() + "/@@pfas-homogenisation?status="
+        return [{"label": l, "url": base + k, "on": k == self.status_filter()} for k, l in self.STATUSES]
+
+    def rows(self):
+        """One list: Pending (awaiting) and Recorded, filtered by status."""
+        want = self.status_filter()
+        out = []
+        for r in self._samples():
+            if not (r["awaiting"] or r["last"]):
+                continue
+            pending = bool(r["awaiting"])
+            if want == u"pending" and not pending or want == u"recorded" and pending:
+                continue
+            out.append(dict(r, status=u"Pending" if pending else u"Recorded"))
+        return out
+
+    def row_url(self, r):
+        return u"%s/@@pfas-homogenisation?status=%s&open=%s" % (self.portal_url(), self.status_filter(), r["uid"])
+
+    def open_row(self):
+        """The row whose dialog is open: the one clicked, or the one whose
+        record was refused. A record that went through closes it."""
+        if self.done:
+            return None
+        uid = self.request.form.get("open") or u""
+        for r in self.rows() or []:
+            if r["uid"] == uid:
+                return r
+        for r in self._samples():
+            if r["uid"] == uid:
+                return dict(r, status=u"Pending" if r["awaiting"] else u"Recorded")
+        return None
+
+    def together_choices(self, row):
+        """The other samples awaiting homogenisation, to record as done with it."""
+        return [r for r in self.awaiting() if r["uid"] != row["uid"]]
+
+    def method_value(self, row):
+        """The method the dialog starts at: what was typed after a refusal,
+        else the sample's request (its CoC or the matrix default)."""
+        return self.form_value("method") or row.get("method") or u""
 
     def recorded(self):
         done = [r for r in self._samples() if r["last"]]
@@ -153,7 +204,8 @@ class PFASHomogenisationView(GateMixin, BrowserView):
             warns = hg.record_warnings(req, method, unit_name, cleaned, units, self.methods())
             prev = hg.latest(hg.load_records(s))
             if prev:
-                warns.append(u"replaces the record of %s" % (prev.get("at") or u"")[:16].replace(u"T", u" "))
+                warns.append(u"replaces the record of %s" % self.lab_at(
+                    prev.get("at"), (prev.get("at") or u"")[:16].replace(u"T", u" ")))
             plan.append((s, units, warns))
             needs += [u"%s: %s" % (s.getId(), w) for w in warns]
         if needs and not note:

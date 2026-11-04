@@ -6,6 +6,7 @@
 <head>
   <title metal:fill-slot="title">Import Studio — Instrument Mapping</title>
   <tal:styles metal:fill-slot="head-extra">
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
   <script type="text/javascript">
   //<![CDATA[
   /* All Import Studio JS lives here (head-extra slot) because Plone's
@@ -15,10 +16,7 @@
     'final': '<strong>Final mode:</strong> the instrument software already computed the concentration. Map the result column and the pipeline uses it directly.',
     'raw':   '<strong>Raw mode:</strong> map native peak area + IS peak area. The pipeline divides them, applies the calibration curve, salt factor, and matrix factor to compute the final result.'
   };
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
+  var esc = window.PFAS.components.esc;
   function showLanding() {
     document.getElementById('phase-landing').hidden = false;
     document.getElementById('phase-mapping').hidden = true;
@@ -30,9 +28,150 @@
   function showChosen(inp) {
     var n = inp && inp.files && inp.files[0] ? inp.files[0].name : '';
     var el = document.getElementById('chosen-name');
-    if (el && n) { el.textContent = '\u2714 ' + n; el.hidden = false; }
+    if (el && n) { el.textContent = '\u2713 ' + n; el.hidden = false; }
     var btn = document.getElementById('upload-btn');
     if (btn) { btn.disabled = !n; }
+    if (n) { sniffFile(inp.files[0]); }
+  }
+  /* upload first: the file's own options fill the form, each marked */
+  var LAYOUT_HINTS = {};
+  function badge(key, on) {
+    var b = document.querySelector('#upload-form [data-from="' + key + '"]');
+    if (b) b.hidden = !on;
+  }
+  /* the injection list table: numbered rows, up / down / drag, a fixed value
+     only for "Fixed value", the software's starter columns on a change; on
+     save the rows become the "HEADER = source" lines the server reads */
+  function injRenumber(tbody) {
+    tbody.querySelectorAll('tr.inj-row').forEach(function (r, i) {
+      r.querySelector('.inj-num').textContent = String(i + 1);
+    });
+  }
+  function injFixedState(row) {
+    /* the value cell: a fixed text, or the words an injection type is written in */
+    var src = row.querySelector('.inj-source'), fx = row.querySelector('.inj-fixed'), wd = row.querySelector('.inj-wording');
+    fx.disabled = src.value !== 'fixed';
+    fx.hidden = src.value === 'type';
+    if (wd) wd.hidden = src.value !== 'type';
+  }
+  function injRow(tbody, header, source, fixed) {
+    var tpl = tbody.querySelector('tr.inj-row');
+    var row;
+    if (tpl) {
+      row = tpl.cloneNode(true);
+    } else {
+      row = document.createElement('tr');
+      row.className = 'inj-row';
+      row.innerHTML = '<td class="inj-n"><span class="grip" aria-hidden="true"></span>' +
+        '<span class="inj-num"></span></td><td><input type="text" class="pfas-input inj-header" aria-label="Column in the list"></td>' +
+        '<td><select class="pfas-select inj-source" aria-label="Filled with">' + INJ_OPTIONS + '</select></td>' +
+        '<td><input type="text" class="pfas-input inj-fixed" aria-label="Fixed value">' +
+        '<select class="pfas-select inj-wording" aria-label="Injection type wording" hidden>' +
+        '<option value="type">LIMS words</option><option value="masslynx-type">Waters MassLynx</option></select></td>' +
+        '<td class="row-plus-cell"><details class="row-more"><summary class="row-plus" aria-label="Actions for this column" title="Actions">+</summary><div class="row-more-menu"><button type="button" class="btn-sm btn-secondary inj-up">Move up</button><button type="button" class="btn-sm btn-secondary inj-down">Move down</button><button type="button" class="btn-sm btn-secondary inj-del">Remove</button></div></details></td>';
+    }
+    row.querySelector('.inj-header').value = header || '';
+    var wd = row.querySelector('.inj-wording');
+    if (source === 'masslynx-type' || source === 'type') {
+      if (wd) wd.value = source;
+      source = 'type';
+    }
+    row.querySelector('.inj-source').value = source || 'name';
+    row.querySelector('.inj-fixed').value = fixed || '';
+    injFixedState(row);
+    tbody.appendChild(row);
+    return row;
+  }
+  var INJ_OPTIONS = '';
+  function initInj(form) {
+    var tbody = form.querySelector('.inj-rows');
+    var first = form.querySelector('.inj-source-proto');
+    if (first) INJ_OPTIONS = first.innerHTML;
+    form.addEventListener('click', function (e) {
+      var t = e.target;
+      var row = t.closest ? t.closest('tr.inj-row') : null;
+      if (t.classList.contains('inj-add')) { injRow(tbody, '', 'name', ''); injRenumber(tbody); return; }
+      if (!row) return;
+      if (t.classList.contains('inj-del')) { row.parentNode.removeChild(row); }
+      else if (t.classList.contains('inj-up') && row.previousElementSibling) { tbody.insertBefore(row, row.previousElementSibling); }
+      else if (t.classList.contains('inj-down') && row.nextElementSibling) { tbody.insertBefore(row.nextElementSibling, row); }
+      var menu = t.closest ? t.closest('details.row-more') : null;
+      if (menu) { menu.open = false; }
+      injRenumber(tbody);
+    });
+    form.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.classList.contains('inj-source')) { injFixedState(t.closest('tr')); }
+      if (t.classList.contains('inj-software')) {
+        var starters = {};
+        try { starters = JSON.parse(document.getElementById('inj-starters').textContent || '{}'); } catch (err) {}
+        var cols = starters[t.value] || [];
+        var keep = tbody.querySelector('tr.inj-row');
+        if (keep) keep = keep.cloneNode(true);
+        tbody.innerHTML = '';
+        if (keep) tbody.appendChild(keep);
+        cols.forEach(function (c) {
+          var src = c[1] || '', fixed = '';
+          if (src.indexOf('fixed:') === 0) { fixed = src.slice(6); src = 'fixed'; }
+          injRow(tbody, c[0], src, fixed);
+        });
+        if (keep) tbody.removeChild(keep);
+        injRenumber(tbody);
+      }
+    });
+    if (window.Sortable) {
+      Sortable.create(tbody, {handle: '.grip', draggable: 'tr.inj-row', animation: 150,
+                              onEnd: function () { injRenumber(tbody); }});
+    }
+    form.addEventListener('submit', function () {
+      var lines = [];
+      tbody.querySelectorAll('tr.inj-row').forEach(function (r) {
+        var h = r.querySelector('.inj-header').value.trim();
+        if (!h) return;
+        var src = r.querySelector('.inj-source').value;
+        var wd = r.querySelector('.inj-wording');
+        if (src === 'type' && wd) src = wd.value;
+        lines.push(h + ' = ' + (src === 'fixed' ? 'fixed:' + r.querySelector('.inj-fixed').value : src));
+      });
+      form.querySelector('.inj-columns').value = lines.join('\n');
+    });
+  }
+  function showLayoutFields() {
+    var sel = document.getElementById('r-layout');
+    var v = sel ? sel.value : 'long';
+    document.querySelectorAll('#upload-form [data-layout]').forEach(function (el) {
+      el.hidden = el.getAttribute('data-layout') !== v;
+    });
+    var h = document.getElementById('layout-hint');
+    if (h) h.textContent = LAYOUT_HINTS[v] || '';
+  }
+  function sniffFile(file) {
+    var form = document.getElementById('upload-form');
+    if (!form || !window.fetch) return;
+    var fd = new FormData();
+    fd.append('action', 'sniff');
+    fd.append('upload_file', file);
+    /* the form holds an input named "action": read the attribute, not form.action */
+    fetch(form.getAttribute('action'), {method: 'POST', body: fd, credentials: 'same-origin'})
+      .then(function (r) { return r.ok ? r.json() : {error: r.status}; })
+      .then(function (g) {
+        if (g.error) return;
+        ['layout', 'delimiter', 'encoding'].forEach(function (k) { setVal('r-' + k, g[k]); });
+        setVal('r-header-row', g.header_row);
+        ['layout', 'delimiter', 'encoding', 'header_row'].forEach(function (k) {
+          badge(k, !g.saved && (g.sure || []).indexOf(k) !== -1);
+        });
+        badge('saved', !!g.saved);
+        if (g.saved && g.saved.instrument_uid) setVal('instr-sel', g.saved.instrument_uid);
+        var line = document.getElementById('read-line');
+        if (line) {
+          line.textContent = 'Read: ' + (g.filename || '') + ' \u00b7 ' + g.columns + ' columns \u00b7 ' + g.rows +
+            ' rows' + (g.saved ? ' \u00b7 fits the saved layout ' + g.saved.name : '') + '. Drop another file to replace it.';
+          line.hidden = false;
+        }
+        showLayoutFields();
+      })
+      .catch(function () {});
   }
   function handleDrop(e) {
     e.preventDefault();
@@ -133,6 +272,7 @@
     heads.forEach(function(h) { out[h] = colMap[h] || 'ignore'; });
     var el = document.getElementById('save-col-map');
     if (el) el.value = JSON.stringify(out);
+    renderRequired();
   }
   function updateCalChain() {
     var s = document.getElementById('s-calc');
@@ -140,7 +280,100 @@
     if (ex) ex.innerHTML = CALC_EXPLANATIONS[s ? s.value : 'final'] || '';
   }
   function setVal(id, v) { var el = document.getElementById(id); if (el && v != null) el.value = v; }
-  function prepSave() { updateColMapJson(); return true; }
+  /* the layout panel in plain words: each control writes the field
+     the server already reads, so what is stored is unchanged */
+  var DATE_EXAMPLES = [['10/06/2026 2:05:00 PM', '%m/%d/%Y %I:%M:%S %p'], ['10/06/2026 14:05', '%m/%d/%Y %H:%M'],
+                       ['06/10/2026 14:05', '%d/%m/%Y %H:%M'], ['2026-10-06 14:05:00', '%Y-%m-%d %H:%M:%S'],
+                       ['06-Oct-2026 14:05', '%d-%b-%Y %H:%M']];
+  function mappedFields() {
+    var out = [];
+    Object.keys(colMap).forEach(function (c) { var f = colMap[c]; if (f && f !== 'ignore' && out.indexOf(f) === -1) out.push(f); });
+    return out;
+  }
+  function fieldLabel(f) {
+    var o = document.querySelector('#mapping-body select option[value="' + f + '"]');
+    return o ? o.textContent : f;
+  }
+  function pillText(f, on) { return (on ? '✓ ' : '') + fieldLabel(f); }
+  function writeRequired() {
+    var on = [];
+    document.querySelectorAll('#s-required-pills [aria-pressed="true"]').forEach(function (b) { on.push(b.getAttribute('data-field')); });
+    setVal('s-required', on.join(', '));
+  }
+  function renderRequired() {
+    var box = document.getElementById('s-required-pills'), hid = document.getElementById('s-required');
+    if (!box || !hid) return;
+    var want = hid.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    box.innerHTML = '';
+    mappedFields().forEach(function (f) {
+      var b = document.createElement('button');
+      var on = want.indexOf(f) !== -1;
+      b.type = 'button'; b.className = 'pfas-chip-toggle'; b.setAttribute('data-field', f);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.textContent = pillText(f, on);
+      b.addEventListener('click', function () {
+        var p = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', p ? 'true' : 'false'); b.textContent = pillText(f, p); writeRequired();
+      });
+      box.appendChild(b);
+    });
+    writeRequired();
+  }
+  function initDates() {
+    var pick = document.getElementById('s-date-pick'), cur = (document.getElementById('s-date') || {}).value || '';
+    if (!pick) return;
+    var html = '<option value="">Found automatically</option>', known = false;
+    DATE_EXAMPLES.forEach(function (d) {
+      known = known || d[1] === cur;
+      html += '<option value="' + esc(d[1]) + '"' + (d[1] === cur ? ' selected' : '') + '>' + esc(d[0]) + '</option>';
+    });
+    if (cur && !known) html += '<option value="' + esc(cur) + '" selected>As saved</option>';
+    pick.innerHTML = html;
+    pick.addEventListener('change', function () { setVal('s-date', pick.value); });
+  }
+  function initIon() {
+    var pick = document.getElementById('s-ion-pick'), hid = document.getElementById('s-scales');
+    if (!pick || !hid) return;
+    pick.value = /ion_ratios\s*=\s*percent/.test(hid.value) ? 'percent' : '';
+    pick.addEventListener('change', function () {
+      var keep = hid.value.split('\n').filter(function (l) { return l.trim() && !/^\s*ion_ratios\s*=/.test(l); });
+      if (pick.value) keep.push('ion_ratios = percent');
+      hid.value = keep.join('\n');
+    });
+  }
+  function wordRow(field, from, to) {
+    var tb = document.querySelector('#s-words tbody');
+    if (!tb) return;
+    var tr = document.createElement('tr'), opts = '';
+    mappedFields().concat(field && mappedFields().indexOf(field) === -1 ? [field] : []).forEach(function (f) {
+      opts += '<option value="' + esc(f) + '"' + (f === field ? ' selected' : '') + '>' + esc(fieldLabel(f)) + '</option>';
+    });
+    tr.innerHTML = '<td><select class="pfas-select w-field">' + opts + '</select></td>' +
+      '<td><input type="text" class="w-from" value="' + esc(from || '') + '" /></td>' +
+      '<td><input type="text" class="w-to" value="' + esc(to || '') + '" /></td>' +
+      '<td class="is-slim"><button type="button" class="pfas-row-remove" aria-label="Remove">×</button></td>';
+    tr.querySelector('.pfas-row-remove').addEventListener('click', function () { tr.parentNode.removeChild(tr); writeWords(); });
+    tr.addEventListener('input', writeWords); tr.addEventListener('change', writeWords);
+    tb.appendChild(tr);
+  }
+  function writeWords() {
+    var lines = [];
+    document.querySelectorAll('#s-words tbody tr').forEach(function (tr) {
+      var f = tr.querySelector('.w-field').value, a = tr.querySelector('.w-from').value.trim(), b = tr.querySelector('.w-to').value.trim();
+      if (f && a) lines.push(f + ': ' + a + ' = ' + b);
+    });
+    setVal('s-values', lines.join('\n'));
+  }
+  function initWords() {
+    var hid = document.getElementById('s-values');
+    if (!hid) return;
+    hid.value.split('\n').forEach(function (l) {
+      var m = /^\s*([^:]+):\s*(.*?)\s*=\s*(.*?)\s*$/.exec(l);
+      if (m) wordRow(m[1].trim(), m[2], m[3]);
+    });
+    var add = document.getElementById('s-words-add');
+    if (add) add.addEventListener('click', function () { wordRow('', '', ''); });
+  }
+  function prepSave() { updateColMapJson(); writeWords(); return true; }
   document.addEventListener('DOMContentLoaded', function() {
     var btn = document.getElementById('upload-btn');
     if (btn) { btn.disabled = true; }
@@ -148,6 +381,10 @@
     if (calc) { calc.addEventListener('change', updateCalChain); }
     var fi = document.getElementById('file-input');
     if (fi) { fi.addEventListener('change', function() { showChosen(this); }); }
+    try { LAYOUT_HINTS = JSON.parse(document.getElementById('upload-form').getAttribute('data-hints') || '{}'); } catch (e) {}
+    document.querySelectorAll('form.inj-form').forEach(initInj);
+    var lay = document.getElementById('r-layout');
+    if (lay) { lay.addEventListener('change', function () { badge('layout', false); showLayoutFields(); }); showLayoutFields(); }
     if (typeof UPLOAD_RESULT === 'undefined' || !UPLOAD_RESULT) return;
     var r = UPLOAD_RESULT;
     colMap = r.col_map || {};
@@ -157,11 +394,11 @@
     var banner = document.getElementById('detect-banner');
     if (banner) {
       banner.hidden = false;
-      banner.textContent = (r.edit_mode ? 'Saved layout, opened for editing. '
-          : 'Read ' + (r.rows_read || 0) + ' row(s) and ' + (r.headers || []).length + ' column(s). ') +
-        (r.existing_profile && !r.edit_mode ? 'This file fits the saved layout shown below: saving updates it.' :
-         (r.edit_mode ? '' : (r.notice ? r.notice + ' ' : 'No saved layout fits this file: ') +
-          'The columns start from what was found.'));
+      banner.textContent = (r.edit_mode ? 'Saved layout, opened for editing.'
+          : (r.rows_read || 0) + ' rows and ' + (r.headers || []).length + ' columns read. ' +
+            (r.existing_profile ? 'This file fits the saved layout below: saving updates it.'
+             : (r.notice ? r.notice + ' ' : 'No saved layout fits this file, so the columns start from what was found: ') +
+               'check them below, then save them as a layout.'));
     }
     renderMappingGrid(r.headers || [], r.preview || []);
     setVal('save-instr-uid', r.instrument_uid || '');
@@ -186,6 +423,7 @@
     if (lab) lab.checked = !!st.labelled_from_columns;
     updateColMapJson();
     updateCalChain();
+    initDates(); initIon(); initWords();
   });
   //]]>
   </script>
@@ -206,20 +444,32 @@
     </script>
     <!-- PHASE 1: the instrument, the export and how it is laid out -->
     <tal:phase1 tal:define="instruments view/instruments; rf view/reader_form; ch view/layout_choices">
-    <div id="phase-landing">
-      <h2 class="pfas-section-title">Step 1 &mdash; Instrument, export and how it is laid out</h2>
-      <p class="field-hint">Upload an export with the options its layout needs.
-        <tal:h define="hid string:import-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <div id="phase-landing" class="pfas-card is-tint">
+      <h3>Read an instrument export <tal:h define="hid string:import-profiles"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
       <p tal:condition="not:view/can_configure">Import layouts are set by a Manager.</p>
       <form method="post" enctype="multipart/form-data"
             tal:condition="view/can_configure"
-            tal:attributes="action string:${view/portal_url}/@@pfas-import-studio"
+            tal:attributes="action string:${view/portal_url}/@@pfas-import-studio;
+                            data-hints python:__import__('json').dumps(ch['layout_hints'])"
             id="upload-form">
         <input type="hidden" name="action" value="upload" />
+        <!-- upload first: the file is read, then the options below show what it holds -->
+        <label class="pfas-upload" id="upload-box" for="file-input"
+               ondragover="this.classList.add('drag-over');event.preventDefault()"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleDrop(event)">
+          <div class="pfas-upload-icon"><svg class="pfas-ico" aria-hidden="true"><use href="#ico-import"/></svg></div>
+          <p><strong>Drop an instrument export here</strong></p>
+          <p>or click to browse (CSV, TXT, TSV)</p>
+          <p class="pfas-upload-chosen" id="chosen-name" hidden="hidden"></p>
+        </label>
+        <input type="file" id="file-input" name="upload_file" accept=".csv,.txt,.tsv" hidden="hidden" />
+        <p class="field-hint" id="read-line" hidden="hidden"></p>
         <div class="field-grid">
-          <label>Instrument
+          <label>
+            <span class="is-from-line">Instrument <span class="badge badge-opened" data-from="saved" hidden="hidden">saved layout found</span></span>
             <select id="instr-sel" name="instrument_uid">
-              <option value="">(any instrument)</option>
+              <option value="">Any instrument</option>
               <tal:opts tal:repeat="instr instruments">
                 <option tal:attributes="value python:instr['uid'];
                                         selected python:request.form.get('instrument_uid','') == instr['uid']"
@@ -227,72 +477,82 @@
               </tal:opts>
             </select>
           </label>
-          <label>Layout
+          <label>
+            <span class="is-from-line">Layout <span class="badge badge-opened" data-from="layout" hidden="hidden">from the file</span></span>
             <select id="r-layout" name="layout">
               <option tal:repeat="o ch/layouts" tal:content="python:o[1]"
                       tal:attributes="value python:o[0]; selected python:'selected' if rf['layout'] == o[0] else None"></option>
             </select>
+            <span class="field-hint" id="layout-hint"
+                  tal:content="python:ch['layout_hints'].get(rf['layout'], u'')">One header row; a row per injection and compound.</span>
           </label>
-          <label>Delimiter
+          <label>
+            <span class="is-from-line">Delimiter <span class="badge badge-opened" data-from="delimiter" hidden="hidden">from the file</span></span>
             <select id="r-delimiter" name="delimiter">
               <option tal:repeat="o ch/delimiters" tal:content="python:o[1]"
                       tal:attributes="value python:o[0]; selected python:'selected' if rf['delimiter'] == o[0] else None"></option>
             </select>
           </label>
-          <label>Encoding
+          <label>
+            <span class="is-from-line">Encoding <span class="badge badge-opened" data-from="encoding" hidden="hidden">from the file</span></span>
             <select id="r-encoding" name="encoding">
               <option tal:repeat="o ch/encodings" tal:content="python:o[1]"
                       tal:attributes="value python:o[0]; selected python:'selected' if rf['encoding'] == o[0] else None"></option>
             </select>
           </label>
-          <label>Header row
+          <label>
+            <span class="is-from-line">Header row <span class="badge badge-opened" data-from="header_row" hidden="hidden">from the file</span></span>
             <input type="number" min="1" step="1" id="r-header-row" name="header_row" tal:attributes="value rf/header_row" />
-            <span class="field-hint">Wide layouts: the first of two.</span>
+            <span class="field-hint">The line the column names are on.</span>
           </label>
-          <label>Missing-value markers
-            <input type="text" id="r-missing" name="missing" placeholder="e.g. -----, N/A, N/F"
+          <label>
+            <span class="is-from-line">Missing-value markers</span>
+            <input type="text" id="r-missing" name="missing" placeholder="-----, N/A, N/F"
                    tal:attributes="value rf/missing" />
             <span class="field-hint">Read as empty.</span>
           </label>
-          <label>Skip rows where the column
-            <input type="text" id="r-skip-column" name="skip_column" placeholder="a column name"
-                   tal:attributes="value rf/skip_column" />
-          </label>
-          <label>... holds one of
-            <input type="text" id="r-skip-values" name="skip_values" placeholder="e.g. Average, %RSD, Maximum"
-                   tal:attributes="value rf/skip_values" />
-            <span class="field-hint">Statistics rows and the like.</span>
-          </label>
-          <label class="field-wide">Wide: a compound's column groups
+          <!-- conditions, each read as a sentence; a row is skipped when any matches -->
+          <div class="field-wide is-sentence pfas-rows" data-rows="data-rows">
+            <span class="is-from-line">Skip summary rows</span>
+            <div class="pfas-rows-list" data-row-list="data-row-list">
+              <span class="field-sentence" data-row="data-row" tal:repeat="c view/skip_rows">Skip a row when the column
+                <input type="text" class="pfas-input" aria-label="Column"
+                       tal:attributes="name string:skip_col.${repeat/c/index}; value python:c[0]" />
+                holds any of
+                <input type="text" class="pfas-input is-wide" aria-label="Values" placeholder="Average, %RSD, Maximum"
+                       tal:attributes="name string:skip_vals.${repeat/c/index}; value python:c[1]" />
+                <button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove condition">&#215;</button></span>
+            </div>
+            <template data-row-template="data-row-template">
+              <span class="field-sentence" data-row="data-row">Skip a row when the column
+                <input type="text" class="pfas-input" aria-label="Column" name="skip_col.__i__" />
+                holds any of
+                <input type="text" class="pfas-input is-wide" aria-label="Values" placeholder="Average, %RSD, Maximum" name="skip_vals.__i__" />
+                <button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove condition">&#215;</button></span>
+            </template>
+            <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add">+ Add condition</button>
+          </div>
+          <label class="field-wide" data-layout="wide">Wide: a compound's column groups
             <input type="text" id="r-group-pattern" name="group_pattern"
-                   placeholder="a pattern with (?P&lt;compound&gt;...)" tal:attributes="value rf/group_pattern" />
+                   placeholder="e.g. (?P&lt;compound&gt;.+) Results" tal:attributes="value rf/group_pattern" />
+            <span class="field-hint">A pattern; (?P&lt;compound&gt;...) marks the compound's name in a group heading.</span>
           </label>
-          <label>Wide: groups that belong to the compound before them
-            <input type="text" id="r-attach-pattern" name="attach_pattern" placeholder="a pattern"
+          <label data-layout="wide">Wide: groups that belong to the compound before them
+            <input type="text" id="r-attach-pattern" name="attach_pattern" placeholder="e.g. Qualifier"
                    tal:attributes="value rf/attach_pattern" />
           </label>
-          <label>Wide: text removed from a compound's name
-            <input type="text" id="r-strip-pattern" name="strip_pattern" placeholder="a pattern"
+          <label data-layout="wide">Wide: text removed from a compound's name
+            <input type="text" id="r-strip-pattern" name="strip_pattern" placeholder="e.g. Results"
                    tal:attributes="value rf/strip_pattern" />
           </label>
-          <label class="field-wide">Blocks: the line that starts a compound's block
+          <label class="field-wide" data-layout="blocks">Blocks: the line that starts a compound's block
             <input type="text" id="r-block-pattern" name="block_pattern"
-                   placeholder="a pattern with (?P&lt;compound&gt;...)" tal:attributes="value rf/block_pattern" />
+                   placeholder="e.g. Compound: (?P&lt;compound&gt;.+)" tal:attributes="value rf/block_pattern" />
             <span class="field-hint">Lines before the first block are skipped.</span>
           </label>
         </div>
-        <label class="pfas-upload" id="upload-box" for="file-input"
-               ondragover="this.classList.add('drag-over');event.preventDefault()"
-               ondragleave="this.classList.remove('drag-over')"
-               ondrop="handleDrop(event)">
-          <div class="pfas-upload-icon"></div>
-          <p><strong>Drop an instrument export here</strong></p>
-          <p>or click to browse (CSV, TXT, TSV)</p>
-          <p class="pfas-upload-chosen" id="chosen-name" hidden="hidden"></p>
-        </label>
-        <input type="file" id="file-input" name="upload_file" accept=".csv,.txt,.tsv" hidden="hidden" />
         <div class="form-actions">
-          <button type="submit" id="upload-btn" class="btn btn-primary">Read &amp; Map Columns &rarr;</button>
+          <button type="submit" id="upload-btn" class="btn btn-primary">Continue to column mapping</button>
         </div>
       </form>
     </div><!-- /phase-landing -->
@@ -306,20 +566,21 @@
       <div class="pfas-studio">
         <div class="pfas-studio-main">
           <div class="table-wrap">
-            <p class="field-hint">DATA PREVIEW (first 3 rows, as the layout reads them)</p>
-            <table class="pfas-preview" id="preview-table">
+            <h3 class="pfas-section-title">Data preview</h3>
+            <p class="field-hint">The first 3 rows as the layout reads them.</p>
+            <table class="pfas-preview" data-col-resize="import-studio-preview-table" id="preview-table">
               <thead><tr id="preview-head"></tr></thead>
               <tbody id="preview-body"></tbody>
             </table>
           </div>
+          <h3 class="pfas-section-title">Column mapping</h3>
           <p class="field-hint">
-            COLUMN MAPPING &mdash;
             <span id="mapped-count">0</span> of <span id="total-count">0</span> columns assigned
             &nbsp;|&nbsp;
             <button type="button" class="btn-sm btn-secondary" onclick="autoIgnoreAll()">Ignore all</button>
           </p>
           <div class="table-wrap">
-          <table class="pfas-map-grid">
+          <table class="pfas-map-grid" data-col-resize="import-studio-pfas-map-grid">
             <thead>
               <tr><th>Column Name</th><th>Purpose</th><th>Sample Values</th></tr>
             </thead>
@@ -327,9 +588,10 @@
           </table>
           </div>
         </div><!-- /studio-main -->
-        <div class="pfas-studio-side">
+      </div><!-- /studio-layout -->
+        <div class="pfas-studio-panel">
           <div class="pfas-card is-tint" tal:condition="view/can_configure">
-            <h3>Save as Import Layout</h3>
+            <h3>Save this mapping as a layout</h3>
             <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-import-studio"
                   id="save-form" onsubmit="return prepSave()">
               <input type="hidden" name="action"         value="save_profile" />
@@ -339,140 +601,222 @@
               <input type="hidden" name="signature_json" id="save-signature" value="[]" />
               <input type="hidden" name="columns_json"   id="save-columns"   value="[]" />
               <input type="hidden" name="layout_id"      id="save-layout-id" value="" />
-              <div class="field-grid">
+              <div class="field-grid is-3col">
                 <label class="field-wide">Layout name
                   <input type="text" id="s-name" name="layout_name" required="required" />
                 </label>
                 <label class="field-wide">Instrument
                   <input type="text" id="s-instr-display" readonly="readonly" />
                 </label>
-                <label class="field-wide">A file fits this layout when it has
+                <div class="field-wide is-full">
+                  <span class="pfas-label">Columns a file must have</span>
+                  <div id="s-required-pills" class="pfas-pill-row"></div>
+                  <input type="hidden" id="s-required" name="required_fields" />
+                </div>
+                <label class="field-wide">Other columns
                   <select id="s-match" name="match">
-                    <option tal:repeat="o python:view.layout_choices()['match']" tal:content="python:o[1]"
-                            tal:attributes="value python:o[0]"></option>
+                    <option value="within">Allowed</option>
+                    <option value="exact">Not allowed</option>
                   </select>
-                </label>
-                <label class="field-wide">Fields also required
-                  <input type="text" id="s-required" name="required_fields" placeholder="e.g. sample_type, acquisition_datetime" />
                 </label>
                 <label class="field-wide">Software and version (a label)
                   <input type="text" id="s-software" name="software" placeholder="optional" />
                 </label>
-                <label class="field-wide">Calculation mode
+                <label class="field-wide">The file gives
                   <select id="s-calc" name="calc_mode" class="pfas-select">
-                    <option value="final">Final: the file has concentrations</option>
-                    <option value="raw">Raw: the file has peak areas</option>
+                    <option value="final">Concentrations</option>
+                    <option value="raw">Peak areas</option>
                   </select>
                   <span class="field-hint" id="calc-explainer"></span>
                 </label>
+                <div class="field-wide is-full pfas-section-title">If the file needs it</div>
                 <label class="field-wide">Values meaning manual integration
                   <input type="text" id="s-manual" name="manual_markers" placeholder="e.g. !, m, Manual (blank: any entry)" />
-                  <span class="field-hint">In the column mapped to Manual Changes. <tal:h define="hid string:manual-integration"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></span>
+                  <span class="field-hint">In the column mapped to Manual Changes. <tal:h define="hid string:manual-integration"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></span>
                 </label>
-                <label class="field-wide">Date and time format
-                  <input type="text" id="s-date" name="date_format" placeholder="e.g. %m/%d/%Y %I:%M:%S %p" />
-                  <span class="field-hint">Tried first (strftime codes).</span>
+                <label class="field-wide">Dates in the file look like
+                  <select id="s-date-pick" class="pfas-select"></select>
+                  <input type="hidden" id="s-date" name="date_format" />
                 </label>
-                <label class="field-wide">Words the export uses for the platform's
-                  <textarea id="s-values" name="value_maps" rows="3"
-                            placeholder="sample_type: Calibrator = Standard"></textarea>
-                  <span class="field-hint">field: export's word = platform's</span>
+                <label class="field-wide">Ion ratios are given as
+                  <select id="s-ion-pick" class="pfas-select">
+                    <option value="">A ratio</option>
+                    <option value="percent">A percent</option>
+                  </select>
+                  <input type="hidden" id="s-scales" name="scales" />
                 </label>
-                <label class="field-wide">Scales
-                  <textarea id="s-scales" name="scales" rows="2" placeholder="ion_ratios = percent"></textarea>
-                  <span class="field-hint">field = factor, or percent</span>
-                </label>
+                <div class="field-wide is-full">
+                  <span class="pfas-label">Words the file uses differently</span>
+                  <table class="pfas-table" data-col-resize="import-studio-s-words" id="s-words">
+                    <thead><tr><th>Column</th><th>In the file</th><th>Means</th><th class="is-slim"></th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                  <button type="button" class="btn-sm btn-secondary" id="s-words-add">+ Add a word</button>
+                  <input type="hidden" id="s-values" name="value_maps" />
+                </div>
                 <label class="field-wide">Qualifier-ion rows end in
                   <input type="text" id="s-qual" name="qualifier_suffix" placeholder="e.g. a space and 2" />
                 </label>
-                <label class="field-wide field-check">
-                  <input type="checkbox" id="s-labelled" name="labelled_from_columns" value="1" />
-                  Labelled standards from the analytes' IS columns
+                <label class="pfas-switch field-wide field-check">
+                  <input type="checkbox" id="s-labelled" name="labelled_from_columns" value="1" /><span class="pfas-switch-track"></span>
+                  Isotope standards from the analytes' IS columns
                 </label>
                 <label class="field-wide">Notes
                   <textarea id="s-notes" name="notes" rows="2" placeholder="export settings, quirks..."></textarea>
                 </label>
               </div>
-              <button class="btn btn-primary btn-block" type="submit">Save Layout</button>
+              <button class="btn btn-primary" type="submit">Save Layout</button>
             </form>
           </div><!-- /profile-card -->
-        </div><!-- /studio-side -->
-      </div><!-- /studio-layout -->
+        </div><!-- /studio-panel -->
       <div class="form-actions">
         <button type="button" class="btn-sm btn-secondary" onclick="showLanding()">Upload a different file</button>
       </div>
     </div><!-- /phase-mapping -->
-    <!-- the injection list per instrument: what its software reads -->
-    <div class="pfas-card is-tint">
-      <h3>Injection list (per instrument) <tal:h define="hid string:sequence-export"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></h3>
-      <form method="post" class="dilution-form" tal:repeat="x view/export_configs"
-            tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
-        <input type="hidden" name="action" value="save_export" />
-        <input type="hidden" name="instrument_uid" tal:attributes="value x/uid" />
-        <strong tal:content="x/title">Waters LC-MS</strong>
-        <input type="text" name="software" tal:attributes="value x/software" placeholder="Software" />
-        <input type="text" name="version" tal:attributes="value x/version" placeholder="Version" required="required" />
-        <span tal:condition="x/saved" tal:content="string:saved ${x/saved_at} by ${x/saved_by}">saved</span>
-        <span tal:condition="not:x/saved">starter</span>
-        <textarea name="columns" rows="8" tal:content="x/columns_text">FILE_NAME = name</textarea>
-        <button class="btn-sm btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
-      </form>
+    <!-- the injection list per instrument: what its software reads.
+         One instrument at a time; the table is written back as the
+         "HEADER = source" lines the server reads (storage unchanged). -->
+    <div class="pfas-card is-tint" tal:define="cfgs view/export_configs">
+      <h3>Injection list <tal:h define="hid string:sequence-export"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+      <div data-tabs="data-tabs" tal:condition="cfgs">
+        <nav class="pfas-seg is-spaced" role="tablist" aria-label="Instrument" tal:condition="python:len(cfgs) > 1">
+          <button type="button" class="pfas-seg-item" role="tab" tal:repeat="x cfgs"
+                  tal:attributes="data-pane string:inj-${repeat/x/index};
+                                  aria-selected python:'true' if repeat['x'].index == 0 else 'false'"
+                  tal:content="x/title">Waters LC-MS</button>
+        </nav>
+        <div tal:repeat="x cfgs"
+             tal:attributes="id string:inj-${repeat/x/index};
+                             class python:'pfas-pane is-active' if repeat['x'].index == 0 else 'pfas-pane'">
+          <form method="post" class="inj-form"
+                tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
+            <input type="hidden" name="action" value="save_export" />
+            <input type="hidden" name="instrument_uid" tal:attributes="value x/uid" />
+            <input type="hidden" name="columns" class="inj-columns" tal:attributes="value x/columns_text" />
+            <div class="inj-head">
+              <label>Software
+                <select name="software" class="pfas-select inj-software">
+                  <option tal:repeat="sw python:[u'Waters MassLynx', u'Other']" tal:content="sw"
+                          tal:attributes="value sw; selected python:'selected' if (x['software'] == sw or (sw == u'Other' and x['software'] != u'Waters MassLynx')) else None">Waters MassLynx</option>
+                </select></label>
+              <label>Version
+                <input type="text" name="version" class="pfas-input" tal:attributes="value x/version" required="required" /></label>
+              <span class="badge badge-draft" tal:condition="not:x/saved">Starter</span>
+              <span class="pfas-muted" tal:condition="x/saved" tal:content="string:Saved ${x/saved_at} by ${x/saved_by}">saved</span>
+            </div>
+            <table class="pfas-table inj-table" data-col-resize="import-studio-inj-table">
+              <thead><tr><th class="inj-n">#</th><th>Column in the list</th><th>Filled with</th><th>Value</th>
+                <th class="rb-del-col"><span class="pfas-sr-hide">Remove</span></th></tr></thead>
+              <tbody class="inj-rows">
+                <tr tal:repeat="c x/columns" class="inj-row">
+                  <td class="inj-n"><span class="grip" title="Drag to reorder" aria-hidden="true"></span>
+                    <span class="inj-num" tal:content="repeat/c/number">1</span></td>
+                  <td><input type="text" class="pfas-input inj-header" aria-label="Column in the list" tal:attributes="value c/header" /></td>
+                  <td tal:define="src python:'type' if c['source'] == 'masslynx-type' else c['source']"><select class="pfas-select inj-source" aria-label="Filled with">
+                        <option tal:repeat="o view/EXPORT_SOURCES" tal:content="python:o[1]"
+                                tal:attributes="value python:o[0]; selected python:'selected' if o[0] == src else None">Injection name</option>
+                      </select></td>
+                  <td><input type="text" class="pfas-input inj-fixed" aria-label="Fixed value" tal:attributes="value c/fixed;
+                             hidden python:'hidden' if c['source'] in ('type', 'masslynx-type') else None;
+                             disabled python:None if c['source'] == 'fixed' else 'disabled'" />
+                      <select class="pfas-select inj-wording" aria-label="Injection type wording"
+                              tal:attributes="hidden python:None if c['source'] in ('type', 'masslynx-type') else 'hidden'">
+                        <option tal:repeat="w view/TYPE_WORDINGS" tal:content="python:w[1]"
+                                tal:attributes="value python:w[0]; selected python:'selected' if w[0] == c['source'] else None">LIMS words</option>
+                      </select></td>
+                  <td class="row-plus-cell"><details class="row-more"><summary class="row-plus" aria-label="Actions for this column" title="Actions">+</summary><div class="row-more-menu"><button type="button" class="btn-sm btn-secondary inj-up">Move up</button><button type="button" class="btn-sm btn-secondary inj-down">Move down</button><button type="button" class="btn-sm btn-secondary inj-del">Remove</button></div></details></td>
+                </tr>
+              </tbody>
+            </table>
+            <select class="inj-source-proto" hidden="hidden" aria-hidden="true" tabindex="-1">
+              <option tal:repeat="o view/EXPORT_SOURCES" tal:content="python:o[1]" tal:attributes="value python:o[0]">Injection name</option>
+            </select>
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary inj-add">+ Add column</button>
+              <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <script type="application/json" id="inj-starters" tal:content="view/export_starters_json">{}</script>
     </div>
-    <!-- saved import layouts: edit, retire / reactivate, delete (audited) -->
-    <div class="pfas-card is-tint" tal:define="profiles view/saved_profiles">
-      <h3>Saved Import Layouts <tal:h define="hid string:import-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></h3>
-      <div class="table-wrap" tal:condition="profiles">
-      <table class="pfas-table" id="saved-layouts">
-        <thead><tr><th>Layout</th><th>Instrument</th><th>Read as</th><th>Columns</th>
-                   <th>Status</th>
-                   <th tal:condition="view/can_configure">Action</th></tr></thead>
+
+    <!-- saved import layouts: a row opens it for editing; the rest is its
+         "+" menu (Retire and Delete ask why); Active by default -->
+    <div class="pfas-card is-tint" tal:define="profiles view/saved_profiles; showing view/layout_status">
+      <h3>Saved Import Layouts <tal:h define="hid string:import-profiles"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+      <nav class="pfas-seg is-spaced" aria-label="Status">
+        <a class="pfas-seg-item" tal:attributes="href string:${view/portal_url}/@@pfas-import-studio?layouts=active#saved-layouts;
+                                                  aria-selected python:'true' if showing == 'active' else 'false'">Active</a>
+        <a class="pfas-seg-item" tal:attributes="href string:${view/portal_url}/@@pfas-import-studio?layouts=retired#saved-layouts;
+                                                  aria-selected python:'true' if showing == 'retired' else 'false'">Retired</a>
+      </nav>
+      <tal:rows tal:define="rows python:[p for p in profiles if bool(p['retired']) == (showing == 'retired')]">
+      <div class="table-wrap" tal:condition="rows">
+      <table class="pfas-table" data-col-resize="import-studio-saved-layouts" id="saved-layouts">
+        <thead><tr><th>Layout</th><th>Instrument</th><th>Read as</th><th>Columns</th><th>Status</th>
+                   <th class="row-plus-cell" tal:condition="view/can_configure"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
         <tbody>
-          <tr tal:repeat="p profiles" tal:attributes="data-layout p/id">
+          <tr tal:repeat="p rows"
+              tal:attributes="data-layout p/id; data-href python:view.layout_row_url(p) or None">
             <td tal:content="p/name">Layout</td>
             <td tal:content="p/instrument">any instrument</td>
-            <td tal:content="p/layout">long</td>
+            <td tal:content="p/layout">Long</td>
             <td tal:content="p/n_columns">8</td>
             <td>
-              <span class="badge badge-active" tal:condition="not:p/retired">active</span>
-              <span class="badge badge-expired" tal:condition="p/retired">retired</span>
+              <span class="badge badge-active" tal:condition="not:p/retired">Active</span>
+              <span class="badge badge-expired" tal:condition="p/retired">Retired</span>
             </td>
-            <td tal:condition="view/can_configure">
-              <div class="form-actions">
-                <a class="btn-sm btn-secondary"
-                   tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;layout_id={1}'.format(view.portal_url(), p['id'])">Edit</a>
-                <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
-                  <input type="hidden" name="action"
-                         tal:attributes="value python:'reactivate_profile' if p['retired'] else 'retire_profile'"/>
-                  <input type="hidden" name="layout_id" tal:attributes="value p/id"/>
-                  <input type="text" name="reason" placeholder="reason" tal:condition="not:p/retired"/>
-                  <button type="submit"
-                          tal:attributes="class python:'btn-sm btn-secondary' if p['retired'] else 'btn-sm btn-warn'"
-                          tal:content="python:'Reactivate' if p['retired'] else 'Retire'">Retire</button>
-                </form>
-                <form method="post" onsubmit="return confirm('Delete this import layout? Configuration History keeps what it was.')"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
-                  <input type="hidden" name="action" value="delete_profile"/>
-                  <input type="hidden" name="layout_id" tal:attributes="value p/id"/>
-                  <input type="text" name="reason" placeholder="reason"/>
-                  <button class="btn-sm btn-danger" type="submit">Delete</button>
-                </form>
-              </div>
+            <td class="row-plus-cell" tal:condition="view/can_configure">
+              <details class="row-more">
+                <summary class="row-plus" aria-label="Actions for this layout" title="Actions">+</summary>
+                <div class="row-more-menu">
+                  <a class="btn-sm btn-secondary"
+                     tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;layout_id={1}'.format(view.portal_url(), p['id'])">Edit</a>
+                  <form method="post" class="mp-issue-form" tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
+                    <input type="hidden" name="action"
+                           tal:attributes="value python:'reactivate_profile' if p['retired'] else 'retire_profile'"/>
+                    <input type="hidden" name="layout_id" tal:attributes="value p/id"/>
+                    <label class="mp-issue-label" tal:condition="not:p/retired">Why it is retired
+                      <input type="text" name="reason" class="pfas-input" required="required"/></label>
+                    <button type="submit" class="btn-sm btn-secondary"
+                            tal:content="python:'Reactivate' if p['retired'] else 'Retire'">Retire</button>
+                  </form>
+                  <form method="post" class="mp-issue-form" onsubmit="return confirm('Delete this import layout? Configuration History keeps what it was.')"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
+                    <input type="hidden" name="action" value="delete_profile"/>
+                    <input type="hidden" name="layout_id" tal:attributes="value p/id"/>
+                    <label class="mp-issue-label">Why it is deleted
+                      <input type="text" name="reason" class="pfas-input" required="required"/></label>
+                    <button class="btn-sm btn-danger" type="submit">Delete</button>
+                  </form>
+                </div>
+              </details>
             </td>
           </tr>
         </tbody>
       </table>
       </div>
-      <p tal:condition="not:profiles" class="field-hint">No saved layouts yet.</p>
-      <tal:log tal:define="log view/studio_audit" tal:condition="log">
-        <h4 class="section-group-hdr">Layout audit history</h4>
-        <div class="field-hint" tal:repeat="e log">
-          <span tal:content="e/ts">ts</span> &mdash;
-          <strong tal:content="e/action">retire</strong>
-          <code tal:content="python:e.get('name') or u'%s:%s' % (e.get('vendor_key') or u'', e.get('version') or u'')">key</code>
-          by <span tal:content="python:e.get('user') or u'system'">user</span>
-          <tal:r tal:condition="python:e.get('reason')">&middot; <em tal:content="python:e.get('reason')">reason</em></tal:r>
+      <p tal:condition="not:rows" class="field-hint" tal:content="python:u'No retired layouts.' if showing == 'retired' else u'No saved layouts yet.'">No saved layouts yet.</p>
+      </tal:rows>
+      <!-- the audit trail, folded: the 20 most recent changes -->
+      <details class="pfas-fold" tal:define="log view/studio_audit" tal:condition="log">
+        <summary>Layout audit history &#183; 20 most recent changes</summary>
+        <table class="pfas-table" data-col-resize="import-studio-1">
+          <thead><tr><th>When</th><th>Action</th><th>Layout</th><th>By</th><th>Reason</th></tr></thead>
+          <tbody><tr tal:repeat="e log">
+            <td class="cell-nowrap" tal:content="python:e.get('ts') or u''">ts</td>
+            <td tal:content="python:(e.get('action') or u'').capitalize()">Retire</td>
+            <td tal:content="python:e.get('name') or u'%s %s' % (e.get('vendor_key') or u'', e.get('version') or u'')">layout</td>
+            <td tal:content="python:e.get('user') or e.get('by') or u'system'">user</td>
+            <td tal:content="python:e.get('reason') or u'\u2014'">reason</td>
+          </tr></tbody>
+        </table>
+        <div class="pfas-intro-row">
+          <span class="field-hint">Only the 20 most recent changes are shown here; the full history is in Configuration History.</span>
+          <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=import_profile">Configuration History</a>
         </div>
-      </tal:log>
+      </details>
     </div>
   </div>
   </div><!-- /content slot -->

@@ -68,7 +68,7 @@
       <p class="pd-label">Homogenisation</p>
       <table>
         <thead><tr><th>Sample</th><th>Requested</th><th>Done</th><th>Homogeniser</th>
-                   <th>Composite</th><th>Units combined</th><th>By</th><th>When</th></tr></thead>
+                   <th>Composite</th><th>Items composited</th><th>By</th><th>When</th></tr></thead>
         <tbody><tr tal:repeat="r st/homogenisation"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
       </table>
     </tal:h>

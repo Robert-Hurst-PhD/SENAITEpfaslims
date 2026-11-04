@@ -22,36 +22,21 @@ Python 2.7 compatible -- no f-strings, no pathlib, no type annotations.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-import csv
 import json
 import logging
 import re
 
-import StringIO
-
-from persistent.mapping import PersistentMapping
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
-from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.formutil import flatten_form, json_list
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
+from senaite.pfas.browser.view_helpers import ViewHelpers
+from senaite.pfas import lab_time
 
 logger = logging.getLogger("senaite.pfas.browser.import_studio")
 
-# Per-instrument profile store (existing — keyed by software version string)
-INSTR_PROFILES_KEY = u"senaite.pfas.instrument_profiles"
-
-# Portal-level: working profiles used by the pipeline importer.
-# Key format: "vendor_key:version"  e.g. "sciex:1.7.2"
-# Written when a lab saves a profile in Import Studio.
-# The pipeline reads ONLY from here (strict mode — seeded templates don't count).
-PORTAL_PROFILES_KEY = u"senaite.pfas.vendor_profiles"
-
-# Portal-level: read-only default templates that pre-fill Import Studio UI.
-# Seeded at install from _VENDOR_COLUMN_MAP.  The pipeline importer does NOT
-# read from here; it reads only from PORTAL_PROFILES_KEY.
-PORTAL_TEMPLATES_KEY = u"senaite.pfas.vendor_templates"
 
 # ── Canonical purpose descriptions ────────────────────────────────────────────
 
@@ -61,7 +46,7 @@ PORTAL_TEMPLATES_KEY = u"senaite.pfas.vendor_templates"
 # "Expected Ion Ratios" could not be mapped at all: the two columns the BLoQ
 # qualifier and the ion-ratio check need.
 from senaite.pfas.instrument_columns import (   # noqa: E402
-    CANONICAL_FIELDS, FIELD_LABELS, NATIVE_COLUMN_MAP, duplicate_targets)
+    CANONICAL_FIELDS, NATIVE_COLUMN_MAP, duplicate_targets)
 
 PURPOSES = list(CANONICAL_FIELDS)
 
@@ -209,8 +194,8 @@ _VENDOR_COLUMN_MAP = {
 # Ordered most-specific first; first match wins.
 
 _FALLBACK_PATTERNS = [
-    # Ion-ratio family, most specific first (2026-10-08: software
-    # versions name these slightly differently). The tolerance, deviation and
+    # Ion-ratio family, most specific first: software versions name
+    # these slightly differently. The tolerance, deviation and
     # check columns are the software's own verdict, not a ratio.
     (re.compile(r'(?i)\bion\s+ratios?\s+(tolerances?|deviations?|checks?)\b'), 'ignore'),
     (re.compile(r'(?i)\bmethod\s+expected\s+ion\s+ratios?\b'),       'method_expected_ion_ratios'),
@@ -400,267 +385,36 @@ def _suggest_mapping(headers, vendor_key):
     return result
 
 
-def _detect_software_version(lines, header_line_index=0):
-    """Scan the export's PREAMBLE for a software version like X.Y.Z.
-
-    Only lines ABOVE the header row are considered. Vendors that stamp a
-    version put it in a preamble; a file that starts directly with its header
-    row has no version to find, and "" is the honest answer.
-
-    This previously scanned the first 20 lines unconditionally and so read
-    DATA. On a real FDA export it returned "0.039" — a concentration out of
-    row 1's sample description. The profile key is built from this value, so
-    every file whose first row held a different number got a different key and
-    silently stopped matching its own saved profile.
-    """
-    version_re = re.compile(r'\b(\d+\.\d+[\.\d]*)\b')
-    for line in lines[:max(0, header_line_index)]:
-        m = version_re.search(line)
-        if m:
-            return m.group(1)
-    return ""
-
-
 # ── Profile store helpers ─────────────────────────────────────────────────────
-
-def _get_profile_store(instrument):
-    ann = IAnnotations(instrument)
-    if INSTR_PROFILES_KEY not in ann:
-        ann[INSTR_PROFILES_KEY] = PersistentMapping()
-    return ann[INSTR_PROFILES_KEY]
-
-
-def _list_profiles(instrument):
-    """Return list of {version, vendor, calc_mode} for all saved profiles."""
-    store = _get_profile_store(instrument)
-    result = []
-    for ver, raw in store.items():
-        try:
-            data = json.loads(raw)
-            result.append({
-                "version": ver,
-                "vendor": data.get("vendor", ""),
-                "calc_mode": data.get("calc_mode", "final"),
-            })
-        except (ValueError, TypeError):
-            pass
-    return sorted(result, key=lambda x: x["version"])
-
-
-def _save_profile(instrument, version, vendor_key, calc_mode, column_map, notes="",
-                  manual_markers=""):
-    # every map change is recorded, before and after (it decides which column
-    # becomes every imported result; HIGH-1)
-    from senaite.pfas import config_history
-    from bika.lims import api as _api
-    config_history.track(None, "import_profile", u"%s:%s" % (_api.get_uid(instrument), version),
-                         lambda: _load_profile(instrument, version),
-                         label=u"Import map %s %s" % (instrument.Title(), version))
-    store = _get_profile_store(instrument)
-    data = {
-        "vendor": _VENDOR_COLUMN_MAP.get(vendor_key, {}).get("vendor", vendor_key),
-        "vendor_key": vendor_key,
-        "calc_mode": calc_mode,
-        "map": column_map,
-        "notes": notes,
-        # values in the manual-integration column that mean "manually
-        # integrated" (manual_integration.is_manual; blank = any non-blank)
-        "manual_markers": manual_markers,
-    }
-    store[version] = json.dumps(data)
-
-
-def _load_profile(instrument, version):
-    store = _get_profile_store(instrument)
-    raw = store.get(version)
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return None
 
 
 # ── Portal-level profile / template helpers ───────────────────────────────────
 
-def _get_portal_store(portal, key):
-    ann = IAnnotations(portal)
-    if key not in ann:
-        ann[key] = PersistentMapping()
-    return ann[key]
 
-
-def _portal_profile_key(vendor_key, version):
-    """Composite lookup key for portal-level stores."""
-    return u"{0}:{1}".format(vendor_key, version or "")
-
-
-def save_vendor_profile(portal, vendor_key, version, profile_data):
-    """Write a profile to the portal-level importer store."""
-    from senaite.pfas import config_history
-    config_history.track(portal, "import_profile", _portal_profile_key(vendor_key, version),
-                         lambda: load_vendor_profile(portal, vendor_key, version),
-                         label=u"Import map %s %s" % (vendor_key, version or u""))
-    store = _get_portal_store(portal, PORTAL_PROFILES_KEY)
-    store[_portal_profile_key(vendor_key, version)] = json.dumps(profile_data)
-
-
-def load_vendor_profile(portal, vendor_key, version):
-    """Read a profile from the portal-level importer store; None if absent."""
-    store = _get_portal_store(portal, PORTAL_PROFILES_KEY)
-    raw = store.get(_portal_profile_key(vendor_key, version))
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return None
-
-
-def map_new_columns(portal):
-    """Fill-only: saved profiles (portal store and each instrument's) map the
-    columns added for ion-ratio redundancy (instrument_columns.fill_new_fields).
-    Returns the number of profiles changed; each change is audited."""
-    from senaite.pfas.instrument_columns import fill_new_fields
-    from bika.lims import api
-    stores = [(u"portal", _get_portal_store(portal, PORTAL_PROFILES_KEY))]
-    for b in api.search({"portal_type": str("Instrument")}, "senaite_catalog_setup"):
-        ann = IAnnotations(api.get_object(b))
-        if INSTR_PROFILES_KEY in ann:
-            stores.append((api.get_title(b), ann[INSTR_PROFILES_KEY]))
-    changed = 0
-    for where, store in stores:
-        for key in list(store.keys()):
-            try:
-                data = json.loads(store[key])
-            except (ValueError, TypeError):
-                continue
-            new_map, done = fill_new_fields(data.get("map") or {})
-            if done:
-                data["map"] = new_map
-                store[key] = json.dumps(data)
-                changed += 1
-                vendor, _sep, version = (u"%s" % key).partition(u":")
-                _audit_import_studio(portal, {"action": u"columns mapped (ion-ratio fallbacks)",
-                                              "vendor_key": vendor if _sep else data.get("vendor_key", u""),
-                                              "version": version if _sep else key,
-                                              "profile": u"%s %s" % (where, key),
-                                              "user": u"installer", "reason": u", ".join(done),
-                                              "columns": u", ".join(done)})
-    return changed
-
-
+# The log Import Studio kept before its changes went to Configuration
+# History: read, never written.
 IMPORT_STUDIO_AUDIT_KEY = u"senaite.pfas.import_studio_audit"
 
 
-def _audit_import_studio(portal, entry):
-    """Append an audit entry for import-profile lifecycle events. Profiles are
-    annotation records (not content objects), so SENAITE snapshots don't apply;
-    this dedicated log is the audit trail, surfaced in the Import Studio UI."""
-    import datetime
-    from persistent.list import PersistentList
-    ann = IAnnotations(portal)
-    if IMPORT_STUDIO_AUDIT_KEY not in ann:
-        ann[IMPORT_STUDIO_AUDIT_KEY] = PersistentList()
-    entry = dict(entry)
-    entry["ts"] = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    ann[IMPORT_STUDIO_AUDIT_KEY].append(json.dumps(entry))
-
-
-def get_import_studio_audit(portal, limit=50):
-    ann = IAnnotations(portal)
-    raw = ann.get(IMPORT_STUDIO_AUDIT_KEY) or []
-    out = []
-    for r in list(raw)[-limit:]:
+def studio_log(portal, limit=20):
+    """The newest layout and export-layout changes: Configuration History's
+    (an entry without an action is one the earlier log also holds), then the
+    earlier log's."""
+    from senaite.pfas import config_history, lab_time
+    rows = []
+    for store in ("import_profile", "instrument_export"):
+        for e in config_history.entries(portal, store=store, limit=limit):
+            if e.get("action"):
+                rows.append({"ts": e["at"], "action": e["action"], "name": e.get("label"),
+                             "user": e.get("who"), "reason": e.get("reason")})
+    for r in IAnnotations(portal).get(IMPORT_STUDIO_AUDIT_KEY) or []:
         try:
-            out.append(json.loads(r))
+            rows.append(json.loads(r))
         except (ValueError, TypeError):
             continue
-    return list(reversed(out))
-
-
-def set_vendor_profile_retired(portal, vendor_key, version, retired, user,
-                               reason=""):
-    """Retire (or reactivate) a saved import profile. Retired profiles are
-    REFUSED by the pipeline REST bridge, so imports cannot silently use a
-    withdrawn mapping. Every transition is written to the audit log."""
-    prof = load_vendor_profile(portal, vendor_key, version)
-    if prof is None:
-        return False
-    prof["retired"] = bool(retired)
-    prof["retired_by" if retired else "reactivated_by"] = user
-    save_vendor_profile(portal, vendor_key, version, prof)
-    _audit_import_studio(portal, {
-        "action": "retire" if retired else "reactivate",
-        "vendor_key": vendor_key, "version": version or "",
-        "user": user, "reason": reason or "",
-    })
-    return True
-
-
-def list_vendor_profiles(portal):
-    """All saved portal-level import profiles with retired state."""
-    store = _get_portal_store(portal, PORTAL_PROFILES_KEY)
-    out = []
-    for key in sorted(store.keys()):
-        try:
-            prof = json.loads(store[key])
-        except (ValueError, TypeError):
-            continue
-        vk, _, ver = key.partition(":")
-        out.append({
-            "key": key, "vendor_key": vk, "version": ver,
-            "vendor": prof.get("vendor", vk),
-            "n_columns": len(prof.get("map", {}) or {}),
-            "retired": bool(prof.get("retired")),
-            "notes": prof.get("notes", ""),
-        })
-    return out
-
-
-def load_vendor_template(portal, vendor_key):
-    """Return the default column-map template for a vendor (UI pre-fill only)."""
-    store = _get_portal_store(portal, PORTAL_TEMPLATES_KEY)
-    raw = store.get(vendor_key)
-    if not raw:
-        # Inline fallback: use _VENDOR_COLUMN_MAP directly
-        vdata = _VENDOR_COLUMN_MAP.get(vendor_key)
-        if vdata:
-            return {
-                "vendor": vdata["vendor"],
-                "vendor_key": vendor_key,
-                "calc_mode": "final",
-                "map": vdata["map"],
-                "notes": vdata.get("notes", ""),
-            }
-        return None
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return None
-
-
-def seed_vendor_templates(portal):
-    """Idempotent: write default templates to PORTAL_TEMPLATES_KEY.
-
-    Called from setuphandlers and lazily from Import Studio's upload handler.
-    Only writes vendors that don't already have a template entry.
-    """
-    store = _get_portal_store(portal, PORTAL_TEMPLATES_KEY)
-    seeded = 0
-    for vendor_key, vdata in _VENDOR_COLUMN_MAP.items():
-        if vendor_key not in store:
-            store[vendor_key] = json.dumps({
-                "vendor": vdata["vendor"],
-                "vendor_key": vendor_key,
-                "calc_mode": "final",
-                "map": dict(vdata.get("map", {})),
-                "notes": vdata.get("notes", ""),
-            })
-            seeded += 1
-    if seeded:
-        logger.info("Seeded %d vendor template(s) into %s", seeded, PORTAL_TEMPLATES_KEY)
-    return seeded
+    rows.sort(key=lambda r: r.get("ts") or u"", reverse=True)
+    # stored in UTC, shown on the laboratory's clock
+    return [dict(r, ts=lab_time.show(r.get("ts") or u"")) for r in rows[:limit]]
 
 
 # ── REST bridge view ──────────────────────────────────────────────────────────
@@ -682,12 +436,8 @@ class PFASInstrumentProfileView(BrowserView):
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         self.request.response.setHeader("Content-Type", "application/json")
         f = self.request.form
@@ -725,6 +475,7 @@ class PFASInstrumentProfileView(BrowserView):
 # it reads @@pfas-instrument-profile.
 STUDIO_GATES = {
     "upload": TIER_CONFIG,
+    "sniff": TIER_CONFIG,          # reads a dropped file's options; saves nothing
     "save_profile": TIER_CONFIG,
     "retire_profile": TIER_CONFIG,
     "reactivate_profile": TIER_CONFIG,
@@ -733,7 +484,7 @@ STUDIO_GATES = {
 }
 
 
-class PFASImportStudioView(GateMixin, BrowserView):
+class PFASImportStudioView(ViewHelpers, GateMixin, BrowserView):
     """Guided Instrument Import & Mapping Studio."""
 
     template = ViewPageTemplateFile("templates/import_studio.pt")
@@ -748,6 +499,8 @@ class PFASImportStudioView(GateMixin, BrowserView):
                 return denied
             if action == "upload":
                 return self._handle_upload()
+            if action == "sniff":
+                return self._handle_sniff()
             if action == "retire_profile":
                 return self._handle_retire_profile(True)
             if action == "reactivate_profile":
@@ -764,15 +517,11 @@ class PFASImportStudioView(GateMixin, BrowserView):
 
     # -- Helpers -------------------------------------------------------------
 
-    def _user(self):
-        from AccessControl import getSecurityManager
-        return getSecurityManager().getUser().getId()
-
     def _handle_retire_profile(self, retired):
         from senaite.pfas import import_layouts_store
         f = self.request.form
         ok = import_layouts_store.set_retired(
-            self._portal(), (f.get("layout_id") or "").strip(), retired, self._user(),
+            self._portal(), (f.get("layout_id") or "").strip(), retired,
             reason=(f.get("reason") or "").strip())
         msg = ("Layout+retired" if retired else "Layout+reactivated") if ok else "Layout+not+found"
         return self._redirect("{0}?ok={1}".format(self._self_url(), msg))
@@ -782,7 +531,7 @@ class PFASImportStudioView(GateMixin, BrowserView):
         from senaite.pfas import import_layouts_store
         f = self.request.form
         ok = import_layouts_store.delete(self._portal(), (f.get("layout_id") or "").strip(),
-                                         self._user(), reason=(f.get("reason") or "").strip())
+                                         reason=(f.get("reason") or "").strip())
         return self._redirect("{0}?{1}".format(
             self._self_url(), "ok=Layout+deleted" if ok else "error=Layout+not+found"))
 
@@ -809,16 +558,39 @@ class PFASImportStudioView(GateMixin, BrowserView):
         from senaite.pfas import instrument_export
         out = []
         catalog = getToolByName(self.context, "senaite_catalog_setup")
+        from senaite.pfas.browser.equipment import offered_in_worksheets
         for brain in catalog({"portal_type": "Instrument", "sort_on": "sortable_title"}):
             obj = brain.getObject()
+            if not offered_in_worksheets(obj):
+                continue                 # only instruments that run samples
             version, cfg = instrument_export.current(instrument_export.load(obj))
             cols, where = instrument_export.columns_for(obj)
             out.append({"uid": obj.UID(), "title": obj.Title(), "version": version,
                         "software": (cfg or {}).get("software") or u"Waters MassLynx",
                         "saved": bool(cfg), "saved_by": (cfg or {}).get("saved_by") or u"",
-                        "saved_at": ((cfg or {}).get("saved_at") or u"")[:16].replace(u"T", u" "),
-                        "columns_text": instrument_export.columns_text(cols)})
+                        "saved_at": lab_time.show((cfg or {}).get("saved_at") or u""),
+                        "columns_text": instrument_export.columns_text(cols),
+                        # the table's rows: what fills each column of the list
+                        "columns": [{"header": h, "source": (src if not src.startswith(u"fixed:") else u"fixed"),
+                                     "fixed": src[6:] if src.startswith(u"fixed:") else u""}
+                                    for h, src in cols or []]})
         return out
+
+    # what can fill a column of the injection list (run_plan.SOURCES, then a
+    # fixed text); the stored form is unchanged ("source" or "fixed:<text>")
+    EXPORT_SOURCES = ((u"name", u"Injection name"), (u"description", u"Description"),
+                      (u"vial", u"Vial position"), (u"type", u"Injection type"),
+                      (u"level", u"Calibration level"), (u"fixed", u"Fixed value"))
+    # the words an injection type is written in: one "Injection type" source,
+    # its wording on the row (stored "type" or "masslynx-type", as before);
+    # another vendor's wording is added when the lab supplies it
+    TYPE_WORDINGS = ((u"type", u"LIMS words"), (u"masslynx-type", u"Waters MassLynx"))
+
+    def export_starters_json(self):
+        """The software choices and the columns each starts with (the
+        MassLynx starter; Other starts with none)."""
+        from senaite.pfas import run_plan
+        return json.dumps({u"Waters MassLynx": run_plan.MASSLYNX_COLUMNS, u"Other": []})
 
     def _handle_save_export(self):
         from datetime import datetime
@@ -838,22 +610,20 @@ class PFASImportStudioView(GateMixin, BrowserView):
         at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         instrument_export.save(brains[0].getObject(), version, (f.get("software") or u"").strip(),
                                columns, user, at)
-        _audit_import_studio(self._portal(), {"action": "save_export", "instrument": uid,
-                                              "version": version, "by": user, "at": at})
         return self._redirect("{0}?ok=Injection+list+format+saved".format(self._self_url()))
 
     def studio_audit(self):
-        return get_import_studio_audit(self._portal(), limit=25)
+        return studio_log(self._portal())
 
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
+    def layout_row_url(self, p):
+        """Where a saved layout's row opens: its editor, for those who may edit."""
+        if not self.can_configure():
+            return u""
+        return u"{0}/@@pfas-import-studio?action=edit_profile&layout_id={1}".format(self.portal_url(), p["id"])
 
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def _redirect(self, url):
-        self.request.response.redirect(url)
-        return ""
+    def layout_status(self):
+        """The Saved Import Layouts filter: active (the default) or retired."""
+        return "retired" if self.request.form.get("layouts") == "retired" else "active"
 
     def _self_url(self):
         return "{0}/@@pfas-import-studio".format(self.context.absolute_url())
@@ -867,16 +637,18 @@ class PFASImportStudioView(GateMixin, BrowserView):
     # -- Template data -------------------------------------------------------
 
     def instruments(self):
-        """List all Instruments for the instrument selector."""
+        """The instruments that run samples, for the instrument selector."""
+        from senaite.pfas.browser.equipment import offered_in_worksheets
         catalog = getToolByName(self.context, "senaite_catalog_setup")
         result = []
         for brain in catalog({"portal_type": "Instrument", "sort_on": "sortable_title"}):
             try:
                 obj = brain.getObject()
+                if not offered_in_worksheets(obj):
+                    continue
                 result.append({
                     "uid": obj.UID(),
                     "title": obj.Title(),
-                    "profiles": _list_profiles(obj),
                 })
             except Exception:
                 pass
@@ -898,22 +670,32 @@ class PFASImportStudioView(GateMixin, BrowserView):
     def purposes(self):
         return PURPOSES
 
-    def vendor_names(self):
-        return [(k, v["vendor"]) for k, v in sorted(_VENDOR_COLUMN_MAP.items())]
 
     # -- Upload state (passed via hidden form fields after parse) ------------
 
     def upload_result_json(self):
+        """The parse result the handler put on the form, re-emitted as JSON
+        for the page's script. A value that is not JSON (a URL parameter of
+        the same name) is null."""
+        from senaite.pfas.document_templates import script_json
         raw = self.request.form.get("upload_result_json", "null")
-        # Escape chars that break XML/Chameleon parsing when injected into <script>
-        return raw.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
+        try:
+            return script_json(json.loads(raw))
+        except (TypeError, ValueError):
+            return "null"
 
     # -- the reader options the page offers (senaite.pfas.import_layouts) ----
 
     def layout_choices(self):
         from senaite.pfas import import_layouts as L
-        return {"layouts": L.LAYOUTS, "delimiters": L.DELIMITERS, "encodings": L.ENCODINGS,
+        return {"layouts": L.LAYOUTS, "layout_hints": L.LAYOUT_HINTS,
+                "delimiters": L.DELIMITERS, "encodings": L.ENCODINGS,
                 "match": L.MATCH_MODES}
+
+    def skip_rows(self):
+        """The skip conditions to draw: the form's, else one empty row."""
+        from senaite.pfas import import_layouts as L
+        return L.options(self.reader_form())["skip_conditions"] or [["", ""]]
 
     def reader_form(self):
         """The reader options as the upload form last held them (defaults first)."""
@@ -923,9 +705,50 @@ class PFASImportStudioView(GateMixin, BrowserView):
         for k in L.READER_DEFAULTS:
             if f.get(k) not in (None, ""):
                 out[k] = f.get(k)
+        if any(("%s" % k).startswith("skip_col.") for k in f):
+            out["skip_conditions"] = L.skip_conditions_from_form(f)
         return out
 
     # -- Phase 1: upload & read ----------------------------------------------
+
+    def _handle_sniff(self):
+        """A dropped export, read before anything is chosen (upload first):
+        the reader options the file shows, a saved layout it fits (whose
+        options then take over) and how many columns and rows they read.
+        JSON; nothing is saved."""
+        from senaite.pfas import import_layouts as L
+        from senaite.pfas import import_layouts_store
+        self.request.response.setHeader("Content-Type", "application/json")
+        upload = self.request.form.get("upload_file")
+        try:
+            raw = upload.read() if upload is not None and hasattr(upload, "read") else b""
+        except Exception:                                   # noqa: BLE001
+            raw = b""
+        if not raw:
+            return json.dumps({"error": u"The file is empty."})
+        g = L.guess_options(raw)
+        text = L.decode(raw, g["encoding"])
+        saved = None
+        try:
+            existing = import_layouts_store.match_file(self._portal(), head=L.head(text), instrument_uid="")
+        except L.LayoutRefused:
+            existing = None
+        if existing:
+            reader = L.options(existing.get("reader"))
+            for k in ("layout", "delimiter", "encoding", "header_row"):
+                g[k] = reader.get(k, g[k])
+            saved = {"name": existing.get("name") or existing.get("id"),
+                     "instrument_uid": existing.get("instrument_uid") or u""}
+        opts = dict(L.READER_DEFAULTS, layout=g["layout"], delimiter=g["delimiter"],
+                    encoding=g["encoding"], header_row=g["header_row"])
+        try:
+            got = L.read(text, opts)
+            columns, rows = len(got["headers"]), len(got["rows"])
+        except ValueError:
+            columns = rows = 0
+        g.update(saved=saved, columns=columns, rows=rows,
+                 filename=getattr(upload, "filename", u"") or u"")
+        return json.dumps(g)
 
     def _handle_upload(self):
         """Read the uploaded export with the reader options chosen on the
@@ -1046,12 +869,12 @@ class PFASImportStudioView(GateMixin, BrowserView):
             pass
         profile, problems = L.build_profile(f, duplicate_targets=duplicate_targets)
         try:
-            profile["columns"] = json.loads(f.get("columns_json") or "[]")
-        except (ValueError, TypeError):
-            profile["columns"] = []
+            profile["columns"] = json_list(f, "columns_json", "column list")
+        except ValueError as exc:
+            problems.append(u"{0}".format(exc))
         if problems:
             return self._redirect("{0}?error={1}".format(self._self_url(), _q(u" ".join(problems))))
-        lid = import_layouts_store.save(self._portal(), profile, self._user())
+        lid = import_layouts_store.save(self._portal(), profile)
         return self._redirect("{0}?ok={1}".format(
             self._self_url(), _q(u"Layout saved: %s" % (profile.get("name") or lid))))
 

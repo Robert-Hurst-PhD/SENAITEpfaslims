@@ -28,9 +28,9 @@ except ImportError:                                         # Python 3
 import logging
 from datetime import datetime
 
-from persistent.mapping import PersistentMapping
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 
@@ -39,7 +39,7 @@ from senaite.pfas.method_profile_store import get_profile
 # the same session to resolve per-sample dilution factors.
 from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
 from senaite.pfas.browser.reagents import _save_reagent, STATUS_OPENED
-from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.formutil import flatten_form, json_list
 from senaite.pfas.bench_queue import is_consumable_row, is_standard_row
 from senaite.pfas.document_templates import script_json
 
@@ -89,26 +89,35 @@ def resolve_rows(portal, rows):
     return _resolve(item_index(portal), rows)
 
 
-# worksheet uid -> (method id, when resolved). Resolving a worksheet's
-# method walks its samples x analyses (batch_method.py); the queue did that
-# for every open worksheet on every Bench, Run Builder and guide load --
-# 25,000 catalog searches, 24-48 s. A
-# worksheet's method does not change between page loads; a few minutes'
-# staleness in a queue label is the price.
+# worksheet uid -> (method id, when resolved, the worksheet's fingerprint).
+# Resolving a worksheet's method walks its samples x analyses
+# (batch_method.py); the queue did that for every open worksheet on every
+# Bench, Run Builder and guide load (226 worksheets: 18 s on a first load,
+# again whenever a timed cache ran out). A worksheet's method changes only
+# when the worksheet or its extraction record does, so the answer is kept
+# while neither has changed; an hour is the limit for a change made
+# elsewhere (a client Batch's own method). "No method yet" is looked up
+# again on the next load, so a method given meanwhile shows at once.
 _METHOD_CACHE = {}
-METHOD_CACHE_SECONDS = 300
+METHOD_CACHE_SECONDS = 3600
+
+
+def _fingerprint(batch):
+    """When the worksheet and its stored records (its annotations) last changed."""
+    ann = getattr(batch, "__annotations__", None)
+    return (getattr(batch, "_p_mtime", None), getattr(ann, "_p_mtime", None))
 
 
 def queue_method_id(batch, request):
     import time
     from bika.lims import api
-    uid = api.get_uid(batch)
+    uid, fp = api.get_uid(batch), _fingerprint(batch)
     hit = _METHOD_CACHE.get(uid)
-    if hit is not None and time.time() - hit[1] < METHOD_CACHE_SECONDS:
+    if hit is not None and hit[2] == fp and time.time() - hit[1] < METHOD_CACHE_SECONDS:
         return hit[0]
     method_id = batch_method_id(batch, request)
     if method_id:                         # "no method yet" is looked up again
-        _METHOD_CACHE[uid] = (method_id, time.time())
+        _METHOD_CACHE[uid] = (method_id, time.time(), fp)
     return method_id
 
 
@@ -154,19 +163,35 @@ def _extraction_queue(portal, request):
                          method_id=method_id,
                          method_label=profile.get("display_name") or method_id or u"",
                          analyst=session.get("analyst") or u"",
-                         created=str(getattr(batch, "created", lambda: "")())[:10]))
+                         created=_created_day(batch)))
     order = {u"in_progress": 0, u"not_started": 1, u"finished": 2}
     rows.sort(key=lambda r: (order.get(r["state"], 3), r["created"], r["id"]))
     return rows
+
+
+def _created_day(batch):
+    """The day a batch was created as the queue shows it, "YYYY/MM/DD": the
+    laboratory's day while the zone converts, the stored text's otherwise."""
+    from senaite.pfas import print_doc
+    created = getattr(batch, "created", lambda: "")()
+    return print_doc.lab_or(created, str(created)[:10], u"%Y/%m/%d")
 
 
 def _utcnow():
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _extraction_date(started_at):
+    """The Extraction Log date of a guided extraction: the laboratory's
+    calendar day of its UTC start, "YYYY-MM-DD"; "" when there is none."""
+    from senaite.pfas import lab_time
+    day = lab_time.lab_date(started_at, "utc")
+    return day.isoformat() if day else ""
+
+
 # ── View ──────────────────────────────────────────────────────────────────────
 
-class PFASExtractionGuideView(BrowserView):
+class PFASExtractionGuideView(ViewHelpers, BrowserView):
     """Stage-by-stage guided extraction for PFAS analyses."""
 
     template = ViewPageTemplateFile("templates/extraction_guide.pt")
@@ -196,16 +221,6 @@ class PFASExtractionGuideView(BrowserView):
         return self.template()
 
     # ── Context helpers ──────────────────────────────────────────────────────
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def _redirect(self, url):
-        self.request.response.redirect(url)
-        return ""
-
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
 
     def ok_msg(self):
         return self.request.form.get("ok", "").replace("+", " ")
@@ -433,22 +448,32 @@ class PFASExtractionGuideView(BrowserView):
         """The current stage's lot picker: every usable lot (reagents and
         prepared standards) and, per reagent role, the suggested lots and the
         one to preselect ("Bench phase 2")."""
-        from datetime import date
+        from senaite.pfas import lab_time
         from senaite.pfas.bench_queue import default_pick, suggested
         from senaite.pfas.browser.bench_inventory import usable_lots, role_picks
         portal = self._portal()
-        lots = usable_lots(portal, date.today())
+        lots = usable_lots(portal, lab_time.today())
         picks = role_picks(portal, self.session().get("method_id", ""))
 
         def key(it):
             return u"{0}:{1}".format(it["kind"], it["uid"])
         roles = {}
         stage = self.current_stage()
-        for role in list(stage.get("reagent_roles", [])) + list(stage.get("consumables") or []):
+        spe = self._spe_roles(stage)
+        role_order = list(stage.get("reagent_roles", [])) + [r["role"] for r in spe]
+        for role in role_order + list(stage.get("consumables") or []):
             rem = picks.get(role)
             pick = default_pick(lots, role, rem)
             roles[role] = {"suggested": [key(i) for i in suggested(lots, role, rem)],
                            "default": key(pick) if pick else u""}
+        # a study part made in a reference sample: its lot, offered and
+        # preselected at the first stage, so its use reaches the usage ledger
+        ref = self._study_reference()
+        orders = [st.get("order") for st in self.extraction_stages()]
+        if ref and orders and stage.get("order") == min(orders) and ref["role"] not in roles:
+            role_order.append(ref["role"])
+            have = ref["key"] in [key(i) for i in lots]
+            roles[ref["role"]] = {"suggested": [ref["key"]] if have else [], "default": ref["key"] if have else u""}
         slim = [{"key": key(i), "kind": i["kind"], "kind_label": i["kind_label"],
                  "uid": i["uid"], "name": i["name"], "lot": i["lot_number"],
                  "expiry": i["expiry"], "status": i["status"], "barcode": i["barcode"],
@@ -456,8 +481,19 @@ class PFASExtractionGuideView(BrowserView):
                  "unit": i.get("quantity_unit") or u""}
                 for i in sorted(lots, key=lambda i: (i["name"].lower(), i["lot_number"]))]
         return script_json({"lots": slim, "roles": roles,
-                           "role_order": list(stage.get("reagent_roles", [])),
+                           "role_order": role_order,
                            "consumable_order": list(stage.get("consumables") or [])})
+
+    def _study_reference(self):
+        """The reference-sample lot this worksheet's study part asks for
+        (study_runs.extraction_role), or None."""
+        from senaite.pfas import study_runs as sru
+        b = self._get_batch()
+        try:
+            return sru.extraction_role(sru.load_run(b)) if b is not None else None
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("study reference: %s", exc)
+            return None
 
     # ── Pedigree ──────────────────────────────────────────────────────────────
 
@@ -521,6 +557,14 @@ class PFASExtractionGuideView(BrowserView):
             self._self_url(), b.UID())
         return self._redirect(url)
 
+    def _spe_roles(self, stage_def):
+        """The method's automated SPE solvent channels used at this stage, as
+        picker roles (run_lots.spe_roles)."""
+        from senaite.pfas import run_lots as rl
+        from senaite.pfas.method_profile_sections import solvent_channels
+        prof = get_profile(self._portal(), self.session().get("method_id", "") or self._method_id() or "")
+        return rl.spe_roles(solvent_channels(prof or {}, u"spe"), (stage_def or {}).get("order"))
+
     def _handle_complete_stage(self):
         b = self._get_batch()
         if not b:
@@ -529,12 +573,11 @@ class PFASExtractionGuideView(BrowserView):
         f = self.request.form
         stage_order = f.get("stage_order", "").strip()
 
-        # Parse reagent rows from JSON
-        reagents_raw = f.get("reagents_json", "[]")
         try:
-            reagents = json.loads(reagents_raw)
-        except (ValueError, TypeError):
-            reagents = []
+            reagents = json_list(f, "reagents_json", "reagent rows")
+        except ValueError as exc:
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(u"{0}".format(exc).encode("utf-8"))))
 
         # The inventory is the record: a row naming a lot takes its name, lot
         # number, expiry and status from the inventory as they are NOW, never
@@ -547,14 +590,14 @@ class PFASExtractionGuideView(BrowserView):
         # at all: no note unlocks it. Either way nothing is
         # changed -- but nothing the chemist entered is thrown away either:
         # the stage is kept as a draft and the page reopens on it.
-        from datetime import date
+        from senaite.pfas import lab_time
         from senaite.pfas.bench_queue import balance_blocks, stage_warnings
         equipment_sns = _json_or(f.get("equipment_sns_json"), {})
         from senaite.pfas.stage_plan import stages_for
         profile_stages = stages_for(sess, get_profile(self._portal(), sess.get("method_id", "")))
         stage_def = ([s for s in profile_stages
                       if u"%s" % s.get("order") == stage_order] or [{}])[0]
-        warnings = stage_warnings(reagents, date.today())
+        warnings = stage_warnings(reagents, lab_time.today())
         # a correction is judged on the day the stage was first done, the day
         # the sample was weighed -- not the day the correction is typed
         from senaite.pfas.extraction_review import done_on, unconfirmed
@@ -565,6 +608,16 @@ class PFASExtractionGuideView(BrowserView):
         # answer stops the stage like an unverified balance
         answers, answer_problems = self._answers_from_form(stage_def)
         blocks = list(blocks) + answer_problems
+        # the automated SPE system's solvent channels at this stage: one lot
+        # each, in date on the extraction date (run_lots.py); no note unlocks it
+        from senaite.pfas import run_lots as rl
+        from senaite.pfas.browser.bench_inventory import inventory_items
+        spe = self._spe_roles(stage_def)
+        if spe:
+            lots = dict((u"%s:%s" % (i["kind"], i["uid"]), i) for i in inventory_items(self._portal()))
+            blocks += rl.problems(rl.chosen_from_rows(reagents, spe),
+                                  [(r["slot"], r["label"]) for r in spe], lots,
+                                  done_on((sess.get("stages") or {}).get(str(stage_order))) or lab_time.today().isoformat())
         # the checks the stage asks to be ticked (stage editor: confirmations)
         # one field per check (flatten_form keeps only the first of a list)
         checks = [c for c in stage_def.get("confirmations") or [] if (c or u"").strip()]
@@ -626,8 +679,8 @@ class PFASExtractionGuideView(BrowserView):
                 if rec:
                     rec["status"] = new_status
                     if new_status == STATUS_OPENED and not rec.get("opened_date"):
-                        from datetime import date
-                        rec["opened_date"] = date.today().strftime("%Y-%m-%d")
+                        from senaite.pfas import lab_time
+                        rec["opened_date"] = lab_time.today().isoformat()
                     _save_reagent(self._portal(), rec)
 
         stage_data = {
@@ -719,13 +772,9 @@ class PFASExtractionGuideView(BrowserView):
                   if u"balance" in (e or u"").lower()]
         if not labels:
             return []
-        try:
-            from senaite.pfas import facility_qc as fq
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("balance check unavailable: %s", exc)
-            fq = None
-        from datetime import date
-        today = date.today().strftime("%Y-%m-%d")
+        from senaite.pfas import facility_qc as fq
+        from senaite.pfas import lab_time
+        today = lab_time.today().isoformat()
         day = day or today
         out = []
         for label in labels:
@@ -801,7 +850,7 @@ class PFASExtractionGuideView(BrowserView):
         be (balances, pipettes) with today's status, so the chemist picks the
         unit instead of typing its serial. Other equipment keeps a serial
         field. The stored shape (label -> serial) is unchanged."""
-        from datetime import date
+        from senaite.pfas import lab_time
         from senaite.pfas.bench_queue import equipment_family, units_for
         try:
             from senaite.pfas import facility_qc as fq
@@ -809,7 +858,7 @@ class PFASExtractionGuideView(BrowserView):
         except Exception as exc:                            # noqa: BLE001
             logger.warning("stage equipment: %s", exc)
             fq, units = None, []
-        today = date.today().strftime("%Y-%m-%d")
+        today = lab_time.today().isoformat()
         out = []
         for label in self.current_stage().get("equipment") or []:
             fam = equipment_family(label)
@@ -854,7 +903,7 @@ class PFASExtractionGuideView(BrowserView):
     def _card_members(self, b):
         """Every member whose amount or extract volume is recorded: the
         samples and the QC (a QC member's test portion is used like a
-        sample's; lab, 2026-10-09). A batch without members: its samples."""
+        sample's). A batch without members: its samples."""
         from senaite.pfas import extraction_batch
         members = [m for m in extraction_batch.load(b) if m.get("injection")]
         if not members:
@@ -927,6 +976,28 @@ class PFASExtractionGuideView(BrowserView):
         b = self._get_batch()
         return sample_table.dilutions(self._samples_log(b).get("samples")) if b is not None else []
 
+    def dilution_settings(self):
+        """The batch's dilution settings: its method's, with its project's
+        overrides."""
+        from senaite.pfas import method_profile_sections as mps
+        b = self._get_batch()
+        try:
+            from senaite.pfas.project_specs import profile_for_batch
+            return mps.dilution_settings(profile_for_batch(self._portal(), b, self._method_id()))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("dilution settings: %s", exc)
+            return mps.dilution_settings({})
+
+    def dilution_routes(self):
+        from senaite.pfas.method_profile_sections import DILUTION_ROUTES
+        allowed = self.dilution_settings()["routes"]
+        return [r for r in DILUTION_ROUTES if r[0] in allowed]
+
+    def route_label(self, route):
+        from senaite.pfas.method_profile_sections import DILUTION_ROUTES
+        from senaite.pfas.sample_table import route_key
+        return dict(DILUTION_ROUTES).get(route_key(route), route or u"")
+
     def dilution_parents(self):
         from senaite.pfas import sample_table
         b = self._get_batch()
@@ -948,7 +1019,9 @@ class PFASExtractionGuideView(BrowserView):
         data = self._samples_log(b)
         rows, error = sample_table.append_dilution(
             data.get("samples"), f.get("dilution_of"), f.get("dilution_injection"),
-            f.get("dilution_factor"), self.current_user_name(), _utcnow())
+            f.get("dilution_factor"), self.current_user_name(), _utcnow(),
+            route=f.get("dilution_route"), aliquot=f.get("dilution_aliquot"),
+            approval=f.get("dilution_approval"), settings=self.dilution_settings())
         if error:
             return self._redirect("{0}?batch_uid={1}&error={2}".format(
                 self._self_url(), b.UID(), quote_plus(error.encode("utf-8"))))
@@ -988,7 +1061,7 @@ class PFASExtractionGuideView(BrowserView):
         Inventory makes, then handed back to the picker. JSON in, JSON out.
         A lot number already on file is never received twice -- the answer
         says why the picker did not offer it."""
-        from datetime import date
+        from senaite.pfas import lab_time
         from senaite.pfas.bench_queue import is_usable, lot_on_file
         from senaite.pfas.browser.bench_inventory import inventory_items
         from senaite.pfas.browser.reagents import STATUS_ACTIVE
@@ -1001,14 +1074,17 @@ class PFASExtractionGuideView(BrowserView):
         portal = self._portal()
         existing = lot_on_file(inventory_items(portal), lot)
         if existing is not None:
-            usable = is_usable(existing, date.today())
+            usable = is_usable(existing, lab_time.today())
             return json.dumps({"ok": False, "exists": True, "usable": usable, "error": (
                 u"Lot {0} is already in the inventory as {1}{2}.".format(
                     lot, existing.get("name"),
                     u"" if usable else u" and cannot be used ({0})".format(
                         existing.get("status") or u"expired")))})
         from senaite.pfas.browser.core_lists import problems
-        bad = problems({"supplier": (f.get("supplier") or u"").strip()}, kinds=("supplier",))
+        from senaite.pfas.browser.core_lists import lot_problems
+        conditions = (f.get("storage_conditions") or u"").strip()
+        bad = (lot_problems({"storage_conditions": conditions})
+               + problems({"supplier": (f.get("supplier") or u"").strip()}, kinds=("supplier",)))
         if bad:
             return json.dumps({"ok": False, "error": bad[0]})
         b = self._get_batch()
@@ -1019,8 +1095,9 @@ class PFASExtractionGuideView(BrowserView):
             "cat_number": (f.get("cat_number") or u"").strip(),
             "manufacturer_expiry": (f.get("expiry") or u"").strip(),
             "expiry_date": u"", "opened_date": u"",
-            "received_date": date.today().strftime("%Y-%m-%d"),
+            "received_date": lab_time.today().isoformat(),
             "storage_location": u"", "quantity": u"", "unit": u"",
+            "storage_conditions": conditions,
             "barcode": (f.get("barcode") or u"").strip(),
             "notes": u"Received at the bench during the extraction of {0}.".format(
                 b.getId() if b is not None else u"a batch"),
@@ -1117,11 +1194,7 @@ class PFASExtractionGuideView(BrowserView):
             sns = json.loads(sns_json or "{}") or {}
         except (ValueError, TypeError):
             return []
-        try:
-            from senaite.pfas import facility_qc as fq
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("equipment resolution unavailable: %s", exc)
-            return []
+        from senaite.pfas import facility_qc as fq
         out = []
         for label, serial in sns.items():
             serial = (serial or "").strip()
@@ -1156,17 +1229,17 @@ class PFASExtractionGuideView(BrowserView):
         The parents are the STAGE'S REAGENT ROWS, which is what D50 specifies and
         is also the strongest form available: those rows carry `inventory_uid`, a
         real Reagent UID, so the link survives a lot-number correction or a
-        rename -- the uid-first resolution added for §33.7 reads it.
+        rename -- the uid-first resolution added for reads it.
 
         Refuses when no parent is named. A parentless prepared standard is
-        exactly §33.4, the traceability gate now rejects one, and telling the
+        exactly so, the traceability gate now rejects one, and telling the
         analyst at the bench beats telling them at release.
         """
         b = self._get_batch()
         if not b:
             return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
         f = self.request.form
-        from datetime import date
+        from senaite.pfas import lab_time
         from senaite.pfas.browser.prepared_standards import (
             _save as _save_prepstd, effective_expiry_info)
 
@@ -1178,9 +1251,10 @@ class PFASExtractionGuideView(BrowserView):
                     self._self_url(), b.UID()))
 
         try:
-            parents = json.loads(f.get("parent_reagents_json", "[]") or "[]")
-        except (ValueError, TypeError):
-            parents = []
+            parents = json_list(f, "parent_reagents_json", "parent reagents")
+        except ValueError as exc:
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(u"{0}".format(exc).encode("utf-8"))))
         parents = [p for p in parents
                    if (p.get("lot") or "").strip() or (p.get("uid") or "").strip()]
         if not parents:
@@ -1189,7 +1263,7 @@ class PFASExtractionGuideView(BrowserView):
                 "+was+made+from+before+saving+it".format(
                     self._self_url(), b.UID()))
 
-        today = date.today().strftime("%Y-%m-%d")
+        today = lab_time.today().isoformat()
         analyst = f.get("sol_analyst", "").strip()
         conc = f.get("sol_conc", "").strip()
         rec = {
@@ -1285,7 +1359,7 @@ class PFASExtractionGuideView(BrowserView):
             data = dict(_get_logbook(b, "252") or {})
             data.update({
                 "analyst":         sess.get("analyst", ""),
-                "extraction_date": (sess.get("started_at") or "")[:10],
+                "extraction_date": _extraction_date(sess.get("started_at")),
                 "method":          sess.get("method_id", ""),
                 "from_guided":     True,
                 "finalized_at":    sess.get("finalized_at", ""),

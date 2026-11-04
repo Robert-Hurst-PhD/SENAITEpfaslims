@@ -18,10 +18,10 @@
   var NODE_W = 168, NODE_H = 44, DX = 58, DY = 214;
   var KIND_NAME = { lab: 'Laboratory', method: 'Method', matrix: 'Matrix', config: 'Method setting',
     worksheet: 'Worksheet', stages: 'Stages', sample: 'Sample', result: 'Result', group: 'Lots',
-    lot: 'Lot', more: 'More' };
+    lot: 'Lot', more: 'More', equipment: 'Equipment', wsgroup: 'Worksheets' };
   var KIND_CLASS = { lab: 'k-lab', method: 'k-method', matrix: 'k-matrix', config: 'k-matrix',
     worksheet: 'k-worksheet', stages: 'k-worksheet', sample: 'k-sample', result: 'k-sample',
-    group: 'k-lot', lot: 'k-lot', more: 'k-more' };
+    group: 'k-lot', lot: 'k-lot', more: 'k-more', equipment: 'k-equipment', wsgroup: 'k-worksheet' };
 
   function mk(data, parent) { return { data: data, parent: parent || null, kids: null, open: false }; }
   function setKids(t, list) { t.kids = (list || []).map(function (n) { return mk(n, t); }); }
@@ -165,7 +165,9 @@
     if (t.open) { t.open = false; render(); return; }
     if (t.kids) { t.open = true; render(); return; }
     tog.setAttribute('aria-busy', 'true');
-    fetch(dataUrl + '?node=' + encodeURIComponent(t.data.id), { credentials: 'same-origin' })
+    /* the data URL carries the page's period and grouping */
+    fetch(dataUrl + (dataUrl.indexOf('?') === -1 ? '?' : '&') + 'node=' + encodeURIComponent(t.data.id),
+          { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (j.error) throw new Error(j.error);
@@ -197,6 +199,21 @@
       var dt = document.createElement('dt'), dd = document.createElement('dd');
       dt.textContent = f[0]; dd.textContent = f[1];
       dl.appendChild(dt); dl.appendChild(dd);
+    });
+    var panel = n.panel || {};
+    ['why', 'set', 'records'].forEach(function (part) {
+      var box = card.querySelector('[data-part="' + part + '"]'), items = panel[part] || [];
+      box.hidden = !items.length;
+      var holder = box.querySelector(part === 'why' ? 'ul' : '.pfas-map-btns');
+      holder.textContent = '';
+      items.forEach(function (it) {
+        if (part === 'why') {
+          var li = document.createElement('li'); li.textContent = it; holder.appendChild(li);
+        } else {
+          var a = document.createElement('a'); a.className = 'btn-sm btn-secondary';
+          a.textContent = it[0]; a.href = it[1]; holder.appendChild(a);
+        }
+      });
     });
     var open = card.querySelector('.pfas-map-open');
     open.hidden = !n.url;

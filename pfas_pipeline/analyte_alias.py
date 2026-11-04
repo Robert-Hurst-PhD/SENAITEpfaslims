@@ -94,10 +94,6 @@ def reload_library(path=None, profiles_path=None):
     return None
 
 
-def library_error():
-    """Why no library is in use, or None."""
-    return _STATE["error"]
-
 
 def _lib():
     if _STATE["export"] is None:
@@ -163,8 +159,7 @@ def _labelled_by_role(role: str) -> set:
     """Display names of labelled compounds with the given pfas_role.
 
     The role is the service's (pfas_role): 13C4-PFOA is injection_is, the
-    other labelled standards of the seed are surrogate. The pipeline kept a
-    flat list with no roles and so treated them identically.
+    other labelled standards of the seed are surrogate.
     """
     return set(_lib()["by_role"].get(role) or ())
 
@@ -215,8 +210,8 @@ def native_keyword_for(published_name: str) -> str:
 
 def no_labelled_names_for(profile_data: dict) -> set:
     """Analytes of ONE method with no labelled standard of their own, derived
-    from that method's surrogate links (senaite.pfas.labelled_coverage;
-    consolidation P4) -- keywords and display names both, since the engine
+    from that method's surrogate links (senaite.pfas.labelled_coverage)
+    -- keywords and display names both, since the engine
     compares instrument display names."""
     kws = load("labelled_coverage").no_labelled_standard(profile_data, labeled_analog_map())
     display = _lib()["native_names"]
@@ -225,24 +220,47 @@ def no_labelled_names_for(profile_data: dict) -> set:
 
 def canonical_labelled_name(name: str) -> str:
     """The library's display name for a labelled standard exported under
-    another spelling ("13C3 GenX (HFPO-DA)", "D5-N-EtFOSAA", a retired
-    supplier code); any other name unchanged. The checks find a labelled
-    standard's rows by its display name, so a variant spelling was never
-    judged at all."""
-    lib = _lib()
-    kw = lib["n2k"].get(name or "")
-    if kw and kw in lib["labelled"]:
-        return labelled_display_name(kw)
-    return name
+    another spelling ("13C3 GenX (HFPO-DA)", "D5-N-EtFOSAA", a supplier
+    code); a native analyte's name and any unknown name unchanged.
+    The checks find a labelled standard's rows by its display name; a native
+    row is found by its keyword (keyword_for on both sides)."""
+    return canonical_name(name) if is_labelled(name) else name
+
+
+def canonical_name(name: str) -> str:
+    """The library's display name for any spelling of a compound (an alias,
+    a published-method name, a supplier code); any other name
+    unchanged."""
+    return _cl().canonical_name(library(), name)
+
+
+def role_of(name: str):
+    """analyte / surrogate / injection_is for any spelling; None when unknown."""
+    return _cl().role_of(library(), name)
+
+
+def is_labelled(name: str) -> bool:
+    return _cl().is_labelled(library(), name)
+
+
+def expand(keyword: str) -> list:
+    """Every spelling of one compound, the keyword first."""
+    return _cl().expand(library(), keyword)
+
+
+def keyword_of(name: str):
+    """The keyword any spelling of a compound resolves to (a keyword, a
+    display name, an alias, a published-method spelling); None when the
+    library does not know it."""
+    return _cl().keyword_of(library(), name)
 
 
 def keyword_for(analyte_name: str) -> str:
     """SENAITE keyword for an instrument analyte name.
 
     Returns the name unchanged when it is already a keyword (most analytes) or
-    when the library does not know it -- the caller then fails to match an
-    Analysis and logs it, which is the same behaviour as before but for a
-    genuinely unknown analyte rather than a spelling difference.
+    when the library does not know it: the caller then fails to match an
+    Analysis and logs it.
     """
     if not analyte_name:
         return analyte_name

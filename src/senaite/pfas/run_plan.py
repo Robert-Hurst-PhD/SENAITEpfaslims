@@ -17,9 +17,16 @@
         The instrument's sample list: one row per injection, columns as the
         method's run template lists them ([header, source]); the Waters
         MassLynx starter is MASSLYNX_COLUMNS.
+
+    waiting_step(manifest, run_files, requests, imports=())
+        Once a run is built: the step it waits at in the Run Builder ("3"
+        import results, "4" dilutions and re-injections), or None, from its
+        uploads, its review requests and the worker's import log. WAITING
+        names each step as the Run Builder's landing lists it.
 """
 from __future__ import absolute_import, unicode_literals
 
+import re
 from datetime import datetime
 
 NEW, REUSE = u"new", u"reuse"
@@ -141,3 +148,80 @@ def place_members(seq, qc_members, samples_token=u"SAMPLES"):
                         out.append((r, inj))
                     used.add(r)
     return out
+
+
+# the steps a built run can wait at, as the Run Builder's landing names them
+WAITING = ((u"3", u"step 3, import results"), (u"4", u"step 4, dilutions and re-injections"))
+
+
+def _minute(stamp):
+    """A run record's time to the minute, comparable across its records,
+    all UTC: a build "YYYY-MM-DD HH:MM UTC", an upload "YYYY-MM-DDTHH:MM:SSZ",
+    the import log "YYYY-MM-DDTHH:MM:SS". "" when it has none."""
+    s = (stamp or u"").replace(u"T", u" ")
+    return s[:16] if len(s) >= 16 else u""
+
+
+# the raw run's file: RAW_<worksheet>_<built, UTC>.rawrun
+_RAW_STAMP = re.compile(r"^RAW_.*_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})\d{2}\.rawrun$")
+
+
+def _earlier_file(name, run_files, built):
+    """True when `name` is a run file of a run built before `built`: one on
+    record (uploaded) before it, or a raw run stamped before it."""
+    if not name or not built:
+        return False
+    if any(f.get("file") == name and _minute(f.get("at")) < built for f in run_files or ()):
+        return True
+    m = _RAW_STAMP.match(name)
+    return bool(m) and u"%s-%s-%s %s:%s" % m.groups() < built
+
+
+def waiting_step(manifest, run_files, requests, imports=()):
+    """The step a built run waits at in the Run Builder, or None.
+
+    `imports` are the worker's import log rows for the worksheet
+    ({"status", "updated_at"}). Every upload and import is read for the run
+    built last: one stamped before its build was for an earlier run, and a
+    follow-up run's imports are its own file's (an earlier run's file
+    imported late or again is not).
+
+    A run sent back is built again: it is ready to build, not waiting. The
+    run built last waits at step 3 until its results are in: a full run's
+    file uploaded, a follow-up run's requests all run, or the worker's log
+    recording an import (results from the raw share arrive with no
+    upload); and again when the worker failed to import them. Then a
+    dilution or re-injection review asked for waits at step 4: open (the
+    bench makes it), or made and not yet run, unless it runs with this
+    run. Otherwise nothing waits in the Run Builder. No record tells a run
+    loaded on the instrument from one not yet loaded, so a run is never
+    named at step 2.
+    """
+    if not manifest or manifest.get("sent_back"):
+        return None
+    built = _minute(manifest.get("built_at"))
+
+    def since_build(stamp):
+        return not built or _minute(stamp) >= built
+
+    requests = requests or []
+    imports = imports or []
+    carried = set()
+    if manifest.get("kind") == u"supplementary":
+        carried = set(manifest.get("requests") or [])
+        uploaded = not any(r.get("id") in carried and r.get("status") != u"run" for r in requests)
+        # a follow-up run's results are its own file's: an earlier run's
+        # file imported late or again says nothing of it
+        imports = [i for i in imports if not _earlier_file(i.get("file"), run_files, built)]
+    else:
+        uploaded = any(f.get("kind") == u"full" and since_build(f.get("at")) for f in (run_files or []))
+    imported = any(i.get("status") == u"imported" and since_build(i.get("updated_at")) for i in imports)
+    failed = any(i.get("status") == u"failed" and since_build(i.get("updated_at")) for i in imports)
+    if failed or not (uploaded or imported):
+        return u"3"
+    # a follow-up run's results are in: the requests it carried are run,
+    # though only an upload marks them so
+    if any(r.get("id") not in carried and (r.get("status") == u"open" or
+           (r.get("status") == u"made" and not r.get("in_run"))) for r in requests):
+        return u"4"
+    return None

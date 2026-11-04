@@ -3,8 +3,7 @@ Vendor mapping profiles — make the instrument CSV importer vendor-agnostic.
 
 Each profile maps a vendor's export column headers onto the canonical
 internal field names used by InstrumentRow.  Add a new instrument by adding
-a dict here (or loading a YAML file via load_vendor_profile_yaml) — no code
-changes to importer.py.
+a dict here — no code changes to importer.py.
 
 Canonical field names (targets) match importer._COL_MAP values:
   compound_name, compound_type, sample_description, injection_name,
@@ -18,7 +17,6 @@ The FDA method uses SCIEX OS; 537.1/1633A labs commonly use Waters
 """
 
 from __future__ import annotations
-from pathlib import Path
 
 
 # ── Waters MassLynx / TargetLynx (Quanpedia / QuanLynx summary export) ───────
@@ -161,21 +159,3 @@ def detect_vendor(headers: list[str]) -> str:
     if "Injection Name" in h and "Compound Name" in h:
         return "native"
     return "native"
-
-
-def load_vendor_profile_yaml(path: str | Path) -> dict:
-    """
-    Load a custom vendor mapping from a YAML file so labs can add instruments
-    without editing code.  Expected structure:
-
-        vendor: "My Instrument"
-        delimiter: ","
-        map:
-          "Their Column": internal_field_name.
-          ..
-    """
-    import yaml  # optional dependency; only needed for custom profiles
-    data = yaml.safe_load(Path(path).read_text())
-    if "map" not in data:
-        raise ValueError("YAML vendor profile must contain a 'map' key")
-    return data

@@ -11,81 +11,7 @@
   <div metal:fill-slot="content">
   <div class="page-body-narrow">
 
-    <!-- ── BRANCH: per-batch sample type editor ── -->
-    <tal:editor tal:condition="view/batch_id">
-
-      <div class="pfas-page-head">
-        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-edd-batches">Batch EDD Dashboard</a>
-        <h2>
-          Sample Types —
-          <span tal:content="view/batch_id">B-001</span>
-        </h2>
-      </div>
-
-      <tal:saved tal:condition="view/saved_count">
-        <div class="alert alert-success">
-          <span tal:content="view/saved_count">0</span> sample type(s) saved.
-        </div>
-      </tal:saved>
-
-      <div class="pfas-section-intro">
-        <h3>Per-sample SAMPLE_TYPE overrides</h3>
-        <p>Set each sample&#8217;s state sample-type code; the default comes from the client&#8217;s EDD profile. <tal:h define="hid string:edd-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-      </div>
-
-      <tal:nosamps tal:condition="not:view/batch_sample_types">
-        <p class="pfas-lead">
-          No samples found in batch <strong tal:content="view/batch_id">B-001</strong>.
-        </p>
-      </tal:nosamps>
-
-      <form tal:condition="view/batch_sample_types"
-            method="POST"
-            tal:attributes="action string:${view/portal_url}/@@pfas-edd-batches">
-        <input type="hidden" name="batch_id" tal:attributes="value view/batch_id" />
-
-        <table class="pfas-table">
-          <thead>
-            <tr>
-              <th>Sample ID</th>
-              <th>Sample Title</th>
-              <th>SENAITE Sample Type</th>
-              <th>SAMPLE_TYPE</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr tal:repeat="row view/batch_sample_types">
-              <td tal:content="row/ar_id" class="pfas-id">AR-001</td>
-              <td tal:content="row/ar_title">Sample Title</td>
-              <td tal:content="row/senaite_sample_type">Drinking Water</td>
-              <td>
-                <select class="pfas-select" tal:attributes="name row/field_name">
-                  <tal:opt tal:repeat="code view/sample_type_options">
-                    <option tal:attributes="
-                      value code;
-                      selected python:code == row['sample_type_code']"
-                      tal:content="code">GW</option>
-                  </tal:opt>
-                </select>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">Save Sample Types</button>
-          <a tal:attributes="href string:${view/portal_url}/@@pfas-edd-export?batch_id=${view/batch_id}"
-             class="btn btn-secondary">Download EDD</a>
-          <a tal:attributes="href string:${view/portal_url}/@@pfas-edd-export?batch_id=${view/batch_id}&amp;preview=1"
-             class="btn-sm btn-secondary" target="_blank">Preview / Validate</a>
-        </div>
-
-      </form>
-
-    </tal:editor>
-
-    <!-- ── BRANCH: batch list dashboard ── -->
-    <tal:dashboard tal:condition="not:view/batch_id">
+    <tal:dashboard>
 
       <div class="pfas-page-head">
         <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-edd-config">EDD Configuration</a>
@@ -96,7 +22,7 @@
         <p class="pfas-lead">No batches found.</p>
       </tal:empty>
 
-      <table class="pfas-table" tal:condition="view/recent_batches">
+      <table class="pfas-table" data-col-resize="edd-batches-1" tal:condition="view/recent_batches">
         <thead>
           <tr>
             <th>Batch ID</th>
@@ -104,6 +30,7 @@
             <th>Created</th>
             <th>EDD</th>
             <th>EDD Status</th>
+            <th>EDD profile</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -137,19 +64,22 @@
                       tal:content="b/edd_generated">2026-06-15</span>
               </tal:stored>
             </td>
+            <!-- the export's profile: the client's preselected, any other
+                 chosen here; it belongs to the Download form (form=) -->
+            <td>
+              <select name="profile" class="pfas-select"
+                      tal:attributes="aria-label string:EDD profile for ${b/batch_id}; form string:edd-dl-${repeat/b/index}">
+                <option tal:repeat="p view/profile_options" tal:content="p/name"
+                        tal:attributes="value p/id; selected python:'selected' if p['id'] == b['edd_profile'] else None">profile</option>
+              </select>
+            </td>
             <td>
               <div class="pfas-row-actions">
-                <!-- the export's profile: the client's preselected, any other chosen here -->
-                <form method="get" class="pfas-inline" tal:attributes="action string:${view/portal_url}/@@pfas-edd-export">
+                <form method="get" class="pfas-inline"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-edd-export; id string:edd-dl-${repeat/b/index}">
                   <input type="hidden" name="batch_id" tal:attributes="value b/batch_id" />
-                  <select name="profile" class="pfas-select" tal:attributes="aria-label string:EDD profile for ${b/batch_id}">
-                    <option tal:repeat="p view/profile_options" tal:content="p/name"
-                            tal:attributes="value p/id; selected python:'selected' if p['id'] == b['edd_profile'] else None">profile</option>
-                  </select>
                   <button type="submit" class="btn-sm btn-primary">Download EDD</button>
                 </form>
-                <a tal:attributes="href b/sampletype_url"
-                   class="btn-sm btn-secondary">Sample Types</a>
               </div>
             </td>
           </tr>

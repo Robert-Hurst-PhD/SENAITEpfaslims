@@ -10,15 +10,14 @@
 <tal:t metal:fill-slot="header-title">Eye Wash Station Log</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url">
+  <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
 
   <div class="pfas-card">
     <h3>New Entry</h3>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-eyewash-log">
-      <input type="hidden" name="unit_id"
-             tal:attributes="value python:request.get('unit_id','')"/>
       <div class="pfas-form-row">
         <div class="pfas-form-field"><label>Station</label>
-          <select name="unit_id">
+          <select name="unit_id" required="required">
             <option value="">— select station —</option>
             <tal:each tal:repeat="u view/eyewash_units">
               <option tal:attributes="value u/id; selected python:'selected' if request.get('unit_id','')==u['id'] else None"
@@ -26,31 +25,33 @@
             </tal:each>
           </select>
         </div>
-        <div class="pfas-form-field"><label>Date *</label>
+        <div class="pfas-form-field"><label>Date</label>
           <input type="date" name="log_date" id="ewDate" required/></div>
         <div class="pfas-form-field"><label>Time</label>
           <input type="time" name="log_time" id="ewTime"/></div>
-        <div class="pfas-form-field"><label>Operator initials *</label>
-          <input type="text" name="operator" maxlength="10" required/></div>
+        <div class="pfas-form-field"><label>Operator</label>
+          <input type="text" name="operator" readonly="readonly" tal:attributes="value view/signed_in" /></div>
       </div>
       <div class="pfas-form-row">
         <div class="pfas-form-field">
-          <label>Working Order? *</label>
-          <select name="working" required>
-            <option value="yes">Yes — operational</option>
-            <option value="no">No — fault noted</option>
-          </select>
+          <span class="pfas-label">Working order</span>
+          <div class="pfas-radios">
+            <label class="pfas-check"><input type="radio" name="working" value="yes" checked="checked" /> &#10003; Operational</label>
+            <label class="pfas-check"><input type="radio" name="working" value="no" /> &#10007; Fault noted</label>
+          </div>
         </div>
-        <div class="pfas-form-field">
-          <label>Flush water temp (&deg;C)
-            <small>15–25°C required</small>
-          </label>
-          <input type="number" step="0.1" name="temperature"
-                 placeholder="optional"/>
+        <div class="pfas-form-field is-centered">
+          <label for="ew-temp">Flush water temp (&deg;C)</label>
+          <div class="pfas-inline">
+            <input type="number" step="0.1" name="temperature" id="ew-temp" class="is-short"
+                   required="required"/>
+            <a class="btn btn-secondary is-range" tal:content="view/required_range"
+               tal:attributes="href string:${purl}/@@pfas-equipment-types#et-defaults">Required 15-25 &deg;C</a>
+          </div>
         </div>
       </div>
       <div class="pfas-form-row">
-        <div class="pfas-form-field is-grow"><label>Notes / corrective action</label>
+        <div class="pfas-form-field is-grow"><label>Notes</label>
           <input type="text" name="notes"/></div>
       </div>
       <button type="submit" class="btn btn-primary">
@@ -64,11 +65,12 @@
     <tal:none tal:condition="python:not view.logs()">
       <p class="pfas-note-sm">No entries yet.</p>
     </tal:none>
-    <table class="pfas-table log-table" tal:condition="python:bool(view.logs())">
-      <tr>
+    <table class="pfas-table log-table" data-col-resize="facility-eyewash-log-table" tal:condition="python:bool(view.logs())">
+      <thead><tr>
         <th>Date</th><th>Time</th><th>Station</th><th>Operator</th>
         <th>Working</th><th>Temp (&deg;C)</th><th>Result</th><th>Notes</th>
-      </tr>
+      </tr></thead>
+      <tbody>
       <tal:each tal:repeat="r view/logs">
         <tr>
           <td tal:content="r/log_date"></td>
@@ -76,13 +78,14 @@
           <td tal:content="python:r.get('unit_name','—')"></td>
           <td tal:content="r/operator"></td>
           <td tal:content="python:'Yes' if r.get('working') else 'No'"></td>
-          <td tal:attributes="class python:'pfas-text-bad' if r.get('temperature') is not None and not (15<=r['temperature']<=25) else None"
+          <td tal:attributes="class python:None if view.in_range(r) else 'pfas-text-bad'"
               tal:content="python:'{:.1f}'.format(r['temperature']) if r.get('temperature') is not None else '—'"></td>
           <td><span tal:attributes="class python:'badge badge-ok' if r['passed'] else 'badge badge-fail'"
                     tal:content="python:'Pass' if r['passed'] else 'Fail'"></span></td>
           <td class="pfas-muted-cell" tal:content="python:r.get('notes','')"></td>
         </tr>
       </tal:each>
+    </tbody>
     </table>
   </div>
 
@@ -95,7 +98,8 @@
   var d = new Date();
   var dd = document.getElementById('ewDate');
   var dt = document.getElementById('ewTime');
-  if (dd) dd.valueAsDate = d;
+  var today = PFAS.components.labToday();
+  if (dd) { if (today) { dd.value = today; } else { dd.valueAsDate = d; } }
   if (dt) dt.value = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
 })();
 //]]>

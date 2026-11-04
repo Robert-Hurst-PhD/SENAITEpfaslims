@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The calibration a run is reviewed on, and whether it may be released
-(Part 1).
+"""The calibration a run is reviewed on, and whether it may be released.
 
     review_state(own_rows, manifest, reused_rows, ws_id) -> {
         "source":  "run"      the run calibrated (its own curves)
@@ -17,11 +16,11 @@
                (only when the worksheet has no curve of its own on record)
   ws_id        the worksheet: a curve run on another one is "reused"
 
-The data decides which curve a run used: the
-manifest only matters for a run with no curve on record.
+The data decides which curve a run used: the manifest only matters for a
+run with no curve on record.
 
 A curve is approved when every analyte's row is approved (status approved,
-or approved_by recorded by the older page); one rejected analyte makes the
+or approved_by recorded); one rejected analyte makes the
 run's curve rejected. Release waits for "approved".
 
 Pure; Python 2.7 and 3.
@@ -92,4 +91,49 @@ def gate_reason(state):
             (u": %s" % state["note"]) if state.get("note") else u"")
     if st == MISSING:
         return "blocked", u"no calibration found for this run"
-    return "blocked", u"the run's calibration is not approved yet (Calibration tab)"
+    return "blocked", u"the run's calibration is not approved yet, Calibration tab"
+
+
+# ── the curve's own rule: calibrators dropped by hand ───────────────────────
+# The worker judges how many of a curve's calibrators were dropped by deleting
+# a peak against the method's "Most calibrators dropped" and writes the verdict
+# as a Calibration QC row on the lowest dropped calibrator. The pages read that
+# row: they never count the drops again.
+
+DROPPED_BY_HAND = u"dropped by hand"
+CAL_TAG = u"(CAL) "
+
+
+def failed_rule_rows(qc_rows):
+    """The failing Calibration QC rows that name calibrators dropped by hand."""
+    out = []
+    for r in qc_rows or []:
+        flag = r.get("flag") or u""
+        if (r.get("qc_type") == u"Calibration" and DROPPED_BY_HAND in flag
+                and not r.get("passed") and not r.get("advisory")):
+            out.append(r)
+    return out
+
+
+def rule_text(flag):
+    """The rule's sentence as the worker wrote it, without its check tag."""
+    flag = (flag or u"").strip()
+    return flag[len(CAL_TAG):] if flag.startswith(CAL_TAG) else flag
+
+
+def dropped_rules(qc_rows):
+    """{analyte: the rule's sentence} of the curves failing the dropped-by-hand
+    rule in these Calibration QC rows."""
+    out = {}
+    for r in failed_rule_rows(qc_rows):
+        analyte = r.get("analyte") or u""
+        text = rule_text(r.get("flag"))
+        out[analyte] = u"; ".join(sorted(set(filter(None, [out.get(analyte), text]))))
+    return out
+
+
+def hold_reason(rules):
+    """Why the run's calibration cannot be approved, u"" when no curve fails
+    the rule. Shown beside the Approve button and when a post is refused."""
+    texts = [rules[a] for a in sorted(rules) if rules[a]]
+    return (u"A curve fails its rule: %s." % u"; ".join(texts)) if texts else u""

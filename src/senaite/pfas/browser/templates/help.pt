@@ -10,7 +10,7 @@
     <div class="pfas-seg-bar">
     <nav class="pfas-seg pfas-seg-strip" aria-label="Help sections" tal:define="at view/active_tab">
       <a class="pfas-seg-item" tal:repeat="t view/tabs" tal:attributes="href t/url;
-           aria-selected python:'true' if t['slug'] == at else 'false'"><span tal:replace="t/title"></span><span class="pfas-seg-count" tal:condition="t/count|nothing" tal:content="t/count"></span></a>
+           aria-selected python:'true' if t['slug'] == at else 'false'"><span tal:replace="t/title"></span></a>
     </nav>
     </div>
   </tal:t>
@@ -36,28 +36,8 @@
              class python:'help-side-item active' if x['active'] else 'help-side-item'"
            tal:content="x/term"></a>
       </nav>
-      <section class="help-entry" tal:define="e tv/entry" tal:condition="e" tal:attributes="id e/id">
-        <h3 tal:content="e/term"></h3>
-        <p tal:content="e/text"></p>
-        <dl class="help-facts">
-          <dt>Set on</dt>
-          <dd><a tal:repeat="w e/where" class="btn-sm btn-secondary"
-                 tal:attributes="href w/url" tal:content="w/label"></a></dd>
-          <dt>Who may change it</dt>
-          <dd><span tal:content="e/who"></span><span class="cf-hint" tal:condition="e/roles"
-                tal:content="python:' (' + ', '.join(e['roles']) + ')'"></span></dd>
-          <dt>Affects</dt>
-          <dd><ul class="help-effects"><li tal:repeat="x e/effects" tal:content="x"></li></ul></dd>
-        </dl>
-        <table class="pfas-table help-list" tal:repeat="lst e/lists">
-          <tbody>
-            <tr tal:repeat="row lst">
-              <td tal:content="python:row[0]"></td>
-              <td class="cf-hint" tal:content="python:row[1]"></td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      <!-- the entry, drawn by the one template the Help panel uses too -->
+      <tal:e define="e tv/entry" condition="e" replace="structure python:view.entry_html(e)" />
     </div>
   </div>
   <!-- an older link to an entry by #id opens it on its tab -->

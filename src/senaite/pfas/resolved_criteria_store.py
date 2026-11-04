@@ -3,12 +3,10 @@
 Resolved per-batch QC criteria — file bridge to the pipeline worker.
 
 `senaite.pfas.ruleset` resolves ONE criterion through project QAPP -> lab
-method profile -> published-method baseline (see ruleset.py's module
-docstring), but has zero call sites of its own: nothing decides WHEN a
-batch's criteria should be resolved, and nothing carries the result across
-the process boundary to the worker. This module is that: a per-batch
-resolved-criteria file, exported the same way method_profile_store.py
-already exports the lab tier.
+method profile -> published-method baseline. This module decides WHEN a
+batch's criteria are resolved and carries the result across the process
+boundary to the worker: a per-batch resolved-criteria file, exported the
+same way method_profile_store.py exports the lab tier.
 
     add-on:  export_resolved_criteria(portal, batch, method_id, matrix)
                  writes  {dirname(PFAS_PROFILES_PATH)}/resolved/{batch_id}.json
@@ -16,43 +14,23 @@ already exports the lab tier.
                  overlays that file's rows on top of the global profile it
                  just loaded from method_profiles.json.
 
-Why a separate module from ruleset.py, mirroring method_profile_store.py
-rather than living inside it
------------------------------------------------------------------------
-ruleset.py is deliberately pure resolution logic plus a thin ZODB shell; its
-own docstring says nothing calls it and nothing there does file I/O or
-batch-wide enumeration. method_profile_store.py already draws exactly this
-line for the LAB tier: resolution/shape lives in method_profiles-as-data,
-the ZODB<->file bridge is its own module. This file is that second half for
-the fully-resolved (project-aware) answer, one batch at a time. It imports
-ruleset for the actual resolution (resolve() / resolve_for_batch()) and adds
-no resolution logic of its own — enumerating WHICH analytes to resolve
-eis_recovery for is bookkeeping, not a tier decision.
+ruleset.py holds the resolution logic and does no file I/O; this module is
+the ZODB<->file bridge and adds no resolution logic of its own (enumerating
+WHICH analytes to resolve eis_recovery for is bookkeeping, not a tier
+decision).
 
-Pure core, thin ZODB shell — same split as ruleset.py
-------------------------------------------------------
 `build_resolved_rows()` and `write_resolved_file()` are pure: given
-already-fetched `profile` / `project_ruleset` dicts (or, for the writer,
-already-resolved rows), they touch no ZODB/Plone API and are exercised
-directly by tests/test_resolved_criteria_store.py under plain Python 3,
-exactly as tests/test_ruleset.py exercises ruleset.resolve(). Both fall back
-to a path-relative import of ruleset.py when the senaite.pfas package (which
-needs zope.i18nmessageid) is not importable, for the same reason ruleset.py
-itself does that for method_baselines.py.
-
+already-fetched `profile` / `project_ruleset` dicts (or already-resolved
+rows), they touch no ZODB/Plone API and run under plain Python 3. Both fall
+back to a path-relative import of ruleset.py when the senaite.pfas package
+(which needs zope.i18nmessageid) is not importable.
 `export_resolved_criteria()` / `remove_resolved_criteria()` are the thin
 shells: they fetch the real Project/profile via ruleset.resolve_for_batch()
-and project_ref, then delegate to the pure functions above. Like
-ruleset.resolve_for_batch() itself, they are not exercised by the plain-
-Python-3 test harness (there is no Zope there to fetch from) — proven live
-against the running instance instead.
+and project_ref, then delegate to the pure functions.
 
-Written ONLY when the caller knows a batch is linked to a project; a batch
-with no project (every batch today) never has this function called for it
-at all (see project_ref.set_project_uid, the call site), so it never gets a
-file, which is the safety property this whole feature depends on: no file
-is the default and must behave exactly like no file did before this module
-existed.
+Written ONLY for a batch linked to a project (project_ref.set_project_uid
+is the call site). A batch with no project gets no file, and no file must
+behave as the global profile alone.
 
 Python 2.7 compatible. No f-strings, no pathlib, no type annotations.
 """
@@ -69,21 +47,15 @@ logger = logging.getLogger("senaite.pfas.resolved_criteria_store")
 # `from senaite.pfas import ruleset` goes through the senaite.pfas package
 # __init__, which needs zope.i18nmessageid and so is unavailable outside the
 # container (tests, a plain `python3` interpreter).
-try:
-    from senaite.pfas import ruleset
-except ImportError:
-    import sys as _sys
-    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import ruleset  # noqa: E402  (standalone/test fallback)
+from senaite.pfas import ruleset
 
 
 def _resolved_dir(base_profiles_path=None):
     """Directory the per-batch resolved files live in, derived from the SAME
     env var method_profile_store.export_profiles_to_file() honours for the
     global file (PFAS_PROFILES_PATH) -- never a second, independently
-    hardcoded path (Sec1 rule 3). Read at CALL time, not at import
-    time, so a test that sets the env var before calling in still redirects
-    it even though this module may already have been imported."""
+    hardcoded path. Read at CALL time, not at import time, so a test that
+    sets the env var before calling in still redirects it."""
     if base_profiles_path is None:
         base_profiles_path = os.environ.get(
             "PFAS_PROFILES_PATH", "/data/qc/method_profiles.json")
@@ -108,18 +80,16 @@ def resolved_file_path(batch_id, directory=None):
 
 def _analytes_for_key(key, method_id, matrix, profile, project_ruleset):
     """Which analytes to resolve `key` for. Every key except the
-    analyte-scoped ones (ruleset.ANALYTE_SCOPED_KEYS -- today just
+    analyte-scoped ones (ruleset.ANALYTE_SCOPED_KEYS, such as
     eis_recovery) resolves once, analyte=None.
 
     For an analyte-scoped key, the universe is the union of every analyte
-    the LAB profile's eis_overrides already names and every analyte a
-    PROJECT ruleset names for this exact (method_id, matrix, key) --
-    precisely the analytes something live already has an opinion about
-    today (pfas_pipeline/method_profiles.py reads eis_overrides the
-    identical way). An analyte with ONLY a published-method baseline and no
-    lab/project configuration is not enumerated: nothing evaluates it live
-    today either, so listing it here would be inventing a row, not
-    resolving one."""
+    the LAB profile's eis_overrides names and every analyte a PROJECT
+    ruleset names for this exact (method_id, matrix, key)
+    (pfas_pipeline/method_profiles.py reads eis_overrides the same way). An
+    analyte with ONLY a published-method baseline and no lab/project
+    configuration is not enumerated: nothing evaluates it, so a row for it
+    would be invented, not resolved."""
     if key not in ruleset.ANALYTE_SCOPED_KEYS:
         return [None]
     names = set()
@@ -135,8 +105,8 @@ def _analytes_for_key(key, method_id, matrix, profile, project_ruleset):
 
 def _row_from_resolved(resolved):
     """A ResolvedCriterion -> the plain, JSON-ready dict this module writes
-    and pfas_pipeline.method_profiles reads back. Every field the task
-    requires travels: value, tier, source doc/rev, conformance + departure."""
+    and pfas_pipeline.method_profiles reads back: value, tier, source
+    doc/rev, conformance + departure."""
     return {
         u"key": resolved.key,
         u"analyte": resolved.analyte,
@@ -146,6 +116,7 @@ def _row_from_resolved(resolved):
         u"source_rev": resolved.source_rev,
         u"conformance": resolved.conformance,
         u"departure": resolved.departure,
+        u"set_by": resolved.set_by,
     }
 
 
@@ -154,9 +125,8 @@ def build_resolved_rows(method_id, matrix, profile=None, project_ruleset=None,
     """Pure counterpart to export_resolved_criteria(): every criterion
     registered in ruleset.SHAPES_BY_KEY, resolved through
     ruleset.resolve() against already-fetched `profile` / `project_ruleset`
-    dicts (ruleset.resolve()'s own calling convention -- no ZODB/Plone
-    import here, so this runs and is tested under plain Python 3 exactly
-    like ruleset.py's own test suite).
+    dicts (ruleset.resolve()'s own calling convention; no ZODB/Plone
+    import here).
 
     Returns a list of plain dicts, JSON-ready, in the shape
     pfas_pipeline.method_profiles' overlay reads back."""
@@ -164,20 +134,27 @@ def build_resolved_rows(method_id, matrix, profile=None, project_ruleset=None,
     for key in sorted(ruleset.SHAPES_BY_KEY):
         for analyte in _analytes_for_key(key, method_id, matrix, profile,
                                           project_ruleset):
-            resolved = ruleset.resolve(
-                method_id, matrix, key, analyte=analyte,
-                profile=profile, project_ruleset=project_ruleset,
-                project_doc=project_doc, project_rev=project_rev)
-            rows.append(_row_from_resolved(resolved))
+            rows.append(resolve_row(method_id, matrix, key, analyte, profile,
+                                     project_ruleset, project_doc, project_rev))
     return rows
+
+
+def resolve_row(method_id, matrix, key, analyte, profile=None,
+                project_ruleset=None, project_doc=None, project_rev=None):
+    """One criterion resolved to the plain row build_resolved_rows() holds,
+    for a caller that needs an analyte that function does not enumerate."""
+    return _row_from_resolved(ruleset.resolve(
+        method_id, matrix, key, analyte=analyte, profile=profile,
+        project_ruleset=project_ruleset, project_doc=project_doc,
+        project_rev=project_rev))
 
 
 def write_resolved_file(batch_id, method_id, matrix, rows, directory=None,
                         profile_patch=None, departures=None, stale=None):
     """Write `rows` (as built by build_resolved_rows()) to
-    {directory}/{batch_id}.json. Atomic: writes to .tmp then renames --
-    exactly method_profile_store.export_profiles_to_file()'s pattern.
-    Raises on I/O failure, same as that function; the caller decides
+    {directory}/{batch_id}.json. Atomic: writes to .tmp then renames, as
+    method_profile_store.export_profiles_to_file() does.
+    Raises on I/O failure; the caller decides
     whether to swallow it (export_resolved_criteria does, so a resolved-
     criteria write failure never blocks the project-link operation that
     triggered it). Returns the path written."""
@@ -210,8 +187,7 @@ def write_resolved_file(batch_id, method_id, matrix, rows, directory=None,
     return path
 
 
-# ── Thin ZODB shells (not exercised by the plain-Python-3 test harness — ────
-# proven live, like ruleset.resolve_for_batch() itself) ──────────────────────
+# ── Thin ZODB shells (need Zope: not run by the plain-Python-3 tests) ────────
 
 def resolve_rows_for_batch(portal, batch, method_id, matrix):
     """The read half of export_resolved_criteria(): resolve every registered
@@ -219,17 +195,13 @@ def resolve_rows_for_batch(portal, batch, method_id, matrix):
     baseline and return the plain rows (build_resolved_rows()'s shape),
     WITHOUT writing anything.
 
-    Split out so a second caller can resolve through the identical path
-    instead of growing its own copy of this loop (single
-    source of truth): worksheet_criteria_snapshot.freeze_resolved_criteria()
-    freezes these same rows onto a WORKSHEET annotation at the Sec7.8.4
-    technical review, rather than the per-batch working file this function's
-    other caller writes.
+    The one resolution path for both callers:
+    worksheet_criteria_snapshot.freeze_resolved_criteria() freezes these
+    same rows onto a WORKSHEET annotation at the Sec7.8.4 technical review.
 
-    `batch` may be None -- every project_ref lookup already treats a None
-    batch as "no project" rather than raising (see project_ref.get_project_
-    uid's own docstring), so this simply resolves lab/baseline tier only in
-    that case. `method_id`/`matrix` may also be empty; the caller decides
+    `batch` may be None: project_ref treats a None batch as "no project",
+    so only the lab/baseline tiers resolve. `method_id`/`matrix` may also
+    be empty; the caller decides
     whether an incomplete result is acceptable (export_resolved_criteria
     refuses to write one; the worksheet snapshot records why it could not)."""
     from senaite.pfas import method_profile_store
@@ -255,12 +227,8 @@ def export_resolved_criteria(portal, batch, method_id, matrix, directory=None):
     through project -> lab -> baseline and write the result to
     {directory}/{batch_id}.json.
 
-    method_id and matrix are supplied by the CALLER, not derived here — this
-    function resolves and writes; it does not go hunting through logbook
-    annotations or worksheet samples to guess a batch's method or matrix.
-    See project_ref.set_project_uid (the call site) for where that
-    best-effort derivation happens and why it is allowed to conclude
-    "unknown" there but never invent a value here.
+    method_id and matrix are supplied by the CALLER (project_ref.set_project_uid
+    derives them), never guessed here.
 
     Returns the path written, or None if batch_id/method_id/matrix were
     incomplete — never writes a partial or guessed file."""
@@ -302,10 +270,7 @@ def refresh_linked_batches(portal, method_id=None, project_uid=None, request=Non
     from senaite.pfas.browser.batch_project_viewlet import _batch_method_id, _batch_matrix
     refreshed, skipped = 0, []
     for batch in batch_ref.list_batches(portal):
-        try:
-            uid = project_ref.get_project_uid(batch)
-        except Exception:
-            continue
+        uid = project_ref.get_project_uid(batch)
         if not uid or (project_uid and uid != project_uid):
             continue
         batch_id = getattr(batch, "getId", lambda: None)() or u"?"

@@ -6,7 +6,7 @@
                              rebuilt from the definitions on each call, so a
                              new revision's fields are what a design is
                              checked against
-    designed_logbook_pdf(portal, batch, slug, schema, entry, header)
+    designed_logbook_pdf(portal, slug, schema, entry, header)
                           -- the PDF, None when no design is issued; raises
                              when the issued design no longer fits the
                              definition or cannot render

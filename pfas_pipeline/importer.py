@@ -6,30 +6,26 @@ column mapping saved in Import Studio for that instrument and software version
 """
 
 from __future__ import annotations
-import csv
 import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
 
 import pandas as pd
 
-from .models import InstrumentRow, reported_conc  # noqa: F401 (re-export)
+from .models import InstrumentRow
 from .constants import INJECTION_PATTERNS, STARLIMS_RE, QC_TYPES
 from .canonical_columns import NATIVE_COLUMN_MAP, duplicate_targets
 from .analyte_alias import canonical_labelled_name
 
 logger = logging.getLogger(__name__)
 
-# Software version regex (mirrors import_studio._detect_software_version)
 _VERSION_RE = re.compile(r'\b(\d+\.\d+[\.\d]*)\b')
 
 # ── Column header → internal name ────────────────────────────────────────────
-# Sourced from the add-on's canonical vocabulary so Import Studio can express
-# every field the importer consumes. The extra entries below
-# are columns the importer tolerates but does not surface on InstrumentRow, so
-# they are not offered as mapping purposes.
+# The add-on's canonical vocabulary, so Import Studio can map every field the
+# importer reads. The extra entries are columns the importer tolerates but
+# InstrumentRow does not carry: they are not offered as mapping purposes.
 _COL_MAP: dict[str, str] = dict(NATIVE_COLUMN_MAP)
 _COL_MAP.update({
     "Replicates":                 "replicates",
@@ -45,11 +41,10 @@ _COL_MAP.update({
 _ND_VALUES = {"ND", "N.D.", "N/A", "n/a", "", "NaN", "nan", "#N/A", "N.C.", "N.C"}
 
 # ── Concentration qualifier tokens ──────────────────────────────────────────
-# Instruments write these into the concentration cell, either alone ("BLoQ")
-# or as a suffix on a real number ("20.1268 (ALoQ)"). They are NOT noise: they
-# are the instrument's own statement about the result, and collapsing them to
-# None turned "detected below the quantitation limit" into "not detected" —
-# a different claim entirely under FDA/EPA reporting.
+# Instruments write these into the concentration cell, alone ("BLoQ") or as a
+# suffix on a number ("20.1268 (ALoQ)"). They are the instrument's statement
+# about the result and are kept: "detected below the quantitation limit" is
+# not "not detected" under FDA/EPA reporting.
 _QUALIFIER_TOKENS = {
     "BLOQ":         "BLoQ",          # below limit of quantitation (detected)
     "<LOQ":         "BLoQ",
@@ -74,8 +69,7 @@ def parse_conc(val: str) -> "tuple[float | None, str]":
       "BLoQ"              → (None,   "BLoQ")
       "20.1268 (ALoQ)"    → (20.1268, "ALoQ")
 
-    An unrecognised non-numeric string yields (None, "") exactly as before, so
-    genuinely empty or junk cells behave unchanged.
+    An unrecognised non-numeric string yields (None, "").
     """
     if val is None:
         return None, ""
@@ -113,16 +107,9 @@ _FLOAT_COLS = {
 def detect_software_version(path: "str | Path",
                             header_line_index: int = 0) -> str:
     """Read a software version out of the export's PREAMBLE — the lines ABOVE
-    the header row. Returns "" when the file starts with its header, which is
-    the honest answer: that file declares no version.
-
-    Mirrors import_studio._detect_software_version deliberately; the two must
-    agree, because the value becomes half of the saved profile's lookup key.
-
-    Previously this scanned the first 20 lines unconditionally, so it read DATA:
-    on a real FDA export it returned "0.039", a concentration from row 1's
-    sample description. Every file whose first row held a different number
-    produced a different key and silently stopped matching its own profile.
+    the header row. Returns "" when the file starts with its header: that file
+    declares no version. Data rows are never read: a number in them would give
+    each file a different key.
     """
     if header_line_index <= 0:
         return ""
@@ -149,11 +136,9 @@ def _parse_float(val: str) -> float | None:
         return None
 
 
-# Accepted acquisition-timestamp formats, most specific first.
-# The month-name forms matter: SCIEX OS and several Waters builds write
-# "Oct 08, 2025 17:55:21". Only numeric formats were accepted before, so every
-# row of a real export parsed to None — which emptied injection_results.run_date
-# and left the control charts and time-based CCV bracketing with nothing.
+# Accepted acquisition-timestamp formats, most specific first. SCIEX OS and
+# several Waters builds write month names ("Oct 08, 2025 17:55:21"); an
+# unparsed time leaves the control charts and time-based CCV bracketing empty.
 _DATETIME_FORMATS = (
     "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S",
     "%Y-%m-%d %H:%M",    "%d/%m/%Y %H:%M",    "%m/%d/%Y %H:%M",
@@ -215,9 +200,8 @@ def load_instrument_csv(
              this takes precedence over vendor_profiles.py.  If the dict
              contains an "error" key, ImportError is raised immediately.
 
-    vendor: legacy fallback — one of waters/agilent/sciex/native.  Ignored
-            when *profile* is provided.  Only used when profile is None AND
-            vendor_profiles.py is still available (deprecated path).
+    vendor: one of waters/agilent/sciex/native, read only when *profile* is
+            None and PFAS_ALLOW_LEGACY_VENDOR_MAP=1 (tests only).
     """
     if profile is not None:
         if "error" in profile:
@@ -234,14 +218,11 @@ def load_instrument_csv(
         df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
 
     if profile is not None:
-        # Use Import Studio profile map exclusively
         col_map = profile.get("map", {})
         if col_map:
-            # Refuse rather than lose data. pandas' rename happily produces two
-            # columns with the same name and to_dict() then keeps only the last,
-            # so a mapping that points three columns at observed_rt discards two
-            # of them without a word. Guarding here protects every profile,
-            # including ones saved before the Studio validated them.
+            # Refuse rather than lose data: pandas' rename makes two columns of
+            # one name and to_dict() keeps only the last. Checked here for
+            # every profile, whatever the Studio validated when it was saved.
             dupes = duplicate_targets(col_map)
             if dupes:
                 detail = "; ".join(
@@ -258,10 +239,9 @@ def load_instrument_csv(
                 col_map = _load("import_layouts").resolve_map(profile, list(df.columns))
             df = df.rename(columns=col_map)
     else:
-        # §7: Import Studio is the SINGLE source of instrument mappings — the
-        # importer must refuse rather than auto-guess. The hardcoded
-        # vendor_profiles.py path is retained for the test-suite only, behind
-        # an explicit opt-in.
+        # §7: Import Studio is the single source of instrument mappings: refuse
+        # rather than guess. vendor_profiles.py is for the tests, behind an
+        # explicit opt-in.
         import os
         if os.environ.get("PFAS_ALLOW_LEGACY_VENDOR_MAP") != "1":
             raise ImportError(
@@ -303,7 +283,6 @@ def load_instrument_csv(
         except (TypeError, ValueError):
             _line = None
 
-        # Parse datetime
         dt = _parse_datetime(
             r.get("acq_date_str", "") or r.get("acq_datetime_str", ""),
             r.get("acq_time_str", ""),
@@ -311,30 +290,26 @@ def load_instrument_csv(
         )
         r["_dt"] = dt
 
-        # Build concat_id if not present
         if not r.get("concat_id") or r["concat_id"].strip() in _ND_VALUES:
             r["concat_id"] = _build_concat_id(r)
 
-        # Parse floats
         parsed_floats: dict[str, float | None] = {}
         for col in _FLOAT_COLS:
             val = r.get(col, "")
             parsed_floats[col] = _parse_float(str(val)) if val else None
 
-        # The two concentration columns may carry the instrument's own verdict
-        # ("BLoQ", "20.13 (ALoQ)", "Not Detected"). Keep it — the numeric
-        # columns alone cannot distinguish "below quantitation" from "absent".
+        # The concentration columns may carry the instrument's verdict
+        # ("BLoQ", "20.13 (ALoQ)", "Not Detected"): kept, as a number alone
+        # cannot tell "below quantitation" from "absent".
         calc_val, calc_qual = parse_conc(r.get("calculated_conc"))
         meas_val, meas_qual = parse_conc(r.get("measured_conc"))
         parsed_floats["calculated_conc"] = calc_val
         parsed_floats["measured_conc"] = meas_val
 
-        # A calibrator's deviation, as a FRACTION (what the checks use), from
-        # its own expected and calculated concentrations: software writes the
-        # "% Deviation" column in percent (Waters: 2.74 = 2.74 %), so taking it
-        # as a fraction judged every point at 100x (found 2026-10-07 with the
-        # lab's EPA 537.1 export -- the only method judging each point). The
-        # column is used only when the two concentrations are not there.
+        # A calibrator's deviation as a fraction (what the checks use), from its
+        # expected and calculated concentrations: software writes "% Deviation"
+        # in percent (Waters: 2.74 = 2.74 %). The column is used only when the
+        # two concentrations are not there.
         _exp, _calc = parsed_floats.get("expected_conc"), parsed_floats.get("calculated_conc")
         if _exp not in (None, 0) and _calc is not None:
             parsed_floats["pct_deviation"] = (_calc - _exp) / _exp
@@ -351,7 +326,7 @@ def load_instrument_csv(
             sample_type         = str(r.get("sample_type", "")).strip(),
             included_in_cal     = str(r.get("included_in_cal", "")).strip().lower() in ("true", "1", "yes", "y"),
             level               = r.get("level") or None,
-            linked_is           = r.get("linked_is") or None,
+            linked_is           = canonical_labelled_name(str(r.get("linked_is") or "").strip()) or None,
             cal_ref_compound    = r.get("cal_ref_compound") or None,
             observed_rt         = parsed_floats.get("observed_rt"),
             rt_relative_to_is   = parsed_floats.get("rt_relative_to_is"),
@@ -443,7 +418,7 @@ def qualifier_rows(rows, suffix):
 # ── Injection name validator ──────────────────────────────────────────────────
 def validate_injection_name(name: str) -> dict:
     """
-    Validate an injection name against the legacy naming patterns
+    Validate an injection name against the built-in naming patterns
     (constants.INJECTION_PATTERNS; debug-level only, see pipeline step 2).
     Returns {"valid": bool, "pattern": int, "qc_type": str, "starlims_id": str|None,
              "error": str|None}
@@ -473,9 +448,9 @@ def validate_injection_name(name: str) -> dict:
     }
 
 
-# The extraction batch's members (senaite.pfas.extraction_batch): {injection name: role}. The LIMS issues every injection name
-# and records what each one is, so for a run built from it the record -- not
-# the name -- says what an injection is. Set once per run (run_pipeline).
+# The extraction batch's members (senaite.pfas.extraction_batch): {injection
+# name: role}. For a run built from it the LIMS record, not the name, says what
+# an injection is. Set once per run (run_pipeline).
 _MEMBER_ROLES = {}
 
 
@@ -491,13 +466,10 @@ def classify_injection(name: str, dilutions: "dict | None" = None) -> str:
     Used to classify each row in the DATA table without re-running full validation.
 
     *dilutions* is the map recorded on FM-ENV-003 (see
-    senaite.pfas.dilution_ref). An injection listed there is a DILUTION of
-    another sample, not a sample in its own right — so it stops being counted
-    and reported twice, and QC rules can skip it.
-
-    The relationship is never inferred from the name. `"…; Dil. 1:10"` is one
-    lab's typing convention, and encoding conventions in code is what produced
-    a validator that rejected this system's own output.
+    senaite.pfas.dilution_ref). An injection listed there is a dilution of
+    another sample, not a sample of its own: it is not counted or reported
+    twice, and QC rules can skip it. The relationship is never inferred from
+    the name.
     """
     if dilutions and name in dilutions:
         return "Dilution"
@@ -507,19 +479,14 @@ def classify_injection(name: str, dilutions: "dict | None" = None) -> str:
     return role
 
 
-# Control material, recognised POSITIVELY and in this order. Everything here is
-# laboratory-prepared: getting one wrong means it is treated as client material,
-# so its contamination is never judged as a blank, it is not used for blank
-# subtraction, and under qualified release its failures would be excused as a
-# matrix effect instead of holding the batch.
-#
-# Order matters twice over: LFSMD before LFSM (the longer token contains the
-# shorter), and both before Dup — a plain sample duplicate used to be swallowed
-# by a bare "DUP" substring test and reported as a matrix-spike duplicate, which
-# is a different QC type with different acceptance criteria.
+# Control material, recognised positively and in this order. All of it is
+# laboratory-prepared: one missed is treated as client material, never judged
+# as a blank, never used for blank subtraction, and its failures qualified as
+# a matrix effect instead of holding the batch.
+# Order: LFSMD before LFSM (the longer token contains the shorter), both
+# before Dup (a sample duplicate is not a matrix-spike duplicate).
 _ROLE_PATTERNS = [
-    # "LFSM Mid Duplicate" is the real convention — the Dup marker can sit any
-    # distance after the LFSM token, so this cannot be an adjacency test.
+    # "LFSM Mid Duplicate": the Dup marker may sit any distance after LFSM
     ("LFSMD", re.compile(r"(?i)\bLFSMD\b|\bLFSM\b.*\bDup")),
     ("LFSM",  re.compile(r"(?i)\bLFSM\b")),
     ("MxB",   re.compile(r"(?i)\bMxB\b|\bmatrix\s+blank\b")),
@@ -541,14 +508,16 @@ _ROLE_PATTERNS = [
 def _classify(name):
     """(role, rule) for an injection name. rule is "" when nothing matched.
 
-    A client sample has NO positive marker — every real one falls through here.
-    That is why the fallback is "Sample" and not something stricter: making the
-    fallback strict would stop reporting every genuine sample. The safety comes
-    from recognising control material exhaustively above, and from naming the
-    injections that reached the fallback without matching a SENAITE sample.
+    A client sample has no positive marker, so the fallback is "Sample". The
+    safety is in recognising control material exhaustively (_ROLE_PATTERNS)
+    and naming the injections that fall through without matching a SENAITE
+    sample.
     """
+    # "_" separates the parts of a name (537_CCV_261006_02), but regex
+    # word boundaries treat it as a letter: read it as a space
+    text = (name or "").replace("_", " ")
     for role, pattern in _ROLE_PATTERNS:
-        if pattern.search(name or ""):
+        if pattern.search(text):
             return role, role
     return "Sample", ""
 
@@ -556,9 +525,7 @@ def _classify(name):
 def classification_rule(name, dilutions=None):
     """Which rule classified this injection, or "" if it fell through.
 
-    Lets a caller tell a POSITIVELY identified injection from one that merely
-    defaulted — the difference between "this is a sample" and "nothing here
-    looked like anything".
+    Tells a positively identified injection from one that defaulted.
     """
     if dilutions and name in dilutions:
         return "Dilution"
@@ -576,9 +543,3 @@ def group_by_injection(rows: list[InstrumentRow]) -> dict[str, list[InstrumentRo
     return groups
 
 
-def group_by_compound(rows: list[InstrumentRow]) -> dict[str, list[InstrumentRow]]:
-    """Group instrument rows by compound name."""
-    groups: dict[str, list[InstrumentRow]] = {}
-    for r in rows:
-        groups.setdefault(r.compound_name, []).append(r)
-    return groups

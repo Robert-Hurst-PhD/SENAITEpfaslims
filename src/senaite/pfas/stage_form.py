@@ -23,9 +23,8 @@ The keys every other part of the system reads -- reagent_roles,
 consumables, equipment, confirmations, captures_samples, creates_solution,
 capture_pedigree -- are DERIVED from the fields when a stage is saved
 (apply_fields), so the sidecar, FM-ENV-003, the traceability chain and the
-review read exactly what they read before. A stage saved before forms
-existed has no "fields": stage_fields() derives them from those keys, in
-the order the guide always drew them, and nothing is written until a
+review read those keys. A stage with no "fields" has them derived from its
+keys (stage_fields), in the guide's block order; nothing is written until a
 manager saves the stage.
 
 Pure. Python 2.7 and 3.
@@ -34,10 +33,7 @@ from __future__ import absolute_import, unicode_literals
 
 import copy
 
-try:
-    from senaite.pfas import logbook_schema as LS
-except ImportError:                                         # loaded by path (tests)
-    import logbook_schema as LS
+from senaite.pfas import logbook_schema as LS
 
 # bound type -> (the derived list key, the editor's label)
 LISTED = {
@@ -67,7 +63,7 @@ RESERVED_NAMES = frozenset(("action", "batch_uid", "stage_order", "reagents_json
                             "samples_json", "deviations", "pedigree_json_stage", "method_id",
                             "analyst", "reason", "stage", "error", "ok"))
 
-# the guide's blocks, in the order it always drew them
+# the guide's blocks, in its order
 BLOCK_OF = {"sample_capture": "samples", "reagent_role": "reagents", "consumable": "consumables",
             "equipment": "equipment", "confirmation": "checks", "solutions": "solutions",
             "pedigree": "pedigree"}
@@ -90,8 +86,8 @@ def _name(prefix, label, taken):
 
 
 def fields_from_legacy(stage):
-    """The questions a stage saved before forms existed amounts to, in the
-    order the guide drew its blocks."""
+    """The questions a stage without "fields" amounts to, in the order the
+    guide draws its blocks."""
     stage = stage or {}
     taken, out = set(), []
     cap = (stage.get("captures_samples") or u"").strip()

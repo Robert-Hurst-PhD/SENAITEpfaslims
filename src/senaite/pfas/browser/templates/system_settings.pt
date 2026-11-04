@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">System</title>
+  <metal:fill fill-slot="header-title">System</metal:fill>
+
+  <div metal:fill-slot="content">
+  <div class="page-body-narrow">
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-error" tal:condition="view/failed">Not saved.</div>
+    <div class="alert alert-error" tal:condition="view/raw_failed">Raw-data share not saved: an absolute path, and whole minutes from 1.</div>
+
+    <div class="pfas-settings-grid">
+    <form method="post" class="pfas-card" id="sec-notifications" tal:attributes="action string:${view/portal_url}/@@pfas-system">
+      <input type="hidden" name="action" value="save_notices" tal:condition="view/can_configure" />
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <h3 class="pfas-card-head">Notifications <tal:h define="hid string:system-page"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+      <tal:k tal:repeat="k view/notice_kinds">
+        <div class="field-row">
+          <label class="pfas-switch">
+            <input type="checkbox" value="on"
+                   tal:attributes="name string:notice_email.${k/kind}; checked python:k['email'] and 'checked' or None;
+                                   disabled python:None if view.can_configure() else 'disabled'" />
+            <span class="pfas-switch-track"></span>
+            <span tal:content="string:${k/title}: e-mail">Run sent back: e-mail</span>
+          </label>
+        </div>
+        <div class="field-row">
+          <label tal:attributes="for string:nh_${k/kind}">Remind every, hours</label>
+          <input type="number" min="0" step="1"
+                 tal:attributes="name string:notice_hours.${k/kind}; id string:nh_${k/kind}; value k/every_hours;
+                                 disabled python:None if view.can_configure() else 'disabled'" />
+        </div>
+      </tal:k>
+      <div class="form-actions"><button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button></div>
+    </form>
+
+    <form method="post" class="pfas-card" id="sec-raw" tal:define="raw view/raw_share" tal:attributes="action string:${view/portal_url}/@@pfas-system">
+      <h3 class="pfas-card-head">Raw data share</h3>
+      <p class="form-note" tal:condition="not:view/can_site_admin">Only a Site Administrator changes where raw data is pulled from.</p>
+      <tal:admin tal:condition="view/can_site_admin">
+      <input type="hidden" name="action" value="save_raw" />
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <div class="field-row">
+        <label for="raw_share_path">Instrument data share</label>
+        <input type="text" name="raw_share_path" id="raw_share_path" placeholder="/mnt/lcms/data"
+               tal:attributes="value python:raw.get('share_path') or ''" />
+      </div>
+      <div class="field-row">
+        <label for="raw_settle_minutes">Unchanged before it is pulled, minutes</label>
+        <input type="number" min="1" step="1" name="raw_settle_minutes" id="raw_settle_minutes"
+               tal:attributes="value python:raw.get('settle_minutes') or ''" />
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+      </tal:admin>
+    </form>
+
+    <div class="pfas-card" id="sec-site-admin" tal:condition="view/can_site_admin">
+      <h3 class="pfas-card-head">Site Administrator</h3>
+      <p class="form-note">Plone's own control panels.</p>
+      <div class="form-actions">
+        <a class="btn-sm btn-secondary" tal:repeat="p view/control_panels"
+           tal:attributes="href p/href" tal:content="p/label">Mail</a>
+      </div>
+    </div>
+    </div>
+  </div>
+  </div>
+</html>

@@ -19,14 +19,14 @@ Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
-from senaite.pfas.browser.sidebar import _get_user_roles, sidebar_landing, sidebar_pins_json
+from senaite.pfas.browser.sidebar import _get_user_roles, request_here, sidebar_nav, sidebar_pins_json
 
 
-class PFASMacrosView(BrowserView):
+class PFASMacrosView(ViewHelpers, BrowserView):
     """Exposes pfas_macros.pt macros for use by other PFAS page templates."""
 
     _template = ViewPageTemplateFile("templates/pfas_macros.pt")
@@ -36,19 +36,41 @@ class PFASMacrosView(BrowserView):
     def macros(self):
         return self._template.macros
 
+    def help_term(self, hid):
+        """The term a Help button is named by (the "help" macro): its
+        help_dictionary entry's, else the id itself."""
+        from senaite.pfas import help_dictionary
+        return help_dictionary.term_of(hid)
+
+    def lab_name(self):
+        """The laboratory's name (core's Laboratory), for the tab title."""
+        from senaite.pfas import lab_identity
+        portal = getToolByName(self.context, 'portal_url').getPortalObject()
+        try:
+            return lab_identity.read(portal)["name"]
+        except Exception:                                   # noqa: BLE001
+            return u""
+
     def asset_version(self):
         """?v= for the add-on's CSS and JS URLs (asset_version.py)."""
         from senaite.pfas.browser.asset_version import asset_version
         return asset_version()
 
+    def data_lab_today(self):
+        """The laboratory's date for the page's scripts (data-lab-today on
+        its root element) while the zone converts; None otherwise, so the
+        attribute is left out and a script keeps its own clock."""
+        from senaite.pfas import lab_time
+        return lab_time.today().isoformat() if lab_time.active() else None
+
     def print_settings(self):
         """Print header/footer settings for the shared printhead macro —
         single source: Configuration → Print Settings."""
-        import datetime
+        from senaite.pfas import print_doc
         from senaite.pfas.print_settings import get_print_settings
         portal = getToolByName(self.context, 'portal_url').getPortalObject()
         ps = get_print_settings(portal)
-        ps["print_date"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        ps["print_date"] = print_doc.now_label()
         return ps
 
     def print_block(self, control=None, title=None):
@@ -82,13 +104,15 @@ class PFASMacrosView(BrowserView):
         cells.append((u"Printed", printed_at))
         head = print_doc.head_html(
             ps, control.get("title") or u"", cells, subtitle=control.get("subtitle"),
-            logo=True)
+            logo=True, portal_url=self.portal_url())
+        issued = control.get("issued") or control.get("date")
         css = print_doc.document_css(doc_id, control.get("revision"), printed_by,
-                                     printed_at, base=False)
-        foot = u" \u00b7 " + print_doc.footer_text(u"", control.get("revision"),
-                                                   printed_at, printed_by)
-        return {"css": css, "head": head, "auto": not doc_id,
-                "foot": print_doc.css_string(foot)}
+                                     printed_at, base=False, issued=issued)
+        # a page named by its own title (pfas-print.js): what follows the title
+        rev = u" Rev %s" % control["revision"] if control.get("revision") not in (None, u"") else u""
+        foot = print_doc.css_string(rev) + u"\\A " + print_doc.css_string(
+            print_doc.printed_line(printed_at, printed_by))
+        return {"css": css, "head": head, "auto": not doc_id, "foot": foot}
 
     def signoff_signers(self):
         """QAO + Laboratory Director attestation signers for the shared
@@ -107,20 +131,15 @@ class PFASMacrosView(BrowserView):
         portal = getToolByName(self.context, 'portal_url').getPortalObject()
         return find_by_initials(portal, initials)
 
-    def portal_url(self):
-        return getToolByName(self.context, 'portal_url').getPortalObject().absolute_url()
-
-    def current_path(self):
-        return self.request.get('PATH_INFO', '')
-
     def user_roles(self):
         return _get_user_roles(self.context)
 
-    def landing(self):
-        return sidebar_landing(self.context)
+    def nav(self):
+        """The rail and the section panel for this page (sidebar.sidebar_nav)."""
+        return sidebar_nav(self.context, self.request, self.portal_url())
 
-    def pins_json(self):
-        return sidebar_pins_json(self.context)
+    def pins_json(self, nav):
+        return sidebar_pins_json(nav)
 
     def user_name(self):
         """Return the authenticated user's login name, or '' if anonymous."""
@@ -129,34 +148,36 @@ class PFASMacrosView(BrowserView):
         name = getattr(user, 'getUserName', lambda: '')()
         return name if name and name.lower() != 'anonymous user' else ''
 
-    def page_group(self):
-        """The page group this page belongs to, for the frame's tab strip:
-        {"label", "tabs": [{"href", "label", "active"}]}, or None (not in a
-        group, or only one of its pages open to this person)."""
-        from senaite.pfas import page_groups as pg
-        here = pg.view_name(self.request.get("ACTUAL_URL") or self.request.get("URL", ""))
-        group = pg.group_for(here)
-        if group is None:
-            return None
-        tabs = pg.tabs_for(group, self.user_roles())
-        if len(tabs) < 2:
-            return None
-        purl = self.portal_url()
-        return {"label": group["label"],
-                "tabs": [{"href": "%s/@@%s" % (purl, v), "label": label, "active": v == here}
-                         for v, label in tabs]}
+    def _here(self):
+        """(path under the site, {query name: value}) of this page."""
+        return request_here(self.request, self.portal_url())
 
-    def group_item(self, group_id):
-        """The sidebar item of a page group: {"href", "active"}, or None when
-        none of its pages is open to this person."""
+    def crumb_trail(self):
+        """The breadcrumb of this page, drawn from the navigation map as this
+        person's tree shows it: [{"kind", "label", "url"}] from the section
+        (kind "text": it has no page) down to the page. A link is "link"; the
+        page itself is "here" when the last row of the map is this page, else
+        its row stays a link and "title" stands for the page's own title (a
+        record beneath a listed item). A page on none of the person's rows
+        gets Home, then the title. [] on the dashboard, which has no place."""
         from senaite.pfas import page_groups as pg
-        group = pg.group_by_id(group_id)
-        first = pg.first_for(group, self.user_roles())
-        if not first:
-            return None
-        here = pg.view_name(self.request.get("ACTUAL_URL") or self.request.get("URL", ""))
-        return {"href": "%s/@@%s" % (self.portal_url(), first),
-                "active": pg.group_for(here) is group}
+        if self.context.portal_membership.isAnonymousUser():
+            return []
+        path, query = self._here()
+        trail = pg.crumbs(path, query, _get_user_roles(self.context))
+        if not trail:
+            if pg.is_dashboard(path):
+                return []
+            home = pg.HOME["dashboard"]
+            return [{"kind": "link", "label": pg.HOME["label"], "url": home["url_path"]},
+                    {"kind": "title", "label": "", "url": None}]
+        out = [{"kind": "link" if url else "text", "label": label, "url": url}
+               for label, url in trail]
+        if pg.same_page(trail[-1][1] or "", path) or pg.is_row_page(path):
+            out[-1]["kind"] = "here"
+        else:
+            out.append({"kind": "title", "label": "", "url": None})
+        return out
 
     def is_manager_role(self):
         """Return True if the current user is a LabManager or Manager."""
@@ -283,71 +304,11 @@ class PFASMacrosView(BrowserView):
 
         Called from pfas_macros.pt via context/@@pfas-macros/render_sidebar.
         Renders the sidebar template with view=PFASMacrosView (so
-        view/portal_url and view/current_path are available). Called as a
+        view/portal_url and view/nav are available). Called as a
         method, not as a top-level response, so Plone's transform pipeline
         does not wrap the output in <!DOCTYPE html>.
         """
         return self._sidebar_template()
-
-    def get_nav_items(self):
-        """Return role-scoped left-panel nav items.
-
-        Called via ``context/@@pfas-macros/get_nav_items`` in the macro so
-        that traversal always lands on PFASMacrosView, not the calling view.
-        Each entry is a dict with 'type' ('section' or 'item') plus keys
-        appropriate to that type.
-        """
-        portal = getToolByName(self.context, 'portal_url').getPortalObject()
-        base = portal.absolute_url()
-        path_info = self.request.get('PATH_INFO', '')
-
-        user = getSecurityManager().getUser()
-        try:
-            roles = list(user.getRolesInContext(portal))
-        except Exception:
-            roles = list(user.getRoles())
-
-        def sec(title):
-            return {'type': 'section', 'title': title}
-
-        def itm(view_name, label, icon):
-            url = '{0}/{1}'.format(base, view_name)
-            return {
-                'type': 'item',
-                'url': url,
-                'label': label,
-                'icon': icon,
-                'active': view_name in path_info,
-            }
-
-        is_manager = 'LabManager' in roles or 'Manager' in roles
-        is_analyst = 'Analyst' in roles or 'Verifier' in roles
-        is_clerk   = 'LabClerk' in roles
-
-        items = [sec('Lab Tools')]
-
-        if is_manager or is_analyst:
-            items.append(itm('@@pfas-data-review',     'Data Review',     u'·'))
-        if is_manager or is_analyst:
-            items.append(itm('@@pfas-method-profiles', 'Method Profiles', u'·'))
-        if is_manager or is_analyst:
-            items.append(itm('@@pfas-control-chart',   'Control Charts',  u'·'))
-        if is_manager or is_analyst:
-            items.append(itm('@@pfas-qc-rules',        'QC Rules',        u'·'))
-        if is_manager or is_analyst:
-            items.append(itm('@@pfas-calibrations',    'Calibration Archive', u'·'))
-        if is_manager or is_analyst or is_clerk:
-            items.append(itm('@@pfas-sample-status',   'Batch Status',    u'·'))
-        if is_manager:
-            items.append(itm('@@pfas-import-studio',   'Import Studio',   u'·'))
-        if is_manager or is_clerk:
-            items.append(itm('@@pfas-reagents',        'Reagent Inventory', u'·'))
-        if is_manager:
-            items.append(itm('@@pfas-edd-batches',     'EDD Export',      u'·'))
-        items.append(    itm('@@pfas-track',           'Sample Tracker',  u'·'))
-
-        return items
-
 
 # ── the site icon on core pages ────────────────────────────────
 from plone.app.layout.links.viewlets import FaviconViewlet as _FaviconBase  # noqa: E402

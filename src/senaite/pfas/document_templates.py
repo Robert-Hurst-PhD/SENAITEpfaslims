@@ -8,10 +8,9 @@ barcode, line, image ...) and a name. A field is either FIXED content (the
 lab's own text, logo, lines: pdfme's `readOnly`) or bound to a DATA FIELD of
 its kind -- a label's lot, expiry, name -- by its name.
 
-Phase 1: labels, generated and printed in the
-browser from the ISSUED revision. Certificates, logbook PDFs and reports
-follow with a server-side renderer; the certificate layout will join the
-existing reporting-template revision (report_templates.py), not this store.
+Labels are generated and printed in the browser from the ISSUED revision.
+The certificate's design is issued with the reporting-template revision
+(report_templates.py).
 
     KINDS / LABEL_FIELDS / LABEL_SIZES
     base_key(field_name)          "lot (2)" -> "lot"
@@ -30,13 +29,7 @@ import hashlib
 import json
 import re
 
-try:
-    from senaite.pfas.print_style import PALETTE as _P
-except ImportError:                                          # loaded by path (tests)
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-    from print_style import PALETTE as _P
+from senaite.pfas.print_style import PALETTE as _P
 
 KEY = "senaite.pfas.document_templates"
 
@@ -64,34 +57,15 @@ LABEL_SIZES = [
     ("a4", "A4 full page (PDF archive)", 210.0, 297.0),
 ]
 
+from senaite.pfas import coa_document as _coa                 # noqa: E402
+from senaite.pfas import custody_documents as _cus            # noqa: E402
+from senaite.pfas import doc_fields as _df                    # noqa: E402
+from senaite.pfas import pdf_layout as _pl                    # noqa: E402
+from senaite.pfas import report_documents as _rep             # noqa: E402
+
 # A kind may also have TABLES: {table name: [(column key, title, example)]}.
 # A table field named after one takes that table's rows; its columns are
 # linked by key (pdfme keeps `pfasColumns` beside the header row).
-def _beside(name):
-    """A sibling module, also when this file is loaded by path (tests)."""
-    try:
-        import importlib
-        return importlib.import_module("senaite.pfas." + name)
-    except ImportError:
-        import os
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + ".py")
-        try:
-            import importlib.util as iu                     # Python 3
-            spec = iu.spec_from_file_location("_dt_" + name, path)
-            mod = iu.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-        except ImportError:                                 # Python 2
-            import imp
-            return imp.load_source("_dt_" + name, path)
-
-
-_coa = _beside("coa_document")
-_rep = _beside("report_documents")
-_df = _beside("doc_fields")
-_cus = _beside("custody_documents")
-
-
 def _report_kind(title, single, fields, tables, order, required, long_fields, groups=None,
                  images=(), starter_fields=None):
     """A designable report: one design, issued here, every table required.
@@ -153,6 +127,17 @@ KINDS = {
             "page_numbers": True, "starter": _coa.starter,
             "groups": _coa.GROUPS, "images": _coa.IMAGES,
             "column_groups": {"results": _coa.RESULT_COLUMN_GROUPS},
+            # what a layout issued earlier may still carry: a warning on
+            # re-issue, never a refusal
+            "retired_columns": _coa.RETIRED_COLUMNS, "heading_fields": _coa.HEADING_FIELDS,
+            "column_aliases": _coa.COLUMN_ALIASES,
+            # each heading must name its column; the designer links by it
+            "headings_name_columns": True,
+            # the designer's table chooser: columns ticked, headings, widths
+            "column_defaults": {"results": _coa.RESULT_DEFAULT_COLUMNS},
+            "column_headings": {"results": {"result": _coa.RESULT_HEADING}},
+            "column_widths": {"results": _coa.RESULT_WIDTHS},
+            "right_aligned": {"results": _coa.RIGHT_ALIGNED},
             # paragraphs: added as text that grows and moves what follows down
             "long": ("note", "legend", "qc_standards_note", "qs_statement", "departures", "regulatory",
                      "accreditation", "qc_qualifications", "remarks", "interpretation")},
@@ -199,7 +184,7 @@ PLUGIN_TYPES = ("text", "multiVariableText", "image", "svg", "table", "line",
                 "code39", "gs1datamatrix", "pdf417")
 # Types whose value can come from a data field; anything else is fixed content.
 # Not GS1 DataMatrix: it needs GS1 element strings ("(01)..."), and a plain lot
-# number draws an empty square without any error (checked 2026-10-04).
+# number draws an empty square without any error.
 BINDABLE = ("text", "multiVariableText", "qrcode", "code128", "code39", "pdf417", "table")
 MAX_BYTES = 2 * 1024 * 1024          # images are embedded; keep a template small
 
@@ -235,14 +220,18 @@ def groups(kind):
     return KINDS[kind].get("groups") or [(KINDS[kind]["title"], KINDS[kind]["fields"])]
 
 
+EXAMPLE_ROWS = 22
+
+
 def example_data(kind):
     data = dict((k, e) for k, _t, e in KINDS[kind]["fields"])
     if images(kind):
         ph = _coa.placeholder_png()
         for key in images(kind):
             data[key] = ph
+    # enough rows that a table breaks across a page in the preview
     for name, cols in tables(kind).items():
-        data[name] = [dict((k, e) for k, _t, e in cols) for _i in range(3)]
+        data[name] = [dict((k, e) for k, _t, e in cols) for _i in range(EXAMPLE_ROWS)]
     return data
 
 
@@ -306,7 +295,8 @@ def validate(kind, template):
     keys = set(field_keys(kind))
     tabs = tables(kind)
     # an empty example ("no pedigree") would match every empty fixed shape
-    examples = dict((e.strip(), t) for _k, t, e in KINDS[kind]["fields"] if e and e.strip())
+    examples = dict((e.strip(), t) for k, t, e in KINDS[kind]["fields"]
+                    if e and e.strip() and k not in (KINDS[kind].get("heading_fields") or ()))
     seen = set()
     for f in _fields(template):
         name = f.get("name") or ""
@@ -373,8 +363,12 @@ def _required_problems(kind, template):
         else:
             bound.add(base_key(f.get("name")))
     titles = dict((k, t) for k, t, _e in spec["fields"])
-    out = ["The %s must show %s." % (spec["title"], titles.get(k, k))
-           for k in spec.get("required") or () if k not in bound]
+    out = []
+    for k in spec.get("required") or ():
+        # a tuple: one part, shown by any of its fields
+        either = k if isinstance(k, tuple) else (k,)
+        if not any(x in bound for x in either):
+            out.append("The %s must show %s." % (spec["title"], " or ".join(titles.get(x, x) for x in either)))
     for table, cols in sorted((spec.get("required_columns") or {}).items()):
         if table not in columns:
             out.append("The %s must have the %s table." % (spec["title"], table))
@@ -389,9 +383,99 @@ def _required_problems(kind, template):
     return out
 
 
+_BRACED = re.compile(r"\{([^{}]*)\}")
+
+
+def column_names(kind, table):
+    """[(key, name, earlier)] a heading may name a column of a table by: its
+    title, and any title it had before (earlier=True; a retired column's
+    too)."""
+    out = [(k, t, False) for k, t, _e in tables(kind).get(table) or []]
+    for k, names in sorted(((KINDS[kind].get("column_aliases") or {}).get(table) or {}).items()):
+        out.extend((k, n, True) for n in names)
+    return out
+
+
+def _named(kind, table, heading):
+    """(present, earlier): the columns a heading names by their present
+    title and by an earlier one, the longest name winning."""
+    text = " ".join(_BRACED.sub(" ", "%s" % (heading or "")).lower().split())
+    hits = [(len(n), k, old) for k, n, old in column_names(kind, table) if n and n.lower() in text]
+    best = max([h for h, _k, _o in hits] or [0])
+    present = sorted(set(k for h, k, old in hits if h == best and not old))
+    earlier = sorted(set(k for h, k, old in hits if h == best and old) - set(present))
+    return present, earlier
+
+
+def columns_named(kind, table, heading):
+    """The columns a heading names: those whose name the heading contains (a
+    field in braces left out), the longest name winning; those named by
+    their present title first. Several when columns share a title (a
+    custody transfer's two "Date, time") or a title a column had before:
+    the heading keeps the one it is linked to. The designer links a heading
+    by the same rule."""
+    present, earlier = _named(kind, table, heading)
+    return present + earlier
+
+
+def column_for(kind, table, heading):
+    """The column a heading names when it is not linked yet: the one named
+    by its present title, else by an earlier one; None when it names none,
+    or several equally."""
+    present, earlier = _named(kind, table, heading)
+    if present:
+        return present[0] if len(present) == 1 else None
+    return earlier[0] if len(earlier) == 1 else None
+
+
+def assign_columns(named, links):
+    """The column each heading is linked to, given the columns each one
+    names (named[i], present titles first) and the links it had: no column
+    twice. A heading that names one column takes it; one that names several
+    keeps its own link, else a link the table had (a column added or removed
+    shifts them), else the first free column it names; none free leaves it
+    unlinked. The designer relinks by the same rule (assignColumns)."""
+    out = [None] * len(named)
+    taken = set()
+    for i, ks in enumerate(named):
+        if len(ks) == 1 and ks[0] not in taken:
+            out[i] = ks[0]
+            taken.add(ks[0])
+    for i, ks in enumerate(named):
+        if len(ks) < 2:
+            continue
+        own = links[i] if len(links) == len(named) else None
+        pick = own if own in ks and own not in taken else None
+        pick = pick or next((k for k in links if k in ks and k not in taken), None)
+        pick = pick or next((k for k in ks if k not in taken), None)
+        if pick:
+            out[i] = pick
+            taken.add(pick)
+    return out
+
+
+def fill_headings(kind, template, data):
+    """A table heading's {field} written in from the data ("Result
+    {result_unit}" prints "Result ng/L"), in a kind whose headings name
+    their columns (another kind prints its headings as drawn)."""
+    if not KINDS.get(kind, {}).get("headings_name_columns"):
+        return
+    data = data or {}
+
+    def fill(h):
+        # a heading without a field prints exactly as drawn (line breaks too)
+        if not _BRACED.search("%s" % h):
+            return h
+        return _BRACED.sub(lambda m: "%s" % (data.get(m.group(1).strip()) or ""), "%s" % h).strip()
+    for f in _fields(template):
+        if f.get("type") == "table" and not f.get("readOnly") and f.get("head"):
+            f["head"] = [fill(h) for h in f["head"]]
+
+
 def _table_problems(kind, f, tabs):
     name = f.get("name") or ""
-    cols = dict((k, t) for k, t, _e in tabs.get(base_key(name)) or [])
+    table = base_key(name)
+    cols = dict((k, t) for k, t, _e in tabs.get(table) or [])
     if not cols:
         return ["%s is not a %s data table (a fixed table must be marked fixed)."
                 % (name, KINDS[kind]["title"].lower())]
@@ -401,11 +485,66 @@ def _table_problems(kind, f, tabs):
         return ["%s: the columns are not linked to data (%d headings, %d links); "
                 "re-add the table from the toolbar." % (name, len(head), len(keys))]
     out = []
+    retired = (KINDS[kind].get("retired_columns") or {}).get(table) or {}
+    fields = set(field_keys(kind))
+    if KINDS[kind].get("headings_name_columns"):
+        # two headings on one column print it twice and lose another
+        seen = {}
+        for title, key in zip(head, keys):
+            if key and key in seen:
+                out.append("%s: headings %s and %s are both linked to the %s column."
+                           % (name, seen[key] or "(untitled)", title or "(untitled)", cols.get(key) or key))
+            seen.setdefault(key, title)
     for title, key in zip(head, keys):
-        if key not in cols:
+        if key not in cols and key not in retired:
             out.append("%s: column %s is not linked to a %s column (one of: %s)."
-                       % (name, title or "(untitled)", base_key(name),
+                       % (name, title or "(untitled)", table,
                           ", ".join(t for _k, t in sorted(cols.items()))))
+            continue
+        # the heading says which column it is: a stale link prints the
+        # wrong column under it. Only where the kind says so: an issued
+        # logbook that fails validation does not print.
+        if not KINDS[kind].get("headings_name_columns"):
+            continue
+        for v in _BRACED.findall("%s" % (title or "")):
+            # text only: a picture's data would print as characters
+            if v.strip() not in fields or v.strip() in images(kind):
+                out.append("%s: heading %s: {%s} is not a %s data field."
+                           % (name, title, v, KINDS[kind]["title"].lower()))
+        named = columns_named(kind, table, title)
+        if not named:
+            out.append("%s: heading %s names no %s column; it must contain the column's title "
+                       "(one of: %s)." % (name, title or "(untitled)", table,
+                                          ", ".join(t for _k, t in sorted(cols.items()))))
+        elif key not in named:
+            out.append("%s: heading %s is linked to the %s column." % (
+                name, title or "(untitled)", cols.get(key) or key))
+    return out
+
+
+def warnings(kind, template):
+    """What a layout issued earlier still carries that the kind has moved on
+    from: issued with these, said once, never refused (validate does not
+    count them)."""
+    spec = KINDS.get(kind) or {}
+    headings = dict((e.strip(), (k, t)) for k, t, e in spec.get("fields") or []
+                    if k in (spec.get("heading_fields") or ()) and e and e.strip())
+    retired = spec.get("retired_columns") or {}
+    out = []
+    for f in _fields(template):
+        name = f.get("name") or ""
+        if f.get("type") == "table" and not f.get("readOnly"):
+            gone = retired.get(base_key(name)) or {}
+            for title, key in zip(f.get("head") or [], f.get(COLUMNS) or []):
+                if key in gone:
+                    out.append("%s: the %s column still prints; %s. Remove it in the designer."
+                               % (name, title or key, gone[key]))
+            continue
+        content = f.get("content")
+        if f.get("readOnly") and hasattr(content, "strip") and content.strip() in headings:
+            key, title = headings[content.strip()]
+            out.append("%s reads %s as fixed text: replace it with the %s field, which "
+                       "follows who signed." % (name, content.strip(), title.lower()))
     return out
 
 
@@ -431,7 +570,11 @@ def inputs_for(kind, template, data):
             out[name] = json.dumps([["%s" % (r.get(k) if r.get(k) is not None else "") for k in keys]
                                     for r in rows])
         else:
-            out[name] = "%s" % (data.get(base_key(name)) or "")
+            value = data.get(base_key(name)) or ""
+            if isinstance(value, (list, tuple)):
+                # a list of lines (a certificate's dilution notes): one per line
+                value = "\n".join("%s" % v for v in value)
+            out[name] = "%s" % value
     return out
 
 
@@ -485,6 +628,23 @@ def _drop_hidden_columns(template, hidden):
                                     if str(i) in per_col)
 
 
+def _with_footnote_marks(template, data):
+    """data["_footnotes"] = {"field", "table", "column", "marks"}: each
+    row's mark joins its cell only when the template prints the field the
+    marks point to (a mark with no note under it says nothing)."""
+    fn = (data or {}).get("_footnotes") or {}
+    if not fn or not any(base_key(f.get("name")) == fn.get("field") and not f.get("readOnly")
+                         for f in _fields(template)):
+        return data
+    data = dict(data)
+    rows = [dict(r) for r in data.get(fn["table"]) or []]
+    for r, mark in zip(rows, fn.get("marks") or []):
+        if mark:
+            r[fn["column"]] = "%s%s" % (r.get(fn["column"]) or "", mark)
+    data[fn["table"]] = rows
+    return data
+
+
 def compile_document(kind, template, data):
     """The template and input for ONE document: fields marked "on every page"
     move into pdfme's repeating area (basePdf.staticSchema) as fixed content,
@@ -496,6 +656,8 @@ def compile_document(kind, template, data):
         if f.get("type") == "table":
             _fill(f, TABLE_DEFAULTS)
     _drop_hidden_columns(t, (data or {}).get("_hidden_columns") or {})
+    fill_headings(kind, t, data)
+    data = _with_footnote_marks(t, data)
     inputs = inputs_for(kind, t, data)
     static = list((t.get("basePdf") or {}).get("staticSchema") or [])
     pages = []
@@ -525,15 +687,42 @@ def compile_document(kind, template, data):
             static.append(f)
         pages.append(keep)
     t["schemas"] = pages
+    static += _times_footer(t, inputs, static)
     if static:
         t["basePdf"] = dict(t["basePdf"], staticSchema=static)
-    return t, inputs
+    # a table that breaks across pages takes the room its repeated heading
+    # prints in, where it really breaks (pdf_layout)
+    return _pl.settle(t, inputs), inputs
+
+
+TIMES_FIELD = "times_zone"
+
+
+def _times_footer(template, inputs, static):
+    """[the "Times are <zone>." line] for a document that prints a clock time
+    (print_doc.times_line, over every value it prints), else []. It is fixed
+    text on every page, in the bottom margin between the side margins, so it
+    sits under whatever the design places; no field of the design moves."""
+    from senaite.pfas import print_doc
+    base = template.get("basePdf")
+    if not isinstance(base, dict):
+        return []
+    shown = list(inputs.values()) + [f.get("content") for f in static]
+    line = print_doc.times_line(*shown)
+    if not line:
+        return []
+    pad = list(base.get("padding") or [0, 10, 0, 10]) + [10, 10, 10, 10]
+    width, height = float(base.get("width") or 210.0), float(base.get("height") or 297.0)
+    left, right = float(pad[3]), float(pad[1])
+    return [{"name": TIMES_FIELD, "type": "text", "position": {"x": left, "y": height - 6.5},
+             "width": width - left - right, "height": 3.5, "fontSize": 6, "alignment": "left",
+             "readOnly": True, "content": line}]
 
 
 def byte_size(raw):
     """Size of a posted template. Under Python 2 a form value arrives as UTF-8
-    bytes, and bytes.encode() would first decode them as ASCII (a degree sign
-    in a label's storage line once made every save fail)."""
+    bytes, and bytes.encode() would first decode them as ASCII and fail on
+    a character such as a degree sign."""
     if raw is None:
         return 0
     if isinstance(raw, bytes):
@@ -631,7 +820,7 @@ def issue(store, tid, who, when, note):
 
 def issued_design(store, kind):
     """The issued design of a single-design kind (a report), or None: the
-    report then prints as it always has."""
+    report then prints its built-in layout."""
     single = KINDS[kind].get("single")
     entry = store.get(single) if single else None
     if not entry or entry.get("archived") or entry.get("kind") != kind:
@@ -656,9 +845,9 @@ def issued(store, kind):
 #
 # One annotation per template (a certificate or logbook layout embeds its
 # images, so one string for the whole store would be rewritten on every save
-# of any template), plus an index of ids. The first layout kept
-# the whole store in one string under KEY; it is still read, and the first
-# save moves it across (load_from / save_to are tested on a plain dict).
+# of any template), plus an index of ids. A store kept as one string under
+# KEY is still read, and the first save moves it across (load_from / save_to
+# are tested on a plain dict).
 
 INDEX_KEY = KEY + ".index"
 ENTRY_PREFIX = KEY + ".t."

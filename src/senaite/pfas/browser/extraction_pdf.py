@@ -16,7 +16,6 @@ compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
-from datetime import datetime
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
@@ -26,7 +25,15 @@ from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_pdf")
 
+from senaite.pfas import print_doc
 from senaite.pfas.extraction_logbook import logbook_data
+from senaite.pfas.browser.view_helpers import send_pdf
+
+
+def _stamp(at):
+    """A session stamp (UTC) on the laboratory's clock; as stored while no
+    zone converts."""
+    return print_doc.lab_or(at, at or u"")
 
 
 class PFASExtractionPDFView(BrowserView):
@@ -104,10 +111,11 @@ class PFASExtractionPDFView(BrowserView):
             log = dict(log, samples=extraction_batch.rekey_rows(log["samples"], members))
         self.data = logbook_data(batch_id, batch.Title() if hasattr(batch, "Title") else u"",
                                  session, profile,
-                                 datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+                                 print_doc.now_stamp(),
                                  spike_rows=spike_rows,
                                  extracted=roster(members, log.get("samples"),
-                                                  log.get("spe_ports")))
+                                                  log.get("spe_ports")),
+                                 dilution_rows=log.get("samples"))
         self.batch_id_text = batch_id
         # an issued design (Document Templates) is the extraction log from then on
         from senaite.pfas import report_documents
@@ -115,9 +123,9 @@ class PFASExtractionPDFView(BrowserView):
         try:
             # the extraction analyst prepares, the reviewing analyst reviews
             pdf = designed_pdf("extraction_log", report_documents.extraction_data(self.data),
-                               people={"preparer": (session.get("analyst"), session.get("started_at") or u""),
+                               people={"preparer": (session.get("analyst"), _stamp(session.get("started_at"))),
                                        "reviewer": (session.get("finalized_by"),
-                                                    session.get("finalized_at") or u"")})
+                                                    _stamp(session.get("finalized_at")))})
         except DesignedReportError as exc:
             self.request.response.setStatus(500)
             return u"%s" % exc
@@ -129,8 +137,5 @@ class PFASExtractionPDFView(BrowserView):
             logger.exception("extraction PDF failed")
             self.request.response.setStatus(500)
             return "PDF generation error: {0}".format(exc)
-        resp = self.request.response
-        resp.setHeader("Content-Type", "application/pdf")
-        resp.setHeader("Content-Disposition",
-                       'attachment; filename="pfas_extraction_{0}.pdf"'.format(batch_id))
-        return pdf
+        return send_pdf(self.request.response, pdf, "pfas_extraction_{0}.pdf".format(batch_id),
+                        inline=False)

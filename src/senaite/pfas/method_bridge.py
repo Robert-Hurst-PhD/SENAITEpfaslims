@@ -11,9 +11,8 @@ maintains the explicit link between them in the
     senaite.pfas.method_associations   (annotation)
 
 store (the same one the new-method wizard writes), so a profile id resolves to
-its core Method + AnalysisServices + SampleTypes and vice versa. That lets the
-intuitive PFAS displays sit *on top of* proper core Method records rather than
-duplicating them.
+its core Method + AnalysisServices + SampleTypes and vice versa: the PFAS
+displays sit *on top of* core Method records rather than duplicating them.
 
 Matching is by Method TITLE (the master registry label == core Method.Title()).
 Unmatched profiles are reported, never guessed.
@@ -34,24 +33,15 @@ def profile_id_for_method(method):
     """Profile id for a core SENAITE Method object (or "" if there is none).
 
     Method profiles are keyed by ``Method.MethodID`` ("FDA_32PFAS"); the Zope
-    id ("method-1") is a different namespace entirely. Views that resolved a
-    batch's method with ``getId()`` therefore looked up a profile that does not
-    exist — and, because get_profile used to return a truthy stub, did so
-    without any visible failure. Use this wherever a Method object has to
-    become a profile id.
+    id ("method-1") is a different namespace and names no profile. Use this
+    wherever a Method object has to become a profile id.
     """
     if method is None:
         return u""
-    try:
-        mid = (method.getMethodID() or u"").strip()
-        if mid:
-            return mid
-    except Exception:
-        pass
-    try:
-        return method.getId()
-    except Exception:
-        return u""
+    mid = (method.getMethodID() or u"").strip()
+    if mid:
+        return mid
+    return method.getId()
 
 
 def _catalog(portal):
@@ -67,16 +57,8 @@ def _annotations(portal):
 def _get_by_uid(portal, uid):
     if not uid:
         return None
-    try:
-        from bika.lims import api
-        return api.get_object_by_uid(uid, default=None)
-    except Exception:
-        for b in _catalog(portal)(UID=uid):
-            try:
-                return b.getObject()
-            except Exception:
-                return None
-    return None
+    from bika.lims import api
+    return api.get_object_by_uid(uid, default=None)
 
 
 def _method_label(method_id, profile=None):
@@ -91,19 +73,13 @@ def _core_titles(portal, method_id):
     name, and the title the install gave the methods it created
     (analyte_reference.METHODS), so a site linked before either changes still
     matches."""
+    from senaite.pfas.method_profile_store import raw_profile
+    from senaite.pfas.analyte_reference import METHODS as _seeded
     titles = []
-    try:
-        from senaite.pfas.method_profile_store import raw_profile
-        name = (raw_profile(portal, method_id) or {}).get("display_name")
-        if name:
-            titles.append(name)
-    except Exception:
-        pass
-    try:
-        from senaite.pfas.analyte_reference import METHODS as _seeded
-        titles.extend(lbl for mid, lbl, _desc in _seeded if mid == method_id)
-    except Exception:
-        pass
+    name = (raw_profile(portal, method_id) or {}).get("display_name")
+    if name:
+        titles.append(name)
+    titles.extend(lbl for mid, lbl, _desc in _seeded if mid == method_id)
     return titles
 
 
@@ -116,13 +92,13 @@ def get_association(portal, method_id):
         return {}
     try:
         return json.loads(store[method_id])
-    except Exception:
+    except (ValueError, TypeError):
         return {}
 
 
 def get_core_method(portal, method_id):
     """Core Method object linked to a profile id, or None. Uses the stored UID,
-    falling back to a live title match so it works even before backfill."""
+    falling back to a live title match when none is stored."""
     uid = get_association(portal, method_id).get("method_uid")
     obj = _get_by_uid(portal, uid) if uid else None
     if obj is not None:
@@ -144,25 +120,6 @@ def get_core_method(portal, method_id):
     return by_title
 
 
-def get_method_cal_code(portal, method_id):
-    """The per-method calibrator injection code — SINGLE SOURCE.
-
-    Returns the core SENAITE Method's stored MethodID (e.g. FDA_32PFAS,
-    EPA_537_1, EPA_1633A), which is the internal code core services already
-    hold for the method. Falls back to the profile id, then "CAL". Every
-    calibrator name (run worklist, prep logbook, seeds) routes through here so
-    an injection name always traces to its prepared-standard vial name."""
-    m = get_core_method(portal, method_id)
-    if m is not None:
-        try:
-            code = m.getMethodID()
-            if code:
-                return code
-        except Exception:
-            pass
-    return method_id or "CAL"
-
-
 def get_profile_id_for_method(portal, method):
     """Reverse lookup: given a core Method (object or UID) return the profile id."""
     uid = method.UID() if hasattr(method, "UID") else method
@@ -171,7 +128,7 @@ def get_profile_id_for_method(portal, method):
         try:
             if json.loads(store[mid]).get("method_uid") == uid:
                 return mid
-        except Exception:
+        except (ValueError, TypeError):
             continue
     return None
 
@@ -226,23 +183,6 @@ def link_one(portal, method_id, profile=None, svc_uid=None):
     return method
 
 
-def link_all(portal):
-    """Populate/refresh associations for every profile. Idempotent. Returns
-    {'linked': [...], 'unmatched': [(id, label), ...]}."""
-    from senaite.pfas.method_profile_store import list_method_ids, get_profile
-
-    svc_uid = _service_uid_map(portal)
-    linked, unmatched = [], []
-    for mid in list_method_ids(portal):
-        profile = get_profile(portal, mid)
-        method = link_one(portal, mid, profile=profile, svc_uid=svc_uid)
-        if method is None:
-            unmatched.append((mid, _method_label(mid, profile)))
-        else:
-            linked.append(mid)
-    return {"linked": linked, "unmatched": unmatched}
-
-
 def _service_obj_map(portal):
     """{keyword: AnalysisService object} for every core AnalysisService."""
     out = {}
@@ -255,18 +195,14 @@ def _service_obj_map(portal):
     return out
 
 
-def link_method_analytes(portal):
-    """D59 backfill: stamp each profile's core Method onto the AnalysisServices in
-    that profile's stored master_analyte_set, via SENAITE's native Method↔Service
-    relation (setMethods). This is the authoritative per-method analyte membership
-    that get_master_analyte_set() derives from.
-
-    The 3 default methods were seeded by setuphandlers, which stamps pfas_role but
-    never links services to Methods (only the new-method wizard does). Seed = the
-    stored profile lists, NOT analysis_services.csv's Method column (which also
-    lists br-PFHxS/br-PFOS isomer components that must not enter the reported
-    panel — see D59). Idempotent; merges with existing Methods; never removes
-    links. Returns a summary dict.
+def link_method_analytes(portal, method_ids=None):
+    """Stamp a profile's core Method onto the AnalysisServices of its stored
+    master_analyte_set, through SENAITE's own Method <-> Service relation
+    (setMethods): the ONE-TIME link of a profile's stored list, before the
+    links own the panel (method_profile_store.refresh_analyte_sets).
+    The seed is the stored list, not analysis_services.csv's Method column
+    (it also lists the isomer peaks, which never enter the reported panel).
+    Merges with existing Methods; never removes a link. Returns a summary.
     """
     from senaite.pfas.method_profile_store import list_method_ids, get_profile
 
@@ -274,7 +210,7 @@ def link_method_analytes(portal):
     result = {"methods": [], "links_added": 0,
               "unmatched_methods": [], "missing_services": {}}
 
-    for mid in list_method_ids(portal):
+    for mid in (method_ids or list_method_ids(portal)):
         profile = get_profile(portal, mid)
         method = get_core_method(portal, mid)
         if method is None:

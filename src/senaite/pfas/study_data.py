@@ -18,22 +18,23 @@ gross failures). Python 2.7 and 3; the queries take a sqlite3 connection.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas import method_studies as ms
-    from senaite.pfas import method_engine as me
-    from senaite.pfas.analyte_reference import native_keyword_for
-except ImportError:                    # tests: loaded by path
-    import method_studies as ms
-    import method_engine as me
-    from analyte_reference import native_keyword_for
+from senaite.pfas import method_studies as ms
+from senaite.pfas import method_engine as me
+from senaite.pfas import compound_library as cl
+from senaite.pfas.compound_library_store import library as _library
+
+
+def keyword_for(name, library=None):
+    """A native analyte's keyword from an export or published spelling."""
+    return cl.native_keyword_for(library or _library(), name)
 
 KINDS = [
-    ("mdl", u"Annual MDL (40 CFR 136 App. B Rev. 2)"),
-    ("mrl", u"MRL confirmation (EPA 537.1 §9.2.6)"),
-    ("pa", u"Precision and accuracy (EPA 537.1 §9.2.3, §9.2.4)"),
-    ("dl", u"Detection limit (EPA 537.1 §9.2.8.1)"),
+    ("mdl", u"Annual MDL"),
+    ("mrl", u"MRL confirmation"),
+    ("pa", u"Precision and accuracy"),
+    ("dl", u"Detection limit"),
     ("pt", u"Proficiency test"),
-    ("idc", u"Initial demonstration of capability (EPA 537.1 §9.2)"),
+    ("idc", u"Initial demonstration of capability"),
 ]
 # what a PT provider says of each reported analyte
 PT_VERDICTS = [(u"acceptable", u"Acceptable"), (u"not_acceptable", u"Not acceptable")]
@@ -48,6 +49,41 @@ LFB = "LFB"
 def kind_allowed(kind, profile):
     """True if the method (its profile) runs this kind of study."""
     return kind in me.study_kinds(profile)
+
+
+# the QC types that are spiked: an MDL's spiked replicates are one of these
+SPIKED_ROLES = ("LFB", "LFSM", "LFSMD")
+
+
+def spike_role_choices(profile):
+    """The spiked QC types the method runs (switched on), in SPIKED_ROLES
+    order: an MDL's spiked-replicate choices. Blanks and duplicates are
+    never spiked replicates."""
+    types = (profile or {}).get("qc_acceptance") or {}
+    return [c for c in SPIKED_ROLES if isinstance(types.get(c), dict) and types[c].get("enabled")]
+
+
+# a study's preparations: the blanks and the spike levels, made replicates x
+# days times each
+PREPARATIONS = ((u"MB", u"Method blank"), (u"MxB", u"Matrix blank"), (u"Low", u"Low"), (u"Mid", u"Mid"),
+                (u"High", u"High"))
+BLANK_PREPARATIONS = (u"MB", u"MxB")
+
+
+def design_table(preparations, replicates, days, concentrations):
+    """([{"level", "concentration", "replicates", "days", "preparations"}], total)
+    for the chosen preparations, in PREPARATIONS order; a blank has no
+    concentration, a level the method's (else "not set")."""
+    rows, total = [], 0
+    for code, label in PREPARATIONS:
+        if code not in (preparations or []):
+            continue
+        n = int(replicates or 0) * int(days or 0)
+        conc = u"none" if code in BLANK_PREPARATIONS else ((concentrations or {}).get(code) or u"not set")
+        rows.append({"level": label, "concentration": conc, "replicates": int(replicates or 0),
+                     "days": int(days or 0), "preparations": n})
+        total += n
+    return rows, total
 
 
 def spike_role(rec):
@@ -85,25 +121,25 @@ def injections(conn, method, roles, batches=None, since=None, until=None, matrix
         q += " AND r.run_date <= ?"
         args.append(until)
     out = {}
+    library = _library()
     for batch, inj, date, name, role, conc, qual, bmatrix in conn.execute(q, args):
         if matrix and (bmatrix or u"") != matrix:
             continue
         if role == "internal standard" or (name or u"").startswith((u"lr-", u"br-")):
             continue
-        # keyed by run AND injection: imported exports re-use names, and one
-        # key merged three runs' blanks into one
+        # keyed by run and injection: imported exports re-use names
         key = u"%s/%s" % (batch or u"", inj)
         rec = out.setdefault(key, {"injection": inj, "key": key, "batch": batch,
                                    "date": date or u"", "values": {}})
-        rec["values"][native_keyword_for(name)] = conc
+        rec["values"][keyword_for(name, library)] = conc
     return sorted(out.values(), key=lambda r: (r["date"], r["injection"]))
 
 
 def _kept(rows, exclusions, kw):
     """The rows of one analyte left after the study's exclusions."""
     gone = set((e.get("injection"), e.get("analyte")) for e in exclusions or [])
-    # an exclusion names the row's key ("WS-1/LRB"); one recorded by bare
-    # injection name before 2026-10-09 still applies to it
+    # an exclusion names the row's key ("WS-1/LRB") or, in an older record,
+    # the bare injection name
     return [r for r in rows
             if not any((ident, a) in gone for ident in (r.get("key"), r["injection"]) for a in (kw, u"*"))]
 
@@ -157,7 +193,7 @@ def applied_values(kind, results, fortified=None):
     return out
 
 
-# ── several spiking levels (2026-10-09: results per level) ─────────────
+# ── several spiking levels: results per level ───────────────────────────────
 
 def calculate_levels(kind, spikes, blanks=None, fortified=None, exclusions=None, existing=None):
     """{level: {keyword: result}}: each spike row carries its "level" (the
@@ -213,8 +249,9 @@ def pt_results(entries):
 
 
 def pt_problems(pt, certificate_present):
-    """What holds a PT study's approval: the provider's certificate ("store a passing certificate with each study"), the round,
-    at least one analyte, and the provider's verdict on each."""
+    """What holds a PT study's approval: the provider's certificate ("store a
+    passing certificate with each study"), the round, at least one analyte,
+    and the provider's verdict on each."""
     pt = pt or {}
     out = []
     if not certificate_present:

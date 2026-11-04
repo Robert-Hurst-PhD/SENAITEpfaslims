@@ -18,6 +18,9 @@ services.
                             panels carry its display names); not before the
                             migration has run (an install creating its
                             services exports once, afterwards)
+    refuse_referenced_removal  a service any method profile still names is
+                            not deleted: the refusal lists each method and
+                            where (unlink it from the method first)
 
 Python 2.7.
 """
@@ -27,15 +30,10 @@ import json
 import logging
 import os
 
-try:
-    from senaite.pfas import compound_library as cl
-except ImportError:                            # tests: loaded without the package
-    import compound_library as cl
+from senaite.pfas import compound_library as cl
 
 logger = logging.getLogger("senaite.pfas.compound_library_store")
 
-MIGRATION_KEY = "senaite.pfas.compound_library_v"
-MIGRATION_V = 1
 # the library read once per request (pages label every analyte through it)
 _REQUEST_KEY = "_senaite_pfas_compound_library"
 
@@ -45,12 +43,12 @@ _REQUEST_KEY = "_senaite_pfas_compound_library"
 def _field(svc, name):
     try:
         field = svc.getField(name)
-    except Exception:                                       # noqa: BLE001
+    except AttributeError:
         field = None
     if field is None:
         try:
             field = svc.Schema().get(name)
-        except Exception:                                   # noqa: BLE001
+        except AttributeError:
             field = None
     return field
 
@@ -92,8 +90,8 @@ def _services():
 
 
 def service_rows(extra=None):
-    """A row per AnalysisService that carries a PFAS role -- the active and
-    the inactive ones, as the worker has always known every compound."""
+    """A row per AnalysisService that carries a PFAS role, active or
+    inactive: the worker knows every compound."""
     by_uid = dict((svc.UID(), svc) for svc in _services())
     if extra is not None:
         by_uid[extra.UID()] = extra          # not in the catalog yet when new
@@ -176,6 +174,14 @@ def stamp_seed(svc, row):
     return written
 
 
+def _text(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    return ("%s" % value).strip()
+
+
 def seed_row(keyword):
     for row in cl.seed_rows():
         if row["keyword"] == keyword:
@@ -183,65 +189,97 @@ def seed_row(keyword):
     return None
 
 
-def migrate(portal):
-    """Once per site: the seed's library facts (analyte_reference.py) onto
-    every service of the seed, so the services hold exactly what the worker
-    read from the code table. Facts already set are kept; a seed compound
-    with no service is reported (the install creates every one of them).
-    Returns {"written": n services, "missing": [keywords]} or None when it
-    already ran."""
-    from zope.annotation.interfaces import IAnnotations
-    ann = IAnnotations(portal)
-    if ann.get(MIGRATION_KEY) == MIGRATION_V:
-        return None
-    result = migrate_services(_services())
-    ann[MIGRATION_KEY] = MIGRATION_V
-    if result["missing"]:
-        logger.warning("compound library: no service for %s; their library facts "
-                       "were not written", ", ".join(result["missing"]))
-    logger.info("compound library: seed facts written onto %d services", result["written"])
-    return result
+# ── a service deleted in Setup ─────────────────────────────────────────────
+
+try:
+    from zExceptions import BadRequest as RemovalRefused
+except ImportError:                            # tests: loaded without Zope
+    RemovalRefused = ValueError
 
 
-def migrate_services(services):
-    """The migration's writes: every seed row onto the service with its
-    keyword (the first, if two share one). {"written", "missing"}."""
-    by_kw = {}
-    for svc in services:
-        by_kw.setdefault(svc.getKeyword() or "", svc)
-    written, missing = 0, []
-    for row in cl.seed_rows():
-        svc = by_kw.get(row["keyword"])
-        if svc is None:
-            missing.append(row["keyword"])
-            continue
-        if stamp_seed(svc, row):
-            written += 1
-            try:
-                svc.reindexObject()
-            except Exception:                               # noqa: BLE001
-                pass
-    return {"written": written, "missing": missing}
+def referenced_by(portal, keyword):
+    """[(method id, where)] for every place a method profile names the
+    compound `keyword` (compound_references.references over the stored
+    profiles)."""
+    from senaite.pfas import compound_references as cr
+    from senaite.pfas import method_profile_store as store
+    profiles = dict((mid, store.raw_profile(portal, mid)) for mid in store.list_method_ids(portal))
+    return cr.references(profiles, keyword)
+
+
+def refuse_referenced_removal(svc, event):
+    """IObjectWillBeRemovedEvent on an AnalysisService: a service a method
+    profile still names -- in its panel, surrogate map, salt, isomer,
+    inclusion, integration or limit rows, or as a labelled standard -- is
+    not deleted; the refusal names each method and where, so nothing is
+    orphaned silently. Unlinking the service from the method in Setup takes
+    its rows out of that profile, after which it can go. The removal of an
+    ancestor (the whole folder) is not the service's own."""
+    if event is not None and getattr(event, "object", svc) is not svc:
+        return
+    try:
+        if svc.isTemporary():
+            return
+    except AttributeError:
+        pass
+    from bika.lims import api
+    portal = api.get_portal()
+    keyword = svc.getKeyword() or ""
+    refs = referenced_by(portal, keyword)
+    if not refs:
+        return
+    from senaite.pfas import method_profile_store as store
+    by_method = []
+    for mid, where in refs:
+        if not by_method or by_method[-1][0] != mid:
+            by_method.append((mid, []))
+        by_method[-1][1].append(where)
+    parts = []
+    for mid, wheres in by_method:
+        name = (store.raw_profile(portal, mid) or {}).get("display_name") or mid
+        parts.append(u"%s (%s)" % (name, u", ".join(wheres)))
+    raise RemovalRefused(
+        u"%s is not deleted: a method still names it: %s. Unlink the service from "
+        u"those methods in Setup (Analysis Services, Methods), which takes its rows "
+        u"out of their profiles, or edit those rows; then delete it. To stop using "
+        u"it without deleting it, deactivate it." % (keyword, u"; ".join(parts)))
 
 
 # ── a service saved in Setup ───────────────────────────────────────────────
 
+def on_service_removed(svc, event):
+    """IObjectRemovedEvent on an AnalysisService: the panels lose it and the
+    library is exported again from the catalogue alone, which no longer
+    holds it, so the worker never resolves a compound the lab deleted."""
+    _after_service_event(svc, extra=None)
+
+
 def on_service_changed(svc, event):
-    """IObjectModifiedEvent on an AnalysisService (added or edited): export
-    the profiles and the library again, so the worker reads the change at its
-    next run."""
+    """IObjectModifiedEvent on an AnalysisService (added or edited): every
+    method's analyte panel follows the service's Method links
+    (refresh_analyte_sets), then the profiles and the library are exported
+    again with the saved service read from the object (it may not be
+    catalogued yet), so the worker reads the change at its next run."""
+    _after_service_event(svc, extra=svc)
+
+
+def _after_service_event(svc, extra):
     try:
         if svc.isTemporary():
             return
-    except Exception:                                       # noqa: BLE001
+    except AttributeError:
         pass
+    # the add-on's own modules are imported outside the best-effort export:
+    # one that cannot be imported raises
+    from senaite.pfas import method_profile_store as store
+    from senaite.pfas import after_commit
     try:
         from bika.lims import api
-        from zope.annotation.interfaces import IAnnotations
         portal = api.get_portal()
-        if IAnnotations(portal).get(MIGRATION_KEY) != MIGRATION_V:
-            return
-        from senaite.pfas import method_profile_store as store
-        store.export_profiles_to_file(portal, extra_service=svc)
+        try:
+            store.refresh_analyte_sets(portal)
+        except Exception:                                   # noqa: BLE001
+            logger.exception("analyte panels not refreshed after a service change")
+        after_commit.run_once("method profiles export", store.export_profiles_to_file, portal, None, extra)
     except Exception:                                       # noqa: BLE001
         logger.exception("compound library: export after a service change failed")

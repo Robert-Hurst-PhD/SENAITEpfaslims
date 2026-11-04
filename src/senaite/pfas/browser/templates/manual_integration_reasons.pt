@@ -12,19 +12,19 @@
     <div class="alert alert-success" tal:condition="request/saved|nothing">Saved.</div>
     <div class="alert alert-danger" tal:condition="request/error|nothing" tal:content="request/error">error</div>
 
-    <p class="form-note">Reasons an analyst may give. <tal:h define="hid string:manual-integration"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="form-note">Reasons an analyst may give. <tal:h define="hid string:manual-integration"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
     <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-mi-reasons">
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
       <input type="hidden" name="action" value="save_reasons" />
       <fieldset class="pfas-ro" tal:attributes="disabled python:None if editable else 'disabled'">
-      <table class="pfas-table pfas-table-form">
+      <table class="pfas-table pfas-table-form" data-col-resize="manual-integration-reasons-1">
         <thead><tr><th>In use</th><th>Reason</th><th>Source</th></tr></thead>
         <tbody>
           <tr tal:repeat="r python:s['reasons'] + [{'id': '', 'text': '', 'source': '', 'active': True}]">
             <td tal:define="i repeat/r/index">
               <input type="hidden" tal:attributes="name string:r.${i}.id; value r/id" />
-              <input type="checkbox" value="1" tal:attributes="name string:r.${i}.active; checked r/active" /></td>
+              <label class="pfas-switch"><input type="checkbox" value="1" tal:attributes="name string:r.${i}.active; checked r/active" /><span class="pfas-switch-track"></span></label></td>
             <td><input type="text" size="70" tal:attributes="name string:r.${repeat/r/index}.text; value r/text;
                        placeholder python:'new reason' if not r['id'] else None" /></td>
             <td><input type="text" size="22" tal:attributes="name string:r.${repeat/r/index}.source; value r/source" /></td>

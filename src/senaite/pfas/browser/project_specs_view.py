@@ -16,11 +16,12 @@ import logging
 
 from bika.lims import api
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import config_forms as cf
 from senaite.pfas import project_specs as ps
-from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.formutil import flatten_form, quote_text
 from senaite.pfas.browser.perms import require_manager
 from senaite.pfas.browser.perms import refuse
 
@@ -28,36 +29,26 @@ logger = logging.getLogger("senaite.pfas.project_specs")
 
 FORM_ID = "project-specs"
 # the page's tabs: (id, label, section ids)
-TABS = [("an", u"Analytes & limits", ("px", "rl")),
-        ("rec", u"Recovery & RPD", ("groups", "tiers", "tiers_lfb", "dup", "lfsmd")),
-        ("std", u"Standards & links", ("ls", "sur")),
-        ("ins", u"Calibration & QC run", ("cal", "qc_comp")),
-        ("eis", u"SUR limits", ("eis_grid",))]
+TABS = [("qc", u"Extraction QC", ("qc_comp", "projqc")),
+        ("rec", u"Recovery & RPD", ("tiers", "tiers_lfb", "dup", "lfsmd")),
+        ("dil", u"Dilutions", ("dil",))]
 
 
-class PFASProjectSpecsView(BrowserView):
+class PFASProjectSpecsView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/project_specs.pt")
-    rt_grid_template = ViewPageTemplateFile("templates/rt_grid.pt")
 
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
             if not require_manager(self.context, self.request):
                 return refuse(self.request, "Forbidden")
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
             return self._save()
         return self.template()
 
     # ── selection ────────────────────────────────────────────────────────
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def uid(self):
         return (self.request.form.get("uid") or "").strip()
@@ -156,8 +147,10 @@ class PFASProjectSpecsView(BrowserView):
         return cf.stamp(self._section(sid), self._states()[1], self.env())
 
     def recovery_grid_html(self):
-        from senaite.pfas.method_profile_sections import recovery_grid
-        return self.rt_grid_template(grid=recovery_grid(self._states()[1]))
+        """The applied LFSM windows for this project, drawn as the method
+        profile's QC criteria tab draws them."""
+        from senaite.pfas import profile_grids
+        return profile_grids.render_sheet(self, profile_grids.windows_sheet(self._states()[1], self.env()))
 
     # ── what differs ─────────────────────────────────────────────────────
 
@@ -218,7 +211,7 @@ class PFASProjectSpecsView(BrowserView):
     def _back(self, **msg):
         q = "uid=%s&method_id=%s&scope=%s" % (self.uid(), self.method_id(), self.scope())
         for k, v in msg.items():
-            q += "&%s=%s" % (k, _q(v))
+            q += "&%s=%s" % (k, quote_text(v))
         self.request.response.redirect("%s/@@pfas-project-specs?%s" % (self.portal_url(), q))
         return ""
 
@@ -271,9 +264,3 @@ def _vals(vals):
     return u"; ".join(parts)
 
 
-def _q(text):
-    try:
-        from urllib import quote
-    except ImportError:                       # pragma: no cover
-        from urllib.parse import quote
-    return quote((u"%s" % text).encode("utf-8"))

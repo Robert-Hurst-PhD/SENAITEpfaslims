@@ -14,27 +14,27 @@ import json
 import logging
 import re
 import uuid
-from datetime import date
 
 from zope.event import notify
 from zope.lifecycleevent import ObjectModifiedEvent
 
-from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas import lab_time
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import refuse
+from senaite.pfas.browser.prep_common import PrepTypesMixin
+from senaite.pfas.holding_time import date_to_iso as _date_str, parse_date as _parse_date
 from senaite.pfas.browser.perms import require_manager
 from senaite.pfas.logbook_schema import (
     FIELD_TYPES,
     canonicalize_schema,
     validate_schema,
-    validate_steps,
 )
 from senaite.pfas.document_templates import script_json
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 logger = logging.getLogger("senaite.pfas.browser.prep_logbooks")
-
 
 
 def sort_value(value, default=100):
@@ -79,25 +79,6 @@ def _get_folder(portal):
     return folder
 
 
-def _date_str(d):
-    if not d:
-        return u""
-    try:
-        return d.strftime("%Y-%m-%d")
-    except AttributeError:
-        return unicode(d)[:10] if d else u""
-
-
-def _parse_date(s):
-    if not s:
-        return None
-    try:
-        from datetime import datetime
-        return datetime.strptime(s[:10], "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        return None
-
-
 def _obj_to_dict(obj):
     return {
         "uid":               obj.getId(),
@@ -114,14 +95,14 @@ def _obj_to_dict(obj):
         "notes":             obj.notes or u"",
         "method_slug":       getattr(obj, "method_slug", None) or u"",
         "logbook_code":      getattr(obj, "logbook_code", None) or u"",
+        # batch: filled for each batch; library: a prep entry that makes lots
+        "scope":             getattr(obj, "scope", None) or u"batch",
         "field_schema_json": getattr(obj, "field_schema_json", None) or u"[]",
         "sort_order":        sort_value(getattr(obj, "sort_order", None)),
         "active":            bool(getattr(obj, "active", True)),
         "builtin":           bool(getattr(obj, "builtin", False)),
-        # getattr-with-default: objects created before these fields existed
-        # read cleanly without any ZODB migration.
-        "steps_json":        getattr(obj, "steps_json", None) or u"[]",
-        "guided_default":    bool(getattr(obj, "guided_default", False)),
+        # what the template is used for (logbook_roles): stored, else derived
+        "used_for":          getattr(obj, "used_for", None) or u"",
     }
 
 
@@ -149,9 +130,11 @@ def _populate_obj(obj, data):
     obj.archived_date = _parse_date(data.get("archived_date"))
     obj.method_slug = data.get("method_slug") or u""
     obj.logbook_code = data.get("logbook_code") or u""
+    if "scope" in data:
+        obj.scope = data.get("scope") or u"batch"
+    if data.get("used_for"):
+        obj.used_for = data["used_for"]
     obj.field_schema_json = data.get("field_schema_json") or u"[]"
-    obj.steps_json = data.get("steps_json") or u"[]"
-    obj.guided_default = bool(data.get("guided_default", False))
     try:
         obj.sort_order = sort_value(data.get("sort_order"))
     except (ValueError, TypeError):
@@ -247,7 +230,7 @@ def _archive_slug(portal, slug):
             continue
         if (obj.logbook_slug or "") == slug and (obj.status or "") == STATUS_ACTIVE:
             obj.status = STATUS_ARCHIVED
-            obj.archived_date = date.today()
+            obj.archived_date = lab_time.today()
             try:
                 obj.reindexObject()
             except Exception:
@@ -271,6 +254,7 @@ def _next_revision(portal, slug):
 _BUILTIN_DEFS = [
     {
         "logbook_slug": "250",
+        "scope":        "library",
         "logbook_code": "FM-ENV-001",
         "title":        u"Solvent / Reagent Prep Log",
         "method_slug":  u"",             # offered to every method
@@ -283,6 +267,7 @@ _BUILTIN_DEFS = [
     },
     {
         "logbook_slug": "251",
+        "scope":        "library",
         "logbook_code": "FM-ENV-002",
         "title":        u"Calibration Curve Prep Log",
         "method_slug":  u"",             # offered to every method
@@ -295,6 +280,7 @@ _BUILTIN_DEFS = [
     },
     {
         "logbook_slug": "252",
+        "scope":        "batch",
         "logbook_code": "FM-ENV-003",
         "title":        u"Extraction Log",
         "method_slug":  u"",             # offered to every method
@@ -307,6 +293,7 @@ _BUILTIN_DEFS = [
     },
     {
         "logbook_slug": "253",
+        "scope":        "batch",
         "logbook_code": "FM-ENV-004",
         "title":        u"Sample Processing Log",
         "method_slug":  u"",             # offered to every method
@@ -316,19 +303,6 @@ _BUILTIN_DEFS = [
         "builtin":      True,
         "revision":     1,
         "field_schema_json": u'[{"name":"analyst","label":"Analyst","type":"text","required":true,"correctable":true,"width":"lg"},{"name":"processing_date","label":"Processing Date","type":"date","required":true,"correctable":true,"width":"md"},{"name":"balance_sn","label":"Balance S/N","type":"text","correctable":true,"width":"md"},{"name":"grinder_cleaned","label":"Grinder Cleaned / Blank Passed","type":"checkbox"},{"name":"notes","label":"Notes","type":"textarea","correctable":true},{"name":"samples","label":"Samples","type":"table","columns":[{"name":"sample_id","label":"Sample ID","type":"text"},{"name":"weight_g","label":"Weight (g)","type":"number"},{"name":"notes","label":"Notes","type":"text"}],"default_rows":[]},{"name":"processing_materials","label":"Processing Materials","type":"table","columns":[{"name":"name","label":"Material","type":"text"},{"name":"lot","label":"Lot #","type":"text"},{"name":"notes","label":"Notes","type":"text"}],"default_rows":[]}]',
-    },
-    # Chain of Custody — applies to all methods (no method_slug restriction)
-    {
-        "logbook_slug": "coc",
-        "logbook_code": "COC",
-        "title":        u"Chain of Custody",
-        "method_slug":  u"",
-        "sort_order":   50,
-        "status":       STATUS_ACTIVE,
-        "active":       True,
-        "builtin":      True,
-        "revision":     1,
-        "field_schema_json": u'[{"name":"client_name","label":"Client / Submitter","type":"text","required":true,"width":"lg"},{"name":"project_name","label":"Project Name","type":"text","width":"lg"},{"name":"project_number","label":"Project Number","type":"text","width":"md"},{"name":"sample_collection_date","label":"Sample Collection Date","type":"date","required":true,"width":"md"},{"name":"sampler_name","label":"Field Sampler","type":"text","width":"lg"},{"name":"sample_preservation","label":"Preservation / Holding","type":"text","width":"lg"},{"name":"containers","label":"Containers Received","type":"table","columns":[{"name":"sample_id","label":"Sample ID","type":"text"},{"name":"container_type","label":"Container","type":"text"},{"name":"volume_ml","label":"Vol (mL)","type":"number"},{"name":"temp_c","label":"Temp (°C)","type":"number","corrected_by":"receipt_thermometer"},{"name":"condition","label":"Condition","type":"text"}],"default_rows":[]},{"name":"receipt_thermometer","label":"Receipt thermometer","type":"thermometer","required":true},{"name":"transfers","label":"Custody Transfers","type":"table","columns":[{"name":"relinquished_by","label":"Relinquished By","type":"text"},{"name":"relinquished_at","label":"Date/Time","type":"text"},{"name":"received_by","label":"Received By","type":"text"},{"name":"received_at","label":"Date/Time","type":"text"},{"name":"method","label":"Method","type":"text"}],"default_rows":[]},{"name":"lab_received_by","label":"Received by (Lab)","type":"text","required":true,"correctable":true,"width":"lg"},{"name":"lab_received_date","label":"Date/Time Received","type":"date","required":true,"correctable":true,"width":"md"},{"name":"seals_intact","label":"Seals Intact","type":"checkbox"},{"name":"labels_legible","label":"Labels Legible","type":"checkbox"},{"name":"holding_time_ok","label":"Holding Times OK","type":"checkbox"},{"name":"condition_notes","label":"Sample Condition Notes","type":"textarea","correctable":true},{"name":"reviewed_by","label":"Reviewed By (QAO)","type":"text","correctable":true,"width":"lg"},{"name":"reviewed_date","label":"Review Date","type":"date","correctable":true,"width":"md"}]',
     },
 ]
 
@@ -409,7 +383,7 @@ def seed_builtin_logbook_defs(portal):
     return created, updated, skipped
 
 
-class PFASPrepLogbooksView(BrowserView):
+class PFASPrepLogbooksView(ViewHelpers, PrepTypesMixin, BrowserView):
     """Manage prep logbook definitions."""
 
     template = ViewPageTemplateFile("templates/prep_logbooks.pt")
@@ -423,12 +397,8 @@ class PFASPrepLogbooksView(BrowserView):
             return refuse(self.request, "Forbidden")
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
             if action in ("add", "edit"):
                 return self._handle_upsert()
             if action == "activate":
@@ -441,23 +411,38 @@ class PFASPrepLogbooksView(BrowserView):
                 return self._handle_delete()
         return self.template()
 
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
     def _self_url(self):
         return "{}/@@pfas-prep-logbooks".format(self.context.absolute_url())
-
-    def _redirect(self, url):
-        self.request.response.redirect(url)
-        return ""
 
     # ── Template data ─────────────────────────────────────────────────────
 
     def logbook_families(self):
-        """Current active/draft revision per family, sorted by title."""
+        """Current active/draft revision per family, sorted by title, each with
+        its role (what it is used for), whether that is fixed, and the recipes
+        made on it."""
+        from senaite.pfas import logbook_roles as lr
+        from senaite.pfas import recipes as rs
+        store = rs.load(self._portal())
         fams = _get_active_families(self._portal())
+        for fam in fams:
+            fam["role"] = lr.role_of(fam)
+            fam["role_label"] = lr.LABEL.get(fam["role"], u"")
+            fam["role_fixed"] = lr.issued(_list(self._portal(), slug=fam.get("logbook_slug")))
+            fam["recipes"] = [(rs.active(store, rid) or {}).get("name") or rid for rid in sorted(store)
+                              if (rs.active(store, rid) or {}).get("log") == fam.get("logbook_slug")]
         fams.sort(key=lambda x: x.get("title", "").lower())
         return fams
+
+    def roles(self):
+        from senaite.pfas import logbook_roles as lr
+        return lr.ROLES
+
+    def by_use(self):
+        from senaite.pfas import logbook_roles as lr
+        return lr.by_use(self.logbook_families())
+
+    def view_mode(self):
+        return u"use" if self.request.form.get("view") == "use" else u"list"
 
     def all_revisions(self, slug):
         """All revisions for a slug, newest first."""
@@ -498,27 +483,6 @@ class PFASPrepLogbooksView(BrowserView):
         so the two can never drift."""
         return script_json([list(t) for t in self.standard_types()])
 
-    def media_url(self):
-        """Endpoint the builder POSTs step media to / reads thumbnails from."""
-        return "{0}/@@pfas-logbook-media".format(self.portal_url())
-
-    def media_library_json(self):
-        """Catalogue of the built-in pixel-art lab animations.
-
-        Read from the generated catalog.json that ships beside the GIFs
-        (tools/make_lab_gifs.py writes both), so adding an animation needs no
-        Python change.
-        """
-        import os
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "static", "labgifs", "catalog.json")
-        try:
-            with open(path) as fh:
-                return fh.read()
-        except Exception as exc:
-            logger.warning("media_library_json: %s", exc)
-            return "[]"
-
     def records_json(self):
         """{uid: record} for every family AND every revision, as one JSON blob.
 
@@ -533,7 +497,9 @@ class PFASPrepLogbooksView(BrowserView):
                 out[fam["uid"]] = fam
             for rev in self.all_revisions(fam.get("logbook_slug", "")):
                 if rev.get("uid"):
-                    out[rev["uid"]] = rev
+                    # a revision answers for its family: its role, whether fixed, its recipes
+                    out[rev["uid"]] = dict(rev, role=fam.get("role"), role_fixed=fam.get("role_fixed"),
+                                           recipes=fam.get("recipes") or [])
         return script_json(out)
 
     def edit_uid(self):
@@ -553,15 +519,6 @@ class PFASPrepLogbooksView(BrowserView):
     def error_msg(self):
         return self.request.form.get("error", "").replace("+", " ")
 
-    def portal_url(self):
-        return getToolByName(self.context, "portal_url")()
-
-    def standard_types(self):
-        """[(key, label)]: the lab's prepared-standard types."""
-        from bika.lims import api
-        from senaite.pfas import vocab_store as vs
-        return vs.options(vs.get(api.get_portal()), "prepared_standard_types")
-
     # ── Handlers ─────────────────────────────────────────────────────────
 
     def _handle_upsert(self):
@@ -569,6 +526,25 @@ class PFASPrepLogbooksView(BrowserView):
         title = f.get("title", "").strip()
         if not title:
             return self._redirect("{0}?error=Title+is+required".format(self._self_url()))
+
+        # What the template is used for, asked first; fixed once its
+        # revision 1 is issued. The fields that moved to recipes (type,
+        # default expiry, procedure, analyte template, list position) are no
+        # longer on the form: an edit keeps what the template had.
+        from senaite.pfas import logbook_roles as lr
+        prior = _get(self._portal(), f.get("uid", "").strip()) if f.get("uid", "").strip() else None
+        role = f.get("used_for", "").strip()
+        if role not in lr.LABEL:
+            role = lr.role_of(prior) if prior else u""
+        if not role:
+            return self._redirect("{0}?error={1}".format(self._self_url(), _urlmsg("Say what the logbook is used for.")))
+        if prior and lr.change_refused(lr.role_of(prior), role, _list(self._portal(), slug=prior["logbook_slug"])):
+            return self._redirect("{0}?error={1}".format(self._self_url(), _urlmsg(
+                u"Used for is fixed once revision 1 is issued: {0}.".format(lr.LABEL[lr.role_of(prior)]))))
+        kept = prior or {}
+        for key in ("standard_type", "default_expiry_days", "procedure", "analyte_template_json", "sort_order"):
+            if key not in f and key in kept:
+                f[key] = u"%s" % kept[key]
 
         # Refused, not coerced: a non-number here silently became 365 days and
         # set every prepared standard's expiry from a value nobody chose.
@@ -596,19 +572,6 @@ class PFASPrepLogbooksView(BrowserView):
                 self._self_url(), _urlmsg("; ".join(errors[:3]))))
         clean_schema = json.dumps(canonicalize_schema(parsed_schema))
 
-        raw_steps = f.get("steps_json", "[]").strip() or "[]"
-        try:
-            parsed_steps = json.loads(raw_steps)
-        except (ValueError, TypeError) as exc:
-            return self._redirect("{0}?error={1}".format(
-                self._self_url(),
-                _urlmsg("Guided steps are not valid JSON: {0}".format(exc))))
-        step_errors = validate_steps(parsed_steps, parsed_schema)
-        if step_errors:
-            return self._redirect("{0}?error={1}".format(
-                self._self_url(), _urlmsg("; ".join(step_errors[:3]))))
-        clean_steps = json.dumps(parsed_steps if isinstance(parsed_steps, list) else [])
-
         data = {
             "uid":                 f.get("uid", "").strip() or None,
             "title":               title,
@@ -623,9 +586,9 @@ class PFASPrepLogbooksView(BrowserView):
             "notes":               f.get("notes", "").strip(),
             "method_slug":         f.get("method_slug", "").strip(),
             "logbook_code":        f.get("logbook_code", "").strip(),
+            "scope":               lr.scope_of(role),
+            "used_for":            role,
             "field_schema_json":   clean_schema,
-            "steps_json":          clean_steps,
-            "guided_default":      f.get("guided_default") in ("true", "1", "yes", "on"),
             "sort_order":          f.get("sort_order", "100"),
             "active":              f.get("active") not in ("false", "0", "no", "off"),
         }
@@ -685,7 +648,7 @@ class PFASPrepLogbooksView(BrowserView):
         if rec.get("status") == STATUS_ARCHIVED:
             return self._redirect("{0}?error=Already+archived".format(self._self_url()))
         rec["status"] = STATUS_ARCHIVED
-        rec["archived_date"] = date.today().isoformat()
+        rec["archived_date"] = lab_time.today().isoformat()
         _save(self._portal(), rec)
         return self._redirect("{0}?ok=Revision+archived".format(self._self_url()))
 

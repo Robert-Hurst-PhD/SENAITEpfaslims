@@ -34,7 +34,7 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
-  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-flow" /></tal:tabs>
 
   <div metal:fill-slot="content">
   <div class="page-body">

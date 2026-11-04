@@ -11,11 +11,7 @@ Three consumers, one source:
     "purpose" vocabulary in the column-mapping grid.
   * saved Import Studio profiles map a vendor's header onto one of these names.
 
-Before this module existed the two lists had drifted: Import Studio's PURPOSES
-was a strict SUBSET of the importer's column map, so an analyst literally could
-not map ``Reporting Limit`` or ``Expected Ion Ratios`` — the two columns the
-BLoQ qualifier and the ion-ratio check depend on. Any field added here becomes
-mappable and consumable at the same moment.
+Any field added here becomes mappable and consumable at the same moment.
 
 The module is deliberately dependency-free and syntax-compatible with BOTH
 Python 2.7 (Zope) and Python 3 (worker): plain dicts and tuples only, no
@@ -90,8 +86,8 @@ CANONICAL_FIELDS = [
 FIELD_LABELS = dict(CANONICAL_FIELDS)
 
 # Fields it never makes sense to have two source columns for. Mapping two
-# columns onto one of these silently destroyed data, because pandas' rename
-# collapses duplicate targets and only the last one survives.
+# columns onto one of these would lose data: pandas' rename collapses
+# duplicate targets and only the last one survives.
 SINGLE_VALUED_FIELDS = frozenset(
     name for name, _ in CANONICAL_FIELDS if name != "ignore")
 
@@ -144,9 +140,9 @@ NATIVE_COLUMN_MAP = {
 }
 
 
-# Fields added after profiles were saved (ion-ratio
-# redundancy): a saved profile that left these headers on "ignore" gets them
-# mapped -- fill-only, never over a choice the lab made.
+# Fields a saved profile may predate (ion-ratio redundancy): a saved profile
+# that left these headers on "ignore" gets them mapped -- fill-only, never
+# over a choice the lab made.
 NEW_FIELDS_2026_10_08 = ("quan_ref_expected_ion_ratios", "method_expected_ion_ratios",
                          "qual_ions_responses")
 

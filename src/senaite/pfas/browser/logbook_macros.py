@@ -2,9 +2,8 @@
 """
 Logbook-specific METAL macro provider.
 
-Registered at @@pfas-logbook-macros. Exposes the `logbook_field` macro so the
-concise form (logbook_dynamic.pt) and the guided step view (logbook_guided.pt)
-render a field identically —, define UI once.
+Registered at @@pfas-logbook-macros. Exposes the `logbook_field` macro the
+logbook form (logbook_dynamic.pt) draws each field with.
 
 Kept separate from @@pfas-macros: that file is site-wide page chrome and
 already 1100+ lines; field widgets are a logbook concern.

@@ -16,7 +16,9 @@ import os
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas import run_calibration as rc
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.qc_lists import StoreListsMixin
 from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 from senaite.pfas.browser.perms import refuse
 
@@ -32,7 +34,21 @@ def _is_manager(context):
     return has_role_at_portal(context, MANAGER_ROLES)
 
 
-class PFASCalibrationsView(BrowserView):
+def _stored_at(at):
+    """A curve's stored UTC stamp, "YYYY-MM-DDTHH:MM:SS": on the laboratory's
+    clock while the zone converts (the run's time is read from it), the
+    stored text otherwise."""
+    from senaite.pfas import print_doc
+    return print_doc.lab_or(at, str(at)[:19], u"%Y-%m-%dT%H:%M:%S")
+
+
+def calibration_qc_rows(store, batch_id):
+    """The Calibration QC rows the worker wrote for one worksheet (the
+    verdicts on its curves), whatever their date."""
+    return store.get_qc_for_run(None, batch_id=batch_id, qc_types=["Calibration"])
+
+
+class PFASCalibrationsView(StoreListsMixin, BrowserView):
     """
     Browser view for PFAS calibration curve review and approval.
 
@@ -133,27 +149,9 @@ class PFASCalibrationsView(BrowserView):
                 return r
         return runs[0] if runs else None
 
-    def analysts(self):
-        if not self.db_available:
-            return []
-        try:
-            return self._store().get_analysts()
-        except Exception as e:
-            logger.error("calibrations.analysts: %s", e)
-            return []
 
-    def instruments(self):
-        if not self.db_available:
-            return []
-        try:
-            return self._store().get_instruments()
-        except Exception as e:
-            logger.error("calibrations.instruments: %s", e)
-            return []
 
     # ── QC acceptance criteria: the METHOD PROFILE of each run's method ────
-    # (QC consolidation P2). These used to come from
-    # qc_rules.json, which disagreed with the profiles the pipeline judges by.
 
     def method_limits(self, method=None):
         """{"r2", "cal_pct", "CAL", "ICV", "CCV"} from `method`'s profile (the
@@ -163,7 +161,8 @@ class PFASCalibrationsView(BrowserView):
         cache = self.__dict__.setdefault("_limits_cache", {})
         if method in cache:
             return cache[method]
-        out = {"r2": None, "cal_pct": None, "CAL": {}, "ICV": {}, "CCV": {}}
+        out = {"r2": None, "cal_pct": None, "CAL": {}, "ICV": {}, "CCV": {}, "level_unit": u"",
+               "origin": None, "weighting": None}
         if method:
             try:
                 from senaite.pfas.method_profile_store import get_profile
@@ -174,7 +173,7 @@ class PFASCalibrationsView(BrowserView):
                 from senaite.pfas.qc.rules import method_toggles
                 judge_r2 = method_toggles(profile, method).get("cal_r2", True)
             except Exception:                                   # noqa: BLE001
-                iv, judge_r2 = {}, True
+                iv, judge_r2, profile = {}, True, {}
             cal, ccv, icv = (iv.get("calibration") or {}), (iv.get("ccv") or {}), (iv.get("icv") or {})
             num = lambda v: None if v in (None, u"") else float(v)       # noqa: E731
             # the same keys and rules the worker judges by (qc_engine:
@@ -189,10 +188,15 @@ class PFASCalibrationsView(BrowserView):
                           "warn": None}
             out["CCV"] = {"min": num(ccv.get("recovery_min")), "max": num(ccv.get("recovery_max")),
                           "low_min": num(ccv.get("low_level_min")),
-                          "low_max": num(ccv.get("low_level_max")),
-                          "warn": num(ccv.get("pct_dev_warn"))}
+                          "low_max": num(ccv.get("low_level_max"))}
             out["ICV"] = {"same_as_ccv": icv.get("criteria") == "ccv",
                           "max": num(icv.get("pct_dev_max"))}
+            from senaite.pfas.calibration_levels import unit
+            out["level_unit"] = unit(profile)
+            # how the method's curve is fitted: the curve card starts from it
+            from senaite.pfas import calibration_fit
+            out["origin"] = calibration_fit.origin(cal)
+            out["weighting"] = calibration_fit.weighting(cal)
         cache[method] = out
         return out
 
@@ -280,9 +284,9 @@ class PFASCalibrationsView(BrowserView):
                 "max_level":           row.get("max_level"),
                 "status":              row.get("status", "pending"),
                 "notes":               row.get("notes", ""),
-                "created_at":          str(row.get("created_at", ""))[:19],
+                "created_at":          _stored_at(row.get("created_at", "")),
                 "approved_by":         row.get("approved_by", "") or "",
-                "approved_at":         str(row.get("approved_at", "") or "")[:19],
+                "approved_at":         _stored_at(row.get("approved_at", "") or ""),
                 "fit_type_override":   row.get("fit_type_override", "") or "",
                 "weight_override":     row.get("weight_override", "") or "",
                 "origin_override":     row.get("origin_override", "") or "",
@@ -403,8 +407,6 @@ class PFASCalibrationsView(BrowserView):
             "avg_r2":     avg_r2,
         }
 
-    def status_choices(self):
-        return ["pending", "approved", "rejected"]
 
     def run_dates(self):
         """Return distinct run dates (for filter pills)."""
@@ -467,6 +469,27 @@ class PFASCalibrationsView(BrowserView):
             })
         return by_analyte
 
+    def _rules_for_run(self, run):
+        """{analyte: the rule's sentence} of the run's curves that fail the
+        most-calibrators-dropped rule, read from the Calibration QC rows the
+        worker wrote for the worksheet that ran the curves."""
+        bid = run.get("batch_id")
+        if not bid:
+            # a verdict belongs to the worksheet whose worker wrote it; a curve
+            # with none has no rule rows of its own
+            return {}
+        try:
+            rows = calibration_qc_rows(self._store(), bid)
+        except Exception as e:                                  # noqa: BLE001
+            logger.error("_rules_for_run: %s", e)
+            return {}
+        return rc.dropped_rules(rows)
+
+    # {analyte: [{injection, level, reason}]}: the calibrators taken off each
+    # curve by hand, from the raw run's curve provenance. The page that holds
+    # the raw run (Data Review) sets it; the archive has none.
+    excluded_by_hand = None
+
     def calibration_runs_json(self, **scope):
         """Return JSON string of all run groups for the current filter (or
         the scope given: see calibrations())."""
@@ -481,11 +504,18 @@ class PFASCalibrationsView(BrowserView):
             run["used_by"] = sorted(set(w for c in run["analytes"] for w in used_by.get(c["id"], [])))
             # the worksheet's own ICV/CCV, whatever date its curve was run on.
             # By date alone, every worksheet run that day was drawn on one
-            # chart (110 bars and 55 solvent-blank chips; UI review 2026-10-09)
+            # chart (110 bars and 55 solvent-blank chips; UI )
             bid = scope.get("batch_id") or run.get("batch_id")
             qc_by_analyte = self._qc_for_run(None if bid else run["run_date"], bid)
+            rules = self._rules_for_run(run)
+            run["rule_hold"] = rc.hold_reason(rules)
             for cal in run["analytes"]:
                 cal["qc"] = qc_by_analyte.get(cal["analyte"], [])
+                # the curve's own rule: the worker's sentence, and the
+                # calibrators taken off by hand with the reason each was
+                cal["rule_fail"] = rules.get(cal["analyte"], u"")
+                cal["dropped"] = ((self.excluded_by_hand or {}).get(cal["analyte"], [])
+                                  if cal["rule_fail"] else [])
                 cal["fit_type_override"] = cal.get("fit_type_override", "")
                 cal["weight_override"] = cal.get("weight_override", "")
                 cal["origin_override"] = cal.get("origin_override", "")
@@ -494,6 +524,15 @@ class PFASCalibrationsView(BrowserView):
                 cal["limits"] = self.qc_type_limits(cal.get("method"))
                 cal["pct_max"] = cal["limits"]["CAL"].get("max")
                 cal["r2_min"] = self.r2_minimum(cal.get("method"))
+                # the unit the method's calibration levels are in (ppt in the
+                # sample, or ng/mL in the extract): every chart label uses it
+                cal["level_unit"] = self.method_limits(cal.get("method"))["level_unit"]
+                # the curve card starts from the method's Origin and Weighting;
+                # "" is None in the card's weighting select, null = not set
+                ml = self.method_limits(cal.get("method"))
+                cal["profile_origin"] = ml["origin"]
+                cal["profile_weight"] = None if ml["weighting"] is None else (
+                    u"" if ml["weighting"] == u"none" else ml["weighting"])
         try:
             raw = json.dumps(runs)
             # HTML-safe for Chameleon tal:replace: encode &, <, > so
@@ -523,64 +562,8 @@ class PFASCalibrationsView(BrowserView):
         if action == "override":
             return self._handle_override()
 
-        # Legacy: single-calibration approve/reject
-        cal_id = self.request.form.get("calibration_id", "")
-        new_status = self.request.form.get("new_status", "")
-        notes = self.request.form.get("notes", "")
-
-        if not cal_id or new_status not in ("approved", "rejected", "pending"):
-            self.request.response.setStatus(400)
-            return "Invalid request"
-
-        try:
-            cal_id = int(cal_id)
-        except (TypeError, ValueError):
-            self.request.response.setStatus(400)
-            return "Invalid calibration_id"
-
-        try:
-            with self._store()._connect() as conn:
-                conn.execute(
-                    "UPDATE calibrations SET status=?, notes=? WHERE id=?",
-                    (new_status, notes, cal_id),
-                )
-        except Exception as exc:
-            logger.error("Failed to update calibration %s: %s", cal_id, exc)
-            self.request.response.setStatus(500)
-            return "Update failed: {}".format(exc)
-
-        url = "{}/@@pfas-calibrations?saved=1".format(
-            self.context.absolute_url()
-        )
-        self.request.response.redirect(url)
-        return ""
-
-    def _handle_approve_run(self):
-        run_date = self.request.form.get("run_date", "").strip()
-        if not run_date:
-            self.request.response.setStatus(400)
-            return "Missing run_date"
-        try:
-            from AccessControl import getSecurityManager
-            user = getSecurityManager().getUser()
-            approved_by = user.getUserName()
-        except Exception:
-            approved_by = "unknown"
-        try:
-            self._store().approve_run(
-                run_date,
-                approved_by=approved_by,
-                method=self.request.form.get("method") or None,
-            )
-        except Exception as exc:
-            logger.error("approve_run failed: %s", exc)
-            self.request.response.setStatus(500)
-            return "Approve failed: {}".format(exc)
-        url = "{}/@@pfas-calibrations?saved=approved&run_date={}".format(
-            self.context.absolute_url(), run_date
-        )
-        self.request.response.redirect(url)
-        return ""
+        self.request.response.setStatus(400)
+        return "Unknown action"
 
     def _handle_override(self):
         self.request.response.setHeader("Content-Type", "application/json")
@@ -599,6 +582,7 @@ class PFASCalibrationsView(BrowserView):
                 fit_type_override=fit_type_override,
                 weight_override=weight_override,
                 origin_override=origin_override,
+                by_user=getattr(self.request.get("AUTHENTICATED_USER"), "getId", lambda: u"")(),
             )
         except Exception as exc:
             logger.error("override failed: %s", exc)

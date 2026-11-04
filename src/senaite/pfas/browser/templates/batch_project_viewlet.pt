@@ -25,8 +25,8 @@
         No project assigned &#8212; the lab's internal quality system applies.
       </div>
       <div class="pfas-muted" tal:condition="view/project_uid">
-        Linked project could not be found (it may have been deleted) &#8212;
-        the lab's internal quality system applies.
+        Linked project could not be found; it may have been deleted. The lab's internal
+        quality system applies.
       </div>
     </tal:no-project>
 

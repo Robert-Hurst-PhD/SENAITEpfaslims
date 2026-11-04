@@ -19,6 +19,7 @@ STATUS_OPENED     = u"opened"
 STATUS_EXHAUSTED  = u"exhausted"
 STATUS_EXPIRED    = u"expired"
 STATUS_QUARANTINE = u"quarantine"
+STATUS_PENDING    = u"pending"      # new lots: verified before use (lot_status)
 
 # Reagent-grade water produced by the lab's own Type 1 system is the ONE lot
 # class with no manufacturer to trace to. Its provenance is the Type 1 water QC
@@ -30,7 +31,7 @@ STATUS_QUARANTINE = u"quarantine"
 # supplier. The distinction is which one the bench selected, not what it is
 # called.
 CATEGORY_INHOUSE_WATER = u"Reagent Water — in-house Type 1"
-# purchased reagent water a study may be made in (lab, 2026-10-09)
+# purchased reagent water a study may be made in
 CATEGORY_PURCHASED_WATER = u"Reagent Water — purchased"
 # what a matrix blank is made from; its assigned levels annotate the lot
 # (matrix_blank.py)
@@ -86,6 +87,10 @@ class IReagent(model.Schema):
         title=_(u"Storage Location"),
         required=False,
     )
+    storage_conditions = schema.TextLine(
+        title=_(u"Recommended storage conditions"),
+        required=False,     # required on save (core_lists.lot_problems)
+    )
     barcode = schema.TextLine(
         title=_(u"Raw Barcode"),
         required=False,
@@ -98,8 +103,8 @@ class IReagent(model.Schema):
         title=_(u"Unit"),
         required=False,
     )
-    # Bench phase 3: the Bench lists the lot as
-    # low once what is left (received less every recorded use) reaches this.
+    # the Bench lists the lot as low once what is left (received less every
+    # recorded use) reaches this
     low_stock_level = schema.TextLine(
         title=_(u"Low-stock level"),
         description=_(u"An amount, e.g. 500 mL; a bare number is in the stock unit."),
@@ -113,7 +118,7 @@ class IReagent(model.Schema):
     status = schema.Choice(
         title=_(u"Status"),
         values=[STATUS_ACTIVE, STATUS_OPENED, STATUS_EXHAUSTED,
-                STATUS_EXPIRED, STATUS_QUARANTINE],
+                STATUS_EXPIRED, STATUS_QUARANTINE, STATUS_PENDING],
         default=STATUS_ACTIVE,
         required=False,
     )

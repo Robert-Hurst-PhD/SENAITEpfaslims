@@ -194,7 +194,7 @@
           <tal:pending tal:condition="python:dev.get('corrective_actions')">
             <tal:count tal:define="nc python:sum(1 for ca in dev.get('corrective_actions',[]) if ca.get('status') != 'complete')">
               <tal:show tal:condition="nc">
-                <span class="pfas-seg-count">(<tal:v tal:replace="nc"/> pending)</span>
+                <span class="pfas-muted"><tal:v tal:replace="nc"/> pending</span>
               </tal:show>
             </tal:count>
           </tal:pending>
@@ -450,7 +450,7 @@
                     <span tal:content="uid"/>
                     <tal:acked tal:condition="is_acked">
                       <span class="pfas-aux">
-                        (<tal:v tal:replace="python:acks[uid].get('acked_at','')[:10]"/>)
+                        (<tal:v tal:replace="python:view.lab_at(acks[uid].get('acked_at'), acks[uid].get('acked_at','')[:10], u'%Y-%m-%d')"/>)
                       </span>
                     </tal:acked>
                   </div>
@@ -532,7 +532,7 @@
                 </tal:mark_sent>
                 <tal:sent_at tal:condition="ca/sent_at">
                   <span class="pfas-aux">
-                    Sent <tal:v tal:replace="python:ca.get('sent_at','')[:10]"/>
+                    Sent <tal:v tal:replace="python:view.lab_at(ca.get('sent_at'), ca.get('sent_at','')[:10], u'%Y-%m-%d')"/>
                   </span>
                 </tal:sent_at>
               </div>
@@ -540,7 +540,7 @@
 
             <tal:completed_info tal:condition="python:ca.get('completed_at')">
               <div class="pfas-aux">
-                Completed <tal:v tal:replace="python:ca.get('completed_at','')[:10]"/>
+                Completed <tal:v tal:replace="python:view.lab_at(ca.get('completed_at'), ca.get('completed_at','')[:10], u'%Y-%m-%d')"/>
                 by <tal:v tal:replace="python:ca.get('completed_by','')"/>
               </div>
             </tal:completed_info>
@@ -630,7 +630,7 @@
         <tal:already_closed tal:condition="python:dev.get('status') == 'closed'">
           <div class="alert alert-success">
             This record was closed on
-            <strong tal:content="python:dev.get('closed_at','')[:10]"/>
+            <strong tal:content="python:view.lab_at(dev.get('closed_at'), dev.get('closed_at','')[:10], u'%Y-%m-%d')"/>
             by <strong tal:content="dev/closed_by"/>.
           </div>
           <tal:notes tal:condition="dev/closure_notes">
@@ -674,7 +674,7 @@
               </div>
               <button type="submit" class="btn btn-danger"
                       tal:attributes="disabled python:'' if dev.get('all_cas_complete') else 'disabled'">
-                Close <tal:v tal:replace="python:dev.get('type','').upper()"/> (QAO Sign-off)
+                QAO sign-off: close <tal:v tal:replace="python:dev.get('type','').upper()"/>
               </button>
               <tal:pending_msg tal:condition="python:not dev.get('all_cas_complete')">
                 <span class="closure-note">
@@ -727,7 +727,7 @@
 
       <tal:notempty tal:condition="devs">
         <div class="table-wrap">
-        <table class="pfas-table dev-table">
+        <table class="pfas-table dev-table" data-col-resize="deviations-dev-table">
           <thead>
             <tr>
               <th>ID</th>
@@ -735,16 +735,15 @@
               <th>Filed</th>
               <th>Event</th>
               <th>Risk</th>
-              <th>CAs</th>
               <th>Status</th>
-              <th></th>
+              <th class="row-go"><span class="pfas-sr-hide">Open</span></th>
             </tr>
           </thead>
           <tbody>
             <tal:row tal:repeat="dev devs">
-              <tr>
-                <td class="pfas-cell-name"
-                    tal:content="dev/dev_id"/>
+              <!-- the whole row opens the record (Enter from the keyboard) -->
+              <tr tal:attributes="data-href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
+                <td class="pfas-cell-name" tal:content="dev/dev_id">DEV-001</td>
                 <td>
                   <span tal:define="dtype dev/type"
                         tal:attributes="class python:'badge badge-' + dtype">
@@ -761,29 +760,12 @@
                   </span>
                 </td>
                 <td>
-                  <tal:pending tal:condition="python:dev.get('ca_pending', 0) > 0">
-                    <span class="exp-warning">
-                      <tal:v tal:replace="dev/ca_pending"/> / <tal:v tal:replace="dev/ca_count"/>
-                    </span>
-                  </tal:pending>
-                  <tal:done tal:condition="python:dev.get('ca_pending', 0) == 0">
-                    <span class="pfas-muted">
-                      <tal:v tal:replace="dev/ca_count"/> total
-                    </span>
-                  </tal:done>
-                </td>
-                <td>
                   <span tal:define="dstatus dev/status"
                         tal:attributes="class python:'badge badge-' + dstatus">
                     <tal:v tal:replace="python:dstatus.replace('_',' ').title()"/>
                   </span>
                 </td>
-                <td>
-                  <a class="btn-sm btn-secondary"
-                     tal:attributes="href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
-                    View &#8594;
-                  </a>
-                </td>
+                <td class="row-go" aria-hidden="true">&#8250;</td>
               </tr>
             </tal:row>
           </tbody>
@@ -896,7 +878,7 @@
     if (!modal) return;
     typeInput.value = type;
     title.textContent = type === 'car' ? 'File New CAR' : 'File New Deviation';
-    var today = new Date().toISOString().split('T')[0];
+    var today = PFAS.components.labToday() || new Date().toISOString().split('T')[0];
     if (dateInput && !dateInput.value) { dateInput.value = today; }
     modal.classList.add('open');
     document.addEventListener('keydown', escHandler);

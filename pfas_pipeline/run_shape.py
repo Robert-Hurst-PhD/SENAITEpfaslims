@@ -1,5 +1,5 @@
-"""What is wrong with a run's SHAPE, compared with its plan: each problem holds release until a reviewer clears it with a
-note or the run is fixed.
+"""What is wrong with a run's shape, compared with its plan: each problem
+holds release until a reviewer clears it with a note or the run is fixed.
 
     problems(planned, rows, spikes) -> [reason]
 
@@ -10,8 +10,7 @@ note or the run is fixed.
 
 A missing required QC (LRB, LFB), a missing calibrator and a missing parent
 sample are all a PLANNED injection that did not run; a renamed or re-made
-injection is one that ran without being planned. Found by the end-to-end
-fast tier: these were written to the worker log only.
+injection is one that ran without being planned.
 
 Pure; Python 3.
 """
@@ -56,12 +55,11 @@ def time_order_problems(rows, role_of):
 
 def time_order_injections(rows, role_of):
     """Injections the instrument's clock places before the run's first
-    calibrator: quantified against a curve that did not exist yet (an FDA
-    example export stamps its CCVs, blank and samples a year before its
-    calibrators, and every CCV bracketed and passed). Independent of the
-    order the export lists its rows in, which need not be the run order
-    (rows are judged in acquisition order). Every run is checked, planned or
-    not; a run without calibrators or acquisition times is not.
+    calibrator: quantified against a curve that did not exist yet, though
+    a CCV so placed still brackets and passes. Rows are judged in
+    acquisition order, whatever order the export lists them in. Every run
+    is checked, planned or not; a run without calibrators or acquisition
+    times is not.
 
     A blank (system, solvent or method blank) may open a run before the
     curve -- the Run Builder's default sequence starts with one -- so blanks

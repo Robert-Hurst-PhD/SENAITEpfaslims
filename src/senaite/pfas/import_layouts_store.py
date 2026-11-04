@@ -21,30 +21,23 @@ from __future__ import absolute_import, unicode_literals
 import json
 import logging
 
-from persistent.mapping import PersistentMapping
-from zope.annotation.interfaces import IAnnotations
 
 from senaite.pfas import import_layouts
+from senaite.pfas.annotation_store import mapping
 
 logger = logging.getLogger("senaite.pfas.import_layouts_store")
 
 LAYOUTS_KEY = "senaite.pfas.import_layouts"
-MIGRATED_KEY = "senaite.pfas.import_layouts_v"
-LEGACY_KEY = "senaite.pfas.vendor_profiles"
-INSTRUMENT_LEGACY_KEY = "senaite.pfas.instrument_profiles"
 HISTORY_STORE = "import_profile"
 
 
 def _store(portal):
-    ann = IAnnotations(portal)
-    if LAYOUTS_KEY not in ann:
-        ann[LAYOUTS_KEY] = PersistentMapping()
-    return ann[LAYOUTS_KEY]
+    return mapping(portal, LAYOUTS_KEY)
 
 
 def _peek(portal):
     """The store without creating it (reads never write)."""
-    return IAnnotations(portal).get(LAYOUTS_KEY) or {}
+    return mapping(portal, LAYOUTS_KEY, create=False)
 
 
 def _load(raw):
@@ -73,15 +66,10 @@ def get(portal, layout_id):
     return p
 
 
-def _audit(portal, entry):
-    from senaite.pfas.browser.import_studio import _audit_import_studio
-    _audit_import_studio(portal, entry)
-
-
-def _track(portal, layout_id, name):
+def _track(portal, layout_id, name, action, reason=""):
     from senaite.pfas import config_history
     config_history.track(portal, HISTORY_STORE, layout_id, lambda: get(portal, layout_id),
-                         label="Import layout %s" % (name or layout_id))
+                         label="Import layout %s" % (name or layout_id), action=action, reason=reason)
 
 
 def _new_id(store):
@@ -91,42 +79,35 @@ def _new_id(store):
     return "layout-%d" % n
 
 
-def save(portal, profile, user):
+def save(portal, profile):
     """Save a layout profile (a new one gets an id); returns its id."""
     store = _store(portal)
     lid = profile.get("id") or _new_id(store)
-    _track(portal, lid, profile.get("name"))
+    _track(portal, lid, profile.get("name"), "save layout")
     data = dict(profile, id=lid)
     store[lid] = json.dumps(data, sort_keys=True)
-    _audit(portal, {"action": "save layout", "layout": lid, "name": profile.get("name") or "",
-                    "user": user, "vendor_key": "", "version": ""})
     return lid
 
 
-def delete(portal, layout_id, user, reason=""):
+def delete(portal, layout_id, reason=""):
     """Delete a layout profile (its history keeps what it was). False when
     there is no such profile."""
     store = _store(portal)
     if layout_id not in store:
         return False
     name = (get(portal, layout_id) or {}).get("name") or layout_id
-    _track(portal, layout_id, name)
+    _track(portal, layout_id, name, "delete layout", reason)
     del store[layout_id]
-    _audit(portal, {"action": "delete layout", "layout": layout_id, "name": name, "user": user,
-                    "reason": reason or "", "vendor_key": "", "version": ""})
     return True
 
 
-def set_retired(portal, layout_id, retired, user, reason=""):
+def set_retired(portal, layout_id, retired, reason=""):
     p = get(portal, layout_id)
     if p is None:
         return False
-    _track(portal, layout_id, p.get("name"))
+    _track(portal, layout_id, p.get("name"), "retire layout" if retired else "reactivate layout", reason)
     p["retired"] = bool(retired)
     _store(portal)[layout_id] = json.dumps(p, sort_keys=True)
-    _audit(portal, {"action": "retire layout" if retired else "reactivate layout", "layout": layout_id,
-                    "name": p.get("name") or "", "user": user, "reason": reason or "",
-                    "vendor_key": "", "version": ""})
     return True
 
 
@@ -139,33 +120,3 @@ def match_file(portal, head="", instrument_uid="", columns=None):
     return import_layouts.match(list_profiles(portal), head or "", instrument_uid or "")
 
 
-def migrate(portal):
-    """Once per site: the "vendor:version" profiles become layout profiles
-    (import_layouts.migrate_legacy), keeping their mapping, notes, manual
-    markers and retired state. Returns how many were moved."""
-    ann = IAnnotations(portal)
-    if ann.get(MIGRATED_KEY):
-        return 0
-    legacy = ann.get(LEGACY_KEY) or {}
-    from senaite.pfas.instrument_columns import NATIVE_COLUMN_MAP
-    known = list(NATIVE_COLUMN_MAP)
-    moved = import_layouts.migrate_legacy(dict(legacy), known_headers=known)
-    # each instrument's own earlier profiles (never read by the worker):
-    # kept as retired layouts bound to it
-    from bika.lims import api
-    for b in api.search({"portal_type": str("Instrument")}, "senaite_catalog_setup"):
-        inst = api.get_object(b)
-        own = IAnnotations(inst).get(INSTRUMENT_LEGACY_KEY) or {}
-        if own:
-            moved.extend(import_layouts.migrate_legacy(dict(own), known_headers=known,
-                                                       instrument_uid=api.get_uid(inst),
-                                                       where=api.get_title(inst)))
-    store = _store(portal)
-    for p in moved:
-        if p["id"] in store:
-            p["id"] = _new_id(store)
-        store[p["id"]] = json.dumps(p, sort_keys=True)
-    ann[MIGRATED_KEY] = 1
-    if moved:
-        logger.info("Import layouts: %d earlier profile(s) moved", len(moved))
-    return len(moved)

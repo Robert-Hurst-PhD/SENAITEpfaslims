@@ -8,11 +8,17 @@
   <metal:fill fill-slot="header-title">Data Review</metal:fill>
 
   <metal:fill fill-slot="content">
+    <ul class="bench-alerts" tal:define="mine view/notices" tal:condition="mine">
+      <li tal:repeat="n mine" class="bench-bad">
+        <strong tal:content="n/title">Run sent back</strong>
+        <span tal:content="string:${n/ws_id}: ${n/text}">WS-1: lot rejected</span>
+        <a class="btn-sm btn-secondary" tal:attributes="href n/url">Open</a></li>
+    </ul>
     <div class="pfas-ws-grid" tal:define="sections view/sections">
       <a class="pfas-ws-card"
          tal:repeat="s sections"
          tal:attributes="href s/url">
-        <span class="pfas-ws-card-icon" tal:content="s/icon">i</span>
+        <span class="pfas-ws-card-icon"><svg class="pfas-ico" aria-hidden="true"><use tal:attributes="href string:#${s/icon}"/></svg></span>
         <span class="pfas-ws-card-title" tal:content="s/title">Title</span>
         <span class="pfas-ws-card-desc"  tal:content="s/desc">Description</span>
       </a>

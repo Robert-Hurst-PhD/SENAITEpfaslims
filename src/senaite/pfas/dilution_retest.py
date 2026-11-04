@@ -20,11 +20,7 @@ from __future__ import absolute_import, unicode_literals
 KEY = u"senaite.pfas.dilution_result"
 
 
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _num
 
 
 def _factor_text(f):

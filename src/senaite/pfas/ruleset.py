@@ -4,72 +4,47 @@ Three-tier QC criterion resolution:
 
     project QAPP ruleset  ->  lab method profile  ->  published-method baseline
 
-'s quality-system hierarchy: a client project's QAPP overrides the
-lab's internal system for that project; the published analytical method is
-the outer boundary nothing may silently cross. Work that goes below the
-published method is never refused here -- it is reported. This module
-resolves ONE criterion through the three tiers and returns, alongside the
-resolved value, which tier supplied it and whether it conforms to, or departs
-from, the published-method baseline (senaite.pfas.method_baselines). That
-provenance is what lets a later phase derive an accurate non-conformance
-statement for a certificate instead of someone hand-writing one.
+The quality-system hierarchy: a client project's QAPP overrides the lab's
+internal system for that project; the published analytical method is the
+outer boundary nothing may silently cross. Work below the published method is
+never refused here: it is reported. This module resolves ONE criterion
+through the three tiers and returns, with the value, the tier that supplied
+it and whether it conforms to, or departs from, the published-method baseline
+(senaite.pfas.method_baselines), so a certificate's non-conformance statement
+is derived, never hand-written.
 
-`resolve_for_batch()` now has a call site: senaite.pfas.resolved_criteria_store
-(export_resolved_criteria), invoked from project_ref.set_project_uid when a
-batch's project link is set.
-close -- the export only fires when a caller supplies a method_id/matrix, and
-no UI yet calls set_project_uid at all with either. `resolve()` itself remains
-called only via that shell and via tests.
+Caller: senaite.pfas.resolved_criteria_store (export_resolved_criteria),
+from project_ref.set_project_uid when a batch's project link is set; the
+export fires only when the caller supplies a method_id and matrix.
 
 Design: pure core, thin ZODB shell
 -----------------------------------
-`resolve()` is pure -- it takes an already-fetched method-profile dict and an
-already-fetched project-ruleset dict (plain data, no Plone objects) and
-returns a ResolvedCriterion. It imports nothing from zope/Plone/bika, so it
-loads and runs under plain Python 3 by path
-(`importlib.util.spec_from_file_location`), the same way holding_time.py
-does, and tests/test_ruleset.py exercises it that way.
+`resolve()` is pure: it takes an already-fetched method-profile dict and
+project-ruleset dict (plain data, no Plone objects) and returns a
+ResolvedCriterion. It imports nothing from zope/Plone/bika, so it loads and
+runs under plain Python 3 by path, as tests/test_ruleset.py loads it.
 
-`resolve_for_batch()` is the thin shell: it fetches the real Project (via
-senaite.pfas.project_ref, reused rather than re-derived), the real method
-profile (via senaite.pfas.method_profile_store, READ-ONLY), and the project
-tier, then calls resolve(). The project tier is DERIVED from the project's
-Project Specs (`ruleset_from_specs`, pure; `get_project_ruleset` is its
-shell) -- there is no separately stored per-project ruleset any more.
+`resolve_for_batch()` is the thin shell: it fetches the Project
+(senaite.pfas.project_ref), the method profile (method_profile_store,
+READ-ONLY) and the project tier, then calls resolve(). The project tier is
+DERIVED from the project's Project Specs (`ruleset_from_specs`, pure;
+`get_project_ruleset` is its shell), never stored per project.
 
-
-Three refusals, not features (see resolve()'s docstring for where each is
-enforced):
+Three refusals (enforced in resolve()):
   1. No baseline recorded -> UNKNOWN, never CONFORMS.
   2. Silence at the project tier inherits the lab tier; it never nulls a
-     criterion (is the same defect shape at a different layer).
-  3. A batch with no project (the default, and every batch that predates
-     project support) resolves cleanly through lab then baseline.
+     criterion.
+  3. A batch with no project resolves cleanly through lab then baseline.
 
 Python 2.7 compatible. No f-strings, no pathlib, no type annotations.
 """
 from __future__ import absolute_import, unicode_literals
 
 import collections
-import json
-import logging
 
-logger = logging.getLogger("senaite.pfas.ruleset")
-
-# method_baselines is, like this module, deliberately free of Plone/Zope
-# imports -- but the NORMAL way to reach it (`from senaite.pfas import
-# method_baselines`) goes through the senaite.pfas package `__init__`, which
-# imports zope.i18nmessageid and so is unavailable outside the container.
-# Inside the installed add-on this simply succeeds. Standalone (tests, a
-# plain `python3` interpreter with no Zope installed), fall back to a
-# path-relative import so this module still loads and runs unaided.
-try:
-    from senaite.pfas import method_baselines
-except ImportError:
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-    import method_baselines  # noqa: E402  (standalone/test fallback)
+from senaite.pfas import labelled_standards
+from senaite.pfas import method_baselines
+from senaite.pfas import qc_tiers
 
 
 # ── Tiers ──────────────────────────────────────────────────────────────────────
@@ -77,78 +52,60 @@ TIER_PROJECT = "project"
 TIER_LAB = "lab"
 TIER_BASELINE = "baseline"
 
-# The project tier is DERIVED from Project Specs (get_project_ruleset); the
-# separately stored per-project ruleset it once read is retired.
+# The project tier is DERIVED from Project Specs (get_project_ruleset),
+# never stored separately.
 
 
 ResolvedCriterion = collections.namedtuple(
     "ResolvedCriterion",
     ["value", "key", "method_id", "matrix", "analyte", "tier",
-     "source_doc", "source_rev", "conformance", "departure"],
+     "source_doc", "source_rev", "conformance", "departure", "set_by"],
 )
+# set_by is the level that supplied `value`: "project", "method", "analyte",
+# "class:<name>" or "default" (the published method's own value, or none).
+ResolvedCriterion.__new__.__defaults__ = (None,)
 
 
 # ── Criterion registry: shape + how to read it off a lab method profile ──────
 #
-# A criterion key not listed here cannot be resolved (resolve() raises) --
-# that is a configuration error in the CALLER (an unregistered key), not a
-# missing-data case. A key listed here with no entry in
-# method_baselines._REGISTRY is a normal, expected case: it resolves fine at
-# the project/lab tier, and its conformance is UNKNOWN because the published
-# method was never verified for it (method_baselines.py explains which keys
-# that covers and why).
+# A key not listed here raises in resolve(): a caller error, not missing
+# data. A listed key with no entry in method_baselines._REGISTRY resolves at
+# the project/lab tier with conformance UNKNOWN (method_baselines.py names
+# those keys).
 #
-# WINDOW-shaped values are always represented as {"min": x, "max": y} at every
-# tier and in the returned ResolvedCriterion.value -- never a bare tuple. A
-# window key is all-or-nothing per tier: if a tier supplies the key at all, it
-# is taken as that tier's complete answer for both ends, even if one end is
-# null within it (null there means "this tier declines to constrain this end",
-# not "inherit the lower tier's value for this end"). Only the ABSENCE of the
-# key at a tier falls through to the next tier. This is a deliberate
-# simplification; per-end fallthrough within one window is not supported.
+# WINDOW values are {"min": x, "max": y} at every tier and in
+# ResolvedCriterion.value, never a tuple. A window key is all-or-nothing per
+# tier: a tier that supplies the key answers both ends (a null end means
+# "this tier does not constrain this end", not "inherit"); only an ABSENT key
+# falls through to the next tier.
 SHAPES_BY_KEY = {
     "cal_r2_min":   method_baselines.SHAPE_MIN,
     "sn_quan_min":  method_baselines.SHAPE_MIN,
-    # Reads the lab's Dup (duplicate) rpd_max specifically -- LFSMD carries
-    # its own, separate rpd_max on a different QC type and is NOT what this
-    # key reads. The name says which one on purpose; register a distinct
-    # "lfsmd_rpd_max" if that is ever needed rather than overloading this one.
+    # the lab's Dup (duplicate) rpd_max only: LFSMD's own rpd_max is another
+    # QC type and needs a key of its own, never this one
     "dup_rpd_max":  method_baselines.SHAPE_MAX,
     "ccv_recovery": method_baselines.SHAPE_WINDOW,
     "eis_recovery": method_baselines.SHAPE_WINDOW,
 
     # ── QC COMPOSITION keys (what QC runs, not its numeric limits) ──────────
-    # A QAPP can require "all samples run in duplicate" or "LFSM every 5
-    # samples instead of every 20" -- a different override CLASS from the
-    # numeric criteria above, consumed by senaite.pfas.browser.run_builder /
-    # senaite.pfas.run_composition when a run is BUILT, not by anything that
-    # judges an already-produced result. Same three-tier resolution path;
-    # see SEEDING DISCIPLINE below on why no baseline is ever registered for
-    # any of the three.
+    # A QAPP may require "all samples in duplicate" or "LFSM every 5
+    # samples": read by run_builder / run_composition when a run is BUILT,
+    # never when a result is judged. Same three-tier path; no baseline
+    # (SEEDING DISCIPLINE below).
     #
-    # ccv_frequency / lfsm_frequency are INTERVALS: "1 QC injection per N
-    # samples". A larger N is a LESS frequent (LOOSER) requirement, so these
-    # are SHAPE_MAX -- the same "looser means higher" direction as
-    # dup_rpd_max above, not SHAPE_MIN. Getting this backwards would report a
-    # lab running QC MORE often than the method requires (a smaller N) as a
-    # departure, confidently, on a certificate -- see method_baselines.py's
-    # own warning about this and tests/test_ruleset.py's direction-rule
-    # tests for both keys.
+    # ccv_frequency / lfsm_frequency are INTERVALS, "1 QC injection per N
+    # samples": a larger N is LOOSER, so SHAPE_MAX (as dup_rpd_max), never
+    # SHAPE_MIN, which would report QC run MORE often than the method
+    # requires as a departure (tests/test_ruleset.py pins the direction).
     "ccv_frequency":  method_baselines.SHAPE_MAX,
     "lfsm_frequency": method_baselines.SHAPE_MAX,
 
-    # duplicate_all_samples is boolean, not numeric, but the same "looser
-    # means lower" logic that defines SHAPE_MIN (a floor: a HIGHER value is
-    # tighter, a LOWER one is looser) maps cleanly onto it if True/False are
-    # read as 1/0: requiring duplicates (True/1) is strictly the tighter
-    # requirement, and method_baselines._verdict_min's `resolved < baseline`
-    # test is exactly "the resolved value provides LESS than the baseline
-    # demands", which is correct for a boolean floor too (Python compares
-    # False < True as True). No baseline will ever be registered for this
-    # key in practice (SEEDING DISCIPLINE below), so compare() never
-    # actually runs on it in production -- this assignment is declarative,
-    # pinning the taxonomy for when/if a citable baseline ever exists,
-    # proven only by a synthetic baseline in tests/test_ruleset.py.
+    # duplicate_all_samples is a boolean floor, True/False read as 1/0:
+    # requiring duplicates is the tighter requirement, and
+    # method_baselines._verdict_min's `resolved < baseline` holds for it
+    # (False < True). No baseline is registered (SEEDING DISCIPLINE below),
+    # so compare() never runs on it; tests/test_ruleset.py proves the shape
+    # with a synthetic baseline.
     "duplicate_all_samples": method_baselines.SHAPE_MIN,
 }
 
@@ -161,17 +118,13 @@ def _flag(value):
     return value is True or (u"%s" % value).strip().lower() in (u"yes", u"true", u"1", u"on")
 
 
-# SEEDING DISCIPLINE for the three composition keys above (mirrors
-# method_baselines.py's docstring for the numeric criteria): "all samples in
-# duplicate" / "LFSM every N samples" are QAPP-level demands ON TOP OF a
-# published method's own minimum QC -- a client project can always ask for
-# MORE than the method requires. No EPA/FDA method text specifies a duplicate
-# frequency or an LFSM interval as part of its own minimum program, so there
-# is nothing to cite and get_baseline() returns None for all three,
-# unconditionally, today. That is not a gap to fill in -- Sec8:
-# never fabricate a regulatory value. Absent means UNKNOWN (ruleset rule 1),
-# which is the correct, permanent answer here, not a placeholder for a
-# baseline someone forgot to add.
+# SEEDING DISCIPLINE for the three composition keys above (as
+# method_baselines.py for the numeric criteria): "all samples in duplicate" /
+# "LFSM every N samples" are QAPP demands ON TOP OF a published method's own
+# minimum QC. No EPA/FDA method text specifies a duplicate frequency or an
+# LFSM interval, so get_baseline() returns None for all three: a regulatory
+# value is never fabricated. Absent means UNKNOWN (rule 1), the permanent
+# answer here.
 
 # Criterion keys that are per-analyte, not per-method x matrix alone. Their
 # stored value (at the project tier, and as read off the lab profile) is
@@ -180,11 +133,10 @@ ANALYTE_SCOPED_KEYS = frozenset(["eis_recovery"])
 
 
 def _dig(mapping, path):
-    """Walk a nested dict/list `path`, returning None on any miss instead of
-    raising -- criterion lookups must degrade to "not configured", never to
-    a KeyError/IndexError, since an incompletely-populated profile is the
-    normal case (see method_profile_store.py's own UnconfiguredCriterion
-    philosophy, which this mirrors without depending on that module)."""
+    """Walk a nested dict/list `path`; None on any miss, never a
+    KeyError/IndexError: an incompletely populated profile is the normal
+    case and reads as "not configured" (as method_profile_store's
+    UnconfiguredCriterion, without depending on it)."""
     cur = mapping
     for step in path:
         if cur is None:
@@ -208,24 +160,36 @@ def _lab_ccv_recovery(profile, matrix, analyte):
     return {"min": lo, "max": hi}
 
 
-def _lab_eis_recovery(profile, matrix, analyte):
+def _lab_eis_recovery_set_by(profile, matrix, analyte):
+    """(window, the level that set it): the analyte's own override, replaced
+    by the matrix class's override when the matrix has one."""
     if not analyte:
-        return None
+        return None, None
     value = None
+    set_by = None
     for row in (profile.get("eis_overrides") or []):
         if row.get("analyte") == analyte:
             lo = row.get("recovery_min")
             hi = row.get("recovery_max")
             if lo is not None or hi is not None:
                 value = {"min": lo, "max": hi}
+                set_by = "analyte"
             break
     mclass = method_baselines.matrix_class(matrix, profile) if matrix else "aqueous"
     if mclass != "aqueous":
         override = (profile.get("eis_matrix_overrides") or {}).get(mclass, {}).get(analyte)
         if override:
-            value = {"min": override.get("recovery_min"),
-                      "max": override.get("recovery_max")}
-    return value
+            if labelled_standards.not_assessed(override):       # no window in this class
+                value = {"min": None, "max": None, "assessed": False}
+            else:
+                value = {"min": override.get("recovery_min"),
+                         "max": override.get("recovery_max")}
+            set_by = "class:" + mclass
+    return value, set_by
+
+
+def _lab_eis_recovery(profile, matrix, analyte):
+    return _lab_eis_recovery_set_by(profile, matrix, analyte)[0]
 
 
 # key -> extractor(profile, matrix, analyte) -> resolved value or None.
@@ -239,17 +203,14 @@ _LAB_EXTRACTORS = {
     "ccv_recovery": _lab_ccv_recovery,
     "eis_recovery": _lab_eis_recovery,
 
-    # Same path run_builder.ccv_interval() read directly before this change
-    # (instrument_verification.ccv.frequency) -- registering it here lets a
-    # project override it and gives it provenance, without changing what a
-    # project-less batch resolves to (still this same dig, still tier=lab).
+    # the CCV interval (instrument_verification.ccv.frequency): registered, so a
+    # project can override it and it carries provenance; a project-less
+    # batch resolves it at the lab tier
     "ccv_frequency": lambda profile, matrix, analyte: _dig(
         profile, ["instrument_verification", "ccv", "frequency"]),
-    # No method profile carries either of these fields yet -- both extractors
-    # are forward-looking (a lab that later adds "frequency" under its LFSM
-    # qc_acceptance tier, or a "duplicate_all_samples" flag, starts resolving
-    # automatically) and legitimately return None for every profile shipped
-    # today, same as an unconfigured numeric criterion does.
+    # None until the profile sets the field ("frequency" under its LFSM
+    # tier, a "duplicate_all_samples" flag), as an unconfigured numeric
+    # criterion
     "lfsm_frequency": lambda profile, matrix, analyte: _dig(
         profile, ["qc_acceptance", "LFSM", "frequency"]),
     "duplicate_all_samples": lambda profile, matrix, analyte: _flag(_dig(
@@ -285,6 +246,21 @@ def _lab_value(profile, method_id, matrix, key, analyte):
     return extractor(profile, matrix, analyte)
 
 
+def _lab_set_by(profile, matrix, key, analyte):
+    """The level inside the lab tier that supplied this key's value."""
+    if key == "eis_recovery":
+        return _lab_eis_recovery_set_by(profile, matrix, analyte)[1] or "method"
+    if key == "dup_rpd_max":
+        tiers = _dig(profile, ["qc_acceptance", "Dup", "tiers"]) or []
+        try:
+            default = qc_tiers.base_tier(profile, "Dup", matrix)
+        except qc_tiers.Unconfigured:
+            default = None
+        if tiers and not (default and default[0] is tiers[0]):
+            return "tier:" + (tiers[0].get("name") or tiers[0].get("analyte_group") or "unnamed tier")
+    return "method"
+
+
 def resolve(method_id, matrix, key, analyte=None,
             profile=None, project_ruleset=None,
             project_doc=None, project_rev=None):
@@ -296,66 +272,60 @@ def resolve(method_id, matrix, key, analyte=None,
 
     Parameters
     ----------
-    method_id, matrix : the method and matrix scoping this criterion, exactly
-        as every other analyte-bearing structure in this add-on is scoped
-        (Sec3 rule 2).
+    method_id, matrix : the method and matrix scoping this criterion.
     key : a key registered in SHAPES_BY_KEY. Unregistered keys raise
         ValueError -- that is a caller bug, not a missing-data case.
     analyte : required (and used) only for ANALYTE_SCOPED_KEYS; ignored
         otherwise.
-    profile : the method profile dict for method_id, or None for "no profile
-        available" (e.g. an unconfigured method) -- resolution then falls
-        straight through to the baseline tier.
-    project_ruleset : the project's ruleset dict (get_project_ruleset() shape),
-        or None/{} for "no project" -- this is the default,
-        overwhelmingly common case, and resolves cleanly through lab then
-        baseline exactly like any other absence.
+    profile : the method profile dict for method_id, or None (an
+        unconfigured method): resolution falls through to the baseline tier.
+    project_ruleset : the project's ruleset dict (get_project_ruleset()
+        shape), or None/{} for no project, the common case: lab then
+        baseline.
     project_doc, project_rev : the controlled-document id/revision backing a
-        PROJECT-tier value, supplied by the caller (resolve_for_batch() reads
-        them from the Project's qapp_document_id). Only ever attached to a
-        result whose tier is "project" -- see below.
+        PROJECT-tier value (resolve_for_batch() reads them from the
+        Project's qapp_document_id); attached only to a tier "project"
+        result.
 
     Returns
     -------
-    A ResolvedCriterion. `tier` names the tier that actually supplied `value`;
-    if none did (this key was configured nowhere at all), `tier` is
-    "baseline" and `value` is whatever the baseline tier could supply (None if
-    even that is unverified) -- there is always a tier reported, but reaching
-    "baseline" this way is different from a genuine baseline-conforming value:
-    check `value is None` to distinguish "resolved to the baseline" from
-    "nothing resolved anywhere".
+    A ResolvedCriterion. `tier` names the tier that supplied `value`; when
+    none did, `tier` is "baseline" and `value` is what the baseline supplies
+    (None when it is unverified): check `value is None` to tell "resolved to
+    the baseline" from "nothing resolved anywhere".
 
-    `source_doc` / `source_rev` are populated ONLY for tier="project", from
-    the caller-supplied project_doc/project_rev. For tier="lab" they are
-    legitimately None -- the method profile carries no link to a controlling
-    QAM/SOP revision today, and this function does not invent one. For
-    tier="baseline" they are also None; the citation lives on the Baseline
-    object instead (see `departure["citation"]` when conformance is DEPARTS).
+    `source_doc` / `source_rev` are set ONLY for tier="project", from
+    project_doc/project_rev. For tier="lab" they are None: the method profile
+    carries no link to a controlling QAM/SOP revision, and none is invented.
+    For tier="baseline" they are None; the citation is on the Baseline
+    (`departure["citation"]` when conformance is DEPARTS).
 
     `conformance` is CONFORMS / DEPARTS / UNKNOWN. Rule 1: UNKNOWN whenever
     method_baselines.get_baseline() returns None for this (method_id, key,
-    analyte, matrix) -- regardless of which tier supplied `value` -- because
-    the system cannot claim conformance to a requirement it does not know.
-    `departure` is populated (a dict) only when conformance is DEPARTS; it
-    names, per shape.SHAPE_WINDOW end independently, which end loosened and by
-    how much (method_baselines.compare() computes this; see its docstring for
-    why a window's two ends are never combined into one verdict).
+    analyte, matrix), whichever tier supplied `value`: no claim of
+    conformance to a requirement the system does not know. `departure` (a
+    dict) is set only when conformance is DEPARTS; it names, per
+    SHAPE_WINDOW end independently, which end loosened and by how much
+    (method_baselines.compare(); a window's two ends are never combined into
+    one verdict).
     """
     shape = SHAPES_BY_KEY.get(key)
     if shape is None:
         raise ValueError(
-            "Unknown criterion key {0!r} -- register its shape in "
+            "Unknown criterion key {0!r}: register its shape in "
             "ruleset.SHAPES_BY_KEY before resolving it".format(key))
 
     tier = TIER_BASELINE
     source_doc = None
     source_rev = None
     value = None
+    set_by = "default"
 
     pv = _project_value(project_ruleset, method_id, matrix, key, analyte)
     if pv is not None:
         value = pv
         tier = TIER_PROJECT
+        set_by = "project"
         source_doc = project_doc
         source_rev = project_rev
     else:
@@ -363,6 +333,7 @@ def resolve(method_id, matrix, key, analyte=None,
         if lv is not None:
             value = lv
             tier = TIER_LAB
+            set_by = _lab_set_by(profile, matrix, key, analyte)
             # source_doc/source_rev stay None -- see resolve()'s docstring.
         # else: tier stays TIER_BASELINE, value filled in below if possible.
 
@@ -409,14 +380,13 @@ def resolve(method_id, matrix, key, analyte=None,
         value=value, key=key, method_id=method_id, matrix=matrix,
         analyte=analyte, tier=tier, source_doc=source_doc,
         source_rev=source_rev, conformance=conformance, departure=departure,
+        set_by=set_by,
     )
 
 
-# ── Project-tier ZODB annotation: get/set helpers ────────────────────────────
-# Follows senaite.pfas.project_ref's pattern exactly: defer the zope.annotation
-# import to inside the function body so importing this module never requires
-# Zope to be installed (see the try/except at the top of this file for why
-# that matters here specifically).
+# ── Project tier, derived from Project Specs ─────────────────────────────────
+# Zope-side imports stay inside the function bodies, so importing this module
+# never requires Zope.
 
 def ruleset_from_specs(profiles, specs, effective, env=None):
     """The project tier, DERIVED from a project's Project Specs: {method_id: {matrix: {key: value}}} holding exactly the
@@ -458,21 +428,19 @@ def ruleset_from_specs(profiles, specs, effective, env=None):
 
 def get_project_ruleset(portal, project):
     """The project tier for `project`, derived from its Project Specs -- {}
-    for no project or no specs. Never raises."""
+    for no project or no specs. A project tier that cannot be derived raises:
+    judging the batch on the method tier alone would hide the project's
+    criteria."""
     if project is None:
         return {}
-    try:
-        from senaite.pfas import project_specs
-        from senaite.pfas.method_profile_store import get_profile
-        specs = project_specs.get_specs(project) or {}
-        if not specs:
-            return {}
-        profiles = dict((mid, get_profile(portal, mid)) for mid in specs)
-        return ruleset_from_specs(profiles, specs, project_specs.effective,
-                                  env=project_specs.site_env())
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("project ruleset for %r could not be derived: %s", project, exc)
+    from senaite.pfas import project_specs
+    from senaite.pfas.method_profile_store import get_profile
+    specs = project_specs.get_specs(project) or {}
+    if not specs:
         return {}
+    profiles = dict((mid, get_profile(portal, mid)) for mid in specs)
+    return ruleset_from_specs(profiles, specs, project_specs.effective,
+                              env=project_specs.site_env())
 
 
 def _project_source(portal, project):
@@ -482,27 +450,21 @@ def _project_source(portal, project):
     doc_id = getattr(project, "qapp_document_id", None) or None
     if not doc_id:
         return None, None
-    try:
-        from senaite.pfas.browser.sop_documents import _get_revisions
-        for rev in _get_revisions(portal, doc_id):
-            if rev.get("status") == "active":
-                return doc_id, rev.get("rev_num")
-    except Exception:
-        logger.warning("ruleset: could not read revisions for %s", doc_id)
+    from senaite.pfas.browser.sop_documents import _get_revisions
+    for rev in _get_revisions(portal, doc_id):
+        if rev.get("status") == "active":
+            return doc_id, rev.get("rev_num")
     return doc_id, None
 
 
 def resolve_for_batch(portal, batch, method_id, matrix, key, analyte=None):
     """resolve(), wired to a live Batch: fetches its linked Project (if any --
-    senaite.pfas.project_ref), the project's ruleset annotation, the read-only
-    method profile (senaite.pfas.method_profile_store), and the controlling
+    senaite.pfas.project_ref), the project tier derived from its specs, the
+    read-only method profile (senaite.pfas.method_profile_store), and the controlling
     QAPP document/revision, then delegates to resolve().
 
-    A batch with no linked project -- every batch that predates project
-    support, and the overwhelming default afterward -- passes an empty
-    project_ruleset and resolves through lab then baseline exactly as
-    resolve() does for any other caller; nothing here special-cases that
-    path, which is rule 3.
+    A batch with no linked project passes an empty project_ruleset and
+    resolves through lab then baseline; nothing special-cases it (rule 3).
 
     Called by senaite.pfas.resolved_criteria_store.export_resolved_criteria(),
     itself called from project_ref.set_project_uid() when a batch's project

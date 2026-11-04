@@ -222,12 +222,8 @@ class PFASBatchProjectAssignView(BrowserView):
         if not require_manager(self.context, self.request):
             return refuse(self.request, u"Forbidden")
 
-        try:
-            from plone.protect.interfaces import IDisableCSRFProtection
-            from zope.interface import alsoProvides
-            alsoProvides(self.request, IDisableCSRFProtection)
-        except ImportError:
-            pass
+        from senaite.pfas.browser.perms import disable_csrf
+        disable_csrf(self.request)
 
         action = (self.request.form.get("action") or u"").strip()
         portal = _portal(self.context)

@@ -4,7 +4,12 @@
     xmlns:genericsetup="http://namespaces.zope.org/genericsetup"
     xmlns:browser="http://namespaces.zope.org/browser"
     xmlns:plone="http://namespaces.plone.org/plone"
+    xmlns:five="http://namespaces.zope.org/five"
     i18n_domain="senaite.pfas">
+
+  <!-- Zope calls initialize() at start-up: it installs the log filters and
+       the wrappers that show SENAITE's dates in the laboratory's zone. -->
+  <five:registerPackage package="." initialize=".initialize" />
 
   <includeDependencies package="." />
   <include package=".browser" />
@@ -46,11 +51,8 @@
   <!-- Archetypes schema extenders (ReferenceDefinition PFAS QC fields) -->
   <include package=".extenders" />
 
-  <!--  No SENAITE AnalysisSpec copy of the method profile any more:
-       the spec_reverse subscriber went with it. -->
-
   <!-- A core Sample Type renamed renames that matrix in every method profile,
-       the regulatory limits and project specs (matrix_rename.py;: core owns matrix names) -->
+       the regulatory limits and project specs (matrix_rename.py: core owns matrix names) -->
   <subscriber
       for="senaite.core.interfaces.ISampleType
            zope.lifecycleevent.interfaces.IObjectModifiedEvent"
@@ -64,6 +66,18 @@
       for="bika.lims.interfaces.IAnalysisService
            zope.lifecycleevent.interfaces.IObjectModifiedEvent"
       handler=".compound_library_store.on_service_changed"
+      />
+  <!-- a service a method profile still names is not deleted (the refusal
+       lists each method and where) -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisService
+           OFS.interfaces.IObjectWillBeRemovedEvent"
+      handler=".compound_library_store.refuse_referenced_removal"
+      />
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisService
+           zope.lifecycleevent.interfaces.IObjectRemovedEvent"
+      handler=".compound_library_store.on_service_removed"
       />
 
   <!-- A core analysis shows the method x matrix unit and the lab-rounded
@@ -103,6 +117,32 @@
            *"
       provides="senaite.app.listing.interfaces.IListingViewAdapter"
       factory=".analysis_display.PFASResultListingAdapter"
+      />
+
+  <!-- The Instruments list: methods as short method-id tags, the full name
+       on hover (instrument_listing.py) -->
+  <subscriber
+      for="bika.lims.controlpanel.bika_instruments.InstrumentsView
+           *"
+      provides="senaite.app.listing.interfaces.IListingViewAdapter"
+      factory=".instrument_listing.InstrumentMethodTagsAdapter"
+      />
+
+  <!-- A sample's analyses: the unit in its own column, no Submitter or
+       Attachments column (analysis_display.py) -->
+  <subscriber
+      for="bika.lims.browser.analyses.view.AnalysesView
+           *"
+      provides="senaite.app.listing.interfaces.IListingViewAdapter"
+      factory=".analysis_display.SampleAnalysesColumnsAdapter"
+      />
+
+  <!-- core's Laboratory edited in its own form: the site title stays the
+       laboratory's name (lab_identity.py) -->
+  <subscriber
+      for="bika.lims.interfaces.ILaboratory
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".lab_identity.on_laboratory_modified"
       />
 
   <!-- A core Supplier / Storage Location renamed is renamed on every reagent

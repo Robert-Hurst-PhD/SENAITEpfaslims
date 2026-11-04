@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml"
-      xmlns:tal="http://xml.zope.org/namespaces/tal">
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      tal:attributes="data-lab-today context/@@pfas-macros/data_lab_today">
 <!--
   Standalone label page — no PFAS METAL macro (this page IS the printed output).
   Open in a popup; analyst presses Ctrl+P to print to label printer.
@@ -86,7 +87,7 @@
 
   <!-- ── Screen UI ─────────────────────────────────────────────── -->
   <div class="screen-ui">
-    <h2>&#127991; Print Reagent Label</h2>
+    <h2>Print Reagent Label</h2>
 
     <div class="size-row" tal:condition="view/designed">
       <label for="layout-sel">Layout:</label>
@@ -120,7 +121,7 @@
     </div>
 
     <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn-print" onclick="printLabel()">&#128424; Print Label</button>
+      <button class="btn-print" onclick="printLabel()">Print Label</button>
       <a class="btn-back" id="open-pdf" target="_blank" hidden="hidden"
          title="Open the label PDF; print it at actual size with no margins">Open PDF</a>
       <a class="btn-back"
@@ -191,6 +192,14 @@
   function colorExp() {
     var el = document.getElementById('exp-el');
     if (!el || !EXP) return;
+    /* expired from its own day on, by the laboratory's day when the page
+       gives it (data-lab-today) */
+    var today = document.documentElement.getAttribute('data-lab-today'), day = /^\d{4}-\d{2}-\d{2}$/;
+    if (today && day.test(today) && day.test(EXP)) {
+      var n = (Date.parse(EXP + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 864e5;
+      if (n <= 0) { el.className = 'label-kv label-exp danger'; } else if (n <= 30) { el.className = 'label-kv label-exp warn'; }
+      return;
+    }
     var d = new Date(EXP);
     var now = new Date();
     if (d < now) {

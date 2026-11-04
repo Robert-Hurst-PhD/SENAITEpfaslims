@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""A method's calibration levels, and what follows from them
-("Calibration levels own the RL" and "Calibration
-ladders in ng/mL; the matrix factor converts").
+"""A method's calibration levels, and what follows from them: the levels
+own the RL; ladders are in ng/mL and the matrix factor converts.
 
     instrument_verification.calibration = {
         "level_unit": "ng/mL" | "ppt",
@@ -34,8 +33,8 @@ PATH = ("instrument_verification", "calibration")
 PPT, EXTRACT = "ppt", "ng/mL"
 UNITS = (EXTRACT, PPT)
 
-# What the levels were seeded from ("every
-# calibration point doubled from the last"). EPA 1633A ranges are Table 4 of
+# What the levels were seeded from (each calibration point double the last).
+# EPA 1633A ranges are Table 4 of
 # the December 2024 method (CS1 to the highest listed standard); each
 # analyte's factor is its CS1 / 0.2, its max the highest standard listed.
 SEEDS = {
@@ -100,7 +99,7 @@ def levels(profile, keyword=None):
 def calibrators(profile):
     """[(level number, concentration in the level unit)], lowest first -- the
     calibrators a run injects and the logbook prepares (Run Builder,
-    FM-ENV-002). One list for every consumer (QC consolidation P1)."""
+    FM-ENV-002). One list for every consumer."""
     return [(i + 1, v) for i, v in enumerate(levels(profile))]
 
 
@@ -111,7 +110,7 @@ def lowest(profile, keyword=None):
 
 def matrix_factor(profile, matrix):
     """The method's extract -> sample multiplier for `matrix` (exact title,
-    then the legacy substring match -- MethodProfile.sample_factor), or None."""
+    then a substring match -- MethodProfile.sample_factor), or None."""
     m = (matrix or u"").lower().strip()
     entries = [e for e in (profile or {}).get("matrix_factors") or [] if isinstance(e, dict)]
     for exact in (True, False):
@@ -200,8 +199,8 @@ def matrix_unit(profile, matrix):
 
 def level_value(entry, unit):
     """A spike-level entry's value in `unit` -- the matrix's reporting unit,
-    in which spike levels are entered (2026-10-06: soil in ng/g; water
-    in ng/L). An older entry stored as `ppt` is converted. None when unset
+    in which spike levels are entered (soil in ng/g; water in ng/L). An
+    entry stored as `ppt` is converted. None when unset
     or not convertible."""
     if not isinstance(entry, dict):
         return None
@@ -210,31 +209,6 @@ def level_value(entry, unit):
         return value
     ppt = _num(entry.get("ppt"))
     return in_unit(ppt, unit) if ppt is not None else None
-
-
-def migrate_spike_levels(profile):
-    """Store every per-matrix spike level as `value` in that matrix's unit
-    (from an older `ppt`). True when anything changed; a level whose unit
-    cannot be converted keeps its `ppt` and is left for the lab."""
-    changed = False
-    for matrix, by_type in ((profile or {}).get("spike_levels") or {}).items():
-        if not isinstance(by_type, dict) or matrix in ("LFB", "LFSM", "LCS"):
-            continue
-        unit = matrix_unit(profile, matrix)
-        for entries in by_type.values():
-            for e in entries or []:
-                if not isinstance(e, dict) or "ppt" not in e or "value" in e:
-                    continue
-                if e.get("ppt") is None:
-                    e["value"] = None
-                else:
-                    v = in_unit(_num(e["ppt"]), unit)
-                    if v is None:
-                        continue
-                    e["value"] = v
-                del e["ppt"]
-                changed = True
-    return changed
 
 
 def recommended_spikes_in_unit(profile, matrix):
@@ -260,25 +234,3 @@ def doubling(low, high):
     return out
 
 
-def migrate(profile, method_id):
-    """Bring a profile's calibration block to the unit-aware form, once (the
-    marker is `level_unit`). Existing levels are kept as ppt; an EMPTY ladder
-    for a method in SEEDS is seeded in ng/mL. True if changed."""
-    calib = profile.setdefault("instrument_verification", {}).setdefault("calibration", {})
-    if calib.get("level_unit"):
-        return False
-    kept = [r for r in rows(profile) if _num(r["conc"]) is not None]
-    seed = SEEDS.get(method_id)
-    if kept or not seed:
-        calib["level_unit"] = PPT
-        if "levels" in calib:
-            calib["levels"] = kept
-        return True
-    calib["level_unit"] = EXTRACT
-    calib["levels"] = [{"name": u"CAL-%d" % (i + 1), "conc": v}
-                       for i, v in enumerate(doubling(seed["low"], seed["high"]))]
-    if seed["scale"]:
-        calib["analyte_scale"] = dict((kw, {"factor": f, "max": m})
-                                      for kw, (f, m) in seed["scale"].items())
-    calib["levels_source"] = seed["source"]
-    return True

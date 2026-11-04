@@ -25,3 +25,10 @@
 .pv-hot, .pv-term.pv-hot { background: var(--accent-soft); }
 tr.pv-hot td { background: var(--accent-soft); }
 .pv-open { margin-left: var(--sp-2); }
+/* one block per imported line (R5-86): the row's filled fields, the cited term outlined */
+.pv-line { margin-top: var(--sp-4); }
+.pv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-1) var(--sp-3); margin: 0; }
+.pv-f { padding: 4px 8px; border-radius: var(--radius); background: var(--surface-sunken, var(--surface)); }
+.pv-f dt { font-size: var(--fs-xs); color: var(--text-muted); font-weight: var(--fw-strong); }
+.pv-f dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pv-stored { margin: var(--sp-2) 0 0; color: var(--text-muted); font-size: var(--fs-sm); }

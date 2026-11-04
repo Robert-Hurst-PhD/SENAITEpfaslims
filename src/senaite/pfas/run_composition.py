@@ -3,33 +3,19 @@
 Pure QC-COMPOSITION transforms for the LC-MS run builder
 (senaite.pfas.browser.run_builder).
 
-A QAPP can override two different things about a method's QC (the lab's own
-words): "all samples run in duplicate" and "LFSMs get run in more regular
-intervals" -- i.e. WHICH injections a run contains and HOW OFTEN, not the
-numeric acceptance criteria those injections are judged against. The numeric
-criteria (recovery windows, RPD ceilings, r2 floors) already resolve through
-the three-tier project -> lab -> baseline path in senaite.pfas.ruleset; this
-module is the SAME override class's composition half, kept in its own
-Zope-free module for the same reason ruleset.py / method_baselines.py /
-holding_time.py are: it is loadable and unit-testable by path
-(`importlib.util.spec_from_file_location`) without a running Plone instance,
-which matters here because run_builder.py itself cannot be (it imports
-zope.annotation / Products.CMFCore / Products.Five at module load).
+A QAPP can override which injections a run contains and how often ("all
+samples run in duplicate", "LFSMs get run in more regular intervals"), apart
+from the numeric criteria, which resolve through senaite.pfas.ruleset. Kept
+Zope-free so it loads and tests by path; run_builder.py imports Zope.
 
-Explicitly NOT here: "an additional surrogate is used." That changes analyte
-relationships (the surrogate-to-IS map), which Sec3 makes a
-method-owned single-source fact (analyte_reference.py / the method's own
-surrogate map) -- duplicating it per-QAPP would re-create the defects
- catalogs. Out of scope by design, not an oversight.
+Not here: "an additional surrogate is used". The surrogate-to-IS map is a
+method-owned fact (Sec3), never overridden per QAPP.
 
-SAFETY PROPERTY (both transforms are IDENTITY on their default arguments):
-duplicate_all_samples=None/False and lfsm_frequency=None/0 together make
-compose_sample_block() return exactly `[(row, "sample") for row in
-sample_rows]` -- the untouched input, in order. That is the project-less
-default every existing batch resolves to (senaite.pfas.ruleset's resolve()
-no project -> no lab data for these two keys yet -> None), which is
-what lets a project-less batch build byte-for-byte the same sequence it
-built before this module existed. tests/test_run_composition.py pins this.
+SAFETY PROPERTY (both transforms are identity on their defaults):
+duplicate_all_samples=None/False and lfsm_frequency=None/0 make
+compose_sample_block() return `[(row, "sample") for row in sample_rows]`,
+the input in order: a batch with no project builds the plain sequence.
+tests/test_run_composition.py pins this.
 
 Python 2.7 compatible. No f-strings, no pathlib, no type annotations.
 """
@@ -37,23 +23,17 @@ from __future__ import absolute_import, unicode_literals
 
 import re
 
-# MB is matched on a token boundary rather than as a substring, because "MB"
-# is short enough to sit inside an unrelated word. It used to split on
-# WHITESPACE only, which meant it never fired on the hyphenated ids the run
-# builder itself generates (FDA_32PFAS-MB-260923-01 has no spaces). Splitting
-# on any non-alphanumeric run keeps the defensive intent and actually matches.
+# MB is matched as a token, not a substring ("MB" sits inside unrelated
+# words); tokens split on any non-alphanumeric run, so the run builder's own
+# hyphenated ids (FDA_32PFAS-MB-260923-01) match.
 _TOKEN_SPLIT = re.compile(r"[^A-Z0-9]+")
 
 
 def classify_sample_role(row):
     """The QC role a registered sample `row` plays, guessed from its id, or
     "" if it names no recognizable QC role (i.e. it is a genuine field
-    sample). Moved here from run_builder.PFASRunBuilderView._role_from_sample
-    so that method (redundant-QC suppression: a role already covered by a
-    registered sample must not also get a sequence-token injection) and
-    is_field_sample() below -- which needs the identical judgement to decide
-    what duplicate_all_samples/lfsm_frequency may touch -- share ONE
-    definition instead of drifting apart as two copies.
+    sample). The one definition shared by run_builder's redundant-QC
+    suppression and is_field_sample().
 
     A duplicate is written "LFSM Mid Duplicate" at least as often as
     "LFSMD" on real sample ids, so LFSMD is matched on either spelling.
@@ -72,31 +52,13 @@ def classify_sample_role(row):
     return u""
 
 
-# The extraction log's `sample_type`/`role` column (run_builder.sample_rows()
-# reads it into row["role"]) is the QC ROLE, but its value for an ORDINARY
-# field sample is the literal string "Sample" -- not blank. Only these are
-# actual QC types that disqualify a row from being a field sample; anything
-# else explicit (including "Sample", or a role senaite.pfas has never heard
-# of) falls through to the id-based guess (classify_sample_role) rather than
-# being treated as disqualifying. Getting this backwards (treating ANY
-# non-empty role as "not a field sample") was caught live: every row in a
-# real extraction log carries role="Sample", so duplicate_all_samples and
-# lfsm_frequency silently applied to ZERO rows -- see
-# tests/test_run_composition.py::test_an_explicit_sample_role_is_still_a_field_sample.
-# This vocabulary already lives elsewhere -- run_builder._noncount_codes() /
-# _blank_codes() derive it from the Reference-Definition "pfas_qc_code" field
-# (the single source the control charts and method profiles use), and
-# _QC_LOT_FIELD / qc_labels.get_qc_label_map() carry their own copies for
-# their own purposes. It CANNOT be derived the same way here: deriving from
-# RefDefs needs `self._portal().bika_setup...`, i.e. Zope, and staying
-# Zope-free is this module's entire reason to exist (see this module's
-# docstring). So this is a second, hardcoded copy, by necessity, not an
-# oversight -- but that means a QC code added to the RefDef vocabulary later
-# must ALSO be added here, or it silently falls through to
-# classify_sample_role()'s id-guess below. A role this set doesn't recognize
-# is treated as a field sample, which is the SAFE direction under the
-# direction rule (an unrecognized QC role gets duplicated / counted toward
-# the LFSM interval -- more QC, not less) but is still worth knowing about;
+# The QC roles in the extraction log's `sample_type`/`role` column
+# (row["role"]) that make a row not a field sample. An ordinary field sample
+# carries "Sample", not blank; any other value falls through to the id guess
+# (classify_sample_role). The vocabulary's source is the Reference
+# Definition "pfas_qc_code" field (run_builder._noncount_codes()), which needs
+# Zope: a code added there must be added here too. An unknown role counts as
+# a field sample, the safe direction (more QC, not less).
 _QC_ROLE_CODES = frozenset([
     "MB", "LRB", "MXB", "LFB", "LFSM", "LFSMD", "ICV", "CCV", "CCB", "DUP",
 ])
@@ -132,9 +94,8 @@ def compose_sample_block(sample_rows, duplicate_all_samples, lfsm_frequency):
     Returns a list of (row, marker):
         (row, "sample")    the original row, injected as-is.
         (row, "duplicate") a shallow copy of the row immediately before it,
-                           carrying row["is_duplicate"] = True; not a new
-                           sample identity -- a duplicate is
-                           a repeat injection of the SAME registered sample.
+                           carrying row["is_duplicate"] = True: a repeat
+                           injection of the same registered sample.
         (None, "lfsm")     no row at all; the caller emits a QC injection
                            for code "LFSM".
 

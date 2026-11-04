@@ -27,9 +27,11 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import document_templates as dt
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.view_helpers import send_pdf
 
 
 # Label sizes: (id, display_name, width_mm, height_mm). The stock sizes are
@@ -49,7 +51,7 @@ def label_href(portal_url, back=u"", **data):
     return "%s/@@pfas-label?%s" % (portal_url, urlencode(params))
 
 
-class PFASLabelPrintView(BrowserView):
+class PFASLabelPrintView(ViewHelpers, BrowserView):
     """Render a browser-printable reagent / solution label."""
 
     template = ViewPageTemplateFile("templates/label_print.pt")
@@ -118,16 +120,68 @@ class PFASLabelPrintView(BrowserView):
         return self._designed
 
     def designed_json(self):
-        import json
         return dt.script_json(self.designed())
 
-    def portal_url(self):
-        from bika.lims import api
-        return api.get_portal().absolute_url()
-
     def size_dict_json(self):
-        import json
         d = {}
         for sid, sname, w, h in LABEL_SIZES:
             d[sid] = {"name": sname, "w": w, "h": h}
         return dt.script_json(d)
+
+
+class PFASSittingLabelsView(ViewHelpers, BrowserView):
+    """@@pfas-sitting-labels?entry=<prep entry id>: a label for every lot a
+    prep sitting made, each with its own values (lot_record.label_rows). The
+    issued label design as one PDF page per label; else the built-in sheet
+    with a Code 128 barcode of each lot number."""
+
+    template = ViewPageTemplateFile("templates/sitting_labels.pt")
+
+    def __call__(self):
+        flatten_form(self.request)
+        if self.request.form.get("format") != "sheet":
+            pdf = self._designed_pdf()
+            if pdf:
+                return send_pdf(self.request.response, pdf, "%s-labels.pdf" % self.entry_id())
+        return self.template()
+
+    def entry_id(self):
+        return (self.request.form.get("entry") or u"").strip()
+
+    def rows(self):
+        if not hasattr(self, "_rows"):
+            from bika.lims import api
+            from senaite.pfas import lot_record, prep_entries
+            from senaite.pfas.browser.prepared_standards import _list
+            portal = api.get_portal()
+            entry = prep_entries.load(portal).get(self.entry_id())
+            self._rows = lot_record.label_rows(entry, dict((r["uid"], r) for r in _list(portal)))
+        return self._rows
+
+    def _designed_pdf(self):
+        from bika.lims import api
+        from senaite.pfas import pdf_renderer
+        try:
+            issued = dt.issued(dt.load(api.get_portal()), "label")
+        except Exception:                                   # noqa: BLE001
+            return None
+        if not issued or not self.rows():
+            return None
+        _entry, rev = issued[0]
+        try:
+            docs = [dt.compile_document("label", rev["template"], row) for row in self.rows()]
+        except ValueError:
+            return None
+        return pdf_renderer.render_documents(docs)
+
+    def sizes(self):
+        return [s for s in LABEL_SIZES if s[0] not in (u"a4", u"custom")]
+
+    def size(self):
+        sid = self.request.form.get("size") or u"2x1"
+        found = [s for s in LABEL_SIZES if s[0] == sid] or [s for s in LABEL_SIZES if s[0] == u"2x1"]
+        return {"id": found[0][0], "w": found[0][2], "h": found[0][3]} if found else {"id": sid, "w": 50.8, "h": 25.4}
+
+    def sheet_style(self):
+        s = self.size()
+        return u"--lbl-w:%smm;--lbl-h:%smm" % (s["w"], s["h"])

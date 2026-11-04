@@ -8,6 +8,7 @@
   <tal:extras metal:fill-slot="head-extra">
   <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chart.js-4.4.3.umd.min.js"></script>
   <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/controlchart_overlay.js?v=${context/@@pfas-macros/asset_version}"></script>
   <style>
     /* ── Control chart layout: filters as a top bar ────────────────────── */
     .main { padding: 18px; min-width: 0; }
@@ -21,7 +22,7 @@
 
     .cc-note { margin-top: 16px; padding: 12px 14px; background: var(--s-light);
                border: 1px solid var(--s-border); border-radius: 6px;
-               font-size: var(--fs-xs); color: var(--s-secondary); line-height: 1.6; }
+               font-size: var(--fs-xs); color: var(--s-secondary); line-height: 1.6; text-align: center; }
     .fail-count { color: var(--s-danger-dk); font-weight: 600; }
 
     .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -30,7 +31,8 @@
     .stat-label { font-size: var(--fs-xs); color: var(--s-secondary); text-transform: uppercase;
                   letter-spacing: .04em; }
     .stat-value { font-size: var(--fs-xl); font-weight: 700; color: var(--text); }
-    .stat-box.ok   { border-color: var(--s-info-bd); background: var(--s-info-lt); }
+    /* a tile is tinted only for a flag: amber for warnings, coral for a reject */
+    .stat-value.is-none { color: var(--text-muted); font-size: var(--fs-base); font-weight: var(--fw-body); }
     .stat-box.warn { border-color: var(--s-warn-bd); background: var(--s-warn-lt); }
     .stat-box.rej  { border-color: var(--s-danger-bd); background: var(--s-danger-lt); }
 
@@ -41,6 +43,12 @@
     .chart-title { font-size: var(--fs-md); font-weight: 600; color: var(--s-body);
                    margin-bottom: 2px; }
     .chart-subtitle { font-size: var(--fs-sm); color: var(--s-secondary); margin-bottom: 14px; }
+    /* the heading says what the chart shows; what it plots is the line under it;
+       the Download at the card's top right */
+    .chart-head { display: flex; align-items: flex-start; gap: var(--sp-3); }
+    .chart-head-text { flex: 1 1 auto; min-width: 0; }
+    .chart-for { font-size: var(--fs-sm); color: var(--s-body); }
+    .cc-few { margin: var(--sp-2) 0 0; }
     .chart-container { position: relative; height: 290px; }
     .no-data { text-align: center; padding: 50px 20px; color: var(--s-secondary); }
     .no-data strong { display: block; font-size: var(--fs-base); margin-bottom: 6px;
@@ -50,6 +58,14 @@
     .viol-card.warn { background: var(--s-warn-lt); border: 1px solid var(--s-warn-bd); }
     .viol-card.rej  { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); }
     .viol-card h3 { font-size: var(--fs-base); margin-bottom: 8px; }
+    details.viol-card { box-shadow: none; }
+    .viol-sum { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+    .viol-sum::-webkit-details-marker { display: none; }
+    .viol-sum::before { content: none; display: none; }
+    .viol-sum h3 { margin: 0; }
+    .viol-show { margin-left: auto; }
+    details.viol-card[open] .viol-show { display: none; }
+    details.viol-card[open] > .viol-sum { margin-bottom: 8px; border-bottom: 0; }
     .viol-card.warn h3 { color: var(--s-warn-text); }
     .viol-card.rej  h3 { color: var(--s-danger-dk); }
     table.vt { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
@@ -118,14 +134,15 @@
     </div>
 
     <div class="pfas-field">
-      <span>Analytes</span>
+      <label>Analytes</label>
       <details class="pick-list" tal:define="picked view/selected_analytes">
-        <summary class="btn-sm btn-secondary"
-                 tal:content="python:(u', '.join(picked[:3]) + (u' +%d' % (len(picked) - 3) if len(picked) > 3 else u'')) or u'Choose'">PFOA</summary>
+        <summary><span class="pick-list-text"
+                 tal:content="python:(u', '.join(picked[:3]) + (u' +%d' % (len(picked) - 3) if len(picked) > 3 else u'')) or u'Choose'">PFOA</span><span
+                 class="pick-list-caret" aria-hidden="true">&#9662;</span></summary>
         <div class="pick-list-items">
-          <label tal:repeat="a python:view.analytes(view.selected_qc_type())">
+          <label tal:repeat="a python:view.analytes(view.selected_qc_type())" class="pfas-switch">
             <input type="checkbox" value="1"
-                   tal:attributes="name string:an.${a}; checked python:'checked' if a in picked else None" />
+                   tal:attributes="name string:an.${a}; checked python:'checked' if a in picked else None" /><span class="pfas-switch-track"></span>
             <span tal:replace="a">PFOA</span></label>
         </div>
       </details>
@@ -136,9 +153,9 @@
       <select id="qc_level" name="qc_level" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all levels &#8212;</option>
         <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
-          <option tal:attributes="value lv;
-                                  selected python:lv == view.selected_level()"
-                  tal:content="lv">L5</option>
+          <option tal:attributes="value python:lv[0];
+                                  selected python:lv[0] == view.selected_level()"
+                  tal:content="python:lv[1]">Expected 16 &#183; 131 CCVs</option>
         </tal:levels>
       </select>
     </div>
@@ -193,6 +210,7 @@
       </select>
     </div>
 
+
     <!-- Date range — bounded to the dates the database actually holds -->
     <div class="pfas-field" tal:define="bounds view/date_bounds">
       <span>Date range</span>
@@ -218,13 +236,30 @@
     </div>
 
     <span class="pfas-filterbar-spacer"></span>
+    <!-- top right: replaced results, then the lab overlay and how it shows -->
+    <div class="cc-right">
     <label class="pfas-switch">
       <input type="checkbox" id="show_history" name="show_history" value="1"
              tal:attributes="checked python:view.show_history() and 'checked' or None"
              onchange="this.form.submit()" />
       <span class="pfas-switch-track"></span>
-      <span>Include superseded</span>
+      <span title="Adds results a rerun or reprocessing replaced; drawn hollow and left out of the limits.">Show replaced results</span>
     </label>
+    <div class="cc-overlay" tal:condition="view/overlay_options">
+      <span class="pfas-label">Overlay <tal:h define="hid string:chart-overlay"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></span>
+      <div class="cf-chips">
+        <label class="pfas-switch cf-chip" tal:repeat="o view/overlay_options">
+          <input type="checkbox" value="on" onchange="this.form.submit()"
+                 tal:attributes="name python:'ov.%s' % o[0]; checked python:'checked' if o[0] in view.selected_overlays() else None" /><span class="pfas-switch-track"></span>
+          <span tal:replace="python:o[1]">Lab room humidity</span></label>
+      </div>
+    </div>
+    <nav class="pfas-seg" aria-label="Show as" tal:condition="view/selected_overlays">
+      <a class="pfas-seg-item" tal:repeat="l view/show_links"
+         tal:attributes="href l/url; aria-selected python:'true' if l['on'] else 'false'" tal:content="l/label">Stacked</a>
+    </nav>
+    <input type="hidden" name="show" tal:attributes="value view/show" />
+    </div>
     <noscript><button class="btn btn-primary" type="submit">Apply</button></noscript>
     <a class="btn-sm btn-secondary"
        tal:attributes="href string:${context/absolute_url}/@@pfas-control-chart">Reset</a>
@@ -281,23 +316,33 @@
                  tal:content="python:'{:.3g}'.format(data['limits']['sd'])">0</div>
           </div>
 
+          <!-- tinted only for a flag; a threshold chart counts what is above
+               its threshold; nothing judged (too few points, no threshold)
+               says so -->
           <div class="stat-box"
-               tal:define="n python:len(violations)"
-               tal:attributes="class python:'stat-box warn' if n else 'stat-box ok'">
-            <div class="stat-label">Warnings</div>
-            <div class="stat-value" tal:content="python:n or 'None'">0</div>
+               tal:define="thr python:data.get('chart_type') == 'threshold';
+                           n python:data['point_severity'].count('reject') if thr else len(violations);
+                           judged python:not data.get('too_few_points') and not (thr and data.get('threshold') is None)"
+               tal:attributes="class python:'stat-box rej' if n and (thr or data.get('has_rejects')) else ('stat-box warn' if n else 'stat-box')">
+            <div class="stat-label" tal:content="python:'Above threshold' if thr else 'Warnings'">Warnings</div>
+            <div class="stat-value" tal:condition="n" tal:content="n">2</div>
+            <div class="stat-value is-none" tal:condition="not:n"
+                 tal:content="python:'None' if judged else 'not judged'">None</div>
           </div>
         </div>
 
         <div class="alert alert-error" tal:condition="request/chart_error|nothing"
              tal:content="request/chart_error">error</div>
         <tal:review define="here_url python:request.get('ACTUAL_URL', '') + ('?' + request.get('QUERY_STRING') if request.get('QUERY_STRING') else '');
-                            can view/can_review;
-                            mode_label python:'Westgard rules' if data.get('view_mode') == 'westgard' else 'Levey-Jennings'">
-        <div class="viol-card warn" tal:condition="python:violations and not view.is_stacked()">
-          <h3>Warnings &#8212; <span tal:replace="mode_label">Levey-Jennings</span></h3>
-          <p class="cc-hint" tal:condition="can">Dismiss a warning, or remove the point (it then leaves the mean and SD). Both need a reason and can be undone.</p>
-          <table class="vt">
+                            can view/can_review">
+        <details tal:condition="python:violations and not view.is_stacked()"
+                 tal:attributes="class python:'viol-card rej' if data.get('has_rejects') else 'viol-card warn'">
+          <summary class="viol-sum">
+            <h3 tal:content="python:u'%s \u00b7 %d open' % ('Westgard warnings' if data.get('view_mode') == 'westgard' else 'Warnings', len(violations))">Warnings &#183; 2 open</h3>
+            <span class="btn-sm btn-secondary viol-show">Show</span>
+          </summary>
+          <p class="cc-hint" tal:condition="can">Dismiss a warning, or remove the point from the mean and SD. Both need a reason and can be undone.</p>
+          <table class="vt" data-col-resize="controlchart-vt">
             <thead><tr><th>Rule</th><th>Warning</th><th>Date</th><th>Batch</th><th>Value</th>
               <th tal:condition="can">Action</th></tr></thead>
             <tbody>
@@ -321,11 +366,11 @@
               </tr>
             </tbody>
           </table>
-        </div>
+        </details>
 
         <div class="viol-card" tal:condition="python:data.get('dismissed') and not view.is_stacked()">
           <h3>Dismissed warnings</h3>
-          <table class="vt">
+          <table class="vt" data-col-resize="controlchart-vt-1">
             <thead><tr><th>Rule</th><th>Date</th><th>Batch</th><th>Value</th><th>Reason</th><th>By</th><th>When</th>
               <th tal:condition="can"></th></tr></thead>
             <tbody>
@@ -333,7 +378,7 @@
                 <td tal:content="v/rule">2SD</td><td tal:content="v/date">d</td>
                 <td tal:content="v/batch_id">b</td><td tal:content="v/value">v</td>
                 <td tal:content="v/note/reason">reason</td><td tal:content="v/note/by_user">who</td>
-                <td tal:content="v/note/at">when</td>
+                <td tal:content="python:view.lab_at(v['note'].get('at'), v['note'].get('at'))">when</td>
                 <td tal:condition="can">
                   <form method="POST" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
                     <input type="hidden" name="came_from" tal:attributes="value here_url" />
@@ -349,14 +394,14 @@
 
         <div class="viol-card" tal:condition="python:data.get('removed') and not view.is_stacked()">
           <h3>Removed points (not on the chart, not in the mean / SD)</h3>
-          <table class="vt">
+          <table class="vt" data-col-resize="controlchart-vt-2">
             <thead><tr><th>Date</th><th>Batch</th><th>Value</th><th>Reason</th><th>By</th><th>When</th>
               <th tal:condition="can"></th></tr></thead>
             <tbody>
               <tr tal:repeat="p data/removed">
                 <td tal:content="p/date">d</td><td tal:content="p/batch_id">b</td>
                 <td tal:content="p/value">v</td><td tal:content="p/note/reason">reason</td>
-                <td tal:content="p/note/by_user">who</td><td tal:content="p/note/at">when</td>
+                <td tal:content="p/note/by_user">who</td><td tal:content="python:view.lab_at(p['note'].get('at'), p['note'].get('at'))">when</td>
                 <td tal:condition="can">
                   <form method="POST" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
                     <input type="hidden" name="came_from" tal:attributes="value here_url" />
@@ -367,6 +412,8 @@
               </tr>
             </tbody>
           </table>
+          <p class="pfas-muted" tal:condition="data/removed_more"
+             tal:content="python:u'and %d more' % data['removed_more']"></p>
         </div>
         </tal:review>
 
@@ -381,25 +428,40 @@
 
         <div class="chart-card" tal:condition="not:view/is_stacked">
           <tal:hasdata tal:condition="view/has_data">
-            <div class="chart-title"
-                 tal:content="python:u'{0} — {1}'.format(data['analyte'], view.qc_type_label(data['qc_type']))"></div>
+            <div class="chart-head">
+              <div class="chart-head-text">
+                <div class="chart-title" tal:content="data/insight">Two CCVs above +3 SD on 10 Oct</div>
+                <div class="chart-for"
+                     tal:content="python:u'{0} — {1}'.format(data['analyte'], view.qc_type_label(data['qc_type']))">PFOA — CCV</div>
+              </div>
+              <a class="btn-sm btn-secondary" tal:attributes="href view/points_url">Download points</a>
+            </div>
             <div class="chart-subtitle">
               <tal:sub tal:content="string:${data/n_points} data points"></tal:sub>
               <tal:meth tal:condition="data/method">
                 &nbsp;&bull; Method: <strong tal:replace="data/method">FDA_32PFAS</strong>
               </tal:meth>
               <tal:lev tal:condition="data/qc_level">
-                &nbsp;&bull; Level: <tal:l tal:replace="data/qc_level">L5</tal:l>
+                &nbsp;&bull; Level: <tal:l tal:replace="python:view.level_label(data['qc_level'])">Expected 16</tal:l>
               </tal:lev>
               <tal:lim tal:condition="python:data.get('limits')">
-                &nbsp;&bull; Mean: <tal:m tal:replace="python:'{:.3g}'.format(data['limits']['mean'])">0</tal:m>
-                &nbsp;&#177;<tal:s tal:replace="python:'{:.3g}'.format(data['limits']['sd'])">0</tal:s>
-                &nbsp;<tal:u tal:replace="data/units">%</tal:u>
+                &nbsp;&bull; Mean <tal:u tal:replace="python:(data['units'] or u'value')[:1].lower() + (data['units'] or u'value')[1:]">recovery (%)</tal:u>:
+                <tal:m tal:replace="python:'{:.3g}'.format(data['limits']['mean'])">0</tal:m>
+                &#177; <tal:s tal:replace="python:'{:.3g}'.format(data['limits']['sd'])">0</tal:s>
               </tal:lim>
+              <tal:ov tal:condition="python:data.get('overlay') and data['overlay']['empty']">
+                &nbsp;&bull; <tal:o tal:replace="python:data['overlay']['label']">Lab room humidity</tal:o>: no readings on these dates
+              </tal:ov>
             </div>
             <div class="chart-container">
               <canvas id="qcChart" tal:attributes="data-review-url string:${context/absolute_url}/@@pfas-data-review"></canvas>
             </div>
+            <p class="pfas-muted cc-few" tal:condition="data/too_few_points">Control limits need
+              <tal:b replace="data/baseline_n">20</tal:b> in-control results;
+              <tal:n replace="data/n_points">6</tal:n> shown<tal:r condition="data/more_recorded">
+              of <tal:x replace="data/recorded">34</tal:x> recorded</tal:r>.</p>
+            <!-- Stacked: a strip per chosen reading, on the same run axis -->
+            <div class="chart-strips" id="qcStrips"></div>
           </tal:hasdata>
 
           <div class="no-data" tal:condition="not:view/has_data">
@@ -458,7 +520,6 @@
         Control limits are computed from the first 20 in-control results.
         Westgard rules: <strong>1-2S</strong> warn &bull;
         <strong>1-3S / 2-2S / R-4S / 4-1S / 10X</strong> reject.
-        Charts read every worksheet's QC results; seeded rows flagged as test data are left out.
       </div>
     </main>
   </div>
@@ -473,8 +534,60 @@
     function tok(n) { return css.getPropertyValue(n).trim(); }
     var cInfo = tok('--s-info'), cWarn = tok('--s-warning'), cBad = tok('--s-danger'),
         cOk = tok('--s-success'), cMuted = tok('--s-secondary'), cBody = tok('--s-body');
-    var axisX = {type: 'category', title: {display: true, text: 'Run', font: {size: 11}},
-                 ticks: {maxTicksLimit: 24, maxRotation: 50, font: {size: 10}}, grid: {display: false}};
+    /* runs stay evenly spaced (one point per run); the axis is labelled by
+       date bands beneath it, a day, a week or two weeks wide by the span
+       shown; a run's own id is in its point's tooltip */
+    var axisX = {type: 'category', title: {display: false}, ticks: {display: false}, grid: {display: false}};
+    var DAY = 864e5, MONDAY0 = Date.UTC(1970, 0, 5);
+    function dayOf(l) { return String(l || '').slice(0, 10); }
+    function ms(d) { return Date.parse(d + 'T00:00:00Z'); }
+    function iso(t) { return new Date(t).toISOString().slice(0, 10); }
+    function bandUnit(labels) {
+      var ds = labels.map(dayOf).filter(Boolean).sort();
+      if (!ds.length) return 'day';
+      var span = (ms(ds[ds.length - 1]) - ms(ds[0])) / DAY;
+      return span >= 120 ? 'fortnight' : (span >= 14 ? 'week' : 'day');
+    }
+    function bandKey(d, unit) {
+      if (unit === 'day') return d;
+      var weeks = Math.floor((ms(d) - MONDAY0) / (7 * DAY));
+      if (unit === 'fortnight') weeks = weeks - (weeks % 2);
+      return iso(MONDAY0 + weeks * 7 * DAY);
+    }
+    function bandLabel(key, unit) {
+      if (unit === 'day') return key;
+      if (unit === 'week') return 'Week of ' + key;
+      return key + ' to ' + iso(ms(key) + 13 * DAY);
+    }
+    var bandPlugin = {
+      id: 'pfasDateBands',
+      afterDraw: function (chart) {
+        var x = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+        var labels = chart.data.labels || [];
+        if (!labels.length) return;
+        var unit = bandUnit(labels), bands = [];
+        labels.forEach(function (l, i) {
+          var k = bandKey(dayOf(l), unit), last = bands[bands.length - 1];
+          if (last ? last.key === k : false) { last.to = i; } else { bands.push({key: k, from: i, to: i}); }
+        });
+        var half = labels.length > 1 ? (x.getPixelForValue(1) - x.getPixelForValue(0)) / 2 : 12;
+        var y = area.bottom + 10, fam = Chart.defaults.font.family;
+        ctx.save();
+        ctx.lineWidth = 1.2; ctx.strokeStyle = cMuted; ctx.textAlign = 'center';
+        bands.forEach(function (b) {
+          var a = x.getPixelForValue(b.from) - half * 0.8, z = x.getPixelForValue(b.to) + half * 0.8;
+          ctx.beginPath(); ctx.moveTo(a, y - 4); ctx.lineTo(a, y); ctx.lineTo(z, y); ctx.lineTo(z, y - 4); ctx.stroke();
+          var mid = (a + z) / 2, n = b.to - b.from + 1, text = bandLabel(b.key, unit);
+          ctx.font = '600 11px ' + fam;
+          if (z - a + 2 * half > ctx.measureText(text).width) {
+            ctx.fillStyle = cBody; ctx.fillText(text, mid, y + 16);
+            ctx.font = '10px ' + fam; ctx.fillStyle = cMuted;
+            ctx.fillText(n + (n === 1 ? ' run' : ' runs'), mid, y + 30);
+          }
+        });
+        ctx.restore();
+      }
+    };
 
     /* a lot changed between two runs: a dashed marker at the later run,
        labelled with the lot (blank_history.lot_markers) */
@@ -491,18 +604,21 @@
     if (STACK) {
       var el = document.getElementById('qcStack');
       if (!el) return;
-      new Chart(el, {
-        type: 'line',
-        data: {labels: STACK.labels, datasets: STACK.series.map(function (s, i) {
+      var stackSets = STACK.series.map(function (s, i) {
           var c = tok('--series-' + ((i % 6) + 1));
           return {label: s.analyte, data: s.values, showLine: false, spanGaps: false,
                   pointRadius: 3.5, pointHoverRadius: 6, backgroundColor: c, borderColor: c,
                   pointBackgroundColor: (s.nd || []).map(function (n) { return n ? 'transparent' : c; })};
-        })},
-        options: {responsive: true, maintainAspectRatio: false, animation: false,
-                  plugins: {legend: {position: 'bottom', labels: {usePointStyle: true, boxWidth: 8}},
+        });
+      var stackScales = {x: axisX, y: {title: {display: true, text: STACK.units || 'Value'}, grace: '8%'}};
+      if (STACK.overlay) { stackSets.push(overlaySet(STACK.overlay)); stackScales.y2 = overlayAxis(STACK.overlay); }
+      new Chart(el, {
+        type: 'line', plugins: [bandPlugin],
+        data: {labels: STACK.labels, datasets: stackSets},
+        options: {responsive: true, maintainAspectRatio: false, animation: false, layout: {padding: {bottom: 40}},
+                  plugins: {legend: {position: 'top', labels: {usePointStyle: true, boxWidth: 8}},
                             annotation: {annotations: lotAnnotations(STACK.lot_markers)}},
-                  scales: {x: axisX, y: {title: {display: true, text: STACK.units || 'Value'}, grace: '8%'}}}
+                  scales: stackScales}
       });
       return;
     }
@@ -510,21 +626,17 @@
 
     var lim         = CHART_DATA.limits;
     var statuses    = CHART_DATA.point_status || [];
-    var violations  = CHART_DATA.westgard || [];
-    var pSeverity = {};
-    violations.forEach(function (v) {
-      v.indices.forEach(function (idx) {
-        var prev = pSeverity[idx] || 'ok';
-        if (v.severity === 'reject') pSeverity[idx] = 'reject';
-        else if (prev !== 'reject' && v.severity === 'warning') pSeverity[idx] = 'warning';
-      });
-    });
+    /* a flagged point is marked by its shape as well as its colour: a
+       triangle for a reject, a diamond for a warning (the view's
+       point_severity) */
+    var severity    = CHART_DATA.point_severity || [];
+    var MARK = {reject: 'triangle', warning: 'rectRot'};
     var ptColour = CHART_DATA.values.map(function (_, i) {
       if ((statuses[i] || 'active') === 'superseded') return cMuted;
-      var sev = pSeverity[i] || 'ok';
-      return sev === 'reject' ? cBad : sev === 'warning' ? cWarn : cInfo;
+      return severity[i] === 'reject' ? cBad : severity[i] === 'warning' ? cWarn : cInfo;
     });
-    var ptRadius = CHART_DATA.values.map(function (_, i) { return pSeverity[i] ? 5 : 3.5; });
+    var ptStyle = CHART_DATA.values.map(function (_, i) { return MARK[severity[i]] || 'circle'; });
+    var ptRadius = CHART_DATA.values.map(function (_, i) { return severity[i] ? 6 : 3.5; });
 
     /* limits are annotation lines across the chart, never data */
     var ann = {};
@@ -538,9 +650,8 @@
                   font: {size: 10, weight: '600'}, z: 10}};
     }
     if (CHART_DATA.chart_type === 'threshold') {
-      var thresh = (CHART_DATA.threshold !== null && CHART_DATA.threshold !== undefined)
-                     ? CHART_DATA.threshold : CHART_DATA.target;
-      hline('thr', thresh, cBad, [5, 3], 1.5, 'Threshold');
+      /* the method's threshold, never a stand-in: none set, no line */
+      hline('thr', CHART_DATA.threshold, cBad, [5, 3], 1.5, 'Threshold');
     } else if (lim) {
       hline('u3', lim.ucl_3, cBad, [4, 4], 1.2, '+3SD');
       hline('l3', lim.lcl_3, cBad, [4, 4], 1.2, '-3SD');
@@ -550,11 +661,21 @@
       hline('l1', lim.lcl_1, cOk, [2, 4], 0.8, '');
       hline('m', lim.mean, cBody, [], 1.2, 'Mean', 'start');
     }
-    if (CHART_DATA.chart_type !== 'threshold')
-      hline('t', CHART_DATA.target, cMuted, [8, 4], 1, 'Target', 'end');
+    var ovs = CHART_DATA.overlays || [];
+    var relativeMode = CHART_DATA.show === 'relative' ? (lim ? ovs.length : 0) : 0;
     var lotAnn = lotAnnotations(CHART_DATA.lot_markers);
     for (var lk in lotAnn) ann[lk] = lotAnn[lk];
 
+    /* the chosen environmental reading, on its own axis at the right */
+    function overlaySet(ov) {
+      var c = tok('--series-4');
+      return {label: ov.label + ' (' + ov.unit + ')', data: ov.values, yAxisID: 'y2', spanGaps: true,
+              borderColor: c, backgroundColor: c, borderWidth: 1.5, pointRadius: 2, tension: 0, order: 2};
+    }
+    function overlayAxis(ov) {
+      return {position: 'right', grid: {display: false}, grace: '10%',
+              title: {display: true, text: ov.label + ' (' + ov.unit + ')', font: {size: 11}}};
+    }
     var main = {
       label: CHART_DATA.analyte + ' (' + (CHART_DATA.qc_type_label || CHART_DATA.qc_type) + ')',
       data: CHART_DATA.values, showLine: false,
@@ -562,10 +683,18 @@
       /* hollow: superseded, or a blank that detected nothing (charted at 0) */
       pointBackgroundColor: CHART_DATA.values.map(function (_, i) {
         return (statuses[i] === 'superseded' || (CHART_DATA.point_nd || [])[i]) ? 'transparent' : ptColour[i]; }),
-      pointBorderColor: ptColour, pointRadius: ptRadius, pointHoverRadius: 7,
+      pointBorderColor: ptColour, pointStyle: ptStyle, pointRadius: ptRadius, pointHoverRadius: 7,
     };
     var tooltipPlugin = {
       callbacks: {
+        /* a flagged point's tooltip leads with its rule ("Westgard 1-3S:
+           above +3 SD"), then the run and its value */
+        title: function (items) {
+          var idx = items[0].dataIndex;
+          /* the analyte's rules, never on an overlay reading's point */
+          if (items[0].datasetIndex) return [items[0].label];
+          return ((CHART_DATA.point_rules || [])[idx] || []).concat([items[0].label]);
+        },
         afterBody: function (items) {
           var idx = items[0].dataIndex, lines = [];
           var g = function (k) { return (CHART_DATA[k] || [])[idx] || ''; };
@@ -574,8 +703,12 @@
           if (g('instruments')) lines.push('Instrument: ' + g('instruments'));
           if ((CHART_DATA.point_nd || [])[idx]) lines.push('Not detected');
           if (g('flags'))       lines.push('Flag: ' + g('flags'));
-          if (g('violations'))  lines.push('Westgard: ' + g('violations'));
           if (g('point_status') && g('point_status') !== 'active') lines.push('Status: ' + g('point_status'));
+          if (relativeMode) lines.push('Value: ' + (CHART_DATA.values || [])[idx]);
+          ovs.forEach(function (o) {
+            var v = (o.values || [])[idx];
+            if (v !== null) lines.push(o.label + ': ' + v + ' ' + o.unit);
+          });
           return lines;
         }
       }
@@ -601,11 +734,32 @@
     tooltipPlugin.callbacks.footer = function (items) {
       return pointUrl(items[0].dataIndex) ? 'Click: open the run\u2019s Data Review' : '';
     };
+    var sets = [main], scales = {x: axisX,
+             y: {title: {display: true, text: CHART_DATA.units || 'Value', font: {size: 11}}, grace: '8%'}};
+    /* too few points for limits: the axis is the method's window for this
+       QC type, never the data's own spread (a point outside still shows) */
+    if (CHART_DATA.too_few_points && CHART_DATA.window) {
+      scales.y.suggestedMin = CHART_DATA.window[0];
+      scales.y.suggestedMax = CHART_DATA.window[1];
+    }
+    /* Relative overlay: the analyte in SDs from its mean, each reading in its
+       own units on its own axis; the 2SD / 3SD lines read for the analyte */
+    if (relativeMode) {
+      var rel = window.PFAS.chartOverlay.relativeSets(CHART_DATA.values, lim.mean, lim.sd, ovs);
+      main.data = rel.values;
+      sets = sets.concat(rel.sets);
+      for (var sk in rel.scales) scales[sk] = rel.scales[sk];
+      scales.y.title.text = 'SDs from the mean';
+      ann = {};
+      hline('r3u', 3, cBad, [6, 4], 1.2, '+3SD'); hline('r3l', -3, cBad, [6, 4], 1.2, '-3SD');
+      hline('r2u', 2, cWarn, [4, 4], 1, '+2SD'); hline('r2l', -2, cWarn, [4, 4], 1, '-2SD');
+      hline('r0', 0, cBody, [], 1.2, 'Mean', 'start');
+    }
     new Chart(canvas, {
-      type: 'line',
-      data: {labels: labels, datasets: [main]},
+      type: 'line', plugins: [bandPlugin],
+      data: {labels: labels, datasets: sets},
       options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
+        responsive: true, maintainAspectRatio: false, animation: false, layout: {padding: {bottom: 40}},
         interaction: {mode: 'nearest', intersect: true},
         onClick: function (evt, els) {
           if (!els.length) return;
@@ -616,11 +770,22 @@
           evt.native.target.style.cursor = els.length && pointUrl(els[0].index) ? 'pointer' : 'default';
         },
         plugins: {tooltip: tooltipPlugin, annotation: {annotations: ann},
-                  legend: {labels: {usePointStyle: true, boxWidth: 8, font: {size: 11}}, position: 'bottom'}},
-        scales: {x: axisX,
-                 y: {title: {display: true, text: CHART_DATA.units || 'Value', font: {size: 11}}, grace: '8%'}},
+                  /* the analyte's legend mark is a plain point, never a
+                     flagged one's triangle or diamond */
+                  legend: {display: relativeMode > 0, position: 'top', align: 'end',
+                           labels: {usePointStyle: true, boxWidth: 8, font: {size: 11},
+                                    generateLabels: function (chart) {
+                                      return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(function (it) {
+                                        if (it.datasetIndex === 0) it.pointStyle = 'circle';
+                                        return it;
+                                      });
+                                    }}}},
+        scales: scales,
       },
     });
+    /* Stacked: each chosen reading as a strip under the chart */
+    if (!relativeMode) window.PFAS.chartOverlay.drawStrips(document.getElementById('qcStrips'), labels, ovs,
+                                                           CHART_DATA.westgard, axisX);
   })();
   </script>
   </tal:script>

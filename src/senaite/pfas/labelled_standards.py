@@ -12,9 +12,8 @@ its ROLE in this method, and the standard it is LINKED to (its reference):
   injection_is  injection standard (NIS): added at reconstitution, after any
                 dilution, so its response is compared as measured
 
-It replaces the old top-level `surrogate_is` field (read by nothing in the
-pipeline) and `surrogate_is_chain` (surrogate -> injection IS). The pipeline
-reads the same key (pfas_pipeline.method_profiles). Pure; Python 2.7.
+The pipeline reads the same key (pfas_pipeline.method_profiles). Pure;
+Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -33,42 +32,16 @@ def _map_surrogates(profile):
     return out
 
 
-def from_legacy(profile, global_injection):
-    """The grid that reproduces what the pipeline decided from the legacy keys.
-
-    `global_injection` = keywords globally marked injection_is (what the
-    pipeline fell back to when a method had no chain). Returns a new dict.
-    """
-    chain = dict(profile.get("surrogate_is_chain") or {})
-    old_is = (profile.get("surrogate_is") or "").strip()
-    if chain:
-        injection = [v for v in chain.values() if v]
-    else:
-        injection = list(global_injection or [])
-    if old_is:
-        injection.append(old_is)
-    out = {}
-    for kw in _map_surrogates(profile) + [k for k in chain if k]:
-        if kw not in out:
-            out[kw] = {"role": "surrogate", "reference": chain.get(kw) or ""}
-    for kw in injection:
-        if kw not in out:           # a compound that is a chain KEY stays a surrogate
-            out[kw] = {"role": "injection_is", "reference": ""}
-    return out
+# A SUR's limits for a matrix class (eis_matrix_overrides[class][keyword])
+# may hold the marker "none" at both ends: recovery is not assessed in that
+# class -- no window, never the aqueous one. Every reader of a class limit
+# asks not_assessed() before reading a number.
+NOT_ASSESSED = "none"
 
 
-def migrate(profile, global_injection):
-    """True if `profile` was migrated in place (idempotent)."""
-    if KEY in profile:
-        changed = False
-    else:
-        profile[KEY] = from_legacy(profile, global_injection)
-        changed = True
-    for legacy in ("surrogate_is", "surrogate_is_chain"):
-        if legacy in profile:
-            profile.pop(legacy)
-            changed = True
-    return changed
+def not_assessed(lim):
+    """Whether a class limit ({recovery_min, recovery_max}) is the marker."""
+    return isinstance(lim, dict) and NOT_ASSESSED in (lim.get("recovery_min"), lim.get("recovery_max"))
 
 
 def grid(profile):
@@ -89,10 +62,23 @@ def injection(profile):
     return sorted(k for k, r in roles(profile).items() if r == "injection_is")
 
 
+def removal_blocked_by(profile, keyword):
+    """The natives the surrogate map quantifies against `keyword`, in the
+    map's order: while any is left, the standard cannot leave the method
+    (whatever its role: either may quantify natives)."""
+    out = []
+    for row in profile.get("surrogate_map") or []:
+        if not isinstance(row, dict) or not row.get("analyte"):
+            continue
+        if (row.get("surrogate_is") or "").strip() == keyword and row["analyte"] not in out:
+            out.append(row["analyte"])
+    return out
+
+
 def check(profile):
     """Refusals for a whole saved profile: links, loops, and agreement with the
-    surrogate map (checked after both are applied, so one save can tick a new
-    standard AND map a native to it)."""
+    surrogate map (checked on the whole profile after each save, so a new
+    standard and a native mapped to it may come from different saves)."""
     g = grid(profile)
     errors = []
     for kw in sorted(g):
@@ -102,8 +88,8 @@ def check(profile):
         if ref == kw:
             errors.append("%s cannot be linked to itself." % kw)
         elif ref and ref not in g:
-            errors.append("%s is linked to %s, which this method does not use "
-                          "(tick Used for it, or change the link)." % (kw, ref))
+            errors.append("%s is linked to %s, which this method does not use: "
+                          "add %s, or change the link." % (kw, ref, ref))
     loops = set()
     for kw in sorted(g):                       # A -> B -> ... -> A
         seen, cur = [kw], g[kw].get("reference")
@@ -114,16 +100,16 @@ def check(profile):
                 members = seen[seen.index(cur):]
                 if frozenset(members) not in loops:
                     loops.add(frozenset(members))
-                    errors.append("Links loop: %s." % " -> ".join(members + [cur]))
+                    errors.append("Links loop: %s." % " \u2192 ".join(members + [cur]))
                 break
             seen.append(cur)
             cur = g[cur].get("reference")
     # Either role may quantify natives: isotope dilution (FDA, EPA 1633A)
     # quantifies against the extracted standard, internal-standard
     # calibration (EPA 537.1 §7.2.1, Table 3) against the injection standard.
-    # Refusing the second kept EPA 537.1 on EPA 1633A's standards.
     for kw in _map_surrogates(profile):
         if kw not in g:
             errors.append("%s quantifies natives in the surrogate map but is not "
-                          "ticked Used." % kw)
+                          "one of this method's standards: add it, or quantify them by "
+                          "another." % kw)
     return errors

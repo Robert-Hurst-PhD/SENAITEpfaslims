@@ -5,9 +5,9 @@ client's EDD profile. Python 2.7.
 
 Everything format-specific comes from the profile (edd_store): its
 defaults, method codes, value lists, code maps (qualifiers, QC types,
-sample types), analyte naming and the client fields. Phase 1: the rows are
-laid out in the default format's columns (edd_profiles); per-column
-converters and other layouts are phase 2.
+sample types), analyte naming and the client fields. The rows are laid out in the default
+format's columns (edd_profiles); a format whose module has its own
+`generate` (a column-mapped profile: edd_facts) writes the delivery instead.
 
 QC type, qualifier and sample-type codes: the profile's maps.
 Result type codes: TRG (target), TIC (NC-flagged analyte), IS, SUR.
@@ -21,7 +21,6 @@ from datetime import datetime
 
 from senaite.pfas import edd_profiles as _formats
 from senaite.pfas.edd_store import (
-    SAMPLE_TYPE_KEY,
     client_field,
     get_client_settings,
     get_edd_profile_for_client,
@@ -30,15 +29,47 @@ from senaite.pfas.edd_store import (
     profile_tic_keywords,
     profile_qc_type_dict,
     profile_qualifier_dict,
+    sdg_prefix,
     section,
 )
 
 logger = logging.getLogger("senaite.pfas.edd_builder")
 
+# the certificate's dilution qualifier (coa_format.D_CODE): never issued in an
+# EDD, whose dilution factor carries it
+DILUTION_CODE = "D"
+
+
+def certificate_codes(row_c):
+    """The internal codes the certificate prints for one result, as the EDD
+    issues them: N.D. for a non-detect (the certificate's U), the reporting
+    rules' other codes (J) but not their D, and every stamped QC
+    qualification, a lab code D included. A row without the split (rule_codes,
+    qc_codes) reads its printed qualifiers, U dropped."""
+    codes = ["N.D."] if row_c["detected"] is False else []
+    if "rule_codes" in row_c or "qc_codes" in row_c:
+        rule = [c for c in row_c.get("rule_codes") or [] if c not in ("U", DILUTION_CODE)]
+        qc = [c for c in row_c.get("qc_codes") or [] if c and c != "U"]
+        return codes + rule + [c for c in qc if c not in rule]
+    return codes + [c.strip() for c in (row_c.get("qualifiers") or "").split(",")
+                    if c.strip() and c.strip() != "U"]
+
+
+def lab_clock(value):
+    """A recorded instant (a DateTime, or a naive UTC datetime) as a naive
+    datetime on the laboratory's clock while its zone converts. Otherwise,
+    or when it cannot be read, the value itself, so an unset zone writes
+    exactly what it always did. A bare date is never shifted."""
+    from senaite.pfas import lab_time
+    if value is None or not lab_time.active():
+        return value
+    wall = lab_time.to_wall(value, "utc")
+    return value if wall is None else wall
+
 
 # The row layout -- columns, required fields, formatting and the per-row
 # checks -- is the default format's (edd_profiles; pure, testable without
-# Zope). Phase 1: every profile is laid out in it.
+# Zope).
 _FMT = _formats.FORMATS[_formats.DEFAULT_PROFILE_ID]
 EDD_COLUMNS = _FMT.EDD_COLUMNS
 _LAB_REQUIRED, _QC_REQUIRED = _FMT._LAB_REQUIRED, _FMT._QC_REQUIRED
@@ -82,6 +113,9 @@ class EDDBuilder(object):
         self._qualifier_dict = profile_qualifier_dict(prof)
         self._qc_type_dict = profile_qc_type_dict(prof)
         self._analyte_cas = profile_analyte_cas(prof)
+        from senaite.pfas import compound_library, compound_library_store
+        self._roles = dict((kw, c.get("role")) for kw, c in
+                           compound_library.compounds(compound_library_store.library()).items())
         self._tic = profile_tic_keywords(prof)
         # the format's valid concentration qualifiers: the profile's own
         # list, else its value list
@@ -103,11 +137,11 @@ class EDDBuilder(object):
             prof = getattr(self, "_edd_profile", None) or {}
             if method_id:
                 msg = (u"No {0} method codes for method {1} (test code, prep method, "
-                       u"units) -- add them in EDD Configuration".format(
+                       u"units): add them in EDD Configuration".format(
                            prof.get("state") or u"EDD", method_id))
             else:
                 msg = (u"A sample's method could not be resolved, so it has no {0} "
-                       u"test code -- set the batch's method".format(
+                       u"test code: set the batch's method".format(
                            prof.get("state") or u"EDD"))
             self._method_errors.append({"row": 0, "field": "TEST", "type": "BLOCKING",
                                         "message": msg})
@@ -130,7 +164,7 @@ class EDDBuilder(object):
             if code not in self._qualifier_dict or not self._qualifier_dict[code]:
                 self._qualifier_errors.append({
                     "row": 0, "field": "LAB_QUALIFIER", "type": "BLOCKING",
-                    "message": "{0} {1}: internal qualifier {2!r} has no {3} code -- map it "
+                    "message": "{0} {1}: internal qualifier {2!r} has no {3} code: map it "
                                "in EDD Configuration (qualifier map)".format(
                                    sample_id, keyword, code, prof.get("state") or "state")})
                 continue
@@ -142,7 +176,7 @@ class EDDBuilder(object):
         if issued and valid and issued not in valid:
             self._qualifier_errors.append({
                 "row": 0, "field": "LAB_QUALIFIER", "type": "BLOCKING",
-                "message": "{0} {1}: {2!r} (from {3}) is not a valid {4} qualifier -- map "
+                "message": "{0} {1}: {2!r} (from {3}) is not a valid {4} qualifier: map "
                            "the combination in EDD Configuration".format(
                                sample_id, keyword, issued, ", ".join(codes),
                                prof.get("state") or "state")})
@@ -155,9 +189,9 @@ class EDDBuilder(object):
         uid = _a.get_uid(analysis)
         if not hasattr(self, "_acq_by_uid"):
             self._acq_by_uid = {}
+            import sqlite3
+            from senaite.pfas.qc.store import DEFAULT_DB_PATH
             try:
-                import sqlite3
-                from senaite.pfas.qc.store import DEFAULT_DB_PATH
                 conn = sqlite3.connect(DEFAULT_DB_PATH)
                 try:
                     for a_uid, at in conn.execute(
@@ -166,7 +200,7 @@ class EDDBuilder(object):
                         self._acq_by_uid[a_uid] = at
                 finally:
                     conn.close()
-            except Exception as exc:                        # noqa: BLE001
+            except sqlite3.Error as exc:
                 logger.warning("EDD: acquisition times unreadable: %s", exc)
         at = self._acq_by_uid.get(uid)
         if at:
@@ -175,7 +209,8 @@ class EDDBuilder(object):
             except ValueError:
                 pass
         try:
-            return analysis.getResultCaptureDate()
+            # SENAITE's capture stamp (or a dilution's instant): a true instant
+            return lab_clock(analysis.getResultCaptureDate())
         except AttributeError:
             return None
 
@@ -184,7 +219,7 @@ class EDDBuilder(object):
         was finished; None when it was not."""
         try:
             ws = analysis.getWorksheet()
-        except Exception:                                   # noqa: BLE001
+        except AttributeError:
             ws = None
         if ws is None:
             return None
@@ -195,15 +230,14 @@ class EDDBuilder(object):
             when = datetime.strptime(at[:19], "%Y-%m-%dT%H:%M:%S") if at else None
         except ValueError:
             return None
-        zone = lab_time.get_zone(self.portal)
-        if when is not None and not zone and not getattr(self, "_tz_warned", False):
+        if when is not None and not lab_time.active() and not getattr(self, "_tz_warned", False):
             self._tz_warned = True
             self._qualifier_errors.append({
                 "row": 0, "field": "PREP_DATE", "type": "Lab",
-                "message": "The laboratory time zone is not set (Site Settings): prep "
+                "message": "The laboratory time zone is not set: set it on Time & Language. Prep "
                            "dates are UTC while analysis dates are the instrument's clock."})
         # recorded in UTC; the analysis date is on the laboratory's clock
-        return lab_time.to_lab(when, zone)
+        return lab_clock(when)
 
     def _translate_qc_type(self, our_qc):
         if not our_qc:
@@ -220,10 +254,7 @@ class EDDBuilder(object):
         return "TRG"
 
     def _build_sdg(self, batch_id):
-        lab = self._lab_cfg
-        prefix = lab.get("sdg_prefix", "") or ""
-        fmt = lab.get("sdg_format", "{prefix}{batch_id}") or "{prefix}{batch_id}"
-        return fmt.format(prefix=prefix, batch_id=batch_id)
+        return sdg_prefix(self._lab_cfg) + batch_id
 
     def generate_from_batch(self, batch_obj, client_obj=None, per_report_override=True, profile_id=None):
         """
@@ -258,7 +289,6 @@ class EDDBuilder(object):
             lab.get("analysis_lab_code") or
             ""
         )
-        default_sample_type = client_field(client_cfg, "default_sample_type", "GW")
         self._unmapped_matrices = set()
         self._unset_weight_basis = set()
         self._rounding_errors = []
@@ -289,23 +319,20 @@ class EDDBuilder(object):
         if not ars:
             # Batch.getAnalysisRequests() is unreliable across versions —
             # resolve via the sample catalog (ARs carry getBatchUID).
-            try:
-                from Products.CMFCore.utils import getToolByName
-                cat = getToolByName(self.portal, "senaite_catalog_sample")
-                ars = [b.getObject() for b in cat(
-                    portal_type="AnalysisRequest",
-                    getBatchUID=batch_obj.UID())]
-            except Exception:
-                ars = []
+            from Products.CMFCore.utils import getToolByName
+            cat = getToolByName(self.portal, "senaite_catalog_sample")
+            ars = [b.getObject() for b in cat(
+                portal_type="AnalysisRequest",
+                getBatchUID=batch_obj.UID())]
 
-        # Resolve the BATCH's method profile once (issue D44#9): core Method
-        # via the bridge, else the batch's extraction/run annotations. Rows
-        # must speak the batch's method — not client defaults.
+        # Resolve the BATCH's method profile once: core Method via the
+        # bridge, else the batch's extraction/run annotations. Rows speak the
+        # batch's method, never client defaults.
         batch_profile_id = self._batch_method_profile(batch_obj)
 
         for ar in ars:
             ar_rows = self._ar_to_rows(
-                ar, project_site, analysis_lab, default_sample_type,
+                ar, project_site, analysis_lab,
                 sdg, batch_id, lab, client_cfg,
                 batch_profile_id=batch_profile_id,
             )
@@ -350,7 +377,7 @@ class EDDBuilder(object):
                 "row": 0,
                 "field": "WEIGHT_BASIS",
                 "message": (
-                    "No weight basis set for matrix {0!r} -- choose WET, DRY, "
+                    "No weight basis set for matrix {0!r}: choose WET, DRY, "
                     "LIP or NA in the EDD profile.".format(matrix)),
                 "type": "Lab",
             })
@@ -379,7 +406,7 @@ class EDDBuilder(object):
         from senaite.pfas import batch_method as bm
         return bm.resolve(batch_obj)[0]
 
-    def _ar_to_rows(self, ar, project_site, analysis_lab, default_sample_type,
+    def _ar_to_rows(self, ar, project_site, analysis_lab,
                     sdg, batch_id, lab, client_cfg, batch_profile_id=""):
         """Convert one AnalysisRequest and all its analyses to EDD row dicts."""
         rows = []
@@ -387,13 +414,10 @@ class EDDBuilder(object):
         # A dilution is not a sample of its own — it is the same extract
         # re-injected, and its result is folded into the parent. Exporting it
         # would report the same measurement twice to the regulator.
-        try:
-            from zope.annotation.interfaces import IAnnotations
-            if (IAnnotations(ar).get("senaite.pfas.qc_type", "") or
-                    "").strip() == "Dilution":
-                return []
-        except Exception:
-            pass
+        from zope.annotation.interfaces import IAnnotations
+        if (IAnnotations(ar).get("senaite.pfas.qc_type", "") or
+                "").strip() == "Dilution":
+            return []
 
         # Sample-level values
         lab_sample_id = ar.getId()
@@ -403,7 +427,8 @@ class EDDBuilder(object):
         sample_date = None
         sample_time = None
         try:
-            dt = ar.getDateSampled()
+            # read as an instant: typed lab time is stored with its zone
+            dt = lab_clock(ar.getDateSampled())
             if dt:
                 sample_date = dt
                 sample_time = dt
@@ -419,37 +444,29 @@ class EDDBuilder(object):
         except AttributeError:
             pass
 
-        # Sample type code (per-sample override, else client default, else lab default)
+        # Sample type code: the sample's matrix (its core Sample Type, from
+        # the CoC) through the profile's matrix map
         try:
-            from zope.annotation.interfaces import IAnnotations
-            ar_ann = IAnnotations(ar)
-            sample_type_code = ar_ann.get(SAMPLE_TYPE_KEY, "")
-            if not sample_type_code:
-                # profile's configurable SampleType→code map (state-specific)
-                try:
-                    st = ar.getSampleType()
-                    mm = (getattr(self, "_edd_profile", {}) or {}).get(
-                        "matrix_map") or {}
-                    sample_type_code = mm.get(st.Title() if st else "", "")
-                except Exception:
-                    sample_type_code = ""
-            # No silent fallback. An unmapped matrix used to become the lab
-            # default — "GW", groundwater, on every row of an Animal Feed
-            # batch. A wrong matrix code on a regulatory submission is worse
-            # than a late one, so the matrix is recorded as unmapped and the
-            # export refuses, naming it, exactly as a PLACEHOLDER CAS does.
-            if not sample_type_code:
-                st_title = ""
-                try:
-                    st = ar.getSampleType()
-                    st_title = (st.Title() or "") if st else ""
-                except Exception:
-                    st_title = ""
-                self._unmapped_matrices.add(st_title or "(no sample type)")
-        except Exception:
+            st = ar.getSampleType()
+            mm = (getattr(self, "_edd_profile", {}) or {}).get(
+                "matrix_map") or {}
+            sample_type_code = mm.get(st.Title() if st else "", "")
+        except AttributeError:
             sample_type_code = ""
+        # No silent fallback: a wrong matrix code on a regulatory submission
+        # is worse than a late one, so an unmapped matrix is recorded and the
+        # export refuses, naming it, exactly as a PLACEHOLDER CAS does.
+        if not sample_type_code:
+            st_title = ""
+            try:
+                st = ar.getSampleType()
+                st_title = (st.Title() or "") if st else ""
+            except AttributeError:
+                st_title = ""
+            self._unmapped_matrices.add(st_title or "(no sample type)")
 
-        # QC type — derive from AR's sample type title
+        # QC type: the sample's own QC role, else the CoC's field QC, else a
+        # QC marker in its sample type's title
         sample_type_title = ""
         try:
             st = ar.getSampleType()
@@ -458,27 +475,16 @@ class EDDBuilder(object):
         except AttributeError:
             pass
 
-        # The sample's own QC role, recorded on it. Sniffing the SampleType
-        # TITLE for "MATRIX SPIKE" only works when a lab registers a dedicated
-        # QC sample type; a method blank submitted as ordinary Animal Feed came
-        # out as NA, so blank contamination was exported as a client result.
-        our_qc_type = ""
-        try:
-            from zope.annotation.interfaces import IAnnotations
-            our_qc_type = (IAnnotations(ar).get(
-                "senaite.pfas.qc_type", "") or "").strip()
-        except Exception:
-            our_qc_type = ""
+        # the role recorded on the sample: a method blank on an ordinary
+        # matrix is still a blank, never a client result
+        our_qc_type = (IAnnotations(ar).get(
+            "senaite.pfas.qc_type", "") or "").strip()
 
         if not our_qc_type:
-            # the CoC's field QC (a field reagent blank, a field duplicate):
-            # exported as a client sample before
-            try:
-                from senaite.pfas.coc_records import FIELD_QC_CODES
-                fq = ar.getField("FieldQCType").get(ar) if ar.getField("FieldQCType") else u""
-                our_qc_type = FIELD_QC_CODES.get(fq or u"", "")
-            except Exception:                               # noqa: BLE001
-                our_qc_type = ""
+            # the CoC's field QC (a field reagent blank, a field duplicate)
+            from senaite.pfas.coc_records import FIELD_QC_CODES
+            fq = ar.getField("FieldQCType").get(ar) if ar.getField("FieldQCType") else u""
+            our_qc_type = FIELD_QC_CODES.get(fq or u"", "")
         if not our_qc_type:
             our_qc_type = "NA"
         for marker, code in ([] if our_qc_type != "NA" else [
@@ -495,11 +501,8 @@ class EDDBuilder(object):
         code_qc_type = self._translate_qc_type(our_qc_type)
         is_qc_sample = code_qc_type != "NA"
 
-        # A QC sample carries the matrix of the batch it belongs to. It was
-        # hardcoded to AQ (aqueous) regardless — so a matrix spike extracted
-        # from feed alongside the field samples was submitted as aqueous while
-        # those samples went as FE. QC_TYPE is what marks a row as QC; the
-        # matrix column should say what the matrix was.
+        # A QC sample carries the matrix of the batch it belongs to: QC_TYPE
+        # marks a row as QC, the matrix column says what the matrix was.
         if is_qc_sample:
             edd_sample_type = sample_type_code
             edd_spn = "QC"
@@ -512,22 +515,11 @@ class EDDBuilder(object):
             edd_location = "NA"
 
         # Analysis / prep dates are set per analysis below: its injection's
-        # acquisition time and its extraction's finish. They were the release
-        # time and blank.
+        # acquisition time and its extraction's finish.
 
-        # Method info — the BATCH's method profile governs TEST/prep/units.
-        # ar.getMethod() returns the CORE Method object; map it to the
-        # profile id via the bridge; else use the batch-level resolution.
-        method_id = ""
-        try:
-            method = ar.getMethod()
-            if method:
-                from senaite.pfas.method_bridge import get_profile_id_for_method
-                method_id = get_profile_id_for_method(self.portal, method) or ""
-        except Exception:
-            pass
-        if not method_id:
-            method_id = batch_profile_id or ""
+        # the BATCH's method profile governs TEST/prep/units (a sample
+        # carries no Method of its own)
+        method_id = batch_profile_id or ""
 
         method_cfg = self._get_method_cfg(method_id)
         test_code = method_cfg.get("test_code", "")
@@ -536,21 +528,17 @@ class EDDBuilder(object):
         # Units: the profile's UNIT MAP (method × matrix — §3 single source)
         # wins; the profile's method unit codes otherwise.
         units = ""
-        matrix_title = ""
-        try:
-            st = ar.getSampleType()
-            matrix_title = st.Title() if st else ""
-            if method_id and matrix_title:
-                from senaite.pfas.method_profile_store import get_profile
-                umap = (get_profile(self.portal, method_id) or {}).get(
-                    "unit_map") or {}
-                u = umap.get(matrix_title, "")
-                if u:
-                    # the value is in this unit; relabelling it (ng/g as
-                    # NG/KG) would report it 1000x off
-                    units = u.upper()
-        except Exception:
-            pass
+        st = ar.getSampleType()
+        matrix_title = st.Title() if st else ""
+        if method_id and matrix_title:
+            from senaite.pfas.method_profile_store import get_profile
+            umap = (get_profile(self.portal, method_id) or {}).get(
+                "unit_map") or {}
+            u = umap.get(matrix_title, "")
+            if u:
+                # the value is in this unit; relabelling it (ng/g as
+                # NG/KG) would report it 1000x off
+                units = u.upper()
         if not units:
             units = _get_units(method_id, edd_sample_type, method_cfg)
 
@@ -570,10 +558,7 @@ class EDDBuilder(object):
             parameter_filtered = "NA"
 
         # ── Per-analyte rows ──────────────────────────────────────────────────
-        try:
-            analyses = ar.getAnalyses(full_objects=True)
-        except Exception:
-            analyses = []
+        analyses = ar.getAnalyses(full_objects=True)
         # the certificate's own rows: the same ROUNDED result, RL / MDL from
         # the method profile and non-detect decision
         cert, reported = self._certificate_rows(ar)
@@ -584,9 +569,8 @@ class EDDBuilder(object):
                 title = analysis.Title()
                 result = analysis.getResult()
                 interims = analysis.getInterimFields() or []
-                # review_state is a CATALOG BRAIN attribute — on full objects
-                # it raises AttributeError and silently dropped EVERY analysis
-                # from the EDD. Resolve via the workflow API instead.
+                # review_state is a CATALOG BRAIN attribute: a full object
+                # raises AttributeError. Resolve via the workflow API.
                 try:
                     from bika.lims import api as _bapi
                     review_state = _bapi.get_review_status(analysis) or ""
@@ -598,14 +582,15 @@ class EDDBuilder(object):
             # retest, with the dilution's factor.
             dilution_factor = 1
             try:
-                if analysis.isRetested():
-                    continue
-                if analysis.isRetest():
-                    from senaite.pfas.browser.dilution_retests import _load
-                    rec = _load(analysis.getRetestOf()) or {}
-                    dilution_factor = rec.get("factor") or 1
-            except Exception:                               # noqa: BLE001
-                pass
+                retested, is_retest = analysis.isRetested(), analysis.isRetest()
+            except AttributeError:      # an analysis without core's retest accessors
+                retested, is_retest = False, False
+            if retested:
+                continue
+            if is_retest:
+                from senaite.pfas.browser.dilution_retests import _load
+                rec = _load(analysis.getRetestOf()) or {}
+                dilution_factor = rec.get("factor") or 1
 
             # Only what the certificate reports, as it reports it: the
             # rounded result (a non-detect is decided on it), and the RL / MDL
@@ -620,12 +605,11 @@ class EDDBuilder(object):
             conc = row_c["result"] if row_c["detected"] else None
             rl = row_c["rl"] or None
             mdl_val = row_c["mdl"] or None
-            # every internal code the certificate prints for this result (U
-            # for a non-detect, the QC qualification codes), plus an interim
-            # qualifier; each is issued as the STATE's code
-            codes = ["N.D."] if row_c["detected"] is False else []
-            codes += [c.strip() for c in (row_c.get("qualifiers") or "").split(",")
-                      if c.strip() and c.strip() != "U"]
+            # every internal code the certificate prints for this result
+            # (certificate_codes: the dilution rule's D is carried by the
+            # dilution factor instead), plus an interim qualifier; each is
+            # issued as the STATE's code
+            codes = certificate_codes(row_c)
             for interim in interims:
                 k = (interim.get("keyword") or "").lower()
                 if k in ("qualifier", "lab_qualifier") and interim.get("value"):
@@ -633,19 +617,13 @@ class EDDBuilder(object):
 
             code_qual = self._issue_qualifiers(codes, lab_sample_id, keyword)
 
-            # CAS lookup
             cas_entry = self._analyte_cas.get(keyword, {})
             cas_no = cas_entry.get("cas_no", "")
             parameter_name = cas_entry.get("parameter_name", title)
 
-            # Result type code
-            analysis_type = "target"
-            try:
-                from senaite.pfas.analytes import PFAS_ANALYTES, INTERNAL_STANDARDS
-                if keyword in {a["keyword"] for a in INTERNAL_STANDARDS}:
-                    analysis_type = "IS"
-            except Exception:
-                pass
+            # Result type code: the compound's role in the library
+            role = self._roles.get(keyword)
+            analysis_type = {"injection_is": "IS", "surrogate": "SUR"}.get(role, "target")
             rtc = self._result_type_code(keyword, analysis_type)
 
             analysis_date = analysis_time = self._acquired(analysis)
@@ -709,7 +687,7 @@ class EDDBuilder(object):
         if smp.get("error"):
             self._rounding_errors.append({
                 "row": 0, "field": "CONCENTRATION", "type": "BLOCKING",
-                "message": "{0}: no rows -- the certificate cannot assemble this sample "
+                "message": "{0}: no rows; the certificate cannot assemble this sample "
                            "({1})".format(api.get_id(ar), smp["error"])})
             return {}, set()
         return dict((r["keyword"], r) for r in smp.get("rows") or []), reported
@@ -719,8 +697,8 @@ class EDDBuilder(object):
         Filename convention: {CLIENT_ID}_{SDG}_{YYYYMMDD}_EDD.csv
         Falls back to batch_id if client info unavailable.
         """
-        from datetime import date
-        today = date.today().strftime("%Y%m%d")
+        from senaite.pfas import lab_time
+        today = lab_time.today().strftime("%Y%m%d")
         if client_cfg:
             self._use_profile(client_cfg, getattr(self, "_profile_override", None))
         sdg = self._build_sdg(batch_id).replace("/", "-").replace(" ", "_")

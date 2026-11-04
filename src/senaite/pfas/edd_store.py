@@ -20,7 +20,8 @@ Storage:
     client annotation  CLIENT_KEY        {edd_enabled, edd_profile,
                                           per_report_override_default,
                                           fields: {client field: value}}
-    sample annotation  SAMPLE_TYPE_KEY   a sample's sample-type code override
+    sample annotation  SAMPLE_TYPE_KEY   retired: a sample's sample-type code
+                                         override (retire_sample_type_overrides)
     batch annotation   EXPORT_KEY        the export generated for a batch
 
 Format-specific content (the default profile's seed, its forms and its
@@ -31,6 +32,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import copy
 import json
 import logging
+import re
 
 from senaite.pfas import edd_profiles
 
@@ -50,22 +52,31 @@ DEFAULT_CLIENT = {
 }
 
 
+def sdg_prefix(defaults):
+    """The sample delivery group ID is the prefix plus the batch ID. A
+    profile saved with the old token pattern ("{prefix}-{batch_id}") keeps
+    its output: the text around {prefix} folds into the prefix."""
+    defaults = defaults or {}
+    prefix = defaults.get("sdg_prefix") or u""
+    fmt = defaults.get("sdg_format") or u""
+    m = re.match(r"^(.*)\{prefix\}(.*)\{batch_id\}$", fmt)
+    if m:
+        return m.group(1) + prefix + m.group(2)
+    return prefix
+
+
 # ── Profiles ──────────────────────────────────────────────────────────────────
 
-def _store(portal, key=EDD_PROFILES_KEY):
-    from zope.annotation.interfaces import IAnnotations
-    from persistent.mapping import PersistentMapping
-    ann = IAnnotations(portal)
-    if key not in ann:
-        ann[key] = PersistentMapping()
-    return ann[key]
+def _store(portal, key=EDD_PROFILES_KEY, create=True):
+    from senaite.pfas.annotation_store import mapping
+    return mapping(portal, key, create)
 
 
 def get_edd_profiles(portal):
     """{profile id: profile}; the default profile is always present (its
     seed when the lab has none saved)."""
     out = {}
-    for k, raw in list(_store(portal).items()):
+    for k, raw in list(_store(portal, create=False).items()):
         try:
             out[k] = json.loads(raw)
         except (ValueError, TypeError):
@@ -90,13 +101,11 @@ def section(profile, name):
 
 
 def save_edd_profile(portal, profile_id, data):
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(portal, 'edd_profile', profile_id,
-                             lambda: get_edd_profiles(portal).get(profile_id),
-                             label=u"EDD profile %s" % profile_id)
-    except Exception:
-        pass
+    # the change history; track() decides if its failure blocks the save
+    from senaite.pfas import config_history
+    config_history.track(portal, 'edd_profile', profile_id,
+                         lambda: get_edd_profiles(portal).get(profile_id),
+                         label=u"EDD profile %s" % profile_id)
     _store(portal)[profile_id] = json.dumps(data)
 
 
@@ -146,12 +155,9 @@ def clients_using(portal, profile_id):
     from bika.lims import api
     out = []
     for brain in api.search({"portal_type": [str("Client")]}):
-        try:
-            client = brain.getObject()
-            if get_client_settings(client).get("edd_profile") == profile_id:
-                out.append(client.Title())
-        except Exception:                                   # noqa: BLE001
-            continue
+        client = brain.getObject()
+        if get_client_settings(client).get("edd_profile") == profile_id:
+            out.append(client.Title())
     return sorted(out)
 
 
@@ -166,13 +172,10 @@ def delete_edd_profile(portal, profile_id):
     users = clients_using(portal, profile_id)
     if users:
         return u"Clients use this profile: %s. Choose another profile for them first." % u", ".join(users)
-    try:
-        from senaite.pfas import config_history
-        config_history.track(portal, 'edd_profile', profile_id,
-                             lambda: get_edd_profiles(portal).get(profile_id),
-                             label=u"EDD profile %s" % profile_id)
-    except Exception:                                       # noqa: BLE001
-        pass
+    from senaite.pfas import config_history
+    config_history.track(portal, 'edd_profile', profile_id,
+                         lambda: get_edd_profiles(portal).get(profile_id),
+                         label=u"EDD profile %s" % profile_id)
     del _store(portal)[profile_id]
     return u""
 
@@ -202,8 +205,8 @@ def profile_qc_type_dict(profile):
 
 def profile_tic_keywords(profile):
     """The analytes this profile reports as tentatively identified (TIC):
-    only those the lab ticks (EDD config > Analytes). A hard-coded list coded
-    calibrated EPA 537.1 targets TIC."""
+    only those the lab ticks (EDD config > Analytes), never a hard-coded
+    list."""
     return frozenset(kw for kw, nm in (section(profile, "analyte_naming") or {}).items()
                      if (nm or {}).get("tic"))
 
@@ -287,31 +290,26 @@ def refresh_value_lists(portal, profile_id, upload_bytes):
 def get_client_settings(client_obj):
     """A client's EDD settings ({edd_enabled, edd_profile,
     per_report_override_default, fields})."""
+    from zope.annotation.interfaces import IAnnotations
+    raw = IAnnotations(client_obj).get(CLIENT_KEY)
     try:
-        from zope.annotation.interfaces import IAnnotations
-        raw = IAnnotations(client_obj).get(CLIENT_KEY)
         if raw:
             cfg = dict(copy.deepcopy(DEFAULT_CLIENT), **json.loads(raw))
             cfg["fields"] = dict(cfg.get("fields") or {})
             return cfg
-    except Exception:
+    except (ValueError, TypeError):
         pass
     return copy.deepcopy(DEFAULT_CLIENT)
 
 
 def save_client_settings(client_obj, data):
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(None, 'client_edd', client_obj.getId(),
-                             lambda: get_client_settings(client_obj),
-                             label=u"Client EDD settings: %s" % client_obj.Title())
-    except Exception:
-        pass
-    try:
-        from zope.annotation.interfaces import IAnnotations
-        IAnnotations(client_obj)[CLIENT_KEY] = json.dumps(data)
-    except Exception as exc:
-        logger.error("Cannot save client EDD settings: %s", exc)
+    # the change history; track() decides if its failure blocks the save
+    from senaite.pfas import config_history
+    config_history.track(None, 'client_edd', client_obj.getId(),
+                         lambda: get_client_settings(client_obj),
+                         label=u"Client EDD settings: %s" % client_obj.Title())
+    from zope.annotation.interfaces import IAnnotations
+    IAnnotations(client_obj)[CLIENT_KEY] = json.dumps(data)
 
 
 def client_field(cfg, key, default=u""):

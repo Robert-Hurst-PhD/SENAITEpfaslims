@@ -4,8 +4,16 @@ certificate's regulatory notes (part B).
 
 A LIMIT is one record:
     id, program, label, analytes [keywords], matrices [sample type titles],
-    value, unit, kind (MCL | Interim standard | Action level | Advisory),
-    citation, effective, status_note, url, verified
+    matrix_uids [the core Sample Types' UIDs], subtype_ids / subtypes [the
+    sample sub-types it is narrowed to, if any], value, unit, kind (MCL |
+    Interim standard | Action level | Advisory), citation, effective,
+    status_note, url, verified, retired {by, at, why}
+
+A limit's matrices are chosen from the core Sample Types and matched by UID
+(titles are kept for display and older records); a limit with none is
+refused, since it would never apply. A limit is RETIRED, never deleted: it
+stops applying to new certificates and keeps its record, so a certificate
+that used it still traces to it.
 
 `analytes` is a list because a limit may cover several reported analytes: a
 sum-of-six state standard, or PFOS reported as linear + branched isomers. The
@@ -14,15 +22,14 @@ single-analyte limit is simply a list of one). Non-detects add nothing to the
 sum -- stated on the certificate beside every such comparison.
 
 A PROGRAM is who set the limit: "federal" (applies to every client) or a state
-EDD profile id, which the client already selects for its
-EDD (: program per client, with the EDD state).
+EDD profile id, which the client already selects for its EDD: the program
+follows the client's EDD state.
 
-NOTHING HERE IS A VERIFIED REGULATORY VALUE. The seeds were researched
-2026-09-30 from the cited public pages and ship with verified=False; the
-certificate uses ONLY limits the lab has marked verified (: never
-fabricate a regulatory value). Federal status was changing at research time:
-the May 2026 proposal to rescind the PFHxS, PFNA and HFPO-DA MCLs is recorded
-on those records.
+NOTHING HERE IS A VERIFIED REGULATORY VALUE. The seeds come from the cited
+public pages and ship with verified=False; the certificate uses ONLY limits
+the lab has marked verified (a regulatory value is never fabricated). The
+May 2026 proposal to rescind the PFHxS, PFNA and HFPO-DA MCLs is recorded on
+those records.
 
 Evaluation is pure (no Zope) so the certificate and the tests share it.
 """
@@ -33,10 +40,7 @@ import re
 
 STORE_KEY = "senaite.pfas.regulatory_limits"
 # the shipped kinds; the lab's list is vocab_store "regulatory_limit_kinds"
-try:
-    from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
-except ImportError:                                         # loaded by path (tests)
-    from vocab_store import LISTS as _VOCAB  # noqa: E402
+from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
 KINDS = tuple(k for k, _l in _VOCAB["regulatory_limit_kinds"][1])
 
 # Units the comparison understands, as (dimension, factor to the base unit).
@@ -62,6 +66,20 @@ SEED_PROGRAMS = {
         {"label": "EPA: PFAS National Primary Drinking Water Regulation", "url": _EPA_PAGE}]},
 }
 
+
+def analyte_column(analytes):
+    """The analyte a limit is on, as the Regulatory Limits table shows it:
+    the analyte only (PFOS, not the limit's name), the linear and branched
+    forms one analyte, a sum's analytes joined by +."""
+    out = []
+    for a in analytes or []:
+        a = (a or u"").strip()
+        for pre in (u"lr-", u"br-"):
+            if a.startswith(pre):
+                a = a[len(pre):]
+        if a and a not in out:
+            out.append(a)
+    return u" + ".join(out)
 
 def _seed(id_, program, label, analytes, matrices, value, unit, kind, citation,
           effective, url, status_note=""):
@@ -97,13 +115,37 @@ def convert(value, from_unit, to_unit):
     return value * a[1] / b[1]
 
 
-def applicable(limits, programs, matrix):
-    """Verified limits of the given programs that name this matrix."""
-    progs = set(programs)
+def is_active(limit):
+    return not (limit or {}).get("retired")
+
+
+def names_matrix(limit, matrix, matrix_uid=None):
+    """The limit covers this matrix: by the Sample Type's UID when both
+    carry one, else by title."""
+    uids = limit.get("matrix_uids") or []
+    if matrix_uid and uids:
+        return matrix_uid in uids
     m = (matrix or "").strip().lower()
-    return [l for l in (limits or [])
-            if l.get("verified") and l.get("program") in progs
-            and m in [(x or "").strip().lower() for x in (l.get("matrices") or [])]]
+    return m in [(x or "").strip().lower() for x in (limit.get("matrices") or [])]
+
+
+def applicable(limits, programs, matrix, matrix_uid=None, subtype=None):
+    """Active, verified limits of the given programs that name this matrix.
+    A limit naming sub-types applies only to a sample of one of them, and
+    for that sample replaces the type-wide limit of the same program on the
+    same analytes."""
+    progs = set(programs)
+    found = [l for l in (limits or [])
+             if l.get("verified") and is_active(l) and l.get("program") in progs
+             and names_matrix(l, matrix, matrix_uid)
+             and (not l.get("subtype_ids") or subtype in l["subtype_ids"])]
+    narrow = set((l.get("program"), tuple(sorted(l.get("analytes") or []))) for l in found if l.get("subtype_ids"))
+    return [l for l in found
+            if l.get("subtype_ids") or (l.get("program"), tuple(sorted(l.get("analytes") or []))) not in narrow]
+
+
+def no_matrix(limit):
+    return not (limit.get("matrix_uids") or limit.get("matrices"))
 
 
 def evaluate(limit, results, result_unit):
@@ -152,21 +194,47 @@ def _split(text):
     return [x.strip() for x in (text or "").replace(";", ",").split(",") if x.strip()]
 
 
-def parse_limits_form(form, old_limits, who, now):
+def _matrices(form, i, sample_types):
+    """(titles, uids) ticked on row i (lim.<i>.mx.<uid>), in the Sample
+    Types' order; without a Sample Type list, the typed titles."""
+    if sample_types is None:
+        return _split(form.get("lim.%d.matrices" % i)), []
+    uids = [u for u, _t in sample_types if form.get("lim.%d.mx.%s" % (i, u))]
+    titles = dict(sample_types)
+    return [titles[u] for u in uids], uids
+
+
+def _subtypes(form, i, subtypes, matrix_uids, label):
+    """(ids, names) ticked on row i (lim.<i>.st.<id>); each must be a
+    sub-type of a matrix the limit names."""
+    ids, names = [], []
+    for sid, name, type_uid in subtypes or []:
+        if not form.get("lim.%d.st.%s" % (i, sid)):
+            continue
+        if type_uid not in (matrix_uids or []):
+            raise ValueError(u"%s: %s is a sub-type of a matrix this limit does not name" % (label, name))
+        ids.append(sid)
+        names.append(name)
+    return ids, names
+
+
+def parse_limits_form(form, old_limits, who, now, sample_types=None, subtypes=None):
     """Limit records from @@pfas-regulatory-limits' fields lim.<i>.<name>.
 
-    Refuses (ValueError) a non-numeric or non-positive limit, an unknown unit,
-    a record without label or analytes, and any link that is not http(s): a
-    link prints on a client's certificate. Ticking Verified stamps who and when;
-    the stamp is kept only while value, unit, analytes and matrices stay as
-    they were verified."""
+    sample_types: [(uid, title)] the matrices are chosen from (checkboxes
+    lim.<i>.mx.<uid>); subtypes: [(id, name, sample type uid)] a limit may
+    narrow to (lim.<i>.st.<id>; sample_subtypes). Refuses (ValueError) a non-numeric or non-positive
+    limit, an unknown unit, a record without label, analytes or a matrix,
+    and any link that is not http(s): a link prints on a client's
+    certificate. Ticking Verified stamps who and when; the stamp is kept
+    only while value, unit, analytes and matrices stay as they were
+    verified. A retired record keeps its retirement."""
     old = dict((l.get("id"), l) for l in (old_limits or []))
     limits, i = [], 0
     while ("lim.%d.label" % i) in form:
         g = lambda k, _i=i: (u"%s" % (form.get("lim.%d.%s" % (_i, k)) or u"")).strip()   # noqa: E731
+        row = i
         i += 1
-        if g("delete"):
-            continue
         label, raw_value = g("label"), g("value")
         if not label and not raw_value:
             continue                                    # untouched blank row
@@ -182,18 +250,29 @@ def parse_limits_form(form, old_limits, who, now):
         analytes = _split(g("analytes"))
         if not label or not analytes:
             raise ValueError(u"%s: a label and at least one analyte are required" % (label or u"new row"))
+        matrices, matrix_uids = _matrices(form, row, sample_types)
+        if not matrices:
+            raise ValueError(u"%s: choose at least one matrix; a limit without one never applies" % label)
         url = g("url")
         if url and not _URL_RE.match(url):
             raise ValueError(u"%s: the link must be an http(s) address" % label)
         rid = g("id") or u"lim-%s-%d" % (now.replace(" ", "T"), i)
         rec = {"id": rid, "program": g("program") or FEDERAL, "label": label,
-               "analytes": analytes, "matrices": _split(g("matrices")),
+               "analytes": analytes, "matrices": matrices,
                "value": value, "unit": unit, "kind": g("kind") or KINDS[0],
                "citation": g("citation"), "effective": g("effective"),
                "status_note": g("status_note"), "url": url,
                "verified": bool(g("verified"))}
+        if matrix_uids:
+            rec["matrix_uids"] = matrix_uids
+        st_ids, st_names = _subtypes(form, row, subtypes, matrix_uids, label)
+        if st_ids:
+            rec["subtype_ids"], rec["subtypes"] = st_ids, st_names
         prev = old.get(rid) or {}
-        same = all(prev.get(k) == rec[k] for k in ("value", "unit", "analytes", "matrices"))
+        if prev.get("retired"):
+            rec["retired"] = prev["retired"]
+        same = all(prev.get(k) == rec[k] for k in ("value", "unit", "analytes", "matrices")) \
+            and prev.get("subtype_ids") == rec.get("subtype_ids")
         if rec["verified"] and prev.get("verified") and same:
             rec["verified_by"] = prev.get("verified_by")
             rec["verified_at"] = prev.get("verified_at")
@@ -201,6 +280,45 @@ def parse_limits_form(form, old_limits, who, now):
             rec["verified_by"] = who
             rec["verified_at"] = now
         limits.append(rec)
+    return limits
+
+
+def merge(old_limits, posted):
+    """The stored list with the posted records put in place (by id); a new
+    record goes at the end. Records not posted stay as they are."""
+    by_id = dict((l.get("id"), l) for l in posted)
+    out = [by_id.pop(l.get("id"), l) for l in (old_limits or [])]
+    return out + [l for l in posted if l.get("id") in by_id]
+
+
+def _find(limits, lid):
+    for l in limits or []:
+        if l.get("id") == lid:
+            return l
+    raise ValueError(u"There is no limit %r." % lid)
+
+
+def retire(limits, lid, who, now, why):
+    """Retire one limit (who, when, why); refused without a reason."""
+    why = (why or u"").strip()
+    if not why:
+        raise ValueError(u"Say why the limit is retired.")
+    lim = _find(limits, lid)
+    if lim.get("retired"):
+        raise ValueError(u"%s is already retired." % (lim.get("label") or lid))
+    lim["retired"] = {"by": who, "at": now, "why": why}
+    return limits
+
+
+def mark_verified(limits, lid, who, now):
+    """Stamp one limit verified; refused for a retired limit or one with no
+    matrix (it would never apply)."""
+    lim = _find(limits, lid)
+    if lim.get("retired"):
+        raise ValueError(u"%s is retired." % (lim.get("label") or lid))
+    if no_matrix(lim):
+        raise ValueError(u"%s: choose its matrices first (Update)." % (lim.get("label") or lid))
+    lim.update({"verified": True, "verified_by": who, "verified_at": now})
     return limits
 
 
@@ -240,9 +358,8 @@ def get_store(portal):
 
 
 def save_store(portal, data):
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(portal, 'regulatory_limits', "limits", lambda: get_store(portal), label=u"Regulatory limits")
-    except Exception:
-        pass
+    # the change history is strict: when its entry cannot be prepared the
+    # save does not happen
+    from senaite.pfas import config_history
+    config_history.track(portal, 'regulatory_limits', "limits", lambda: get_store(portal), label=u"Regulatory limits")
     _ann(portal)[STORE_KEY] = json.dumps(data, sort_keys=True)

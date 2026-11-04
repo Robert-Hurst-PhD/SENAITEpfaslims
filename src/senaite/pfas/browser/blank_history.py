@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Blank history and the lots behind a change in background
-(@@pfas-blank-history;
-Part 2). Python 2.7.
+"""Blank history and the lots behind a change in background: the data
+behind the Control Charts' blanks mode and its comparison macro
+(@@pfas-blank-history-macros). Python 2.7.
 
     ?method=&matrix=&qc_type=&analyte=   the series charted
     ?a=<worksheet>&b=<worksheet>         compare two blanks' lots
@@ -21,7 +21,6 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from plone.memoize.instance import memoize
-from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.blank_history")
 
@@ -52,8 +51,8 @@ def blank_data(method=None):
 
 
 def run_lots(portal, ws_id):
-    """Every lot one run used: its extraction's ledger and FM-ENV-002."""
-    from bika.lims import api
+    """Every lot one run used: the usage ledger (its extraction's stages and
+    the lots the Run Builder recorded)."""
     from senaite.pfas import blank_history as bh
     from senaite.pfas import inventory_ledger
     try:
@@ -61,15 +60,7 @@ def run_lots(portal, ws_id):
     except Exception as exc:                                # noqa: BLE001
         logger.warning("run_lots ledger %s: %s", ws_id, exc)
         ledger = []
-    fm251 = {}
-    try:
-        found = api.search({"portal_type": "Worksheet", "id": ws_id}, "senaite_catalog_worksheet")
-        if found:
-            from senaite.pfas.browser.logbooks import _get_logbook
-            fm251 = _get_logbook(found[0].getObject(), "251") or {}
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("run_lots fm251 %s: %s", ws_id, exc)
-    return bh.lots_of(ledger, fm251)
+    return bh.lots_of(ledger)
 
 
 def mxb_members(ws_id):
@@ -160,28 +151,16 @@ def compare(portal, current, prev, cache=None):
     return out
 
 
-class PFASBlankHistoryView(BrowserView):
-    """Retired as a page (2026-10-11): Control Charts' blanks mode shows the
-    same data on the chart's page. The address redirects there with its
-    choices; the data helpers and the comparison macro stay in use."""
+class BlankSelection(object):
+    """The blank runs a request selects (?method=, ?matrix=, ?qc_type=,
+    ?unit=, ?a=, ?b=) and the comparison of two: the Control Charts' blanks
+    mode reads them on its own request."""
 
-    def __call__(self):
-        flatten_form(self.request)
-        f = self.request.form
-        qs = [("method", self.method()), ("qc_type", self.qc_type()), ("matrix", self.matrix()),
-              ("a", self._f("a")), ("b", self._f("b"))]
-        qs += [(k, u"1") for k in sorted(f) if k.startswith(u"an.") and f.get(k)]
-        from six.moves.urllib.parse import urlencode
-        url = u"%s/@@pfas-control-chart?%s" % (
-            self.portal_url(), urlencode([(k, (v or u"").encode("utf-8")) for k, v in qs if v]))
-        self.request.response.redirect(url)
-        return u""
+    def __init__(self, context, request):
+        self.context, self.request = context, request
 
     def portal(self):
         return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def portal_url(self):
-        return self.portal().absolute_url()
 
     def _f(self, key, default=u""):
         return (self.request.form.get(key) or default).strip()
@@ -190,39 +169,23 @@ class PFASBlankHistoryView(BrowserView):
         if not hasattr(self, "_runs"):
             from bika.lims import api
             from senaite.pfas import study_records
-            try:
-                hidden = study_records.chart_hidden(study_records.load(api.get_portal()))
-            except Exception as exc:                        # noqa: BLE001
-                logger.warning("study runs not hidden: %s", exc)
-                hidden = set()
             # study runs stay out unless their study opted in
+            hidden = study_records.chart_hidden(study_records.load(api.get_portal()))
             self._runs = [r for r in blank_data() if r.get("batch_id") not in hidden]
         return self._runs
 
-    # each choice is derived from the others; unmemoised, one page computed
-    # method() 2.2 million times
-    @memoize
-    def methods(self):
-        return sorted(set(r["method"] for r in self.all_runs() if r["method"]))
-
+    # each choice is derived from the others: memoised, or one page computes
+    # method() millions of times
     @memoize
     def method(self):
         # the method of the newest blank run, else the first
         rs = self.all_runs()
-        return self._f("method") or (rs[0]["method"] if rs else (self.methods() or [u""])[0])
-
-    @memoize
-    def matrices(self):
-        return sorted(set(r["matrix"] for r in self.all_runs()
-                          if r["matrix"] and r["method"] == self.method()))
+        methods = sorted(set(r["method"] for r in rs if r["method"]))
+        return self._f("method") or (rs[0]["method"] if rs else (methods or [u""])[0])
 
     @memoize
     def matrix(self):
         return self._f("matrix")
-
-    def qc_types(self):
-        from senaite.pfas import blank_history as bh
-        return list(bh.BLANK_TYPES)
 
     @memoize
     def qc_type(self):
@@ -239,21 +202,14 @@ class PFASBlankHistoryView(BrowserView):
         return [r for r in self.runs_unfiltered_type() if r["qc_type"] == self.qc_type()]
 
     @memoize
-    def units(self):
-        """The units this blank kind was reported in (newest first)."""
-        out = []
-        for r in self.runs_any_unit():
-            u = r.get("units") or u""
-            if u not in out:
-                out.append(u)
-        return out
-
-    @memoize
     def unit(self):
-        """One unit on the chart at a time: the one asked for, else the
-        newest run's (values in different units are never plotted together)."""
+        """One unit at a time: the one asked for, else the newest run's
+        (values in different units are never plotted together)."""
+        units = []
+        for r in self.runs_any_unit():
+            if (r.get("units") or u"") not in units:
+                units.append(r.get("units") or u"")
         asked = self.request.form.get("unit")
-        units = self.units()
         if asked is not None and asked in units:
             return asked
         return units[0] if units else u""
@@ -263,97 +219,19 @@ class PFASBlankHistoryView(BrowserView):
         u = self.unit()
         return [r for r in self.runs_any_unit() if (r.get("units") or u"") == u]
 
-    @memoize
-    def analytes(self):
-        names = set()
-        for r in self.runs():
-            names.update(a for a in r["values"] if a)
-        return sorted(names)
-
-    @memoize
-    def analyte(self):
-        a = self._f("analyte")
-        if a:
-            return a
-        # the analyte that rose most recently, else the first
-        rs = self.runs()
-        if len(rs) >= 2:
-            from senaite.pfas import blank_history as bh
-            up = bh.rise(rs[0], bh.previous(rs, rs[0]))
-            if up:
-                return up[0][0]
-        return (self.analytes() or [u""])[0]
-
-    @memoize
-    def selected_analytes(self):
-        """The analytes stacked on the chart (one checkbox field each,
-        `an.<analyte>`: flatten_form keeps one value per field), else the
-        default one. A blank's analytes share its run's unit, so they stack."""
-        f = self.request.form
-        have = set(self.analytes())
-        picked = sorted(k[3:] for k in f if k.startswith(u"an.") and f.get(k) and k[3:] in have)
-        return picked or ([self.analyte()] if self.analyte() else [])
-
-    def series_json(self):
-        """Oldest first: {labels: [run], units, series: [{analyte, values,
-        failed, assigned}], rl}. The RL line (and a matrix blank's assigned
-        level) only when one analyte is shown: each belongs to its own."""
-        runs = list(reversed(self.runs()))
-        names = self.selected_analytes()
-        one = len(names) == 1
-        # a non-detect (stored with no value) is charted at 0, hollow; an
-        # analyte the run did not measure is a gap
-        series = [{"analyte": a,
-                   "values": [(r["values"].get(a) or 0.0) if a in r["values"] else None for r in runs],
-                   "nd": [a in r["values"] and r["values"].get(a) is None for r in runs],
-                   "failed": [a in r["failed"] for r in runs],
-                   "assigned": [self._assigned(r, a) for r in runs] if one else []}
-                  for a in names]
-        units = sorted(set(r.get("units") or u"" for r in runs) - set([u""]))
-        from senaite.pfas.document_templates import script_json
-        return script_json({"labels": [u"%s %s" % (r["run_date"], r["key"]) for r in runs],
-                           "series": series, "units": u", ".join(units),
-                           "rl": self.rl() if one else None})
-
-    def _assigned(self, run, analyte):
-        """A matrix blank's assigned level for `analyte`, in the run's unit
-        (None when the lot has none, or holds it in another unit)."""
-        if run.get("qc_type") != "MxB":
-            return None
-        from senaite.pfas.matrix_blank import same_unit
-        got = mxb_assigned(self.portal(), run, self._cache()) or {}
-        rec = got.get("record") or {}
-        if not same_unit(run.get("units"), rec.get("unit")):
-            return None
-        return (rec.get("levels") or {}).get(analyte)
-
-    def rl(self):
-        try:
-            from senaite.pfas.method_profile_store import get_profile
-            from senaite.pfas.report_limits import limits_for
-            from senaite.pfas import compound_library, compound_library_store
-            kw = compound_library.name_to_keyword(compound_library_store.library())
-            a = self.analyte()
-            key = kw.get(a.replace(u"lr-", u"").replace(u"br-", u""), a)
-            mtx = self.matrix() or (self.matrices() or [u""])[0]
-            return limits_for(get_profile(self.portal(), self.method()) or {}, mtx, key).get("rl")
-        except Exception:                                   # noqa: BLE001
-            return None
+    def _cache(self):
+        if not hasattr(self, "_mxb_cache"):
+            self._mxb_cache = {}
+        return self._mxb_cache
 
     def pair(self):
         """The two runs compared: ?a=&b=, else the newest and its previous."""
-        from senaite.pfas import blank_history as bh
         rs = self.runs()
         by = dict((r["key"], r) for r in rs)
         a = by.get(self._f("a")) or (rs[0] if rs else None)
         b = by.get(self._f("b")) if self._f("b") else (
             previous_blank(rs, a, self._cache()) if a else None)
         return a, b
-
-    def _cache(self):
-        if not hasattr(self, "_mxb_cache"):
-            self._mxb_cache = {}
-        return self._mxb_cache
 
     def comparison(self):
         a, b = self.pair()

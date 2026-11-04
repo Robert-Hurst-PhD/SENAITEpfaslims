@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">QC Qualifiers</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">QC Qualifiers</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/saved">QC qualifiers saved.</div>
+
+    <!-- ── QC QUALIFIERS ────────────────────────────────────────────────────
+         What a certificate says when a QC criterion fails. Report
+         configuration, so it belongs on the report editor.
+         ─────────────────────────────────────────────────────────────────── -->
+    <p class="form-note">A failed QC criterion qualifies the result with the code below or holds it; control-material failures always hold. Edit draft wording before issuing. <tal:h define="hid string:qualified-release"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+
+    <form method="post"
+          tal:attributes="action string:${view/portal_url}/@@pfas-qc-qualifiers">
+      <input type="hidden" name="action" value="save_qualifiers" />
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <table class="pfas-table" data-col-resize="qc-qualifiers-1">
+        <thead>
+          <tr>
+            <th class="pfas-col-name">Failure</th>
+            <th class="pfas-col-md">Disposition</th>
+            <th class="pfas-col-id">Code</th>
+            <th>Statement printed on the certificate</th>
+          </tr>
+        </thead>
+        <tbody tal:define="disps view/qualifier_dispositions">
+          <tr tal:repeat="row view/qualifier_rows">
+            <td>
+              <strong tal:content="row/label">Surrogate recovery</strong>
+              <div class="pfas-sub"
+                   tal:condition="row/customised">edited by the lab</div>
+            </td>
+            <td tal:condition="row/rule">Reporting rule</td>
+            <td tal:condition="not:row/rule">
+              <select class="pfas-select pfas-fill"
+                      tal:attributes="name string:qual_disp.${row/key}">
+                <option tal:repeat="d disps"
+                        tal:attributes="value d/key;
+                                        selected python:d['key'] == row['disposition']"
+                        tal:content="d/label">Qualify</option>
+              </select>
+            </td>
+            <td tal:condition="row/rule"><strong tal:content="row/code">D</strong></td>
+            <td tal:condition="not:row/rule">
+              <input type="text" maxlength="6" class="pfas-input pfas-fill"
+                     tal:attributes="name string:qual_code.${row/key};
+                                     value row/code" />
+            </td>
+            <td>
+              <textarea rows="4" class="pfas-fill is-sm"
+                        tal:attributes="name string:qual_text.${row/key}"
+                        tal:content="row/statement"></textarea>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn btn-primary pfas-mt" type="submit">
+        Save QC Qualifiers
+      </button>
+    </form>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

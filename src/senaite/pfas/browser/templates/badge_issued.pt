@@ -9,13 +9,13 @@
 <body>
   <tal:t metal:fill-slot="header-title">Badge issued</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-lab-staff">&#8592; Lab Staff</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-people">&#8592; People &amp; Roles</a>
   </tal:r>
   <metal:fill fill-slot="content">
     <div class="alert alert-warning">
       This code is shown ONCE and is not kept anywhere: print the badge now. Anyone holding it can sign
       in as <strong tal:content="view/issued/name">AN1</strong> at a registered lab terminal. A lost badge
-      is revoked on Lab Staff; issuing a new one revokes this one. Do not refresh or go back to this
+      is revoked on People &amp; Roles; issuing a new one revokes this one. Do not refresh or go back to this
       page: that issues another badge, and the one shown here stops working.
     </div>
     <p class="rt-line">Badge code (for a badge printer):

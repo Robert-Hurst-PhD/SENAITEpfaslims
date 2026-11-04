@@ -19,7 +19,7 @@ they came from. Each entry is kept; the newest is the one in force.
     same_unit(a, b)                        both given and the same
 
 Nothing here is a verdict: a matrix blank is shown against its assigned
-level, never passed or failed by this module (the lab sets no limit yet).
+level, never passed or failed by this module: the lab sets no limit.
 Values are compared only when both carry the same unit; a mismatch is shown
 side by side, never converted.
 

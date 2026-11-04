@@ -19,7 +19,7 @@
     <!-- ============================================================ -->
     <tal:landing tal:condition="not:view/wid">
 
-      <p class="pfas-lead is-narrow">Set up a new method step by step: record, analytes, sample types, QC criteria and instruments. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <p class="pfas-lead is-narrow">Set up a new method step by step: record, analytes, sample types, QC criteria and instruments. <tal:h define="hid string:method-profile"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
       <!-- Start new wizard -->
       <form method="post"
@@ -133,7 +133,7 @@
                       <input type="hidden" name="step" value="1" />
                       <select id="existing_method_uid" name="existing_method_uid"
                               class="pfas-select pfas-fill">
-                        <option value="">-- select an existing method --</option>
+                        <option value="">Choose an existing method</option>
                         <tal:opts tal:repeat="m view/existing_methods">
                           <option tal:attributes="value m/uid" tal:content="m/title">Method</option>
                         </tal:opts>
@@ -154,13 +154,13 @@
                   <input type="hidden" name="step" value="1" />
                   <input type="hidden" name="existing_method_uid" value="" />
                   <div class="pfas-form-field is-spaced">
-                    <label for="new_method_title">Method title *</label>
+                    <label for="new_method_title">Method title</label>
                     <input id="new_method_title" name="new_method_title" type="text"
                            placeholder="e.g. EPA 8327"
                            tal:attributes="value python:view.step1_data().get('title', '')" />
                   </div>
                   <div class="pfas-form-field is-spaced">
-                    <label for="new_method_id">Method ID (keyword, no spaces) *</label>
+                    <label for="new_method_id">Method ID (keyword, no spaces)</label>
                     <input id="new_method_id" name="new_method_id" type="text"
                            placeholder="e.g. EPA_8327"
                            tal:attributes="value python:view.step1_data().get('method_id', '')" />
@@ -248,14 +248,14 @@
                   <p class="pfas-note-sm">Linked services are ticked. Unticking does not remove an existing link: remove it on the service itself.</p>
                   <div class="pfas-check-grid">
                     <tal:svcs tal:repeat="svc view/all_services">
-                      <label class="pfas-check is-boxed"
+                      <label class="pfas-switch pfas-check is-boxed"
                              tal:attributes="for    string:svc-${svc/uid};
                                              class  python:'pfas-check is-boxed is-linked' if svc['is_linked'] else 'pfas-check is-boxed'">
                         <input type="checkbox"
                                name="service_uid:list"
                                tal:attributes="id      string:svc-${svc/uid};
                                                value   svc/uid;
-                                               checked svc/is_linked" />
+                                               checked svc/is_linked" /><span class="pfas-switch-track"></span>
                         <span tal:content="svc/title">Service</span>
                         <span class="pfas-check-tag" tal:content="svc/category"></span>
                       </label>
@@ -291,13 +291,13 @@
                   <h4>Select sample types this method analyzes</h4>
                   <div class="pfas-check-grid">
                     <tal:sts tal:repeat="st view/sample_types">
-                      <label class="pfas-check is-boxed"
+                      <label class="pfas-switch pfas-check is-boxed"
                              tal:attributes="for string:st-${st/uid}">
                         <input type="checkbox"
                                name="sampletype_uid:list"
                                tal:attributes="id      string:st-${st/uid};
                                                value   st/uid;
-                                               checked python:st['uid'] in view.step4_data().get('sampletype_uids', [])" />
+                                               checked python:st['uid'] in view.step4_data().get('sampletype_uids', [])" /><span class="pfas-switch-track"></span>
                         <span tal:content="st/title">Sample Type</span>
                       </label>
                     </tal:sts>
@@ -331,13 +331,13 @@
                   <h4>QC types this method runs</h4>
                   <div class="pfas-check-grid">
                     <tal:qcts tal:repeat="qt view/pfas_qc_types">
-                      <label class="pfas-check is-boxed"
+                      <label class="pfas-switch pfas-check is-boxed"
                              tal:attributes="for string:qct-${qt/qc_code}">
                         <input type="checkbox"
                                name="qc_type_code:list"
                                tal:attributes="id      string:qct-${qt/qc_code};
                                                value   qt/qc_code;
-                                               checked qt/is_selected" />
+                                               checked qt/is_selected" /><span class="pfas-switch-track"></span>
                         <span tal:content="qt/title">QC type</span>
                         <span class="pfas-check-tag" tal:content="qt/qc_code"></span>
                       </label>
@@ -374,13 +374,12 @@
                   return here and click "Confirmed" below.
                 </p>
                 <p class="pfas-muted">
-                  Once your profile is saved, review which QC types are active
-                  for this method in the QC Type Grid:
+                  Then switch on the QC types this method runs:
                 </p>
                 <a class="btn-secondary"
                    target="_blank"
-                   tal:attributes="href string:${base}/@@pfas-qc-type-grid">
-                  Open QC Type Grid &#8594;
+                   tal:attributes="href string:${view/profile_edit_url}#pane-qc">
+                  Open QC criteria &#8594;
                 </a>
                 <form method="post"
                       tal:attributes="action string:${base}/@@pfas-method-wizard">
@@ -402,7 +401,7 @@
             <!-- ================================================ -->
             <tal:step7 tal:condition="python: step == 7">
               <div class="pfas-form-narrow">
-                <p class="form-note">QC windows, reporting limits and action levels are set per matrix on the method profile and on Regulatory Limits. <tal:h define="hid string:specifications"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+                <p class="form-note">QC windows, reporting limits and action levels are set per matrix on the method profile and on Regulatory Limits. <tal:h define="hid string:specifications"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
                 <form method="post"
                       tal:attributes="action string:${base}/@@pfas-method-wizard">
                   <input type="hidden" name="wid"  tal:attributes="value wid" />
@@ -431,13 +430,13 @@
                   <h4>Storage Locations</h4>
                   <div class="pfas-check-grid">
                     <tal:locs tal:repeat="loc view/storage_locations">
-                      <label class="pfas-check is-boxed"
+                      <label class="pfas-switch pfas-check is-boxed"
                              tal:attributes="for string:loc-${loc/uid}">
                         <input type="checkbox"
                                name="storage_uid:list"
                                tal:attributes="id      string:loc-${loc/uid};
                                                value   loc/uid;
-                                               checked python:loc['uid'] in view.step8_selected_storage()" />
+                                               checked python:loc['uid'] in view.step8_selected_storage()" /><span class="pfas-switch-track"></span>
                         <span tal:content="loc/title">Location</span>
                       </label>
                     </tal:locs>
@@ -451,13 +450,13 @@
                   <h4>Sample Containers</h4>
                   <div class="pfas-check-grid">
                     <tal:conts tal:repeat="cont view/containers">
-                      <label class="pfas-check is-boxed"
+                      <label class="pfas-switch pfas-check is-boxed"
                              tal:attributes="for string:cont-${cont/uid}">
                         <input type="checkbox"
                                name="container_uid:list"
                                tal:attributes="id      string:cont-${cont/uid};
                                                value   cont/uid;
-                                               checked python:cont['uid'] in view.step8_selected_containers()" />
+                                               checked python:cont['uid'] in view.step8_selected_containers()" /><span class="pfas-switch-track"></span>
                         <span tal:content="cont/title">Container</span>
                       </label>
                     </tal:conts>
@@ -482,7 +481,7 @@
             <!-- ================================================ -->
             <tal:step9 tal:condition="python: step == 9">
               <div class="pfas-form-narrow">
-                <p>Review this method&#8217;s QC rule switches; they start from the method profile. <tal:h define="hid string:rule-switches"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+                <p>Review this method&#8217;s QC rule switches; they start from the method profile. <tal:h define="hid string:rule-switches"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
                 <a class="btn-secondary"
                    target="_blank"
                    tal:attributes="href view/ivrules_url">
@@ -520,14 +519,14 @@
                   <h4>Select instruments certified for this method</h4>
                   <div class="pfas-check-grid">
                     <tal:instrs tal:repeat="instr view/instruments">
-                      <label class="pfas-check is-boxed"
+                      <label class="pfas-switch pfas-check is-boxed"
                              tal:attributes="for   string:instr-${instr/uid};
                                              class python:'pfas-check is-boxed is-linked' if instr['is_linked'] else 'pfas-check is-boxed'">
                         <input type="checkbox"
                                name="instrument_uid:list"
                                tal:attributes="id      string:instr-${instr/uid};
                                                value   instr/uid;
-                                               checked instr/is_linked" />
+                                               checked instr/is_linked" /><span class="pfas-switch-track"></span>
                         <span tal:content="instr/title">Instrument</span>
                       </label>
                     </tal:instrs>

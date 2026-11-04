@@ -17,46 +17,30 @@ import logging
 logger = logging.getLogger("senaite.pfas.staff")
 
 
-def _contacts_folder(portal):
-    try:
-        return portal["bika_setup"]["bika_labcontacts"]
-    except Exception:
-        return None
+def contacts_folder(portal):
+    return portal["bika_setup"]["bika_labcontacts"]
 
 
 def _derive_initials(fullname):
     return u"".join(w[0] for w in (fullname or u"").split() if w).upper()
 
 
-def _one(contact):
-    try:
-        full = contact.getFullname() if hasattr(contact, "getFullname") \
-            else contact.Title()
-    except Exception:
-        full = contact.Title()
+def staff_record(contact):
+    full = contact.getFullname() if hasattr(contact, "getFullname") \
+        else contact.Title()
     if not full:
         return None
     initials = u""
-    try:
-        field = contact.getField("pfas_initials")
-        if field is not None:
-            initials = (field.get(contact) or u"").strip().upper()
-    except Exception:
-        pass
+    field = contact.getField("pfas_initials")
+    if field is not None:
+        initials = (field.get(contact) or u"").strip().upper()
     if not initials:
         initials = _derive_initials(full)
     sig_url = u""
-    try:
-        sig = contact.getSignature()
-        if sig and getattr(sig, "size", 0):
-            sig_url = contact.absolute_url() + "/Signature"
-    except Exception:
-        pass
-    email = u""
-    try:
-        email = (contact.getEmailAddress() or u"").strip()
-    except Exception:
-        pass
+    sig = contact.getSignature()
+    if sig and getattr(sig, "size", 0):
+        sig_url = contact.absolute_url() + "/Signature"
+    email = (contact.getEmailAddress() or u"").strip()
     return {
         "fullname": full,
         "initials": initials,
@@ -65,20 +49,47 @@ def _one(contact):
         "job_title": getattr(contact, "getJobTitle", lambda: u"")() or u"",
         "placeholder": "PLACEHOLDER" in full.upper(),
         "url": contact.absolute_url(),
+        "uid": contact.UID(),
+        "username": (contact.getUsername() or u"").strip(),
     }
 
 
-def list_staff(portal):
-    """All lab contacts as [{fullname, initials, email, signature_url, ...}]."""
-    folder = _contacts_folder(portal)
-    if folder is None:
-        return []
+def has_login(contact):
+    """True when the contact is active and its user name is an account."""
+    from bika.lims import api
+    username = (contact.getUsername() or u"").strip()
+    return bool(username and api.is_active(contact)
+                and api.get_user(username) is not None)
+
+
+def list_staff(portal, active_with_login=False):
+    """All lab contacts as [{fullname, initials, email, signature_url, ...}].
+    active_with_login keeps only active contacts that can sign in: the
+    pickers use it. A lookup by initials does not, so a document signed by
+    someone who has since left keeps its signature."""
+    folder = contacts_folder(portal)
     out = []
     for c in folder.objectValues():
-        d = _one(c)
+        if active_with_login and not has_login(c):
+            continue
+        d = staff_record(c)
         if d:
             out.append(d)
     return sorted(out, key=lambda x: x["fullname"])
+
+
+def initials_holder(portal, contact_uid, initials):
+    """The full name of another contact, active or not, holding these
+    initials, or None. Signatures are found by initials (find_by_initials),
+    so an old record keeps naming one person: initials are never reused."""
+    ini = (initials or u"").strip().upper()
+    for c in contacts_folder(portal).objectValues():
+        if c.UID() == contact_uid:
+            continue
+        d = staff_record(c)
+        if d and d["initials"] == ini:
+            return d["fullname"]
+    return None
 
 
 def find_by_initials(portal, initials):

@@ -5,7 +5,9 @@
                                 the export, or added from the report), each
                                 with a reason, its before / after pages and
                                 the analyst's then a different reviewer's
-                                signature; the page viewer; Stamp
+                                signature; the page viewer; Stamp. The changes
+                                made on the Raw Data tab are listed, read only:
+                                they are justified in Data Review
     @@pfas-mi-report?which=original|stamped   the report PDF, for the viewer
     @@pfas-mi-reasons           the lab's reason list (managers)
 
@@ -29,13 +31,16 @@ from AccessControl import getSecurityManager
 from bika.lims import api
 from Products.CMFPlone.utils import safe_unicode
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 
 from senaite.pfas import manual_integration as mi
+from senaite.pfas import print_doc
 from senaite.pfas import report_scan
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import GateMixin, TIER_CONFIG, deny_gated_action, refuse
+from senaite.pfas.browser.view_helpers import send_pdf
 
 logger = logging.getLogger("senaite.pfas.manual_integration")
 
@@ -45,8 +50,21 @@ REPORT_DIR = os.environ.get("PFAS_INSTRUMENT_REPORTS", "/data/instrument_reports
 STAMPED_DIR = "manual-integration-stamped"
 RENDER_URL = os.environ.get("PFAS_RENDER_URL", "http://pfas-render:3000")
 WORK_ROLES = frozenset(("Manager", "LabManager", "Analyst", "Verifier", "LabClerk"))
-SIGN_RIGHT = {"analyst": "preparer", "reviewer": "reviewer"}
+# the People & Roles sign right each signature needs, one rule for both flows
+SIGN_RIGHT = mi.SIGN_RIGHT
 REASON_GATES = {"save_reasons": TIER_CONFIG}
+
+
+def staff_sign_info(who):
+    """{"name", "sign_as"}: the person as People & Roles records them, for the
+    sign right a signature needs (SIGN_RIGHT). ValueError when the record
+    cannot be read: nothing is signed on a record not read."""
+    from senaite.pfas.browser import staff
+    try:
+        info = staff.staff_info(who)
+    except Exception as exc:                                # noqa: BLE001
+        raise ValueError(u"the People & Roles record of %s could not be read: %s" % (who, exc))
+    return {"name": info.get("fullname") or who, "sign_as": list(info.get("sign_as") or ())}
 
 
 def _now():
@@ -86,11 +104,14 @@ def save_settings(portal, data):
 # ── a worksheet's records and report ───────────────────────────────────────
 
 def load_state(ws):
+    """The worksheet's records and Raw Data changes."""
     raw = IAnnotations(ws).get(KEY)
     try:
-        return json.loads(raw) if raw else mi.empty_state()
+        state = json.loads(raw) if raw else mi.empty_state()
     except (ValueError, TypeError):
-        return mi.empty_state()
+        state = mi.empty_state()
+    state.setdefault("raw_changes", [])
+    return state
 
 
 def save_state(ws, state):
@@ -164,17 +185,13 @@ def detected(ws):
         cols = [r[1] for r in con.execute("PRAGMA table_info(injection_results)")]
         if "manual_integration" not in cols:
             return [], False
-        rows = con.execute("SELECT injection_name, analyte, qc_type, manual_integration "
-                           "FROM injection_results WHERE batch_id=?", (ws.getId(),)).fetchall()
+        # a row integrated from raw data is not the export's (derived_from "raw:...")
+        derived = "derived_from" if "derived_from" in cols else "NULL"
+        rows = con.execute("SELECT injection_name, analyte, qc_type, manual_integration, %s "
+                           "FROM injection_results WHERE batch_id=?" % derived, (ws.getId(),)).fetchall()
     finally:
         con.close()
-    captured = any(r[3] is not None for r in rows)
-    flagged, seen = [], set()
-    for inj, an, qc, flag in rows:
-        if flag and (inj, an) not in seen:
-            seen.add((inj, an))
-            flagged.append({"injection": inj, "analyte": an, "qc_type": qc or u""})
-    return flagged, captured
+    return mi.vendor_detections(rows)
 
 
 def current_state(ws, who=u"system"):
@@ -187,6 +204,7 @@ def current_state(ws, who=u"system"):
     state["report_file"] = os.path.basename(path) if path else u""
     rows, captured = detected(ws)
     mi.merge_detected(state, rows, who, _now())
+    captured = mi.captured(state, captured)
     return state, path, fp, captured
 
 
@@ -269,7 +287,7 @@ def page_count(path):
 
 # ── views ──────────────────────────────────────────────────────────────────
 
-class PFASManualIntegrationView(BrowserView):
+class PFASManualIntegrationView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/manual_integration.pt")
 
@@ -345,11 +363,28 @@ class PFASManualIntegrationView(BrowserView):
             out.append(row)
         return out
 
+    def raw_changes(self):
+        """The open changes made on the Raw Data tab: shown here, given their
+        reason and initials in Data Review."""
+        from six.moves.urllib.parse import quote
+        from senaite.pfas import compound_library_store, raw_review
+        base = self.context.absolute_url() + u"/@@pfas-data-review?tab=raw&injection="
+        # a record keeps the keyword its edit is keyed by; it is shown by name
+        label = raw_review.library_label(compound_library_store.library())
+        out = []
+        for r in mi.raw_open(self.data()["state"]):
+            out.append({"id": r["id"], "injection": r["injection"], "analyte": label(r["analyte"]),
+                        "transition": r.get("transition") or u"quantifier",
+                        "kind": mi.RAW_KIND_TEXT.get(r.get("kind"), r.get("kind") or u""),
+                        "before": mi.peak_text(r.get("before")), "after": mi.peak_text(r.get("after")),
+                        "reason": r.get("reason") or u"",
+                        "analyst": (r.get("analyst") or {}).get("initials") if mi.raw_signed(r, "analyst") else u"",
+                        "verifier": (r.get("verifier") or {}).get("name") if mi.raw_signed(r, "verifier") else u"",
+                        "href": base + quote(r["injection"].encode("utf-8"), safe="")})
+        return out
+
     def history(self):
         return list(reversed(self.data()["state"].get("history") or []))[:200]
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     # actions
     def _act(self, action):
@@ -400,11 +435,12 @@ class PFASManualIntegrationView(BrowserView):
             if not ids:
                 raise ValueError(u"Tick the manual integrations to sign.")
             from senaite.pfas.browser import staff
+            from senaite.pfas import coa_document as cd
             info = staff.staff_info(who)
             if SIGN_RIGHT[role] not in info["sign_as"]:
-                raise ValueError(u"%s may not sign as %s (Lab Staff)." % (info["fullname"] or who, SIGN_RIGHT[role]))
+                raise ValueError(u"%s may not sign as %s on People & Roles." % (cd.staff_name(info, who), SIGN_RIGHT[role]))
             if not info["signature"]:
-                raise ValueError(u"%s has no signature on file (Profile & signature)." % (info["fullname"] or who))
+                raise ValueError(u"%s has no signature on file (Profile & signature)." % cd.staff_name(info, who))
             for rid in ids:
                 mi.sign(state, rid, role, who, when, info["fullname"] or who)
             msg = u"Signed %d as %s." % (len(ids), role)
@@ -427,9 +463,10 @@ class PFASManualIntegrationView(BrowserView):
             msg = u"Page %s dismissed." % page
         elif action == "countersign":
             from senaite.pfas.browser import staff
+            from senaite.pfas import coa_document as cd
             info = staff.staff_info(who)
             if SIGN_RIGHT["reviewer"] not in info["sign_as"]:
-                raise ValueError(u"%s may not countersign (reviewer sign right, Lab Staff)." % (info["fullname"] or who))
+                raise ValueError(u"%s may not countersign: the reviewer sign right is set on People & Roles." % cd.staff_name(info, who))
             kind = form.get("kind") or u""
             page = form.get("page") or u""
             mi.countersign(state, kind, who, when, info["fullname"] or who,
@@ -483,9 +520,11 @@ class PFASManualIntegrationView(BrowserView):
                          + ([u"Detail: %s" % r["detail"]] if r.get("detail") else [])
                          + [u"Record %s, worksheet %s" % (r["id"], self.context.getId())],
                          "signatures": [
-                             {"label": u"Analyst: %s %s" % (r["analyst"]["name"], r["analyst"]["at"][:10]),
+                             {"label": u"Analyst: %s %s" % (r["analyst"]["name"], print_doc.lab_or(
+                                 r["analyst"]["at"], r["analyst"]["at"][:10], u"%Y-%m-%d")),
                               "png": sigs[r["analyst"]["userid"]]},
-                             {"label": u"Reviewer: %s %s" % (r["reviewer"]["name"], r["reviewer"]["at"][:10]),
+                             {"label": u"Reviewer: %s %s" % (r["reviewer"]["name"], print_doc.lab_or(
+                                 r["reviewer"]["at"], r["reviewer"]["at"][:10], u"%Y-%m-%d")),
                               "png": sigs[r["reviewer"]["userid"]]}]}
                 if block not in by_page.setdefault(page, []):
                     by_page[page].append(block)
@@ -523,14 +562,11 @@ class PFASMIReportView(BrowserView):
         if not path or not os.path.isfile(path):
             self.request.response.setStatus(404)
             return u"No such report."
-        resp = self.request.response
-        resp.setHeader("Content-Type", "application/pdf")
-        resp.setHeader("Content-Disposition", str('inline; filename="%s"' % os.path.basename(path)))
         with open(path, "rb") as fh:
-            return fh.read()
+            return send_pdf(self.request.response, fh.read(), os.path.basename(path))
 
 
-class PFASMIReasonsView(GateMixin, BrowserView):
+class PFASMIReasonsView(ViewHelpers, GateMixin, BrowserView):
 
     template = ViewPageTemplateFile("templates/manual_integration_reasons.pt")
 
@@ -563,9 +599,6 @@ class PFASMIReasonsView(GateMixin, BrowserView):
             req.response.redirect(api.get_portal().absolute_url() + "/@@pfas-mi-reasons?saved=1")
             return u""
         return self.template()
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def settings(self):
         return get_settings()

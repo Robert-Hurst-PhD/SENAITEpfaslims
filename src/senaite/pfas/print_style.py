@@ -10,11 +10,13 @@ from __future__ import unicode_literals
 
 CSS = """\
 @page { margin: 16mm 15mm 18mm;
-        @bottom-left { width: 80%; font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px;
+        @bottom-left { width: 45%; font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px; white-space: pre;
                        color: #66756f; vertical-align: top; padding-top: 6px; }
-        @bottom-right { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px; font-weight: 700;
-                        color: #66756f; vertical-align: top; padding-top: 6px;
-                        content: "Page " counter(page) " of " counter(pages); } }
+        @bottom-center { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px; font-weight: 700;
+                         color: #66756f; vertical-align: top; padding-top: 6px;
+                         content: "Page " counter(page) " of " counter(pages); }
+        @bottom-right { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px;
+                        color: #66756f; vertical-align: top; padding-top: 6px; } }
 .pd { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 12px; line-height: 17px; color: #263532;
       font-feature-settings: "tnum"; }
 .pd h1 { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 800; font-size: 22px; line-height: 28px;

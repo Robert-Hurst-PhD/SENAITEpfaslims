@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""What the Bench landing shows a chemist first (
-phase 1): which batches need extracting, where each one
-is, and which inventory items need attention. Pure; Python 2.7 and 3.
+"""What the Bench landing shows a chemist first: which batches need
+extracting, where each one is, and which inventory items need attention.
+Pure; Python 2.7 and 3.
 
     extraction_state(session, stage_orders) -> {"state", "done", "total", "label"}
     inventory_alerts(items, today, soon_days=30) -> {"expired", "expiring",
@@ -26,10 +26,9 @@ is, and which inventory items need attention. Pure; Python 2.7 and 3.
                                                  balance without a passed
                                                  verification that day
 
-The last three are phase 2 ("Bench phase 2"): a stage
-role offers every usable lot, role-name matches first, and the lab's last
-pick for that method role is preselected -- or, once that lot is no longer
-usable, the newest usable lot of the same item.
+Lot picking: a stage role offers every usable lot, role-name matches first,
+and the lab's last pick for that method role is preselected, or, once that
+lot is not usable, the newest usable lot of the same item.
 
 `items` = dicts with "name", "lot_number", "status", "expiry" (YYYY-MM-DD)
 and, when quantities are tracked, "quantity_value" / "low_stock_level";
@@ -67,11 +66,7 @@ def _date(s):
         return None
 
 
-def _num(v):
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _num
 
 
 def inventory_alerts(items, today, soon_days=30):
@@ -191,8 +186,8 @@ def resolve_rows(index, rows):
     """Each reagent row as the inventory has it NOW, never as the browser sent
     it (a typed or stale expiry is not evidence). `index` = {(kind, uid): item}.
     A linked row takes name, lot, expiry, status, category, supplier and
-    catalogue number from its record (kind defaults to "reagent", the only
-    kind before phase 2); an unlinked row keeps what was typed and says so
+    catalogue number from its record (kind defaults to "reagent"); an
+    unlinked row keeps what was typed and says so
     (from_inventory False); a link to a lot that no longer exists is kept and
     marked inventory_missing."""
     out = []
@@ -230,8 +225,8 @@ def is_consumable_row(row):
 def is_standard_row(row):
     """FM-ENV-003 standards[] (resolves a prepared standard OR a reagent) or
     reagents[] (resolves a reagent only), decided by the stored kind: a
-    prepared standard filed in reagents[] could never resolve. Rows saved
-    before phase 2 carry no kind and keep the old name test."""
+    prepared standard filed in reagents[] could never resolve. A row with
+    no kind, or a typed reagent row, is decided by its supplier and name."""
     kind = row.get("kind")
     if kind == u"prepared_standard":
         return True
@@ -253,13 +248,13 @@ def _why_unusable(row, today):
 
 
 def stage_warnings(rows, today):
-    """Everything about a stage that DB4 lets the
-    chemist go ahead with only after writing a deviation note: a role with no
+    """Everything about a stage the chemist may go ahead with only after
+    writing a deviation note: a role with no
     lot, a lot typed rather than picked from the inventory or no longer in it,
     a lot expired / quarantined / used up at the time of use.
 
-    `rows` = resolved reagent rows (resolve_rows). Balances are not here any
-    more: see balance_blocks."""
+    `rows` = resolved reagent rows (resolve_rows). Balances: see
+    balance_blocks."""
     out = []
     for r in rows or []:
         what = r.get("role") or r.get("name") or u"Item"
@@ -279,8 +274,8 @@ def stage_warnings(rows, today):
 
 def balance_blocks(balances):
     """Why a stage that lists a balance cannot be completed, whatever note is
-    written (superseding DB4 for balances): a mass is never
-    recorded on a balance without a passed verification that day. Blank,
+    written: a mass is never recorded on a balance without a passed
+    verification that day. Blank,
     unregistered, failed and unverified balances all block -- leaving the
     picker empty must not be the way round it.
 

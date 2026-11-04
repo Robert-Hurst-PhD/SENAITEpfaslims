@@ -10,6 +10,7 @@
     /* ── Public tracker overrides ─────────────────────────────────────── */
     /* Narrow centered column, more breathing room for client-facing page */
     .page-body { max-width: 640px; padding: 40px 16px 60px; }
+    .page-body.is-staff { max-width: none; }
 
     /* ── Search card ──────────────────────────────────────────────────── */
     .search-card { background: var(--s-bg); border-radius: 12px;
@@ -106,7 +107,20 @@
   </tal:a>
 
   <div metal:fill-slot="content">
-  <div class="page-body">
+  <div class="page-body is-staff" tal:condition="view/is_staff">
+    <div class="search-card">
+      <h2>Find a sample</h2>
+      <form method="get" action="">
+        <div class="search-row">
+          <input class="search-input" type="search" name="q" autocomplete="off"
+                 aria-label="Tracking number, sample ID or CoC number"
+                 placeholder="Tracking number, sample ID or CoC number" />
+          <button class="search-btn" type="submit">Find</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="page-body" tal:condition="not:view/is_staff">
 
     <!-- Search form -->
     <div class="search-card">

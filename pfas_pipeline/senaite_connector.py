@@ -7,7 +7,7 @@ Endpoints used (SENAITE 2.x, senaite.jsonapi v1):
   POST /@@API/senaite/v1/update
   POST /@@API/senaite/v1/{portal_type}/{uid}
 
-Mapping (your features → SENAITE objects):
+Mapping (pipeline objects → SENAITE objects):
   Batch                → Batch
   Injection (sample)   → AnalysisRequest  (ClientSampleID = StarLIMS 7-digit)
   Analyte result       → Analysis (Result + InterimFields for RT, IS, S/N)
@@ -27,7 +27,8 @@ from typing import Optional
 
 import requests
 
-from .models import Batch, QCFlag, SummaryResult
+from . import lab_clock
+from .models import QCFlag, SummaryResult
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +45,8 @@ class SenaiteAPIError(RuntimeError):
 def _created_uid(res: dict) -> Optional[str]:
     """UID out of a senaite.jsonapi create response.
 
-    The endpoint answers with either {"items": [obj]} or the object itself
-    depending on the portal type. Assuming one shape made a SUCCESSFUL
-    attachment upload raise KeyError('items'), which the caller then reported
-    as a failed push — the file was on the worksheet the whole time.
+    The endpoint answers with either {"items": [obj]} or the object itself,
+    depending on the portal type; both are read.
     """
     items = res.get("items") if isinstance(res, dict) else None
     obj = items[0] if items else res
@@ -61,12 +60,22 @@ EDITABLE_STATES = ("unassigned", "assigned")
 DEAD_SAMPLE_STATES = ("invalid", "cancelled", "rejected")
 
 
+def credentials_from_env(env):
+    """(user, password) for the worker's SENAITE account from the
+    environment. The password has no default: a worker started without
+    SENAITE_PASS refuses to start rather than try a built-in one."""
+    password = (env.get("SENAITE_PASS") or "").strip()
+    if not password:
+        raise RuntimeError("SENAITE_PASS is not set: the worker needs its SENAITE account's password")
+    return (env.get("SENAITE_USER") or "admin", password)
+
+
 class SenaiteConnector:
     def __init__(
         self,
         base_url: str = "http://localhost:8080/senaite",
         username: str = "admin",
-        password: str = "admin",
+        password: str = "",
         timeout: int = 30,
     ):
         self.base = base_url.rstrip("/")
@@ -88,10 +97,8 @@ class SenaiteConnector:
         r.raise_for_status()
         data = r.json()
         # senaite.jsonapi answers a REFUSED operation with HTTP 200 and
-        # {"success": false, "message"...}. raise_for_status() alone is
-        # therefore not enough: a delete that the workflow rejected looked like
-        # a success, and the caller cheerfully logged that it had removed five
-        # attachments that are all still there.
+        # {"success": false, "message"...}, so raise_for_status() alone is
+        # not enough.
         if isinstance(data, dict) and data.get("success") is False:
             raise SenaiteAPIError(data.get("message") or "operation refused",
                                   path=path, payload=data)
@@ -100,6 +107,32 @@ class SenaiteConnector:
     def search(self, **query) -> list[dict]:
         out = self._get("search", **query)
         return out.get("items", [])
+
+    def warm_caches(self) -> bool:
+        """Ask the site to work out every open worksheet's method once after
+        it starts (@@pfas-warm), so the first person on the Bench or Guided
+        Extraction does not wait half a minute. True when this call did it;
+        False when the site had already, or could not be reached."""
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-warm", json={}, timeout=600)
+            r.raise_for_status()
+            return bool((r.json() or {}).get("warmed"))
+        except Exception as exc:                            # noqa: BLE001
+            logger.debug("warm start not asked: %s", exc)
+            return False
+
+    def send_notice_reminders(self) -> int:
+        """Ask the add-on to e-mail the notices that are due (a run sent back:
+        notices.py). Returns how many went; a failure is logged and retried
+        on the next tick."""
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-notice-reminders", json={},
+                                  timeout=self.timeout)
+            r.raise_for_status()
+            return int((r.json() or {}).get("sent") or 0)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("notice reminders not sent: %s", exc)
+            return 0
 
     # ── Batch ────────────────────────────────────────────────────────────────
     def get_run_manifest(self, batch_id: str, worksheet_id: str = "") -> dict:
@@ -118,7 +151,11 @@ class SenaiteConnector:
             data = r.json()
         except (requests.HTTPError, requests.ConnectionError, ValueError):
             return {}
-        return data if isinstance(data, dict) and "error" not in data else {}
+        if not isinstance(data, dict) or "error" in data:
+            return {}
+        if "lab_zone" in data:
+            lab_clock.set_zone(data.get("lab_zone"))
+        return data
 
     def get_batch_dilutions(self, batch_id: str, worksheet_id: str = "") -> dict:
         """Dilution map recorded on the extraction batch's FM-ENV-003 log.
@@ -165,23 +202,6 @@ class SenaiteConnector:
                 return items[0]
         return None
 
-    def create_batch(self, batch: Batch, client_uid: str) -> str:
-        """Create a SENAITE Batch; returns its UID."""
-        existing = self.search(portal_type="Batch", title=batch.batch_id)
-        if existing:
-            batch.senaite_batch_uid = existing[0]["uid"]
-            return existing[0]["uid"]
-
-        res = self._post("create", {
-            "portal_type": "Batch",
-            "parent_path": "/senaite/batches",
-            "title": batch.batch_id,
-            "description": f"PFAS batch — {batch.matrix} — {batch.analyst}",
-            "Client": client_uid,
-        })
-        uid = _created_uid(res)
-        batch.senaite_batch_uid = uid
-        return uid
 
     # ── Samples (AnalysisRequests) ───────────────────────────────────────────
     def find_sample_by_client_sample_id(self, client_sample_id: str,
@@ -193,11 +213,9 @@ class SenaiteConnector:
         instrument export and a SENAITE sample.
 
         Scoped to the run's batch, and never an invalid, cancelled or rejected
-        sample. It took the first match anywhere: an invalidated sample shares
-        its Client Sample ID with its retest, so the run could land on the
-        locked original and the retest never got results; and two clients may
-        name a sample alike. More than one candidate is
-        refused, not guessed (`last_lookup` says why).
+        sample: an invalidated sample shares its Client Sample ID with its
+        retest, and two clients may name a sample alike. More than one
+        candidate is refused, not guessed (`last_lookup` says why).
         """
         self.last_lookup = ""
         if not client_sample_id:
@@ -245,10 +263,8 @@ class SenaiteConnector:
 
         uid = analyses[0]["uid"]
         # A submitted, verified or published result is never overwritten by a
-        # reprocess: SENAITE refuses the edit (401), and before this check the
-        # refusal aborted the push of every remaining result with a bare
-        # "401 Unauthorized". It is retracted in SENAITE
-        # first, then the run is uploaded again.
+        # reprocess: SENAITE refuses the edit with 401. It is skipped with a
+        # reason, retracted in SENAITE first, then the run is uploaded again.
         state = analyses[0].get("review_state") or ""
         if state and state not in EDITABLE_STATES:
             self.last_push = {"analysis_uid": uid, "value": "",
@@ -258,7 +274,7 @@ class SenaiteConnector:
         diluted = bool(result.source_injection
                        and result.source_injection != result.sample_injection)
         if diluted:
-            # : the analysis keeps the NEAT, above-LOQ
+            # A dilution: the analysis keeps the NEAT, above-LOQ
             # reading; the dilution is appended to it as a retest (created at
             # Data Review submission) with its own result and analysis time.
             payload = {
@@ -332,6 +348,23 @@ class SenaiteConnector:
             logger.error("unit / precision not applied: %s", exc)
             return False
 
+    def raise_unconfigured_deviation(self, worksheet_uid: str) -> str:
+        """Ask the add-on, once the run is pushed, for the deviation its
+        unset QC criteria call for (@@pfas-unconfigured-deviation; it reads
+        the run's QC Summary as Data Review's gate does, and files nothing
+        when every criterion is set). Returns the deviation's id, or "". A
+        failure is logged: the run stands, and the next push asks again."""
+        if not worksheet_uid:
+            return ""
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-unconfigured-deviation",
+                                  json={"worksheet_uid": worksheet_uid}, timeout=self.timeout)
+            r.raise_for_status()
+            return str((r.json() or {}).get("dev_id") or "")
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("unconfigured-criteria deviation not raised: %s", exc)
+            return ""
+
     # ── QC flags → Remarks ───────────────────────────────────────────────────
     def push_qc_flags(self, batch_uid: str, flags: list[QCFlag]):
         """Attach the consolidated QC Log to the batch as a remark blob."""
@@ -355,7 +388,7 @@ class SenaiteConnector:
         import_layouts.match). Returns the profile dict ({"name", "reader",
         "map", ...}) or {"error": "..."} -- no layout fits, or two do --
         and the importer refuses, naming Import Studio. (`columns` alone, a
-        header row read as comma-separated, is what an older worker sent.)
+        header row read as comma-separated, is the legacy worker request.)
 
         Raises requests.HTTPError / ConnectionError if SENAITE is unreachable.
         In strict mode, callers do NOT catch this exception —
@@ -385,13 +418,12 @@ class SenaiteConnector:
         """Remove existing attachments on *parent_uid* carrying *label*.
 
         Re-importing a run must SUPERSEDE its artefacts, not stack another copy
-        beside them — injection_results already replaces its rows, and a
-        worksheet holding four identical "Batch Report" PDFs gives the reviewer
-        no way to tell which one the current results came from.
+        beside them, so the reviewer can tell which file the current results
+        came from.
         """
         # senaite.jsonapi cannot delete an Attachment, so the add-on exposes an
-        # endpoint that can. Falling back to the API path keeps this working
-        # against an older add-on, where it will report honestly instead.
+        # endpoint that can; the API path is the fallback for an older add-on,
+        # where it reports the refusal.
         try:
             r = self.session.post(f"{self.base}/@@pfas-retire-attachment",
                                   data={"parent_uid": parent_uid,
@@ -427,12 +459,10 @@ class SenaiteConnector:
         b64 = base64.b64encode(file_path.read_bytes()).decode()
         try:
             # The file field's value must be the base64 STRING itself, with
-            # filename alongside it — senaite.jsonapi does
+            # filename alongside it: senaite.jsonapi does
             # `str(value).decode("base64")` and reads filename from the rest of
-            # the record. Passing a nested {"data"..., "filename"...} dict
-            # stringified the dict and failed with "Incorrect padding", and
-            # because the API reports that as HTTP 200 + success:false, every
-            # upload looked fine while storing an empty AttachmentFile.obj.
+            # the record. A nested {"data", "filename"} dict is refused with
+            # HTTP 200 + success:false and stores an empty file.
             res = self._post("create", {
                 "portal_type": "Attachment",
                 "parent_uid": parent_uid,
@@ -445,31 +475,16 @@ class SenaiteConnector:
             return _created_uid(res)
         except requests.HTTPError as e:
             # A 401 here usually is not authentication: senaite.jsonapi returns
-            # it for a containment refusal too, and the body says which. The
-            # Batch was the wrong container all along — Attachment is permitted
-            # only in Client and Worksheet.
+            # it for a containment refusal too, and the body says which.
+            # Attachment is permitted only in Client and Worksheet.
             detail = ""
             try:
                 detail = e.response.json().get("message", "")
-            except Exception:
+            except (AttributeError, ValueError):     # no response, or no JSON object in it
                 pass
             logger.error("Attachment upload failed: %s%s", e,
                          " — " + detail if detail else "")
             return None
 
-    # ── Environmental monitoring ────────────────────────────────────────────
-    # `push_sensor_reading()` used to live here, POSTing to an
-    # `EnvironmentalReading` Dexterity type. It is removed along with that type:
-    # facility monitoring is owned by /data/qc/facility_monitoring.db
-    # (facility_qc.temperature_readings), whose columns cover every field the
-    # ZODB type declared, so the type was a second store for one fact.
-    #
-    # It had also never worked, in four independent ways: no caller, a
-    # parent_path (/senaite/env-monitoring) that does not exist, field names
-    # ("Temperature"/"Humidity") that do not match the schema
-    # (temperature_c/humidity_pct), and an `except requests.HTTPError` that
-    # logged the whole thing at DEBUG. Any one of those would have been silent.
-    #
-    # The §6.4 gap this leaves is real and unchanged: facility_units and
-    # temperature_readings both still hold zero rows. What is
-    # missing is an ingest path into the SQLite store, not a content type.
+    # Environmental monitoring (§6.4) is owned by /data/qc/facility_monitoring.db
+    # (facility_qc.temperature_readings), not by a SENAITE content type.

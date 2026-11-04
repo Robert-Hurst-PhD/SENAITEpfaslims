@@ -24,6 +24,38 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     return fn ? PFASCalFit.r2(pts, fn.model) : null;
   }
 
+  /* an R² is a plain number; coral only when it is judged and fails, "—"
+     when there is none (the list, the card head and its live update) */
+  function r2Class(r2, failed) {
+    if (r2 == null) return 'r2-na';
+    return failed ? 'r2-badge r2-fail' : 'r2-num';
+  }
+  /* a run's R² count: how many pass, and how many the method does not
+     judge (an unjudged curve is not a failure) */
+  function r2Count(run) {
+    var n = run.analytes.length;
+    var np = run.analytes.filter(function(a){ return a.r2_ok; }).length;
+    var nu = run.analytes.filter(function(a){ return a.r2_ok == null; }).length;
+    var nr = run.analytes.filter(function(a){ return a.rule_fail; }).length;
+    var rule = nr ? '; '+nr+' fail'+(nr === 1 ? 's' : '')+' on calibrators dropped by hand' : '';
+    if (nu === n && !nr) return 'R\u00B2 not judged';
+    return np+' of '+n+' pass R\u00B2'+(nu ? '; '+nu+' unjudged' : '')+rule;
+  }
+  /* the curve's own rule: the worker's sentence, and the calibrators taken
+     off by hand with the reason each was */
+  function ruleHTML(cal) {
+    if (!cal.rule_fail) return '';
+    return '<div class="card-rule" role="alert"><p>'+esc(cal.rule_fail)+'</p>'
+      +((cal.dropped||[]).length
+        ? '<ul class="card-dropped">'+cal.dropped.map(function(d){
+            return '<li>'+(d.level != null ? 'Level '+esc(d.level)+', ' : '')+esc(d.injection)+': '+esc(d.reason)+'</li>';
+          }).join('')+'</ul>'
+        : '')
+      +'</div>';
+  }
+  /* a failing point is a triangle as well as coral */
+  function passMark(passed) { return passed ? 'circle' : 'triangle'; }
+
   function backCalc(fn, y) {
     if (!fn || y == null) return null;
     var x = fn.model.inverse(y);
@@ -33,6 +65,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
   // ── Chart colours — derived from site CSS tokens so they track the theme ───
   var _css = getComputedStyle(document.documentElement);
   function _tok(n){ return (_css.getPropertyValue(n)||'').trim(); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function _rgba(cssVar, a){
     var h = _tok(cssVar).replace('#','');
     if (!h||h.length<6) return 'rgba(128,128,128,'+a+')';
@@ -71,42 +104,87 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     return 'y = '+slope.toExponential(4)+'x'+_fmtCoeff(intercept,false);
   }
 
+  // a concentration with the method's calibration unit (ppt: in the sample;
+  // or in the extract), as the method profile states it
+  function conc(cal, v) {
+    var u = (cal && cal.level_unit) || '';
+    return v + (u ? ' ' + u : '');
+  }
+
+  /* A point's readout and the curve's calculation open in the shared centred
+     dialog (R5-82, R5-85): a calibrator against the fit drawn on this card
+     (calibration_fit.js readout), the calibrator's own record (its imported
+     line) when the page can open records, and "Open the calculation". */
+  function calEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function calNum(v, d) { return v == null || !isFinite(v) ? '—' : (Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0) ? v.toExponential(3) : v.toFixed(d == null ? 3 : d)); }
+  function calDialog(title, html, foot) {
+    var d = window.PFAS && window.PFAS.components && window.PFAS.components.drawer;
+    if (!d) return;
+    d.open(title, html, { cls: "is-dialog", footer: foot || null });
+  }
+  function calRows(rows) {
+    return '<table class="pfas-table cal-readout"><tbody>' + rows.map(function (r) {
+      return '<tr><th scope="row">' + calEsc(r[0]) + '</th><td>' + r[1] + '</td></tr>';
+    }).join('') + '</tbody></table>';
+  }
   function showPointDetail(cal, point, ptType) {
-    var modal = document.getElementById('pfas-cal-modal');
-    var titleEl = document.getElementById('pfas-modal-title');
-    var tbody   = document.querySelector('#pfas-modal-table tbody');
-    if (!modal||!titleEl||!tbody) return;
-    titleEl.childNodes[0].textContent = 'Point Detail — '+cal.analyte+' ';
-    var rows;
-    if (ptType==='CAL') {
-      rows = [
-        ['Analyte',      cal.analyte],
-        ['Level',        'L'+(point.level||'?')],
-        ['Expected',     (point.expected||'?')+' ng/mL'],
-        ['Response Ratio', point.response_ratio!=null ? point.response_ratio.toExponential(4) : 'N/A'],
-        ['Back-calc',    point.calculated!=null ? point.calculated.toFixed(3)+' ng/mL' : 'N/A'],
-        ['% Deviation',  point.pct_deviation!=null ? (point.pct_deviation>0?'+':'')+point.pct_deviation.toFixed(2)+'%' : 'N/A'],
-        ['Result',       point.passed ? '✓ Pass' : '✗ Fail'],
-        ['Run date',     cal.run_date],
-        ['Batch',        cal.batch_id||'—'],
-      ];
-    } else {
-      rows = [
-        ['Analyte',      cal.analyte],
-        ['QC Type',      point.qc_type],
-        ['Expected',     (point.expected_value||'?')+' ng/mL'],
-        ['Measured',     (point.value!=null?parseFloat(point.value).toFixed(3):'?')+' ng/mL'],
-        ['Response Ratio', point.response_ratio!=null ? point.response_ratio.toExponential(4) : 'N/A'],
-        ['% Deviation',  point.pct_dev!=null ? (point.pct_dev>0?'+':'')+point.pct_dev.toFixed(2)+'%' : 'N/A'],
-        ['Result',       point.passed ? '✓ Pass' : '✗ Fail'],
-        ['Run date',     cal.run_date],
-        ['Batch',        cal.batch_id||'—'],
-      ];
+    var title = (ptType === 'CAL' ? 'Calibration point' : (point.qc_type || 'QC')) + ' — ' + cal.analyte;
+    if (ptType !== 'CAL') {
+      calDialog(title, calRows([
+        ['Expected', calEsc(conc(cal, point.expected_value != null ? point.expected_value : '?'))],
+        ['Measured', calEsc(conc(cal, point.value != null ? parseFloat(point.value).toFixed(3) : '?'))],
+        ['Response ratio', calEsc(point.response_ratio != null ? point.response_ratio.toExponential(4) : 'not recorded')],
+        ['Deviation', calEsc(point.pct_dev != null ? (point.pct_dev > 0 ? '+' : '') + point.pct_dev.toFixed(2) + ' %' : '—')],
+        ['Result', point.passed ? '✓ Pass' : '✗ Fail'],
+        ['Run', calEsc((cal.run_date || '') + (cal.batch_id ? ' · ' + cal.batch_id : ''))]]));
+      return;
     }
-    tbody.innerHTML = rows.map(function(r){
-      return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>';
-    }).join('');
-    modal.classList.add('open');
+    var m = cal._fn ? cal._fn.model : null, win = calWindow(cal._uid, point);
+    var y = cal._useResp ? point.response_ratio : point.calculated;
+    var r = PFASCalFit.readout(m, {x: point.expected, y: y}, win ? win.hi : null);
+    var src = (point.prov_key && window.PFAS && window.PFAS.provenance)
+      ? ' <button type="button" class="btn-sm btn-secondary" data-prov="' + calEsc(point.prov_key) + '">Open the record</button>' : '';
+    var rows = [
+      ['x, expected (L' + (point.level || '?') + ')', calEsc(conc(cal, point.expected))],
+      ['y, ' + (cal._useResp ? 'response ratio' : 'calculated'), calEsc(calNum(y, 4)) + src],
+      ['The fit at x', calEsc(calNum(r.fit_y, 4))],
+      ['Read back off the fit from y', calEsc(conc(cal, calNum(r.back)))],
+      ['Deviation from the fit', calEsc(r.dev == null ? '—' : (r.dev > 0 ? '+' : '') + r.dev.toFixed(1) + ' %') +
+        (win ? ' against ±' + calEsc(win.hi) + ' % ' + (r.within ? '✓' : '✗') : ' (no window set)')]];
+    if (cal._useResp && point.calculated != null) {
+      rows.push(['The instrument read back', calEsc(conc(cal, point.calculated.toFixed(3))) +
+        (point.pct_deviation != null ? ' (' + (point.pct_deviation > 0 ? '+' : '') + point.pct_deviation.toFixed(1) + ' %)' : '')]);
+    }
+    var foot = document.createElement('div');
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn-sm btn-secondary'; b.textContent = 'Open the calculation';
+    b.addEventListener('click', function () { showCalculation(cal); });
+    foot.appendChild(b);
+    calDialog(title, calRows(rows), foot);
+  }
+  /* The curve's calculation: its equation, fit, weighting, origin and
+     R² as this card draws them, and every calibrator read the same way. */
+  function showCalculation(cal) {
+    var m = cal._fn ? cal._fn.model : null;
+    if (!m) return;
+    var pts = (cal._pts || []).map(function (p) { return {x: p.x, y: p.y}; });
+    var c = PFASCalFit.calculation(pts, m);
+    var h = calRows([
+      ['Equation', calEsc(formatEquation(cal._fn, cal._ft))],
+      ['Fit', calEsc(cal._ft || '')],
+      ['Weighting', calEsc(cal._wt || 'unweighted')],
+      ['Origin', calEsc(cal._ori || 'exclude')],
+      ['R², with the fit’s own weights', calEsc(c.r2 == null ? '—' : c.r2.toFixed(5))],
+      ['The instrument’s R²', calEsc(cal.r2 != null ? cal.r2.toFixed(5) : 'not reported')]]);
+    h += '<table class="pfas-table cal-readout" data-col-resize="cal-levels"><thead><tr><th>Level</th><th>x</th><th>y</th><th>Fit at x</th>' +
+         '<th>Read back</th><th>Deviation</th></tr></thead><tbody>';
+    c.points.forEach(function (r, i) {
+      var lv = (cal._pts[i] || {})._lv || {};
+      h += '<tr><td>L' + calEsc(lv.level || i + 1) + '</td><td>' + calEsc(calNum(r.x)) + '</td><td>' + calEsc(calNum(r.y, 4)) +
+           '</td><td>' + calEsc(calNum(r.fit_y, 4)) + '</td><td>' + calEsc(calNum(r.back)) + '</td><td>' +
+           calEsc(r.dev == null ? '—' : (r.dev > 0 ? '+' : '') + r.dev.toFixed(1) + ' %') + '</td></tr>';
+    });
+    calDialog('The calculation — ' + cal.analyte, h + '</tbody></table>');
   }
 
   // ── Judged windows ──────────────────────────────────────────────────────
@@ -146,27 +224,34 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     });
     return out;
   }
-  function warnLines(warn) {
-    if (warn == null) return {};
-    function ln(y) {
-      return {type: 'line', yMin: y, yMax: y, borderWidth: 1, borderDash: [4, 4],
-              borderColor: _rgba('--s-warning', 0.8)};
-    }
-    return {warnHi: ln(warn), warnLo: ln(-warn)};
-  }
   function devRange(devs, wins) {
     var m = 1;
     devs.forEach(function (v) { if (v != null) m = Math.max(m, Math.abs(v) * 1.25); });
     wins.forEach(function (w) { if (w) m = Math.max(m, Math.abs(w.lo) * 1.15, Math.abs(w.hi) * 1.15); });
     return Math.ceil(m / 10) * 10;     // a round axis end
   }
+  /* Where a curve's Weighting and Origin start: the curve's own change, else
+     the method profile (Calibration & CCV), else what the file says. "none"
+     stores a per-curve None; "" in the select is None. */
+  function startWt(cal) {
+    if (cal.weight_override) return cal.weight_override === 'none' ? '' : cal.weight_override;
+    if (cal.profile_weight != null) return cal.profile_weight;
+    return cal.weight_type || '';
+  }
+  function startOri(cal) { return cal.origin_override || cal.profile_origin || 'exclude'; }
+  function markChanged(uid, cal, wt, ori) {
+    var el = document.getElementById(uid + '_chg');
+    if (!el) return;
+    var pw = cal.profile_weight != null ? cal.profile_weight : (cal.weight_type || '');
+    el.hidden = (wt === pw) && (ori === (cal.profile_origin || 'exclude'));
+  }
   function relog(uid) {
     var cal = CAL_BY_UID[uid];
     if (!cal) return;
     cal._log = !!(document.getElementById(uid + '_log') || {}).checked;
     drawPlot1(uid, cal, cal._ft || cal.fit_type_override || cal.fit_type || 'Linear',
-              cal._wt != null ? cal._wt : (cal.weight_override || cal.weight_type || ''),
-              cal._ori || cal.origin_override || 'exclude');
+              cal._wt != null ? cal._wt : startWt(cal),
+              cal._ori || startOri(cal));
   }
   window.relog = relog;
 
@@ -189,15 +274,31 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     var xy = pts.map(function(p){return{x:p.x,y:p.y};});
     var fn = computeFn(xy, fitType, wtype, origin);
     if (!fn) return;
+    // what the point readout and the calculation read (showPointDetail, showCalculation)
+    cal._uid = uid; cal._fn = fn; cal._useResp = useResp; cal._pts = pts;
     var r2c = computeR2(xy, fn);
     var r2el = document.getElementById(uid+'_r2');
     if (r2el && r2c !== null) {
       r2el.textContent = 'R² ' + r2c.toFixed(4);
       var r2min = limFor(uid).r2;
-      r2el.className = 'r2-badge ' + (r2min == null ? 'r2-na' : (r2c >= r2min ? 'r2-ok' : 'r2-fail'));
+      r2el.className = r2Class(r2c, r2min != null && r2c < r2min);
     }
+    /* the curve's title line: the analyte, the fit and its R² (the fit's
+       description lives here, not in the legend) */
+    var titleEl = document.getElementById(uid+'_p1t');
+    if (titleEl) titleEl.textContent = cal.analyte + ' \u00B7 ' + fitType + ', '
+      + (wtype ? wtype.replace('x2', 'x\u00B2') : 'unweighted')
+      + ' \u00B7 R\u00B2 ' + (r2c !== null ? r2c.toFixed(4) : '\u2014');
     var eqEl = document.getElementById(uid+'_eq');
     if (eqEl) eqEl.textContent = 'Fit: ' + formatEquation(fn, fitType);
+    // the R² and the equation open the calculation behind them
+    [r2el, eqEl].forEach(function (el) {
+      if (!el || el.__calc) return;
+      el.__calc = true;
+      el.setAttribute('role', 'button'); el.setAttribute('tabindex', '0');
+      el.addEventListener('click', function () { showCalculation(cal); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showCalculation(cal); } });
+    });
 
     var log = !!cal._log;
     var xs = pts.map(function(p){return p.x;}).filter(function(x){return x > 0;});
@@ -211,15 +312,13 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       var yv = fn(xv);
       if (yv != null && isFinite(yv) && (!log || yv > 0)) linePts.push({x: xv, y: yv});
     }
-    var fitLabel = 'Fitted curve: ' + fitType + (wtype ? ', ' + wtype : ', unweighted')
-                 + (r2c !== null ? ', R² ' + r2c.toFixed(4) : '');
     var datasets = [
       {label:'Calibrators', data:xy, type:'scatter', order:1,
-       pointStyle:'circle', pointRadius:3, pointHoverRadius:5,
+       pointStyle:pts.map(function(p){ return passMark(p.passed); }), pointRadius:3, pointHoverRadius:5,
        pointBackgroundColor:pts.map(function(p){ return p.passed ? cOK : cFail; }),
        pointBorderColor:pts.map(function(p){ return p.passed ? _rgba('--s-success',1) : _rgba('--s-danger',1); }),
        pointBorderWidth:1},
-      {label:fitLabel, data:linePts, type:'line', order:2, borderColor:cLine, borderWidth:1.5,
+      {label:'Fitted curve', isFit:true, data:linePts, type:'line', order:2, borderColor:cLine, borderWidth:1.5,
        borderDash:[6,4], pointRadius:0, pointStyle:'line', tension:0, fill:false}
     ];
     if (!useResp) datasets.push(
@@ -227,7 +326,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
        borderColor:cIdeal, borderWidth:1, borderDash:[2,3], pointRadius:0, pointStyle:'line', fill:false});
 
     var _lvs = pts.map(function(p){return p._lv;}), _cal = cal, key = uid+'c1';
-    var yLabel = useResp ? 'Response ratio (analyte / IS area)' : 'Calculated (ng/mL)';
+    var yLabel = useResp ? 'Response ratio (analyte / IS area)' : 'Calculated (' + (cal.level_unit || '') + ')';
     if (_ch[key]) _ch[key].destroy();
     _ch[key] = new Chart(canvas, {
       type:'scatter',
@@ -239,14 +338,23 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
             showPointDetail(_cal, _lvs[elems[0].index], 'CAL');
         },
         plugins:{
+          /* the legend keeps the calibrators and y = x; the fit is named
+             in the title line */
           legend:{display:true, position:'top',
-                  labels:{boxWidth:18, font:{size:10}, usePointStyle:true}},
+                  labels:{boxWidth:18, font:{size:10}, usePointStyle:true,
+                          filter:function(item, data){ return !data.datasets[item.datasetIndex].isFit; },
+                          generateLabels:function(chart){
+                            return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(function(it){
+                              if (it.datasetIndex === 0) it.pointStyle = 'circle';
+                              return it;
+                            });
+                          }}},
           tooltip:{filter:function(ctx){ return ctx.datasetIndex === 0; },
                    callbacks:{label:function(ctx){
             var lv = _lvs[ctx.dataIndex] || {};
-            var lines = ['L'+(lv.level||'?')+': '+lv.expected+' ng/mL'];
+            var lines = [conc(_cal, lv.expected)];
             if (lv.response_ratio != null) lines.push('Response ratio: '+lv.response_ratio.toExponential(3));
-            else if (lv.calculated != null) lines.push('Calculated: '+lv.calculated.toFixed(3)+' ng/mL');
+            else if (lv.calculated != null) lines.push('Calculated: '+conc(_cal, lv.calculated.toFixed(3)));
             if (lv.pct_deviation != null)
               lines.push('Deviation: '+(lv.pct_deviation>0?'+':'')+lv.pct_deviation.toFixed(1)+'%'
                          +(lv.limit_pct != null ? ' (limit ±'+lv.limit_pct+'%)' : ''));
@@ -256,7 +364,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
         },
         scales:{
           x:{type: log ? 'logarithmic' : 'linear',
-             title:{display:true, text:'Expected concentration (ng/mL)', font:{size:10}},
+             title:{display:true, text:'Expected concentration (' + (cal.level_unit || '') + ')', font:{size:10}},
              ticks:{font:{size:10}}, min: log ? undefined : 0, grace:'2%'},
           y:{type: log ? 'logarithmic' : 'linear',
              title:{display:true, text:yLabel, font:{size:10}},
@@ -275,7 +383,8 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       canvas.parentNode.classList.add('is-empty'); canvas.parentNode.innerHTML = '<div class="plot-empty">No % deviation data</div>';
       return;
     }
-    var labels = lvs.map(function(l){ return 'L'+l.level; });
+    // each calibrator by its concentration, so it ties to the curve's x axis
+    var labels = lvs.map(function(l){ return conc(cal, l.expected != null ? l.expected : '?'); });
     var devs   = lvs.map(function(l){ return l.pct_deviation; });
     var wins   = lvs.map(function(l){ return calWindow(uid, l); });
     var yMax   = devRange(devs, wins);
@@ -284,7 +393,8 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     _ch[key] = new Chart(canvas, {
       type:'line',
       data:{labels:labels, datasets:[
-        {label:'Deviation', data:devs, showLine:false, pointRadius:4, pointHoverRadius:6,
+        {label:'Deviation', data:devs, showLine:false, pointRadius:3, pointHoverRadius:5,
+         pointStyle:lvs.map(function(l){ return passMark(l.passed); }),
          pointBackgroundColor:lvs.map(function(l){ return l.passed ? cOK : cFail; }),
          pointBorderColor:lvs.map(function(l){ return l.passed ? cOK : cFail; })}
       ]},
@@ -298,7 +408,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
           legend:{display:false},
           tooltip:{callbacks:{label:function(ctx){
             var lv = _lvs2[ctx.dataIndex]||{}, w = wins[ctx.dataIndex], dev = ctx.parsed.y;
-            return ['L'+(lv.level||'?')+': '+(lv.expected||'?')+' ng/mL',
+            return [conc(_cal2, lv.expected||'?'),
                     'Deviation: '+(dev>0?'+':'')+dev.toFixed(2)+'%',
                     w ? 'Window: ±'+w.hi+'%' : 'No window set',
                     lv.passed ? 'Pass' : 'Fail (click for detail)'];
@@ -328,7 +438,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
           var val = r.value!=null ? parseFloat(r.value).toFixed(4) : '—';
           return '<button type="button" class="'+cls+'" title="Click for detail" '
             +"onclick=\"showPointDetail(window['_calRef_"+uid+"'],window['_ccbRef_"+uid+"']["+i+"],'QC')\">"
-            +'CCB'+(i>0?' '+(i+1):'')+': '+val+' ng/mL '+(r.passed?'✓':'✗')
+            +'CCB'+(i>0?' '+(i+1):'')+': '+conc(cal, val)+' '+(r.passed?'✓':'✗')
             +'</button>';
         }).join('');
         chipWrap.classList.add('shown');
@@ -346,21 +456,21 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     qcRows.forEach(function(r){
       var qt = r.qc_type||'?';
       counts[qt] = (counts[qt]||0)+1;
-      labels.push(qt+(counts[qt]>1?' '+counts[qt]:'')
-                  +(r.expected_value!=null ? ' ('+parseFloat(r.expected_value).toFixed(1)+')' : ''));
+      // two lines: the check, then its concentration (no bracketed level)
+      labels.push([qt+(counts[qt]>1?' '+counts[qt]:''),
+                   r.expected_value!=null ? conc(cal, parseFloat(r.expected_value)) : '']);
       devs.push(r.pct_dev!=null ? r.pct_dev : null);
     });
     var wins = qcRows.map(function(r){ return qcWindow(uid, r); });
     var yMax = devRange(devs, wins);
     var ann = windowBoxes(wins);
-    var wl = warnLines((limFor(uid).CCV || {}).warn);
-    for (var k in wl) ann[k] = wl[k];
     var _cal3 = cal, _qcRows = qcRows, key = uid+'c3';
     if (_ch[key]) _ch[key].destroy();
     _ch[key] = new Chart(canvas, {
       type:'line',
       data:{labels:labels, datasets:[
-        {label:'Check standard', data:devs, showLine:false, pointRadius:4, pointHoverRadius:6,
+        {label:'Check standard', data:devs, showLine:false, pointRadius:3, pointHoverRadius:5,
+         pointStyle:qcRows.map(function(r){ return passMark(r.passed); }),
          pointBackgroundColor:qcRows.map(function(r){ return r.passed ? cOK : cFail; }),
          pointBorderColor:qcRows.map(function(r){ return r.passed ? cOK : cFail; })}
       ]},
@@ -374,7 +484,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
           legend:{display:false},
           tooltip:{callbacks:{label:function(ctx){
             var r = _qcRows[ctx.dataIndex]||{}, w = wins[ctx.dataIndex], dev = ctx.parsed.y;
-            var lines = [r.qc_type+': '+(r.expected_value!=null?r.expected_value:'?')+' ng/mL',
+            var lines = [r.qc_type+': '+conc(_cal3, r.expected_value!=null?r.expected_value:'?'),
                          'Deviation: '+(dev>0?'+':'')+dev.toFixed(2)+'%',
                          w ? 'Window: '+(100+w.lo)+'–'+(100+w.hi)+'% recovery' : 'No window set'];
             if (r.response_ratio!=null) lines.push('Response ratio: '+r.response_ratio.toExponential(3));
@@ -394,8 +504,9 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
   function renderCard(cal) {
     drawPlot1(cal._uid, cal,
               cal.fit_type_override||cal.fit_type||'Linear',
-              cal.weight_override||cal.weight_type||'',
-              cal.origin_override||'exclude');
+              startWt(cal),
+              startOri(cal));
+    markChanged(cal._uid, cal, startWt(cal), startOri(cal));
     drawPlot2(cal._uid, cal);
     drawPlot3(cal._uid, cal);
   }
@@ -405,16 +516,17 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     cal._uid = uid;
     var r2disp = cal.r2 != null ? 'R\u00B2 '+cal.r2.toFixed(4) : 'R\u00B2 —';
     CAL_BY_UID[uid] = cal;
-    var r2cls  = cal.r2_ok == null ? 'r2-na' : (cal.r2_ok ? 'r2-ok' : 'r2-fail');
-    var sttcls = 'badge badge-'+(cal.status||'pending');
+    var r2cls  = r2Class(cal.r2, cal.r2_ok === false);
     var eqText = cal.fit_type_override
       ? (cal.fit_type_override+(cal.weight_override?' / '+cal.weight_override:'')
          +' (orig: '+cal.equation+')')
       : (cal.equation||'');
 
-    var approvedBadge = cal.approved_by
-      ? '<span>Approved</span>'
-      : '<span class="badge badge-pending">Pending</span>';
+    var approvedBadge = cal.rule_fail
+      ? '<span class="pfas-tag is-flag">Failed</span>'
+      : (cal.approved_by
+         ? '<span>Approved</span>'
+         : '<span class="pfas-tag">Pending</span>');     // a state, not a fault: grey
 
     var ctrlHtml = '';
     if (IS_MGR) {
@@ -423,36 +535,41 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
         return '<option value="'+f+'"'+s+'>'+f+'</option>';
       }).join('');
       var wtOpts = ['','1/x','1/x2'].map(function(w){
-        var l=w||'None'; var s=(cal.weight_override||cal.weight_type||'')===w?' selected':'';
+        var l=w ? w.replace('x2', 'x\u00b2') : 'None'; var s=startWt(cal)===w?' selected':'';
         return '<option value="'+w+'"'+s+'>'+l+'</option>';
       }).join('');
       var origOpts = ['exclude','include','force'].map(function(o){
-        var s=(cal.origin_override||'exclude')===o?' selected':'';
-        return '<option value="'+o+'"'+s+'>Origin: '+o+'</option>';
+        var s=startOri(cal)===o?' selected':'';
+        return '<option value="'+o+'"'+s+'>'+o.charAt(0).toUpperCase()+o.slice(1)+'</option>';
       }).join('');
       ctrlHtml = '<div class="card-controls">'
-        +'<label>Fit</label><select id="'+uid+'_ft" onchange="refit(\''+uid+'\')">'+fitOpts+'</select>'
-        +'<label>Weight</label><select id="'+uid+'_wt" onchange="refit(\''+uid+'\')">'+wtOpts+'</select>'
-        +'<select id="'+uid+'_ori" onchange="refit(\''+uid+'\')">'+origOpts+'</select>'
-        +'<button class="save-ovr" onclick="saveOverride('+cal.id+',\''+uid+'\')">Save</button>'
+        +'<label>Fit <select id="'+uid+'_ft" onchange="refit(\''+uid+'\')">'+fitOpts+'</select></label>'
+        +'<label>Weighting <select id="'+uid+'_wt" onchange="refit(\''+uid+'\')">'+wtOpts+'</select></label>'
+        +'<label>Origin <select id="'+uid+'_ori" onchange="refit(\''+uid+'\')">'+origOpts+'</select></label>'
+        +'<span class="badge badge-warn" id="'+uid+'_chg" hidden>Changed from profile</span>'
+        +'<span class="card-controls-gap"></span>'
+        +'<button type="button" class="btn btn-secondary" onclick="resetToProfile('+cal.id+',\''+uid+'\')">Reset to method profile</button>'
+        +'<button type="button" class="btn btn-primary save-ovr" onclick="saveOverride('+cal.id+',\''+uid+'\')">Save</button>'
         +'</div>';
     }
 
     return [
       '<div class="analyte-card" id="'+uid+'">',
       '  <div class="card-head">',
-      '    <span class="analyte-name">'+cal.analyte+'</span>',
-      '    <span class="r2-badge '+r2cls+'" id="'+uid+'_r2">'+r2disp+'</span>',
+      '    <span class="analyte-name">'+esc(cal.analyte)+'</span>',
+      '    <span class="'+r2cls+'" id="'+uid+'_r2">'+r2disp+'</span>',
       '    '+approvedBadge,
       '  </div>',
+      ruleHTML(cal),
       ctrlHtml,
       '  <div class="card-plots">',
       '    <div class="plot-section">',
       '      <div class="plot-label">',
       '        Calibration curve',
-      '        <i class="rr-info" title="Response Ratio = Analyte peak area ÷ Internal Standard peak area. The calibration curve fits RR vs expected concentration.">?</i>',
-      '        <label class="plot-opt"><input type="checkbox" id="'+uid+'_log" onchange="relog(\''+uid+'\')"> Log scale</label>',
+      '        <button type="button" class="btn-help" data-help-entry="calibration-curve" aria-label="Help: Calibration curve" aria-haspopup="dialog">?</button>',
+      '        <label class="plot-opt pfas-switch"><input type="checkbox" id="'+uid+'_log" onchange="relog(\''+uid+'\')"><span class="pfas-switch-track"></span> Log scale</label>',
       '      </div>',
+      '      <div class="plot-title" id="'+uid+'_p1t"></div>',
       '      <div class="plot-canvas-wrap"><canvas id="'+uid+'_p1"></canvas></div>',
       '    </div>',
       '    <div class="plot-section">',
@@ -472,11 +589,12 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
 
   function renderRun(run) {
     var n  = run.analytes.length;
-    var np = run.analytes.filter(function(a){return a.r2_ok;}).length;
     var allApproved = run.analytes.every(function(a){return a.approved_by;});
     var anyApproved = run.analytes.some(function(a){return a.approved_by;});
-    var meta = [run.instrument_id, run.analyst, run.method].filter(Boolean).join(' • ');
-    var passBadge = '<span class="pass-badge '+(np===n?'pass-ok':'pass-fail')+'">'+np+'/'+n+' R\u00B2</span>';
+    var meta = [esc(run.instrument_id), esc(run.analyst), esc(run.method)].filter(Boolean).join(' • ');
+    /* the run's R² count: coral only when a curve fails; plain otherwise */
+    var nFail = run.analytes.filter(function(a){return a.r2_ok === false || a.rule_fail;}).length;
+    var passBadge = '<span class="'+(nFail ? 'pass-badge pass-fail' : 'run-meta')+'">'+r2Count(run)+'</span>';
 
     /* approval: Data Review's Calibration tab only (CAL_APPROVE); the
        archive shows the state */
@@ -487,17 +605,26 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
        here as approved, read-only */
     var from = (A && A.from) ? ' (run on '+A.from+')' : '';
     if (allApproved) {
-      approveBar = '<div class="approve-bar"><span class="approve-label">Run '+run.run_date+from+'</span>'
-                  +'<span class="pass-badge pass-ok">Approved'
-                  +(run.analytes[0].approved_by ? ' by '+run.analytes[0].approved_by : '')+'</span></div>';
+      approveBar = '<div class="approve-bar"><span class="approve-label">Run '+esc(run.run_date)+esc(from)+'</span>'
+                  /* approved is a state, not a verdict: plain text */
+                  +'<span>Approved'
+                  +(run.analytes[0].approved_by ? ' by '+esc(run.analytes[0].approved_by) : '')+'</span></div>';
     } else if (A && A.url && A.can) {
-      approveBar = '<form class="approve-bar" method="POST" action="'+A.url+'">'
-                  +'<input type="hidden" name="action" value="approve_calibration">'
-                  +'<input type="hidden" name="tab" value="calibration">'
-                  +'<span class="approve-label">Calibration of this run'+from+'</span>'
-                  +'<input type="text" name="initials" required placeholder="Initials" maxlength="6">'
-                  +'<button type="submit" class="btn btn-success btn-approve-run">Approve ('+n+' analytes)</button>'
-                  +'</form>'
+      /* a curve failing its rule holds Approve with the rule's sentence;
+         the server refuses the post with the same one */
+      var hold = A.hold || '';
+      approveBar = (hold
+        ? '<div class="approve-bar"><span class="approve-label">Calibration of this run'+from+'</span>'
+          +'<span class="approve-hold" role="status">'+esc(hold)+'</span>'
+          +'<button type="button" class="btn btn-success btn-approve-run" disabled="disabled" title="'+esc(hold)+'">Approve ('+n+' analytes)</button>'
+          +'</div>'
+        : '<form class="approve-bar" method="POST" action="'+A.url+'">'
+          +'<input type="hidden" name="action" value="approve_calibration">'
+          +'<input type="hidden" name="tab" value="calibration">'
+          +'<span class="approve-label">Calibration of this run'+from+'</span>'
+          +'<input type="text" name="initials" required placeholder="Initials" maxlength="6">'
+          +'<button type="submit" class="btn btn-success btn-approve-run">Approve ('+n+' analytes)</button>'
+          +'</form>')
                   +'<form class="approve-bar" method="POST" action="'+A.url+'">'
                   +'<input type="hidden" name="action" value="reject_calibration">'
                   +'<input type="hidden" name="tab" value="calibration">'
@@ -505,17 +632,18 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
                   +'<button type="submit" class="btn btn-danger">Reject</button>'
                   +'</form>';
     } else {
-      approveBar = '<div class="approve-bar"><span class="approve-label">Run '+run.run_date+'</span>'
-                  +'<span class="pass-badge pass-fail">'
+      approveBar = '<div class="approve-bar"><span class="approve-label">Run '+esc(run.run_date)+'</span>'
+                  /* coral for a rejected curve only; waiting for approval is a state */
+                  +'<span class="'+(st === 'rejected' ? 'pass-badge pass-fail' : 'pfas-tag')+'">'
                   +(st === 'rejected' ? 'Rejected' : (anyApproved ? 'Partly approved' : 'Not approved'))
                   +'</span></div>';
     }
 
     var runsHTML = [
-      '<div class="run-section" id="run-'+run.run_date.replace(/-/g,'')+'">',
+      '<div class="run-section" id="run-'+esc(run.run_date).replace(/-/g,'')+'">',
       '<div class="run-header">',
-      '  <h3>'+run.run_date+(run.batch_id ? ' \u00B7 '+run.batch_id : '')
-          +(run.run_time?' <span class="run-time">@ '+run.run_time+'</span>':'')+'</h3>',
+      '  <h3>'+esc(run.run_date)+(run.run_time ? ' <span class="run-time">'+esc(run.run_time)+'</span>' : '')
+          +(run.batch_id ? ' \u00B7 '+run.batch_id : '')+'</h3>',
       (meta ? '<span class="run-meta">'+meta+'</span>' : ''),
       /* every worksheet that used this curve set (stored once) */
       ((run.used_by||[]).length > 1 ? '<span class="run-meta">Used by '+run.used_by.join(', ')+'</span>' : ''),
@@ -523,10 +651,10 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       '</div>',
       '<div class="cal-split">',
       '<nav class="cal-list" aria-label="Analytes">',
+      '<p class="run-meta cal-list-count">'+n+' curve'+(n===1?'':'s')+' \u00B7 '+r2Count(run)+'</p>',
       run.analytes.map(function(a){
-        var cls = a.r2_ok == null ? 'r2-na' : (a.r2_ok ? 'r2-ok' : 'r2-fail');
-        return '<button type="button" data-cal="'+a.id+'" onclick="showCal('+a.id+')"><span>'+a.analyte+'</span>'
-              +'<span class="r2-badge '+cls+'">'+(a.r2 != null ? a.r2.toFixed(4) : '\u2014')+'</span></button>';
+        return '<button type="button" data-cal="'+a.id+'" onclick="showCal('+a.id+')"><span>'+esc(a.analyte)+'</span>'
+              +'<span class="'+r2Class(a.r2, a.r2_ok === false)+'">'+(a.r2 != null ? a.r2.toFixed(4) : '\u2014')+'</span></button>';
       }).join(''),
       '</nav>',
       '<div class="cal-detail">',
@@ -593,8 +721,9 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     var wtEl  = document.getElementById(uid+'_wt');
     var oriEl = document.getElementById(uid+'_ori');
     var ft  = ftEl  ? ftEl.value  : (cal.fit_type   || 'Linear');
-    var wtp = wtEl  ? wtEl.value  : (cal.weight_type || '');
-    var ori = oriEl ? oriEl.value : 'exclude';
+    var wtp = wtEl  ? wtEl.value  : startWt(cal);
+    var ori = oriEl ? oriEl.value : startOri(cal);
+    markChanged(uid, cal, wtp, ori);
     // Redraw Plot 1 with new fit
     drawPlot1(uid, cal, ft, wtp, ori);
 
@@ -652,6 +781,25 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     }
   }
 
+  /* Back to the method profile: the curve's own change is cleared. */
+  function resetToProfile(calId, uid) {
+    var cal = CAL_BY_UID[uid];
+    if (!cal) return;
+    cal.weight_override = ''; cal.origin_override = ''; cal._wt = null; cal._ori = null;
+    var wtEl = document.getElementById(uid+'_wt'), oriEl = document.getElementById(uid+'_ori');
+    if (wtEl) wtEl.value = startWt(cal);
+    if (oriEl) oriEl.value = startOri(cal);
+    refit(uid);
+    var fd = new FormData();
+    fd.append('action','override');
+    fd.append('calibration_id',calId);
+    fd.append('fit_type_override',(document.getElementById(uid+'_ft')||{}).value||'');
+    fd.append('weight_override','');
+    fd.append('origin_override','');
+    fetch(CAL_URL,{method:'POST',body:fd}).catch(function(e){console.error('resetToProfile:',e);});
+  }
+  window.resetToProfile = resetToProfile;
+
   function saveOverride(calId, uid) {
     var ft  = (document.getElementById(uid+'_ft') ||{}).value||'';
     var wtp = (document.getElementById(uid+'_wt') ||{}).value||'';
@@ -660,7 +808,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     fd.append('action','override');
     fd.append('calibration_id',calId);
     fd.append('fit_type_override',ft);
-    fd.append('weight_override',wtp);
+    fd.append('weight_override',wtp === '' ? 'none' : wtp);
     fd.append('origin_override',ori);
     fetch(CAL_URL,{method:'POST',body:fd})
       .then(function(r){return r.json();})

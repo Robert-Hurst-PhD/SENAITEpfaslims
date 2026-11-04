@@ -76,9 +76,7 @@ def _has_any_role(context, roles):
         return False
 
 
-# Narrower sets some older views were written against. Kept as they were --
-# moving them onto the portal changed WHERE roles are resolved, not WHO passes.
-# Neither contains Owner.
+# Narrower role sets for views that name their own.
 MANAGER_ROLES = frozenset(("Manager", "LabManager"))
 ANALYST_ROLES = frozenset(("Analyst", "Verifier"))
 
@@ -112,6 +110,18 @@ def refuse(request, body="Forbidden"):
         raise Unauthorized("Please sign in.")
     request.response.setStatus(403)
     return body
+
+
+def disable_csrf(request):
+    """Switch plone.protect's token check off for this request: PFAS forms
+    carry no _authenticator. Call it only after the view's role gate has
+    run, so a refused POST is still rolled back."""
+    try:
+        from plone.protect.interfaces import IDisableCSRFProtection
+        from zope.interface import alsoProvides
+        alsoProvides(request, IDisableCSRFProtection)
+    except ImportError:
+        pass
 
 
 def deny_gated_action(context, request, action, gates):
@@ -157,6 +167,11 @@ class GateMixin(object):
 STAFF_ROLES = frozenset(("Manager", "LabManager", "LabClerk", "Analyst", "Verifier",
                          "Sampler", "SamplingCoordinator", "Preserver", "Publisher",
                          "RegulatoryInspector", "Owner"))
+# The Regulatory Inspector is the auditor: it passes the client wall to read
+# the lab's pages, but holds none of the roles that change anything. A
+# signed-in user whose only staff role is the inspector's posts nothing.
+READ_ONLY_STAFF_ROLES = frozenset(("RegulatoryInspector",))
+WRITE_STAFF_ROLES = STAFF_ROLES - READ_ONLY_STAFF_ROLES
 CLIENT_VIEWS = frozenset((
     "pfas-track", "pfas-home", "pfas-ar-tracker", "pfas-receipt",
     "pfas-help",
@@ -187,8 +202,9 @@ ANON_VIEWS = frozenset((
 # method's QC types, the certificate qualifiers and the CoA register.
 # Configuration is the manager's.
 MANAGER_VIEWS = frozenset((
-    "pfas-qc-type-grid", "pfas-print-settings", "pfas-method-wizard",
-    "pfas-controlled-publications", "pfas-lab-settings",
+    "pfas-print-settings", "pfas-qc-qualifiers", "pfas-method-wizard",
+    "pfas-controlled-publications", "pfas-lab-settings", "pfas-backups",
+    "pfas-laboratory", "pfas-people", "pfas-time-language", "pfas-system",
 ))
 
 
@@ -210,6 +226,12 @@ def _view_name(published):
 
 def is_staff(context):
     return _has_any_role(context, STAFF_ROLES)
+
+
+def may_write(context):
+    """Whether a staff user holds a role that may change something (any staff
+    role but the inspector's)."""
+    return _has_any_role(context, WRITE_STAFF_ROLES)
 
 
 def _host(url):
@@ -253,8 +275,9 @@ def keep_clients_out(event):
     """IPubAfterTraversal: a visitor who is not signed in reaches only the
     public PFAS pages (ANON_VIEWS) -- any other, read or write, sends them to
     sign in; a signed-in user who holds no lab role (a client) is refused
-    every PFAS staff page and the JSON API; the configuration pages core
-    leaves to LabClerk are the manager's (MANAGER_VIEWS); and no PFAS page
+    every PFAS staff page and the JSON API; an inspector-only user posts to
+    none of them; the configuration pages core leaves to LabClerk are the
+    manager's (MANAGER_VIEWS); and no PFAS page
     or JSON API call accepts a POST from another site."""
     request = event.request
     if is_json_api(request):
@@ -286,12 +309,68 @@ def keep_clients_out(event):
         return
     portal = _portal()
     if portal is not None and is_staff(portal):
+        if ((request.get("REQUEST_METHOD") or "").upper() == "POST"
+                and not may_write(portal)):
+            from zExceptions import Forbidden
+            raise Forbidden("This account is read-only.")
         if name in MANAGER_VIEWS and not require_manager(portal):
             from zExceptions import Forbidden
             raise Forbidden("This configuration page is for lab managers.")
+        # recording or reviewing data needs a Lab Contact, initials and a
+        # signature (entry_rights.py); no override
+        if (request.get("REQUEST_METHOD") or "").upper() == "POST":
+            why = data_entry_refusal(name)
+            if why:
+                # a person submitting a form is shown why, with the way to
+                # People & Roles; a script or the JSON interface gets a 403
+                if "text/html" in (request.get_header("Accept") or ""):
+                    from zExceptions import Redirect
+                    raise Redirect(_portal().absolute_url() + "/@@pfas-entry-refused")
+                from zExceptions import Forbidden
+                raise Forbidden(why)
         return
     from zExceptions import Unauthorized
     raise Unauthorized("This page is for laboratory staff.")
+
+
+def data_entry_refusal(name):
+    """Why a POST to this page is refused for the current user (a data-entry
+    or review page, and no Lab Contact, initials or signature), else None."""
+    from senaite.pfas import entry_rights
+    if name not in entry_rights.DATA_ENTRY_VIEWS:
+        return None
+    from senaite.pfas.browser.staff import may_enter
+    return None if may_enter() else entry_rights.REFUSAL
+
+
+def signed_in_name(context):
+    """The signed-in person's full name, else their id, else ""."""
+    try:
+        m = context.portal_membership.getAuthenticatedMember()
+        return m.getProperty("fullname") or m.getId()
+    except Exception:                                   # noqa: BLE001
+        return u""
+
+
+def user_fullname(portal, user):
+    """`user`'s full name from the membership tool, else their user name."""
+    from Products.CMFCore.utils import getToolByName
+    mt = getToolByName(portal, "portal_membership", None)
+    if mt:
+        member = mt.getMemberById(user.getId())
+        if member:
+            full = member.getProperty("fullname", "")
+            if full:
+                return full
+    return user.getUserName() or user.getId() or "Unknown"
+
+
+def user_roles_at(portal, user):
+    """`user`'s roles in the portal's context."""
+    try:
+        return list(user.getRolesInContext(portal))
+    except Exception:                                   # noqa: BLE001
+        return list(user.getRoles())
 
 
 def _portal():

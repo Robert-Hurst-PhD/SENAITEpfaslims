@@ -20,6 +20,7 @@ from AccessControl import getSecurityManager
 from Products.Five.browser import BrowserView
 from zope.annotation.interfaces import IAnnotations
 
+from senaite.pfas import lab_time
 from senaite.pfas.dilution_retest import KEY, record, retest_plan
 from senaite.pfas.browser.perms import refuse
 
@@ -81,7 +82,8 @@ def append_dilution_retest(analysis, wf_tool):
     retest = create_retest(analysis)
     retest.setResult(plan["result"])
     try:
-        retest.setResultCaptureDate(DateTime(plan["captured"]))
+        # the instrument stamps its injections on the laboratory's clock
+        retest.setResultCaptureDate(lab_time.typed(plan["captured"]) or DateTime(plan["captured"]))
     except Exception as exc:                                # noqa: BLE001
         logger.warning("retest capture date %r: %s", plan["captured"], exc)
     retest.setRemarks(plan["remarks"])
@@ -121,11 +123,7 @@ class PFASDilutionResultView(BrowserView):
         if rec is None:
             resp.setStatus(400)
             return json.dumps({"ok": False, "error": why})
-        try:
-            from plone.protect.interfaces import IDisableCSRFProtection
-            from zope.interface import alsoProvides
-            alsoProvides(self.request, IDisableCSRFProtection)
-        except ImportError:
-            pass
+        from senaite.pfas.browser.perms import disable_csrf
+        disable_csrf(self.request)
         _save(analysis, rec)
         return json.dumps({"ok": True})

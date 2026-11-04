@@ -10,9 +10,9 @@ Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-from Products.CMFCore.utils import getToolByName
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.core.browser.controlpanel.setupview import SetupView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 
 
 class VirtualTile(object):
@@ -80,11 +80,6 @@ _PFAS_TOOL_DEFS = [
      "Per-method QC acceptance criteria",
      "fa-cogs"),
 
-    ("pfas-qc-rules",        "QC Rules",
-     "@@pfas-qc-rules",
-     "Toggle and configure QC rule library",
-     "fa-toggle-on"),
-
     ("pfas-setup-refs",      "Setup Ref Defs",
      "@@pfas-setup-references",
      "Sync PFAS QC criteria to SENAITE Reference Definitions",
@@ -125,6 +120,11 @@ _PFAS_TOOL_DEFS = [
      "EDD export profiles: each format's defaults, method codes, analyte codes, qualifiers",
      "fa-file-export"),
 
+    ("pfas-sample-subtypes", "Sample Sub-types",
+     "@@pfas-sample-subtypes",
+     "Sub-types of a sample type (Meat / Muscle: Beef, Pork) that regulatory limits may name",
+     "fa-sitemap"),
+
     ("pfas-edd-batches",     "Batch EDDs",
      "@@pfas-edd-batches",
      "Delivered EDDs: download per-batch EDD files; per-sample sample-type codes",
@@ -152,7 +152,7 @@ _CORE_DESCRIPTIONS = {
     "bika_referencedefinitions": "QC material specifications defining expected concentration ranges per analyte",
     # 3. Method & Analyte Setup
     "departments":           "Organisational units (Organics, Metals) that route analyses and report sections",
-    "analysiscategories":    "Groups of analysis services (PFAS, Internal Standards) for reporting and filtering",
+    "analysiscategories":    "Groups of analysis services for reporting and filtering",
     "bika_analysisservices": "Individual analyte tests with units, precision, method links, and QC criteria",
     "bika_methods":          "Analytical methods referenced by analysis services and instruments",
     "sampletypes":           "Matrix types (drinking water, food, serum) with retention periods and hazard flags",
@@ -220,11 +220,11 @@ SETUP_GROUPS = [
             "bika_analysisservices",
             "bika_methods",
             "sampletypes",
+            _p("pfas-sample-subtypes"),     # Sample Sub-types (R5-48)
             "samplematrices",
             "analysisprofiles",
             "worksheettemplates",
             _p("pfas-method-profiles"), # Method Profiles
-            _p("pfas-qc-rules"),        # QC Rules
             _p("pfas-setup-refs"),      # Setup Ref Defs
             _p("pfas-method-wizard"),   # New Method Wizard
         ],
@@ -258,7 +258,7 @@ for _g in SETUP_GROUPS:
             _GROUPED_IDS.add(_item)
 
 
-class PFASSetupView(SetupView):
+class PFASSetupView(ViewHelpers, SetupView):
     """@@lims-setup override: groups setup tiles in PFAS lab workflow order,
     with PFAS tools integrated into the relevant core sections.
 
@@ -268,9 +268,6 @@ class PFASSetupView(SetupView):
     """
 
     template = ViewPageTemplateFile("templates/lims_setup.pt")
-
-    def portal_url(self):
-        return getToolByName(self.context, 'portal_url')()
 
     # -- Icon ----------------------------------------------------------------
 

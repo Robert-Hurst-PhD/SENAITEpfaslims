@@ -8,7 +8,7 @@ action." Data Review's release cascade submits each analysis, and core then
 tries the worksheet and sample after each one (refused until the last has
 moved): about three such pairs per analysis, every release. The WARNING
 says what happened and is kept; the ERROR line -- that exact, unexpanded
-text, on the senaite.core logger only -- is dropped (lab, 2026-10-09).
+text, on the senaite.core logger only -- is dropped.
 Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals

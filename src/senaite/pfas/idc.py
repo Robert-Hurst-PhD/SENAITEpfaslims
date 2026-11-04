@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Initial demonstration of capability, EPA 537.1 v2.0 §9.2 (one study per
-analyst x method; lab, 2026-10-09). Each element's verdict, from data the
+analyst x method). Each element's verdict, from data the
 system already holds where it can:
 
   isomers      §9.2.1  the branched-isomer peaks the method profile sets for

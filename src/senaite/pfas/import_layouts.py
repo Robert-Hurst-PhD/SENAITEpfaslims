@@ -52,18 +52,25 @@ import json
 import re
 
 COMPOUND = "[compound]"          # the column a group / block heading becomes
-LAYOUTS = (("long", "Long: one header row, a row per injection and compound"),
-           ("wide", "Wide: two header rows, a block of columns per compound"),
-           ("blocks", "Blocks: one block of rows per compound, after any preamble"))
+# a choice's options are short names; what each means is its hint
+LAYOUTS = (("long", "Long"), ("wide", "Wide"), ("blocks", "Blocks"))
+LAYOUT_HINTS = {"long": "One header row; a row per injection and compound.",
+                "wide": "Two header rows; a block of columns per compound.",
+                "blocks": "One block of rows per compound, after any preamble."}
 DELIMITERS = (("auto", "Detect"), ("comma", "Comma"), ("tab", "Tab"),
               ("semicolon", "Semicolon"), ("pipe", "Vertical bar"))
 _DELIM_CHAR = {"comma": ",", "tab": "\t", "semicolon": ";", "pipe": "|"}
-ENCODINGS = (("utf-8", "UTF-8 (a byte-order mark is removed)"), ("latin-1", "Latin-1"))
+ENCODINGS = (("utf-8", "UTF-8"), ("latin-1", "Latin-1"))
 MATCH_MODES = (("within", "The columns it needs (others may be added or left out)"),
                ("exact", "Exactly these columns"))
 READER_DEFAULTS = {"layout": "long", "delimiter": "auto", "encoding": "utf-8", "header_row": 1,
                    "skip_column": "", "skip_values": "", "missing": "", "group_pattern": "",
-                   "attach_pattern": "", "strip_pattern": "", "block_pattern": ""}
+                   "attach_pattern": "", "strip_pattern": "", "block_pattern": "",
+                   # summary rows to skip: [[column, "value, value"], ...]; a
+                   # row is skipped when ANY condition matches. A layout saved
+                   # with the one skip_column / skip_values reads as one
+                   # condition (options()).
+                   "skip_conditions": []}
 # the fields an import cannot do without: which injection, which compound,
 # and a result (the calculated or the measured concentration)
 NEED = ("injection_name", "compound_name")
@@ -102,7 +109,7 @@ def head(text, lines=HEAD_LINES):
 
 
 # the file line a read row came from, carried on each row dict (value
-# provenance, 2026-10-11); never a column of the layout
+# provenance); never a column of the layout
 LINE = "__line"
 
 
@@ -177,6 +184,56 @@ def sniff(text):
     return best
 
 
+def _is_num(text):
+    try:
+        float((text or "").replace(",", "."))
+        return True
+    except ValueError:
+        return False
+
+
+def guess_options(raw):
+    """A dropped export's reader options as the file shows them, before
+    anything is chosen: {"encoding", "delimiter", "header_row", "layout",
+    "sure": [the options read from the file]}. The encoding is UTF-8 when the
+    bytes decode as UTF-8; the delimiter the one most lines carry; the header
+    row the first row that is mostly names across most of the columns. The
+    layout is said only when it is plain (a wide export's group row over a
+    row of column names); otherwise it stays Long for the analyst to choose."""
+    try:
+        (raw or b"").decode("utf-8")
+        enc = "utf-8"
+    except UnicodeDecodeError:
+        enc = "latin-1"
+    text = decode(raw or b"", enc)
+    ch = sniff(text)
+    name = [k for k, v in _DELIM_CHAR.items() if v == ch][0]
+    recs = records(text, ch)[:60]
+    full = [[c.strip() for c in r if (c or "").strip()] for r in recs]
+    most = max([len(f) for f in full] or [0])
+    header = 1
+    for i, cells in enumerate(full):
+        if len(cells) >= max(2, int(most * 0.6)) and \
+                len([c for c in cells if not _is_num(c)]) >= 0.8 * len(cells):
+            header = i + 1
+            break
+    sure = ["encoding", "delimiter", "header_row"]
+    layout = "long"
+    # wide: a sparse row of names (a compound over its group of columns)
+    # directly above the row of column names; the header row is the first
+    if header > 1:
+        top = recs[header - 2]
+        names = [c.strip() for c in top if (c or "").strip()]
+        gaps = len(top) - len(names)
+        if len(names) >= 2 and gaps >= 0.4 * len(top) and \
+                len([c for c in names if not _is_num(c)]) == len(names):
+            header -= 1
+            layout = "wide"
+            sure.append("layout")
+    return {"encoding": enc, "delimiter": name, "header_row": header, "layout": layout,
+            "sure": sure}
+
+
 def delimiter_of(text, opts):
     name = (opts or {}).get("delimiter") or "auto"
     return sniff(text) if name == "auto" else _DELIM_CHAR.get(name, ",")
@@ -222,7 +279,34 @@ def options(opts):
         out["header_row"] = max(1, int(out.get("header_row") or 1))
     except (TypeError, ValueError):
         out["header_row"] = 1
+    out["skip_conditions"] = _skip_conditions(out)
+    out["skip_column"] = out["skip_values"] = ""   # one owner: the list
     return out
+
+
+def _skip_conditions(o):
+    """The skip conditions as [[column, values]]: the list, or a layout's single
+    skip_column / skip_values pair."""
+    conds = o.get("skip_conditions") or []
+    if isinstance(conds, (str, type(u""))):
+        try:
+            conds = json.loads(conds) or []
+        except ValueError:
+            conds = []
+    out = []
+    for c in conds:
+        if isinstance(c, (list, tuple)) and len(c) == 2 and ("%s" % (c[0] or "")).strip():
+            out.append([("%s" % c[0]).strip(), "%s" % (c[1] or "")])
+    if not out and ("%s" % (o.get("skip_column") or "")).strip():
+        out.append([("%s" % o["skip_column"]).strip(), "%s" % (o.get("skip_values") or "")])
+    return out
+
+
+def skip_conditions_from_form(form):
+    """The skip-condition rows a form posts (skip_col.N, skip_vals.N), in order."""
+    idx = sorted(int(k[9:]) for k in (form or {}) if k.startswith("skip_col.") and k[9:].isdigit())
+    return [[("%s" % form.get("skip_col.%d" % i)).strip(), "%s" % (form.get("skip_vals.%d" % i) or "")]
+            for i in idx if ("%s" % (form.get("skip_col.%d" % i) or "")).strip()]
 
 
 def read(text, opts=None):
@@ -240,10 +324,10 @@ def read(text, opts=None):
         headers, rows = _read_blocks(recs, o, delim, lines)
     else:
         headers, rows = _read_long(recs, o, lines)
-    skip_col, skip = o["skip_column"].strip(), _markers(o["skip_values"])
+    conds = [(c, _markers(v)) for c, v in o["skip_conditions"]]
     out = []
     for r in rows:
-        if skip_col and (r.get(skip_col) or "").strip() in skip:
+        if any((r.get(c) or "").strip() in vals for c, vals in conds):
             continue
         if missing:
             r = dict((k, v if k == LINE else ("" if (v or "").strip() in missing else v))
@@ -406,10 +490,6 @@ def keys(headers):
     return out
 
 
-def mapped_columns(profile, fields):
-    return set(h for h, f in (profile.get("map") or {}).items() if f in fields)
-
-
 def required_fields(profile):
     """The fields a file must have a column for to be read with this layout:
     injection and compound, the layout's own "also required" fields, and a
@@ -461,8 +541,7 @@ def assess(profile, file_headers):
     cmap = profile.get("map") or {}
     mapped = set(cmap.values())
     # a field the layout maps no column to is read under its canonical
-    # header (an earlier pass-through profile); the worker refuses an export
-    # it then reads no row of
+    # header; the worker refuses an export it then reads no row of
     for f in required_fields(profile):
         if f in mapped and f not in have:
             cols = [h for h, v in cmap.items() if v == f]
@@ -525,7 +604,7 @@ def match(profiles, text_head, instrument_uid=""):
         for field, col in a["missing"]:
             close = closest_headers(col or field, sig)
             parts.append("%s%s (closest in the file: %s)" % (
-                field or col, (' -- the layout\'s column "%s"' % col) if (col and field) else "",
+                field or col, (', the layout\'s column "%s"' % col) if (col and field) else "",
                 ", ".join(close) or "none"))
         exc = LayoutRefused(
             "No import layout fits this file. The closest, \"%s\", needs: %s. Map the file in "
@@ -587,7 +666,10 @@ def build_profile(form, duplicate_targets=None):
     def text(k):
         return ("%s" % (f.get(k) or "")).strip()
 
-    reader = options(dict((k, f.get(k)) for k in READER_DEFAULTS if k in f))
+    reader = dict((k, f.get(k)) for k in READER_DEFAULTS if k in f)
+    if any(("%s" % k).startswith("skip_col.") for k in f):
+        reader["skip_conditions"] = skip_conditions_from_form(f)
+    reader = options(reader)
     for k, what in (("group_pattern", "The group pattern"), ("attach_pattern", "The attached-group pattern"),
                     ("strip_pattern", "The name pattern to remove"), ("block_pattern", "The block pattern")):
         try:
@@ -662,42 +744,3 @@ def apply_values(record, profile):
         out[field] = "|".join(parts)
     return out
 
-
-# ── the profiles saved before layouts existed ────────────────────────────────
-
-def migrate_legacy(saved, known_headers=(), instrument_uid="", where=""):
-    """Layout profiles from the "vendor:version" store (json text per key):
-    each read as one comma-separated header row, its columns those it mapped
-    plus the canonical headers the importer always understood, matched
-    "within" (a file with fewer columns of the same layout), bound to no
-    instrument; retired stays retired.
-
-    With `instrument_uid`: an instrument's own store (keyed by version),
-    which the worker never read; each is kept as a RETIRED layout bound to
-    that instrument (`where` names it), so nothing it held is lost and
-    nothing it held starts matching files."""
-    out = []
-    for n, key in enumerate(sorted(saved)):
-        try:
-            data = json.loads(saved[key])
-        except (TypeError, ValueError):
-            continue
-        vendor, _sep, version = ("%s" % key).partition(":")
-        if instrument_uid:
-            vendor, version = data.get("vendor_key") or "", "%s" % key
-        m = data.get("map") or {}
-        out.append({
-            "id": "layout-%d" % (n + 1),
-            "name": "%s %s (from the earlier profile %s%s)" % (
-                data.get("vendor") or vendor, version or "(any version)", key,
-                (" of %s" % where) if where else ""),
-            "instrument_uid": instrument_uid, "reader": dict(READER_DEFAULTS, delimiter="comma"),
-            "signature": sorted(set(m) | set(known_headers)), "match": "within",
-            "map": m, "calc_mode": data.get("calc_mode") or "final",
-            "manual_markers": data.get("manual_markers") or "", "date_format": "",
-            "value_maps": {}, "scales": {}, "qualifier_suffix": "", "labelled_from_columns": False,
-            "notes": data.get("notes") or "", "software": "%s %s" % (vendor, version),
-            "retired": bool(data.get("retired")) or bool(instrument_uid),
-            "migrated_from": ("%s %s" % (where, key)).strip() if instrument_uid else key,
-        })
-    return out

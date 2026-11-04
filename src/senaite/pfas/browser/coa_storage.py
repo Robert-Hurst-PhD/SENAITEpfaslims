@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Store the DESIGNED certificate when one is issued (lab decision
-2026-10-04: "the designed PDF replaces it").
+"""Store the DESIGNED certificate; refuse a certificate when none is issued.
 
 Overrides senaite.impress's IPdfReportStorage on the PFAS browser layer (more
 specific than impress's registration for any IBrowserRequest). impress builds
@@ -9,9 +8,14 @@ certificate, when the ISSUED reporting-template revision carries a designed
 layout, the PDF is replaced by that layout rendered from the same samples
 (browser/coa_document), and the stored HTML by a statement of what the PDF
 is, so the ARReport does not hold a draft of another layout beside it.
-Everything else -- other templates (the QC Review report publishes through
-the same call), certificates without a designed layout -- is stored exactly
-as impress stores it.
+When the issued revision carries no designed layout, a certificate is
+refused (the reason is "Issue a certificate layout in Reporting Setup
+first.") and nothing is stored: the standard certificate impress built is
+no fallback. A sample's report in any other impress template (Default,
+MultiDefault) is refused the same way: only the PFAS certificate is a
+certificate. The QC Review report (published through the same call) is
+stored as impress made it, or as its issued design, and a report that is
+not a sample's is stored as impress stores it.
 
 FAIL CLOSED: if the designed certificate cannot be rendered, store() raises
 and nothing is stored: impress's ajax dispatcher answers HTTP 500 with
@@ -42,6 +46,24 @@ def is_certificate(template):
     return (template or "") == CERTIFICATE_TEMPLATE
 
 
+# a sample's report in any other impress template (Default, MultiDefault):
+# refused, nothing stored, so there is nothing for the email form to send
+OTHER_TEMPLATE = (u"Not published: certificates are printed only from the lab's issued certificate "
+                  u"layout, not from %s.")
+
+
+def _sample_report(uids):
+    """True when any of `uids` is a sample: a report that is a certificate.
+    An object that cannot be read counts as one (fail closed)."""
+    for uid in uids or ():
+        try:
+            if api.get_portal_type(api.get_object(uid)) == "AnalysisRequest":
+                return True
+        except Exception:                                   # noqa: BLE001
+            return True
+    return False
+
+
 class DesignedCertificateError(Exception):
     """The issued designed certificate could not be produced; nothing stored.
 
@@ -70,7 +92,7 @@ def designed_pdf(uids, request=None):
         logger.exception("designed certificate failed for %s", uids)
         raise DesignedCertificateError(
             u"Not published: the designed certificate (reporting template revision %s) "
-            u"could not be produced -- %s" % (rev, exc))
+            u"could not be produced: %s" % (rev, exc))
 
 
 def stored_html(rev, uids):
@@ -105,7 +127,7 @@ def designed_qc_review(uids, request=None):
     except Exception as exc:                                # noqa: BLE001
         logger.exception("designed QC Review failed for %s", uids)
         raise DesignedCertificateError(
-            u"Not published: the QC Review design (revision %s) could not be produced -- %s" % (rev, exc))
+            u"Not published: the QC Review design (revision %s) could not be produced: %s" % (rev, exc))
 
 
 class PFASPdfReportStorage(PdfReportStorageAdapter):
@@ -114,9 +136,15 @@ class PFASPdfReportStorage(PdfReportStorageAdapter):
         metadata = dict(metadata or {})
         if is_certificate(metadata.get("template")):
             designed, rev = designed_pdf(uids, self.request)
-            if designed is not None:
-                pdf, html = designed, stored_html(rev, uids)
-                metadata["designed_layout_revision"] = rev
+            if designed is None:
+                # no certificate layout issued: refused, nothing stored (the
+                # standard certificate is no fallback)
+                from senaite.pfas.report_templates import LAYOUT_NEEDED
+                raise DesignedCertificateError(LAYOUT_NEEDED)
+            pdf, html = designed, stored_html(rev, uids)
+            metadata["designed_layout_revision"] = rev
+        elif (metadata.get("template") or "") != QC_REVIEW_TEMPLATE and _sample_report(uids):
+            raise DesignedCertificateError(OTHER_TEMPLATE % (metadata.get("template") or u"no template"))
         elif (metadata.get("template") or "") == QC_REVIEW_TEMPLATE:
             designed, rev = designed_qc_review(uids, self.request)
             if designed is not None:

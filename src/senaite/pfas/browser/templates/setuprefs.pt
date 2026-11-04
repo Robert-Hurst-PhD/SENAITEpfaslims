@@ -16,7 +16,7 @@
     <!-- Which method's acceptance limits the global Reference Definitions use -->
     <div class="pfas-card">
       <h3>Reference range source</h3>
-      <p class="form-note">Which method&#8217;s limits each Reference Definition&#8217;s ranges and control charts are built from. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <p class="form-note">Which method&#8217;s limits each Reference Definition&#8217;s ranges and control charts are built from. <tal:h define="hid string:method-profile"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
       <form method="POST" action=""
             tal:attributes="action string:${view/portal_url}/@@pfas-setup-references">
         <input type="hidden" name="action" value="save_ref_method" />
@@ -76,7 +76,7 @@
     </div>
 
     <div class="table-wrap">
-    <table class="pfas-table ref-table">
+    <table class="pfas-table ref-table" data-col-resize="setuprefs-ref-table">
       <thead>
         <tr>
           <th>QC Type</th>

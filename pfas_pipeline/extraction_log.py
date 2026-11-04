@@ -1,10 +1,8 @@
 """The extraction record the batch report prints (pipeline step 6).
 
-What is left of barcode.py after the extraction-ui tablet service and its
-JSON reagent catalogue were retired: the SENAITE
-guided extraction is the one extraction record and the SENAITE inventory the
-one reagent catalogue. GS1 barcode parsing moves to the browser scanner.
-
+The SENAITE guided extraction is the one extraction record and the SENAITE
+inventory the one reagent catalogue; GS1 barcodes are parsed by the browser
+scanner.
 """
 
 from __future__ import annotations

@@ -1,9 +1,8 @@
 /* PFAS logbook runtime: dynamic tables, GLP corrections wiring, and the
  * lot / reagent autocomplete.
  *
- * Shared by the concise form (logbook_dynamic.pt) and the guided step view
- * (logbook_guided.pt). Both pages define SAVED_DATA and FIELD_SCHEMA in a
- * tiny inline block, then load this file.
+ * The logbook form (logbook_dynamic.pt) defines SAVED_DATA and FIELD_SCHEMA
+ * in a tiny inline block, then loads this file.
  *
  * Lives in a static resource rather than inline in the templates: Chameleon
  * parses inline <script> bodies as markup and chokes on bare "<", "&" and
@@ -183,7 +182,7 @@
         var bad = d.gate_ok === false;
         hint.className = 'lot-default-hint' + (bad ? ' lot-hint-bad' : '');
         hint.textContent = bad
-          ? '\u26a0 most recent, but blocks release: '
+          ? 'most recent, but blocks release: '
             + ((d.gate_problems || []).join('; ') || 'traceability incomplete')
           : 'most recent' + (d.expiry_date ? ' · exp ' + d.expiry_date : '');
         inp.parentNode.appendChild(hint);
@@ -211,7 +210,8 @@
       var warn = '';
       if (blocked) {
         var reasons = (item.gate_problems || []);
-        warn = '\x3cspan class="lot-ac-warn"\x3e\u26a0 blocks release: '
+        warn = '\x3cspan class="lot-ac-warn"\x3e\x3csvg class="pfas-ico" aria-hidden="true"\x3e'
+             + '\x3cuse href="#ico-warning"/\x3e\x3c/svg\x3e blocks release: '
              + _esc(reasons.length ? reasons.join('; ') : 'traceability incomplete')
              + '\x3c/span\x3e';
       }

@@ -11,7 +11,7 @@
   <metal:fill fill-slot="content">
     <section class="bench-block">
       <h2 class="bench-h">Extractions</h2>
-      <table class="pfas-table" tal:define="rows view/extractions" tal:condition="rows">
+      <table class="pfas-table" data-col-resize="pfas-bench-1" tal:define="rows view/extractions" tal:condition="rows">
         <thead><tr><th>Batch</th><th>Method</th><th>Extraction</th><th>Analyst</th><th></th></tr></thead>
         <tbody>
           <tr tal:repeat="r rows">
@@ -20,7 +20,7 @@
             <td><span tal:attributes="class python:'bench-state bench-' + r['state']"
                       tal:content="r/label">Not started</span></td>
             <td tal:content="r/analyst">DEMO</td>
-            <td><a class="btn-sm btn-primary"
+            <td><a class="btn-sm btn-primary row-action"
                    tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${r/uid}"
                    tal:content="python:{'not_started': 'Start extraction', 'in_progress': 'Continue'}.get(r['state'], 'View')">Start extraction</a></td>
           </tr>
@@ -32,6 +32,10 @@
     <section class="bench-block" tal:define="al view/alerts; bal view/balances_today">
       <h2 class="bench-h">Needs attention</h2>
       <ul class="bench-alerts">
+        <li tal:repeat="n view/notices" class="bench-bad">
+          <strong tal:content="n/title">Run sent back</strong>
+          <span tal:content="string:${n/ws_id}: ${n/text}">WS-1: lot rejected</span>
+          <a class="btn-sm btn-secondary" tal:attributes="href n/url">Open</a></li>
         <li tal:repeat="r view/run_requests" class="bench-warn">
           <strong tal:content="python:('Dilution 1 in %s' % r['fold']) if r['kind'] == 'dilution' else 'Re-injection'">Dilution</strong>
           <span tal:content="string:${r/injection} (${r/worksheet})">DW-0012 (WS-1)</span>
@@ -75,7 +79,7 @@
       <a class="pfas-ws-card"
          tal:repeat="s sections"
          tal:attributes="href s/url">
-        <span class="pfas-ws-card-icon" tal:content="s/icon">i</span>
+        <span class="pfas-ws-card-icon"><svg class="pfas-ico" aria-hidden="true"><use tal:attributes="href string:#${s/icon}"/></svg></span>
         <span class="pfas-ws-card-title" tal:content="s/title">Title</span>
         <span class="pfas-ws-card-desc"  tal:content="s/desc">Description</span>
       </a>

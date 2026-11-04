@@ -12,5 +12,7 @@
         tal:attributes="href string:${portal}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-topbar.css?v=${context/@@pfas-macros/asset_version}" />
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-sidebar.css?v=${context/@@pfas-macros/asset_version}" />
   <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-topbar.js?v=${context/@@pfas-macros/asset_version}"></script>
 </tal:overlay>

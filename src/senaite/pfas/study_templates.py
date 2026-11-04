@@ -25,14 +25,14 @@ Element types (each {"id", "type", "name", ...}):
                RSD and RPD are one limit (qc_tiers.spread_limit).
   mdl          40 CFR 136 App. B Rev. 2 from the study's spiked replicates
                and blanks (method_studies.mdl_rev2); "spike_role", "blank_role"
-Roles are chosen from the method profile's QC types; none is assumed (an
-LFB, reagent water fortified, exists only where the method has one).
   qualitative  a check judged by a person on uploaded evidence
                (chromatograms): "instructions", "accept" (file types); passes
                when at least one file is uploaded and a reviewer passed it
   typed        numbers typed with their evidence (e.g. peak asymmetry):
                "count", "unit", "min", "max", "upload" (a file is required)
 
+Roles are chosen from the method profile's QC types; none is assumed (an
+LFB, reagent water fortified, exists only where the method has one).
 A study made from a template keeps a copy of it ("design"), so editing the
 template later never changes a study under way. Pure; Python 2.7 and 3.
 """
@@ -45,7 +45,7 @@ import re
 KEY = "senaite.pfas.study_templates"
 TYPES = [
     ("replicates", u"Replicates by source and level"),
-    ("mdl", u"MDL (40 CFR 136 App. B Rev. 2)"),
+    ("mdl", u"MDL"),
     ("qualitative", u"Qualitative check with uploaded evidence"),
     ("typed", u"Typed values with evidence"),
 ]
@@ -319,6 +319,8 @@ def load(portal):
 
 def save(portal, templates):
     from zope.annotation.interfaces import IAnnotations
+    from senaite.pfas import config_history
+    config_history.track(portal, "study_templates", "all", lambda: load(portal), label=u"Study templates")
     IAnnotations(portal)[KEY] = json.dumps(templates)
 
 

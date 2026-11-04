@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Core Sample Types show the holding time ("use the hold
-times and clear the seed values").
+"""Core Sample Types show the holding time.
 
-The method profile owns holding times (Matrices & Units). Core's Sample Type
-"Retention Period" carried values the installer seeded (14 / 28 / 60 days,
-typed like holding times but never read by the gate). Core 2.6 only shows the
-field (the Sample Types list, the Add Sample form) -- it marks no sample
-expired by it -- so it now shows the holding time:
+The method profile owns holding times (Matrices & Units). Core 2.6 only
+shows a Sample Type's "Retention Period" (the Sample Types list, the Add
+Sample form) -- it marks no sample expired by it -- so it shows the holding
+time, never a seeded value:
 
     the shortest holding time any method sets for that matrix (the strictest
     one a sample of that type can be held to); a Sample Type no method gives
     one is cleared (core then falls back to its default sample lifetime).
 
-Synced on every method profile save and once by
-migrations/core_integration_cleanup.py.
+Synced on every method profile save.
 
     holding_days_by_sampletype(profiles)  pure: {Sample Type uid: days|None}
     sync(portal)                          write; returns [line]
@@ -50,7 +47,7 @@ def sync(portal):
         from senaite.core.content.sampletype import default_retention_period
         from senaite.core.api import dtime
         default = dtime.timedelta_to_dict(default_retention_period())
-    except Exception:                                       # noqa: BLE001
+    except ImportError:         # a core without a default retention period
         default = {}
     key = lambda d: tuple((d or {}).get(k) or 0 for k in ("days", "hours", "minutes"))  # noqa: E731
     out = []

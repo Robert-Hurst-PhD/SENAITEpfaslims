@@ -1,34 +1,24 @@
 <?xml version="1.0"?>
 <registry>
-  <record name="senaite.pfas.instrument_watch_dir">
-    <field type="plone.registry.field.TextLine">
-      <title>Instrument output watch directory</title>
-    </field>
-    <value>/data/instrument_output</value>
-  </record>
-  <record name="senaite.pfas.report_output_dir">
-    <field type="plone.registry.field.TextLine">
-      <title>Report output directory</title>
-    </field>
-    <value>/data/reports</value>
-  </record>
-  <record name="senaite.pfas.default_method">
-    <field type="plone.registry.field.TextLine">
-      <title>Default PFAS method profile</title>
-    </field>
-    <value>FDA_32PFAS</value>
-  </record>
-  <record name="senaite.pfas.ccv_frequency_override">
-    <field type="plone.registry.field.Int">
-      <title>CCV frequency override (0 = use method default)</title>
-    </field>
-    <value>0</value>
-  </record>
+  <!-- the sample's analyses open folded to one line (core_sample.py) -->
+  <records interface="senaite.core.registry.schema.ISampleViewRegistry">
+    <value key="sampleview_collapse_lab_analysis_table">True</value>
+  </records>
   <!-- D65: make the controlled PFAS Certificate of Analysis the default
        impress report template (record is owned by senaite.impress; we only
        set its value). Single-per-sample so each sample gets its own
        controlled certificate with its own report ID / revision. -->
   <record name="senaite.impress.default_template">
     <value>senaite.pfas:CertificateOfAnalysis.pt</value>
+  </record>
+  <!-- The publisher offers only the PFAS templates: a certificate is printed
+       only from the lab's issued certificate layout (the storage refuses a
+       sample's report in any other template too). The list is replaced on
+       every run of the install step. -->
+  <record name="senaite.impress.templates">
+    <value purge="true">
+      <element>senaite.pfas:CertificateOfAnalysis.pt</element>
+      <element>senaite.pfas:QCReviewReport.pt</element>
+    </value>
   </record>
 </registry>

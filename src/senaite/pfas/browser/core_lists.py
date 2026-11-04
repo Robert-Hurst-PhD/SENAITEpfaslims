@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Reagent suppliers and storage places come from core SENAITE's lists
-(: one owner per fact).
+one owner per fact.
 
 The reagent and prepared-standard forms used to take free text, so the same
 supplier appeared under two spellings and three storage lists existed. Now:
@@ -52,10 +52,18 @@ def problems(data, kinds=("supplier", "storage_location")):
         if not value or (kind == "supplier" and value == IN_HOUSE):
             continue
         if value not in titles(kind):
-            out.append(u"%s is not a core %s: pick one from the list, or add it in Setup -> %s first."
+            out.append(u"%s is not a core %s: pick one from the list, or add it in Setup, %s, first."
                        % (value, u"Supplier" if kind == "supplier" else u"Storage Location",
                           u"Suppliers" if kind == "supplier" else u"Storage Locations"))
     return out
+
+
+def lot_problems(data):
+    """[message] for a lot that cannot be saved: every lot records its
+    recommended storage conditions."""
+    if not (data.get("storage_conditions") or u"").strip():
+        return [u"Enter the recommended storage conditions."]
+    return []
 
 
 def remember_titles(portal):

@@ -26,6 +26,7 @@ from AccessControl.SecurityManagement import (
 from AccessControl.User import UnrestrictedUser as _UnrestrictedUser
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from ..tracking_store import get_ar_uid_by_tracking
@@ -39,6 +40,7 @@ from senaite.pfas.browser.formutil import flatten_form
 logger = logging.getLogger('senaite.pfas.browser.tracker')
 
 _TRACKING_RE = re.compile(r'^PF-\d{6}-(?:[A-Z0-9]{8}|[A-Z0-9]{4})$')
+_COC_RE = re.compile(r'^COC-\d{4}-\d{4,}$')
 
 # Failed look-ups allowed per visitor address per hour; past it the page
 # answers nothing until the hour has passed, so numbers cannot be tried in
@@ -418,7 +420,7 @@ def _build_public_status(portal, ar_uid):
 
 # ── View ──────────────────────────────────────────────────────────────────────
 
-class PFASClientTrackerView(BrowserView):
+class PFASClientTrackerView(ViewHelpers, BrowserView):
     """
     @@pfas-track — public no-login client tracking page.
     Permission: zope2.Public (see configure.zcml).
@@ -427,10 +429,43 @@ class PFASClientTrackerView(BrowserView):
 
     def __call__(self):
         flatten_form(self.request)
+        if self.is_staff():
+            url = self.staff_target()
+            if url:
+                self.request.response.redirect(url)
+                return u""
         return self.template()
 
-    def portal_url(self):
-        return _portal(self.context).absolute_url()
+    def is_staff(self):
+        """Signed-in staff get one search instead of the public form."""
+        from senaite.pfas.browser import perms
+        return perms.is_staff(self.context)
+
+    def staff_query(self):
+        f = self.request.form
+        return (f.get('q') or f.get('t') or u'').strip()[:200]
+
+    def staff_target(self):
+        """Where a staff search goes: a tracking number to its sample, a CoC
+        number to its CoC, anything else (a sample ID) to the site search."""
+        import urllib
+        q = self.staff_query()
+        if not q:
+            return None
+        base = self.portal_url()
+        up = q.upper()
+        if _TRACKING_RE.match(up):
+            uid = get_ar_uid_by_tracking(_portal(self.context), up)
+            try:
+                from bika.lims import api
+                obj = uid and api.get_object_by_uid(uid, None)
+            except Exception:                               # noqa: BLE001
+                obj = None
+            if obj is not None:
+                return obj.absolute_url()
+        if _COC_RE.match(up):
+            return u"%s/@@pfas-coc?coc=%s" % (base, up)
+        return u"%s/@@pfas-search?q=%s" % (base, urllib.quote(q.encode("utf-8") if isinstance(q, unicode) else q))
 
     def signed_in_client(self):
         """A signed-in client contact: they enter their samples on a CoC

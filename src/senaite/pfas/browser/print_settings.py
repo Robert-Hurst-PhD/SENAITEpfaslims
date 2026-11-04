@@ -6,43 +6,83 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
 
-from Products.CMFCore.utils import getToolByName
+from plone.protect import CheckAuthenticator
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from zExceptions import Forbidden
 
 from senaite.pfas.print_settings import (
-    DEFAULTS, get_print_settings, save_print_settings)
+    DEFAULTS, get_print_settings, logo_src, save_print_settings)
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action, refuse
 
 logger = logging.getLogger("senaite.pfas.browser.print_settings")
 
+# The page is the manager's as a whole (perms.MANAGER_VIEWS); its saves are
+# gated again here so the save itself never depends on the page's guard.
+PRINT_GATES = {"save": TIER_CONFIG, "save_qualifiers": TIER_CONFIG}
 
-class PFASPrintSettingsView(BrowserView):
+
+class PFASPrintSettingsView(ViewHelpers, BrowserView):
     template = ViewPageTemplateFile("templates/print_settings.pt")
 
     def __call__(self):
         flatten_form(self.request)
-        if self.request.method == "POST" and \
-                self.request.form.get("action") == "save_qualifiers":
-            return self._handle_save_qualifiers()
-        if self.request.method == "POST" and \
-                self.request.form.get("action") == "save":
-            return self._handle_save()
+        req = self.request
+        if req.method == "POST":
+            action = req.form.get("action", "")
+            denied = deny_gated_action(self.context, req, action, PRINT_GATES)
+            if denied is not None:
+                return denied
+            try:
+                CheckAuthenticator(req)
+            except Forbidden:
+                return refuse(req)
+            if action == "save_qualifiers":
+                return self._handle_save_qualifiers()
+            if action == "save":
+                return self._handle_save()
         return self.template()
-
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def portal_url(self):
-        return self._portal().absolute_url()
 
     def settings(self):
         return get_print_settings(self._portal())
 
+    def logo_src(self):
+        return logo_src(self.settings(), self.portal_url())
+
+    def qam_tokens_json(self):
+        """The Laboratory QAM statement's fill-in parts, for its chip editor."""
+        import json
+        from senaite.pfas import qs_statement
+        return json.dumps([list(t) for t in qs_statement.INTERNAL_TOKEN_LABELS])
+
+    def lab_qam(self):
+        """The document marked as the laboratory's QAM, or None."""
+        from senaite.pfas.browser.sop_documents import lab_qam
+        return lab_qam(self._portal())
+
+    def qam_missing(self):
+        """The QAM statement names the QAM but no document is marked."""
+        from senaite.pfas import qs_statement
+        return qs_statement.uses_qam(self.settings().get(qs_statement.INTERNAL_KEY)) and not self.lab_qam()
+
+    def qapp_tokens_json(self):
+        """The QAPP statement's fill-in parts, for its chip editor."""
+        import json
+        from senaite.pfas import qs_statement
+        return json.dumps([list(t) for t in qs_statement.TOKEN_LABELS])
+
+    def director_name(self):
+        """The Laboratory Director, set on the Laboratory page, shown here."""
+        from senaite.pfas.print_settings import director_staff
+        d = director_staff(self._portal())
+        return d["fullname"] if d else u""
+
     def staff(self):
-        """Lab staff pool for the QAO / Director selectors (initials + name)."""
+        """Lab staff pool for the QAO selector (initials + name)."""
         from senaite.pfas.staff import list_staff
-        return list_staff(self._portal())
+        return list_staff(self._portal(), active_with_login=True)
 
     def saved(self):
         return self.request.form.get("saved", "") == "1"
@@ -55,12 +95,14 @@ class PFASPrintSettingsView(BrowserView):
     def qualifier_rows(self):
         """One row per failure type: disposition, code and certificate wording."""
         from senaite.pfas.qc_qualification import (
-            get_library, FAILURE_TYPES, QUALIFY)
+            get_library, FAILURE_TYPES, QUALIFY, REPORTING_RULES)
         library = get_library(self._portal())
         rows = []
         for key, _label, _disposition, _code in FAILURE_TYPES:
             entry = dict(library[key])
             entry["qualifies"] = entry["disposition"] == QUALIFY
+            # a reporting rule: its code and disposition are fixed
+            entry["rule"] = key in REPORTING_RULES
             rows.append(entry)
         return rows
 
@@ -83,7 +125,7 @@ class PFASPrintSettingsView(BrowserView):
             }
         save_library(self._portal(), data)
         return self.request.response.redirect(
-            "%s/@@pfas-print-settings?saved=1#qualifiers" % self.portal_url())
+            "%s/@@pfas-qc-qualifiers?saved=1" % self.portal_url())
 
     def _handle_save(self):
         f = self.request.form
@@ -98,3 +140,11 @@ class PFASPrintSettingsView(BrowserView):
         self.request.response.redirect(
             "%s/@@pfas-print-settings?saved=1" % self.portal_url())
         return u""
+
+
+class PFASQCQualifiersView(PFASPrintSettingsView):
+    """@@pfas-qc-qualifiers — Reporting Setup > QC Qualifiers: what a
+    certificate says, and whether the result is held or qualified, when a QC
+    criterion fails. Its own tab after Print Settings; saved by the same
+    handler (action save_qualifiers)."""
+    template = ViewPageTemplateFile("templates/qc_qualifiers.pt")

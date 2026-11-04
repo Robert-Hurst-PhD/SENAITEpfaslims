@@ -18,6 +18,7 @@ import logging
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import require_manager
@@ -28,7 +29,7 @@ logger = logging.getLogger("senaite.pfas.browser.logbook_batches")
 CLOSED_STATES = frozenset(("closed", "cancelled", "published", "invalid"))
 
 
-class PFASLogbookBatchesView(BrowserView):
+class PFASLogbookBatchesView(ViewHelpers, BrowserView):
     """Pick the batch whose logbooks you are filling in."""
 
     template = ViewPageTemplateFile("templates/logbook_batches.pt")
@@ -38,20 +39,12 @@ class PFASLogbookBatchesView(BrowserView):
         return self.template()
 
     # ── helpers ───────────────────────────────────────────────────────────
-    def _portal(self):
-        return getToolByName(self.context, "portal_url").getPortalObject()
-
-    def portal_url(self):
-        return self._portal().absolute_url()
-
     def show_all(self):
         return self.request.get("all", "") in ("1", "true", "yes")
 
     def is_manager(self):
         return require_manager(self.context, self.request)
 
-    def setup_url(self):
-        return "{0}/@@pfas-logbook-admin".format(self.portal_url())
 
     # ── the queue ─────────────────────────────────────────────────────────
     def _batch_row(self, batch):

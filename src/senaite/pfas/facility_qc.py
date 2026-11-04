@@ -21,35 +21,23 @@ from __future__ import absolute_import, print_function, unicode_literals
 import json
 import logging
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime
 
 logger = logging.getLogger("senaite.pfas.facility_qc")
 
-try:
-    from senaite.pfas import equipment_types as _et
-except ImportError:          # loaded by file path (tests): the module beside this one
-    def _load_beside(name):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + ".py")
-        try:
-            import importlib.util as _ilu
-            spec = _ilu.spec_from_file_location("pfas_" + name, path)
-            mod = _ilu.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-        except ImportError:                          # Python 2
-            import imp
-            return imp.load_source("pfas_" + name, path)
-    _et = _load_beside("equipment_types")
+from senaite.pfas import equipment_types as _et
+from senaite.pfas import temp_calibration as tc
 
 DB_PATH = os.environ.get("PFAS_FACILITY_QC_DB", "/data/qc/facility_monitoring.db")
 
 UNIT_TYPES = [
     ("refrigerator",       "Refrigerator"),
     ("freezer",            "Freezer"),
-    ("balance_analytical", "Balance — Analytical"),
-    ("balance_prep",       "Balance — Preparatory"),
+    ("balance_analytical", "Analytical balance"),
+    ("balance_prep",       "Top-loading balance"),
     ("eyewash",            "Eye Wash Station"),
     ("water_system",       "Type 1 Water System"),
     # A pipette is verified on a PERIOD, not daily: quarterly in house or by an
@@ -59,20 +47,11 @@ UNIT_TYPES = [
     ("room_sensor",        "Room Sensor"),
 ]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Lab-wide facility defaults.
-#
-# These are LABORATORY VALUES, not code constants: a lab with a different
-# weight set, a different water specification or a local eyewash requirement
-# has to be able to change them once, not retype them on every unit it creates.
-# The tables below are SEEDS. get_facility_defaults() merges the lab's saved
-# overrides over them, and every consumer reads through that rather than
-# importing the table directly.
-#
-# Facility QC is an independent compliance obligation (§10) reviewed by the QAO
-# on its own cadence, so these do not gate batch release — but they do decide
-# whether a balance or a water system passes, which is a lab decision.
-# ─────────────────────────────────────────────────────────────────────────────
+# Lab-wide facility defaults: LABORATORY VALUES, not code constants. The tables
+# below are SEEDS; get_facility_defaults() merges the lab's saved overrides over
+# them, and every consumer reads through it rather than importing a table.
+# Facility QC is reviewed by the QAO on its own cadence and does not gate batch
+# release, but these values decide whether a balance or a water system passes.
 
 FACILITY_DEFAULTS_KEY = "senaite.pfas.facility_defaults"
 
@@ -114,6 +93,9 @@ def _defaults_seed():
         "eyewash_temp_max": EYEWASH_TEMP_MAX,
         "water_conductivity_max": WATER_QC_DEFAULTS["conductivity_max"],
         "water_toc_max": WATER_QC_DEFAULTS["toc_max"],
+        # the unit the water system reads: uS/cm (conductivity) or MOhm.cm
+        # (resistivity = 1 / conductivity); judged in uS/cm either way
+        "water_conductivity_unit": "uS/cm",
         "study_tolerance": STUDY_TOLERANCE_DEFAULT,
     }
 
@@ -123,16 +105,13 @@ def get_facility_defaults(portal=None):
 
     `portal` is optional so the pure-SQLite layer keeps working headlessly
     (the worker and the migration scripts have no portal); without one the seed
-    is returned, which is the same behaviour as before this was configurable.
+    is returned.
     """
     out = _defaults_seed()
     if portal is None:
         return out
-    try:
-        from zope.annotation.interfaces import IAnnotations
-        raw = IAnnotations(portal).get(FACILITY_DEFAULTS_KEY)
-    except Exception:                                       # noqa: BLE001
-        return out
+    from zope.annotation.interfaces import IAnnotations
+    raw = IAnnotations(portal).get(FACILITY_DEFAULTS_KEY)
     if not raw:
         return out
     try:
@@ -149,11 +128,8 @@ def get_facility_defaults(portal=None):
 def save_facility_defaults(portal, data):
     """Store only what differs from the seed, so seed corrections still reach a
     lab that never overrode a given value."""
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(portal, 'facility_defaults', "facility", lambda: get_facility_defaults(portal), label=u"Facility QC defaults")
-    except Exception:
-        pass
+    from senaite.pfas import config_history
+    config_history.track(portal, 'facility_defaults', "facility", lambda: get_facility_defaults(portal), label=u"Facility QC defaults")
     seed = _defaults_seed()
     trimmed = {}
     for key, value in (data or {}).items():
@@ -361,17 +337,12 @@ def _connect():
 #
 #     IndexError: Index must be int or string
 #
-# Almost every function here happens to do `dict(row)` first, which is why only
-# two sites ever carried the defect -- `list_balance_verifications` and
-# `_refresh_study_status` -- and both were unreachable until the first balance
-# verification and the first temperature study existed. Convert to a dict before
-# reading columns; do not reach for `b"col"`.
+# Convert to a dict before reading columns; do not reach for `b"col"`.
 
 
 # Columns added to tables that already shipped. CREATE TABLE IF NOT EXISTS cannot
 # add a column to an existing database, so these are applied explicitly and
-# idempotently — an instance that has been collecting balance verifications must
-# not lose them to get the weight-set link.
+# idempotently, without losing the rows already collected.
 _ADDED_COLUMNS = [
     ("balance_verifications", "weight_set_id", "TEXT"),
     # the thermometer correction applied to a reading; the raw
@@ -379,8 +350,20 @@ _ADDED_COLUMNS = [
     ("temperature_readings", "correction", "REAL"),
     # who entered each study reading
     ("temperature_study_points", "entered_by", "TEXT"),
-    # the registered reference thermometer a study was read against (§103)
+    # the registered reference thermometer a study was read against
     ("temperature_studies", "reference_uid", "TEXT"),
+    # the working temperature a study was done at (a multi-point
+    # calibration: one study per working temperature, temp_calibration)
+    ("temperature_studies", "study_temp", "REAL"),
+    # the conductivity reading as entered, with its unit ("18.2 MOhm.cm");
+    # `conductivity` is always uS/cm, the unit the limit is judged in
+    ("water_qc_logs", "conductivity_entered", "TEXT"),
+    # the water system a reading is of (its own limits); may be empty
+    ("water_qc_logs", "unit_id", "TEXT"),
+    # an in-house pipette calibration's weighings and what they gave
+    # (pipette_cal.py), and the water temperature Z was read at
+    ("pipette_calibrations", "measurements_json", "TEXT"),
+    ("pipette_calibrations", "water_temp", "REAL"),
 ]
 
 
@@ -392,7 +375,7 @@ def ensure_schema():
             try:
                 for row in conn.execute("PRAGMA table_info(%s)" % table):
                     have.add(row[1])
-            except Exception:
+            except sqlite3.Error:
                 continue
             if column not in have:
                 conn.execute("ALTER TABLE %s ADD COLUMN %s %s"
@@ -403,14 +386,45 @@ def _now():
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
 
-# ── Unit registry ─────────────────────────────────────────────────────────────
+def _lab_now():
+    """Now on the laboratory's clock, "YYYY-MM-DDTHH:MM:SS": what a date or
+    time left blank defaults to. Stamps the system records (created_at, a
+    reading's ts) stay _now(), UTC."""
+    from senaite.pfas import lab_time
+    return lab_time.now().replace(microsecond=0).isoformat()
+
+
+_STAMP = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$")
+
+
+def lab_clock():
+    """A function giving a stored reading stamp, UTC "YYYY-MM-DDTHH:MM:SS",
+    as a naive datetime on the laboratory's clock; None for any other value,
+    which the caller reads through lab_time. The zone is resolved once, so a
+    long series converts quickly. Only while lab_time.active()."""
+    import pytz
+    from senaite.pfas import lab_time
+    tz, utc = pytz.timezone(lab_time.zone()), pytz.utc
+
+    def wall(ts):
+        if not isinstance(ts, lab_time.text_type) or not _STAMP.match(ts):
+            return None
+        try:
+            stamp = datetime(int(ts[0:4]), int(ts[5:7]), int(ts[8:10]),
+                             int(ts[11:13]), int(ts[14:16]), int(ts[17:19]))
+        except ValueError:
+            return None
+        return utc.localize(stamp).astimezone(tz).replace(tzinfo=None)
+    return wall
+
+
 
 # ── The equipment registry ──────────────────────────────────────
 # Inside SENAITE every unit IS a core Instrument (browser/equipment.py
 # registers itself here at start-up): a unit's id is the instrument's UID, its
 # name / serial / type come from the instrument, its PFAS settings from an
 # annotation on it. The readings and verifications below stay in SQLite, keyed
-# by that id. Without a provider (tests, scripts) the legacy facility_units
+# by that id. Without a provider (tests, scripts) the SQLite facility_units
 # table answers, so the pure layer keeps working headlessly.
 _PROVIDER = None
 
@@ -422,10 +436,7 @@ def set_unit_provider(provider):
 
 def _provider():
     p = _PROVIDER
-    try:
-        return p if (p is not None and p.available()) else None
-    except Exception:                                       # noqa: BLE001
-        return None
+    return p if (p is not None and p.available()) else None
 
 
 def list_units(active_only=True):
@@ -469,11 +480,8 @@ def get_unit_by_sensor(sensor_id):
 
 def save_unit(data):
     """Insert or update a facility unit. Returns the unit id."""
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(None, 'facility_unit', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_unit((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Facility unit %s" % ((data or {}).get("name") or ""))
-    except Exception:
-        pass
+    from senaite.pfas import config_history
+    config_history.track(None, 'facility_unit', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_unit((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Facility unit %s" % ((data or {}).get("name") or ""))
     ensure_schema()
     uid = data.get("id") or str(uuid.uuid4())
     now = _now()
@@ -520,14 +528,6 @@ def save_unit(data):
     return uid
 
 
-def delete_unit(unit_id):
-    ensure_schema()
-    with _connect() as conn:
-        conn.execute(
-            "UPDATE facility_units SET active=0 WHERE id=?", (unit_id,)
-        )
-
-
 # ── Temperature readings ──────────────────────────────────────────────────────
 
 def _requires_correction(unit):
@@ -550,8 +550,10 @@ def record_temperature(unit_id, sensor_id, temperature, humidity=None,
     in_range = 1
     correction = None
     if unit and temperature is not None and _requires_correction(unit):
-        cur = current_correction(unit_id, ts[:10])
-        correction = cur["correction"] if cur else None
+        # per reading: a multi-point calibration depends on the temperature read
+        cal = calibration(unit_id, ts[:10], unit=unit)
+        fixed, _outside = tc.correct(temperature, cal)
+        correction = round(fixed - temperature, 4) if fixed is not None else None
     judged = (temperature + correction) if (temperature is not None and correction is not None) \
         else temperature
     if unit and judged is not None:
@@ -600,6 +602,90 @@ def get_temperature_readings(unit_id, days=7):
             ORDER BY ts ASC
         """, (unit_id, cutoff)).fetchall()
     return [_with_corrected(r) for r in rows]
+
+
+# the kinds whose readings are temperatures (rooms add humidity)
+READING_KINDS = ("refrigerator", "freezer", "water_bath", "room_sensor")
+
+
+def daily_means(unit_id, field, date_from=None, date_to=None):
+    """{YYYY-MM-DD: mean} of a unit's readings for each day in the window.
+    `field` is "temperature" (corrected: probe + its correction) or
+    "humidity"."""
+    if field not in ("temperature", "humidity"):
+        return {}
+    ensure_schema()
+    value = ("temperature + COALESCE(correction, 0)" if field == "temperature" else "humidity")
+    from senaite.pfas import lab_time
+    if lab_time.active():
+        return _lab_daily_means(unit_id, field, value, date_from, date_to)
+    sql = ("SELECT substr(ts, 1, 10) AS day, AVG(%s) FROM temperature_readings "
+           "WHERE unit_id=? AND %s IS NOT NULL" % (value, field))
+    params = [unit_id]
+    if date_from:
+        sql += " AND substr(ts, 1, 10) >= ?"
+        params.append(date_from)
+    if date_to:
+        sql += " AND substr(ts, 1, 10) <= ?"
+        params.append(date_to)
+    sql += " GROUP BY day"
+    with _connect() as conn:
+        return dict((r[0], r[1]) for r in conn.execute(sql, params).fetchall())
+
+
+def _lab_daily_means(unit_id, field, value, date_from, date_to):
+    """daily_means by the laboratory's day: a reading's stamp is UTC, so the
+    readings are fetched a day either side of the window and each counted on
+    the day its stamp falls on the laboratory's clock."""
+    from datetime import timedelta
+    from senaite.pfas import lab_time
+
+    def wider(day, days):
+        try:
+            return (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=days)).date().isoformat()
+        except ValueError:
+            return day
+
+    sql = ("SELECT ts, %s FROM temperature_readings WHERE unit_id=? AND %s IS NOT NULL"
+           % (value, field))
+    params = [unit_id]
+    if date_from:
+        sql += " AND substr(ts, 1, 10) >= ?"
+        params.append(wider(date_from, -1))
+    if date_to:
+        sql += " AND substr(ts, 1, 10) <= ?"
+        params.append(wider(date_to, 1))
+    sums = {}
+    clock = lab_clock()
+    with _connect() as conn:
+        for row in conn.execute(sql, params).fetchall():
+            ts, v = row[0], row[1]
+            wall = clock(ts)
+            day = wall.date() if wall is not None else lab_time.lab_date(ts, "utc")
+            if day is None:
+                continue
+            day = day.isoformat()
+            if (date_from and day < date_from) or (date_to and day > date_to):
+                continue
+            total, n = sums.get(day, (0.0, 0))
+            sums[day] = (total + v, n + 1)
+    return dict((day, total / n) for day, (total, n) in sums.items())
+
+
+def effective_range(unit_lo, unit_hi, storage_ranges):
+    """The range a monitored unit is judged against: the tightest of its own
+    range and the storage ranges of the method profiles that store samples
+    in it, [(lo, hi)]. (lo, hi); either may be None when nothing sets it."""
+    los = [v for v in [unit_lo] + [r[0] for r in storage_ranges or []] if v is not None]
+    his = [v for v in [unit_hi] + [r[1] for r in storage_ranges or []] if v is not None]
+    return (max(los) if los else None), (min(his) if his else None)
+
+
+def range_conflict(lo, hi):
+    """True when the ranges a unit must keep do not overlap (a unit holding
+    samples at 0 to 6 C and extracts at -25 to -15 C): no reading can meet
+    both, so it is a setting to fix, not a failed reading."""
+    return lo is not None and hi is not None and lo > hi
 
 
 def latest_reading(unit_id):
@@ -651,7 +737,7 @@ def current_correction(unit_id, as_of=None):
     """{"correction", "study_id", "study_date"} from the unit's latest PASSED
     study dated on or before `as_of`, or None."""
     ensure_schema()
-    as_of = as_of or _now()[:10]
+    as_of = as_of or _lab_now()[:10]
     with _connect() as conn:
         rows = conn.execute("""
             SELECT id, study_date FROM temperature_studies
@@ -665,6 +751,34 @@ def current_correction(unit_id, as_of=None):
         if cf is not None:
             return {"correction": cf, "study_id": r["id"], "study_date": r["study_date"]}
     return None
+
+def _model(unit):
+    req = (unit or {}).get("requirements") or _et.seed((unit or {}).get("unit_type"))
+    return _et.normalise(req, (unit or {}).get("unit_type")).get("correction_model") or tc.SINGLE
+
+
+def unit_working_temps(unit):
+    return _et.working_temps((unit or {}).get("working_temps_json"))
+
+
+def _studies_with_points(unit_id):
+    out = []
+    for s in list_studies(unit_id):
+        det = get_study(s["id"]) or {}
+        out.append(dict(s, points=det.get("points") or []))
+    return out
+
+
+def calibration(unit_id, as_of=None, unit=None):
+    """The correction in force for a unit on a date (temp_calibration): a
+    multi-point calibration over its working temperatures, or its single
+    factor ({"model": "single", "correction", "study_id", "study_date"})."""
+    unit = unit if unit is not None else get_unit(unit_id)
+    as_of = as_of or _lab_now()[:10]
+    if _model(unit) == tc.MULTI:
+        return tc.in_force(_studies_with_points(unit_id), unit_working_temps(unit), as_of)
+    return tc.single(current_correction(unit_id, as_of))
+
 
 def list_studies(unit_id):
     ensure_schema()
@@ -691,12 +805,14 @@ def get_study(study_id):
 
 
 def create_study(unit_id, operator, nist_serial, nist_cert_date=None,
-                 study_date=None, tolerance=1.0, notes=None, reference_uid=None):
+                 study_date=None, tolerance=1.0, notes=None, reference_uid=None,
+                 study_temp=None):
     """A new study. `reference_uid` names the registered reference thermometer
-    (kind reference_thermometer) it is read against, when there is one."""
+    (kind reference_thermometer) it is read against, when there is one;
+    `study_temp` the working temperature it is done at (multi-point)."""
     ensure_schema()
     now = _now()
-    study_date = study_date or now[:10]
+    study_date = study_date or _lab_now()[:10]
     with _connect() as conn:
         cur = conn.execute("""
             INSERT INTO temperature_studies
@@ -709,6 +825,9 @@ def create_study(unit_id, operator, nist_serial, nist_cert_date=None,
         if reference_uid:
             conn.execute("UPDATE temperature_studies SET reference_uid=? WHERE id=?",
                          (reference_uid, study_id))
+        if study_temp is not None:
+            conn.execute("UPDATE temperature_studies SET study_temp=? WHERE id=?",
+                         (study_temp, study_id))
         for i in range(1, STUDY_POINTS + 1):
             conn.execute("""
                 INSERT INTO temperature_study_points (study_id, time_point)
@@ -723,7 +842,7 @@ def save_study_point(study_id, time_point, sensor_reading, nist_reading,
     keeps its previous values, who changed it and when, in
     temperature_study_point_changes."""
     ensure_schema()
-    recorded_at = recorded_at or _now()
+    recorded_at = recorded_at or _lab_now()
     deviation = None
     passed = None
     if sensor_reading is not None and nist_reading is not None:
@@ -790,11 +909,8 @@ def _refresh_study_status(conn, study_id):
 
 def save_weight_set(data):
     """Upsert a reference weight set. `data["id"]` absent/None creates one."""
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(None, 'weight_set', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_weight_set((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Weight set %s" % ((data or {}).get("name") or ""))
-    except Exception:
-        pass
+    from senaite.pfas import config_history
+    config_history.track(None, 'weight_set', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_weight_set((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Weight set %s" % ((data or {}).get("name") or ""))
     ensure_schema()
     now = _now()
     wid = data.get("id") or uuid.uuid4().hex
@@ -839,12 +955,32 @@ def get_weight_set(weight_set_id):
 
 # ── Pipette calibration ──────────────────────────────────────────────────────
 
+def quarter_due(cal_date):
+    """An in-house pipette calibration is due once in each calendar quarter:
+    one dated in Q4 2026 makes the next due in Q1 2027, by its last day.
+    Returns (u"Q1 2027", u"2027-03-31"), or (None, None) for a date it
+    cannot read."""
+    import calendar
+    try:
+        y, m = int(cal_date[:4]), int(cal_date[5:7])
+    except (TypeError, ValueError):
+        return None, None
+    if not 1 <= m <= 12:
+        return None, None
+    q = (m - 1) // 3 + 2
+    if q > 4:
+        q, y = 1, y + 1
+    end = q * 3
+    return u"Q%d %d" % (q, y), u"%04d-%02d-%02d" % (y, end, calendar.monthrange(y, end)[1])
+
+
 def save_pipette_calibration(data):
     """Record a pipette calibration — internal quarterly check or external."""
     ensure_schema()
     cols = ("unit_id", "kind", "cal_date", "due_date", "operator", "provider",
             "provider_accreditation", "cert_number", "balance_unit_id",
-            "weight_set_id", "as_found_pct", "tolerance_pct", "passed", "notes")
+            "weight_set_id", "as_found_pct", "tolerance_pct", "passed", "notes",
+            "measurements_json", "water_temp")
     vals = [data.get(c) for c in cols]
     with _connect() as conn:
         cur = conn.execute(
@@ -878,7 +1014,7 @@ def get_pipette_calibration_in_force(unit_id, as_of):
     pipette was in calibration does not stop being defensible later.
 
     Ordered by `cal_date` AND `id`, so two records on one day resolve
-    deterministically (the §10.1 same-minute defect, one field up).
+    deterministically.
     """
     ensure_schema()
     if not unit_id or not as_of:
@@ -913,9 +1049,7 @@ def get_balance_verification_for_date(unit_id, verified_date):
 
 def balance_verified_on(unit_id, verified_date):
     """(ok, note) for weighing on this balance that day: a verification on
-    record AND passed. A failed verification is not a verified balance -- the
-    bench showed "verified today" for one while Data Review called it a
-    problem."""
+    record AND passed. A failed verification is not a verified balance."""
     ver = get_balance_verification_for_date(unit_id, verified_date)
     if not ver:
         return False, u"NOT verified today"
@@ -928,8 +1062,8 @@ def unit_by_serial(serial):
     """A facility unit by its serial number, or None.
 
     The extraction record captures equipment as free-text SERIAL NUMBERS
-    (`equipment_sns`), which were read only by the PDF. This is the join that
-    turns one into a registered unit whose calibration can be asked about.
+    (`equipment_sns`); this join turns one into a registered unit whose
+    calibration can be asked about.
     """
     if not serial:
         return None
@@ -952,11 +1086,14 @@ _LAST_CHECK = {
     "pipette": ("pipette_calibrations", "cal_date"),
     "refrigerator": ("temperature_studies", "study_date"),
     "freezer": ("temperature_studies", "study_date"),
+    "water_bath": ("temperature_studies", "study_date"),
     "room_sensor": ("temperature_studies", "study_date"),
     "thermometer": ("temperature_studies", "study_date"),
     "ir_gun": ("temperature_studies", "study_date"),
     "nitrogen_evaporator": ("temperature_studies", "study_date"),
     "eyewash": ("eyewash_logs", "log_date"),
+    "water_system": ("water_qc_logs", "log_date"),
+    "saa": ("waste_logs", "log_date"),
 }
 
 
@@ -966,6 +1103,14 @@ def last_check_date(unit_id, kind):
     if not table or not unit_id:
         return None
     ensure_schema()
+    if table[0] == "temperature_studies":
+        unit = get_unit(unit_id)
+        if _model(unit) == tc.MULTI:
+            # each working temperature is due on its own: the unit is due
+            # when any is (none studied yet: no record)
+            temps = unit_working_temps(unit)
+            return tc.oldest(tc.last_study_dates(_studies_with_points(unit_id), temps), temps) \
+                if temps else None
     extra = " AND status!='pending'" if table[0] == "temperature_studies" else ""
     with _connect() as conn:
         row = conn.execute("SELECT MAX(%s) FROM %s WHERE unit_id=?%s" % (table[1], table[0], extra),
@@ -1019,21 +1164,13 @@ def equipment_provenance(unit_id, as_of):
             out["problems"].append(
                 u"weight set %s calibration expired %s, before it was used on %s"
                 % (ws.get("set_id"), due, as_of))
-        if not ws.get("nist_traceable"):
-            out["problems"].append(
-                u"weight set %s is not recorded as NIST-traceable"
-                % ws.get("set_id"))
 
     # WHICH equipment owes a calibration record is a property of its TYPE, not of
     # everything that touched the sample. A balance and a pipette make the
     # measurements a result depends on, so each must trace to a calibrated
     # standard. A centrifuge, vortex mixer, cryogenic mill or shaker measures
     # nothing and has no calibration standard to trace to -- demanding one would
-    # be a check that can never be satisfied, which is worse than no check.
-    #
-    # Found by running this against the real released worksheet WS-0005: 9 of its
-    # 13 equipment entries were a mill, a mixer, a centrifuge and a shaker, and
-    # the first version of this function demanded a weight set from each.
+    # be a check that can never be satisfied.
     if ut not in CALIBRATED_UNIT_TYPES:
         out["records"].append({"type": "no_calibration_required",
                                "data": {"unit_type": ut, "name": name}})
@@ -1090,9 +1227,8 @@ def save_balance_verification(unit_id, operator, verified_date, points, notes=No
 
     Acceptance is the balance TYPE's tolerance, % of nominal ("Balances should always be in g with acceptable tolerances of 0.2%";). The caller passes the type's `tolerance_pct`; without one the lab's
     stated 0.2 % applies. The absolute tolerance each point was judged against
-    is stored with it, so a record shows what it passed against. This replaced
-    per-point absolute tolerances (10 mg at 0.1 mg was 1 %) and the lab-wide
-    `balance_tolerance` in grams. `portal` is accepted for older callers.
+    is stored with it, so a record shows what it passed against. `portal` is
+    accepted for older callers.
     """
     ensure_schema()
     pct = float(tolerance_pct) if tolerance_pct else _et.BALANCE_TOLERANCE_PCT
@@ -1155,12 +1291,26 @@ def list_balance_verifications(unit_id, limit=30):
 
 # ── Water QC ──────────────────────────────────────────────────────────────────
 
+CONDUCTIVITY_UNITS = (("uS/cm", u"\u00b5S/cm"), ("MOhm.cm", u"M\u03a9\u00b7cm"))
+
+
+def conductivity_us(reading, unit):
+    """A reading in the water system's unit as conductivity in uS/cm (a
+    resistivity in MOhm.cm is its reciprocal); None when it cannot be."""
+    if reading is None:
+        return None
+    if unit == "MOhm.cm":
+        return (1.0 / reading) if reading > 0 else None
+    return reading
+
+
 def save_water_qc(operator, conductivity, toc, log_date=None, log_time=None,
-                  conductivity_max=None, toc_max=None, notes=None):
+                  conductivity_max=None, toc_max=None, notes=None, conductivity_entered=None,
+                  unit_id=None):
     ensure_schema()
-    now = _now()
-    log_date = log_date or now[:10]
-    log_time = log_time or now[11:16]
+    now, lab_now = _now(), _lab_now()
+    log_date = log_date or lab_now[:10]
+    log_time = log_time or lab_now[11:16]
     c_max = conductivity_max if conductivity_max is not None else WATER_QC_DEFAULTS["conductivity_max"]
     t_max = toc_max if toc_max is not None else WATER_QC_DEFAULTS["toc_max"]
     passed = 1
@@ -1172,25 +1322,23 @@ def save_water_qc(operator, conductivity, toc, log_date=None, log_time=None,
         conn.execute("""
             INSERT INTO water_qc_logs
             (log_date, log_time, operator, conductivity, toc,
-             conductivity_max, toc_max, passed, notes, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+             conductivity_max, toc_max, passed, notes, created_at, conductivity_entered, unit_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """, (log_date, log_time, operator, conductivity, toc,
-              c_max, t_max, passed, notes, now))
+              c_max, t_max, passed, notes, now, conductivity_entered, unit_id or None))
     return passed
 
 
 def get_water_qc_for_date(log_date):
     """The Type 1 water QC entry in force for `log_date`, or None.
 
-    THE single definition of "was the in-house water system verified that day".
-    It exists because reagent-grade water produced in house has no manufacturer
-    to trace to -- the water QC log IS its provenance, so the
-    prepared-standard parentage walk has to ask this question per preparation
-    date, and the facility dashboard already asked it with an inline query.
+    THE single definition of "was the in-house water system verified that day",
+    shared by the prepared-standard parentage walk and the facility dashboard.
+    Water produced in house has no manufacturer to trace to: the water QC log
+    IS its provenance.
 
-    Ordered by `log_time` AND `id`. Ordering on log_time alone is the defect
-    found for the eye wash: two entries in the same minute made the
-    "latest" arbitrary, and a stale PASS could win over a later FAIL.
+    Ordered by `log_time` AND `id`: two entries in the same minute must not
+    make the "latest" arbitrary, or a stale PASS could win over a later FAIL.
     """
     ensure_schema()
     if not log_date:
@@ -1207,7 +1355,7 @@ def list_water_qc(limit=30):
     ensure_schema()
     with _connect() as conn:
         rows = conn.execute("""
-            SELECT * FROM water_qc_logs ORDER BY log_date DESC, log_time DESC LIMIT ?
+            SELECT * FROM water_qc_logs ORDER BY log_date DESC, log_time DESC, id DESC LIMIT ?
         """, (limit,)).fetchall()
     return [dict(r) for r in rows]
 
@@ -1217,9 +1365,9 @@ def list_water_qc(limit=30):
 def save_waste_log(unit_id, operator, condition, log_date=None,
                    log_time=None, notes=None):
     ensure_schema()
-    now = _now()
-    log_date = log_date or now[:10]
-    log_time = log_time or now[11:16]
+    now, lab_now = _now(), _lab_now()
+    log_date = log_date or lab_now[:10]
+    log_time = log_time or lab_now[11:16]
     with _connect() as conn:
         conn.execute("""
             INSERT INTO waste_logs
@@ -1228,22 +1376,20 @@ def save_waste_log(unit_id, operator, condition, log_date=None,
         """, (unit_id, log_date, log_time, operator, condition, notes, now))
 
 
-def list_waste_logs(unit_id=None, limit=30):
+def _named_logs(table, unit_id, limit):
+    """A log's newest rows (same-minute entries newest first), each with its
+    unit's name from the unit provider (the instruments)."""
     ensure_schema()
+    sql = "SELECT * FROM %s%s ORDER BY log_date DESC, log_time DESC, id DESC LIMIT ?" % (
+        table, " WHERE unit_id=?" if unit_id else "")
     with _connect() as conn:
-        if unit_id:
-            rows = conn.execute("""
-                SELECT w.*, u.name as unit_name FROM waste_logs w
-                LEFT JOIN facility_units u ON u.id=w.unit_id
-                WHERE w.unit_id=? ORDER BY w.log_date DESC, w.log_time DESC LIMIT ?
-            """, (unit_id, limit)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT w.*, u.name as unit_name FROM waste_logs w
-                LEFT JOIN facility_units u ON u.id=w.unit_id
-                ORDER BY w.log_date DESC, w.log_time DESC LIMIT ?
-            """, (limit,)).fetchall()
-    return [dict(r) for r in rows]
+        rows = conn.execute(sql, (unit_id, limit) if unit_id else (limit,)).fetchall()
+    names = dict((u["id"], u["name"]) for u in list_units(active_only=False))
+    return [dict(r, unit_name=names.get(r["unit_id"])) for r in rows]
+
+
+def list_waste_logs(unit_id=None, limit=30):
+    return _named_logs("waste_logs", unit_id, limit)
 
 
 # ── Eye wash logs ─────────────────────────────────────────────────────────────
@@ -1252,9 +1398,9 @@ def save_eyewash_log(unit_id, operator, working, temperature=None,
                      log_date=None, log_time=None,
                      temp_min=None, temp_max=None, notes=None):
     ensure_schema()
-    now = _now()
-    log_date = log_date or now[:10]
-    log_time = log_time or now[11:16]
+    now, lab_now = _now(), _lab_now()
+    log_date = log_date or lab_now[:10]
+    log_time = log_time or lab_now[11:16]
     t_min = temp_min if temp_min is not None else EYEWASH_TEMP_MIN
     t_max = temp_max if temp_max is not None else EYEWASH_TEMP_MAX
     passed = 1 if working else 0
@@ -1273,31 +1419,32 @@ def save_eyewash_log(unit_id, operator, working, temperature=None,
 
 
 def list_eyewash_logs(unit_id=None, limit=30):
-    ensure_schema()
-    with _connect() as conn:
-        if unit_id:
-            rows = conn.execute("""
-                SELECT e.*, u.name as unit_name FROM eyewash_logs e
-                LEFT JOIN facility_units u ON u.id=e.unit_id
-                WHERE e.unit_id=? ORDER BY e.log_date DESC, e.log_time DESC LIMIT ?
-            """, (unit_id, limit)).fetchall()
-        else:
-            rows = conn.execute("""
-                SELECT e.*, u.name as unit_name FROM eyewash_logs e
-                LEFT JOIN facility_units u ON u.id=e.unit_id
-                ORDER BY e.log_date DESC, e.log_time DESC LIMIT ?
-            """, (limit,)).fetchall()
-    return [dict(r) for r in rows]
+    return _named_logs("eyewash_logs", unit_id, limit)
 
 
 # ── Dashboard summary ─────────────────────────────────────────────────────────
+
+def eyewash_status(last_log, req, today):
+    """A station's checklist status from its latest log entry: "no_data",
+    "out_of_range" (it failed), "due" once its type's frequency has passed
+    since that entry (equipment_types.due), else "ok". With no frequency
+    entered, an entry older than today is "pending" review."""
+    if not last_log:
+        return "no_data"
+    if not last_log.get("passed"):
+        return "out_of_range"
+    if (req or {}).get("cal_frequency_days"):
+        st = _et.due(req, last_log.get("log_date"), today=today)["internal"]["status"]
+        return "due" if st == "overdue" else "ok"
+    return "pending" if (last_log.get("log_date") or "") < today else "ok"
+
 
 def dashboard_summary():
     """Return one status row per unit for the daily checklist dashboard."""
     ensure_schema()
     from datetime import timedelta
     units = list_units(active_only=True)
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = _lab_now()[:10]
     overdue_hours = 25  # flag if no reading in 25 hours
     cutoff_ts = (datetime.utcnow() - timedelta(hours=overdue_hours)).strftime(
         "%Y-%m-%dT%H:%M:%S"
@@ -1308,7 +1455,7 @@ def dashboard_summary():
             continue          # on the Equipment page by due date, not daily
         row = dict(u)
         ut = u["unit_type"]
-        if ut in ("refrigerator", "freezer", "room_sensor"):
+        if ut in READING_KINDS:
             reading = latest_reading(u["id"])
             row["last_reading"] = reading
             if not reading:
@@ -1321,22 +1468,16 @@ def dashboard_summary():
                 row["status"] = "ok"
         elif ut == "eyewash":
             # Eye wash stations are logged in `eyewash_logs`, NOT in
-            # `temperature_readings`. Until 2026-08-07 they were grouped with
-            # the temperature sensors above, so `latest_reading()` queried a
-            # table an eye wash station never writes to and every station
-            # reported `no_data` forever -- while `save_eyewash_log` was
-            # computing and storing a `passed` verdict (the station runs AND
-            # its water is tepid, ISO 17025 §6.3) that nothing ever read.
+            # `temperature_readings`; the status is the stored `passed`
+            # verdict (the station runs AND its water is tepid, ISO 17025 §6.3).
             #
             # Periodic, not daily: §6.4 puts eye wash on its own cadence, so an
             # older entry is reported as `pending` for review rather than
             # `overdue` against the 25-hour sensor window.
             with _connect() as conn:
-                # `id DESC` is a REQUIRED tiebreak, not decoration: log_time is
-                # only HH:MM, so two entries in the same minute tie and SQLite
-                # returns them in rowid order -- i.e. the FIRST one. Re-testing
-                # a station after a failed check would then have reported the
-                # earlier passing entry as current.
+                # `id DESC` is a REQUIRED tiebreak: log_time is only HH:MM, so
+                # two entries in the same minute tie, and a re-test after a
+                # failed check must report the later entry.
                 ew = conn.execute("""
                     SELECT * FROM eyewash_logs
                     WHERE unit_id=?
@@ -1345,14 +1486,7 @@ def dashboard_summary():
                 """, (u["id"],)).fetchone()
             ew = dict(ew) if ew else None   # unicode key on a Row: see _connect
             row["last_eyewash"] = ew
-            if not ew:
-                row["status"] = "no_data"
-            elif not ew["passed"]:
-                row["status"] = "out_of_range"
-            elif ew["log_date"] < today:
-                row["status"] = "pending"
-            else:
-                row["status"] = "ok"
+            row["status"] = eyewash_status(ew, u.get("requirements") or {}, today)
         elif ut in ("balance_analytical", "balance_prep"):
             with _connect() as conn:
                 bv = conn.execute("""
@@ -1370,9 +1504,7 @@ def dashboard_summary():
                 row["status"] = "out_of_range"
         elif ut == "water_system":
             # One definition of "verified today", shared with the
-            # prepared-standard parentage walk. The inline query this replaces
-            # ordered by log_time alone, which is the same-minute tie
-            # found for the eye wash.
+            # prepared-standard parentage walk.
             wq = get_water_qc_for_date(today)
             row["last_water"] = wq
             if not wq:
@@ -1383,9 +1515,8 @@ def dashboard_summary():
                 row["status"] = "out_of_range"
         else:
             # A unit type this dashboard does not know how to check must not
-            # claim compliance. Every type in UNIT_TYPES is handled above, so
-            # reaching here means one was added without a check -- reporting it
-            # green would hide exactly that.
+            # claim compliance: reaching here means a type was added without a
+            # check.
             logger.warning(
                 "facility QC: unit %s has type %r with no status check; "
                 "reporting no_data rather than OK", u.get("id"), ut)
@@ -1396,30 +1527,33 @@ def dashboard_summary():
 
 # ── API key helpers ───────────────────────────────────────────────────────────
 
+def api_key_matches(expected, given):
+    """The ingest key, compared in constant time; an empty or unset key
+    never matches."""
+    import hmac
+    text = "".__class__
+    if not expected or not given:
+        return False
+    if not isinstance(expected, text) or not isinstance(given, text):
+        return False
+    return hmac.compare_digest(expected.encode("utf-8"), given.encode("utf-8"))
+
+
 def get_api_key(portal):
     """Read the sensor ingest API key from portal annotations."""
-    try:
-        from zope.annotation.interfaces import IAnnotations
-        ann = IAnnotations(portal)
-        return ann.get("senaite.pfas.facility_qc.api_key", "")
-    except Exception:
-        return ""
+    from zope.annotation.interfaces import IAnnotations
+    ann = IAnnotations(portal)
+    return ann.get("senaite.pfas.facility_qc.api_key", "")
 
 
 def set_api_key(portal, key):
-    try:   # change history (R1)
-        from senaite.pfas import config_history
-        config_history.track(portal, 'facility_api_key', "api_key", lambda: get_api_key(portal), label=u"Sensor ingest API key")
-    except Exception:
-        pass
+    from senaite.pfas import config_history
+    config_history.track(portal, 'facility_api_key', "api_key", lambda: get_api_key(portal), label=u"Sensor ingest API key")
     from zope.annotation.interfaces import IAnnotations
     ann = IAnnotations(portal)
     ann["senaite.pfas.facility_qc.api_key"] = key
 
 
-def _f(v):
-    """Convert to float or return None."""
-    try:
-        return float(v) if v not in (None, "", "None") else None
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _f
+
+

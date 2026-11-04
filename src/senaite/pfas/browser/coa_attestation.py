@@ -35,6 +35,15 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 logger = logging.getLogger("senaite.pfas.coa_attestation")
 
 
+def _frozen_shown(accred):
+    """When the governing criteria were recorded (a UTC stamp), as the
+    certificate prints it: on the laboratory's clock while the zone converts,
+    the stored stamp otherwise."""
+    from senaite.pfas import print_doc
+    at = accred.get("frozen_at")
+    return print_doc.lab_or(at, at) if at else at
+
+
 class PFASCoAAttestationView(BrowserView):
     """Resolve + render the controlled 3-tier attestation for a CoA."""
 
@@ -124,6 +133,7 @@ class PFASCoAAttestationView(BrowserView):
             out = disclosure.build_disclosure(snapshot)
             out["lines"] = [disclosure.format_departure(i)
                             for i in out.get("items") or []]
+            out["frozen_shown"] = _frozen_shown(out)
             return out
         except Exception as exc:
             logger.error("accreditation_disclosure: %s", exc)
@@ -158,19 +168,24 @@ class PFASCoAAttestationView(BrowserView):
             logger.warning("could not resolve QC qualifications: %s", exc)
             return []
 
+        from senaite.pfas.qc_qualification import HIGH_BIAS_CODE
         grouped = {}
         for entry in (summary.get("qualifiers") or []):
             code = entry.get("code") or u"?"
-            row = grouped.setdefault(code, {
+            statement = entry.get("statement") or u""
+            # entries sharing a code but not a statement (the high-bias note
+            # names its QC type) stay separate; every other code groups by code
+            key = (code, statement if code == HIGH_BIAS_CODE else u"")
+            row = grouped.setdefault(key, {
                 "code": code,
-                "statement": entry.get("statement") or u"",
+                "statement": statement,
                 "analytes": set(),
             })
             if entry.get("analyte"):
                 row["analytes"].add(entry["analyte"])
         out = []
-        for code in sorted(grouped):
-            row = grouped[code]
+        for key in sorted(grouped):
+            row = grouped[key]
             out.append({
                 "code": row["code"],
                 "statement": row["statement"],
@@ -206,6 +221,12 @@ class PFASCoAAttestationView(BrowserView):
         return (
             u'<div class="pfas-coa-stamp">{0}</div>'
         ).format(u" &middot; ".join(parts))
+
+    def times_line(self):
+        """"Times are <zone>." for the certificate's stamp: a certificate
+        always prints the authorizing date and time."""
+        from senaite.pfas import lab_time
+        return lab_time.footer()
 
     # ── resolution ────────────────────────────────────────────────────────
 
@@ -253,8 +274,11 @@ class PFASCoAAttestationView(BrowserView):
             return []
 
     def _actor_info(self, userid, when=None):
-        """Resolve a workflow actor's user id to display info + signature."""
-        fullname = userid
+        """Resolve a workflow actor's user id to display info + signature:
+        the Lab Contact's name, else the user's full name, else a
+        placeholder; never the account id."""
+        from senaite.pfas.coa_document import NO_STAFF_RECORD
+        fullname = NO_STAFF_RECORD
         jobtitle = u""
         signature_url = None
         user = None
@@ -292,12 +316,31 @@ class PFASCoAAttestationView(BrowserView):
         }
 
     def _current_actor_info(self):
-        """The publisher = the authorizing actor (publish happens now)."""
+        """The publisher = the authorizing person (publish happens now): the
+        name and role on their People & Roles record, never the account id.
+        Without one the name is a placeholder ("has_contact" False): a
+        preview says so and the designed certificate refuses to publish
+        (coa_document.data); publishing itself needs a Lab Contact
+        (EntryRightsGuard)."""
+        from senaite.pfas import coa_document
+        from senaite.pfas.browser import staff
         try:
             userid = api.get_current_user().getId()
         except Exception:
             userid = u""
-        return self._actor_info(userid, DateTime())
+        info = self._actor_info(userid, DateTime())
+        contact = staff.contact_for(userid)
+        name = (contact.getFullname() or u"") if contact is not None else u""
+        info["has_contact"] = bool(name)
+        if not name:
+            info.update(fullname=coa_document.AUTHORIZING_PLACEHOLDER, jobtitle=u"",
+                        signature_url=None, role=u"")
+            return info
+        info["fullname"] = name
+        settings = staff.staff_settings(contact)
+        info["role"] = coa_document.authorizing_role(
+            info.get("jobtitle"), userid == staff.director_userid(), settings.get("sign_as"))
+        return info
 
     def _fmt(self, when):
         """ISO 8601. On a certificate a client and an assessor both read, an
@@ -306,6 +349,9 @@ class PFASCoAAttestationView(BrowserView):
         another convention can mean a different day."""
         if not when:
             return u""
+        from senaite.pfas import lab_time
+        if lab_time.active():
+            return lab_time.show(when, "utc", u"%Y-%m-%d %H:%M")
         try:
             return when.strftime("%Y-%m-%d %H:%M")
         except Exception:

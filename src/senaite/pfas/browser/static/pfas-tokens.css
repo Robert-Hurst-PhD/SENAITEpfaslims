@@ -170,9 +170,10 @@
 
   /* ── Frame: identical on every page ───────────────────── */
   --pfas-header-h:    52px;
-  --pfas-panel-width: 220px;
-  --pfas-rail-width:  48px;
-  --frame-gutter-x:   30px;    /* sidebar edge → content: x = 220 + 30 = 250, as core */
+  --pfas-panel-width: 236px;   /* the section panel */
+  --pfas-rail-width:  72px;    /* the rail: an icon over a short label, and the top bar's menu button above it */
+  --pfas-bar-height:  56px;    /* the rail as a phone's bottom bar */
+  --frame-gutter-x:   30px;    /* the navigation's edge → content */
   --frame-gutter-y:   16px;
   --form-width:       960px;   /* the one narrow width for reading/form pages */
 }
@@ -212,6 +213,7 @@
   --radius-card: 8px;
   --radius-pill: 999px;
   --fab-size:    56px;
+  --fab-inset:   20px;   /* the action menu's distance from the window's corner */
   /* elevation */
   --shadow-card:       0 1px 3px rgba(0,0,0,.06);
   --shadow-card-hover: 0 4px 12px rgba(0,0,0,.12);
@@ -222,6 +224,18 @@
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --t-fast: 0ms; --t-pill: 0ms; --t-reveal: 0ms; }
+}
+/* A smaller screen: below 1280 px wide (a laptop scaled to 125 % or 150 %)
+   text and spacing step down one size and the panel folds to the rail
+   (pfas-sidebar.css); below 720 px tall the top bar is slimmer. At 1280 px and
+   wider nothing changes; a large screen keeps these sizes and shows more. */
+@media screen and (max-width: 1279.98px) {
+  :root { --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15px; --fs-xl: 18px; --fs-2xl: 24px;
+          --sp-3: 10px; --sp-4: 12px; --sp-5: 20px; --sp-6: 24px;
+          --ctl-h: 32px; --ctl-h-sm: 26px; --frame-gutter-x: 16px; }
+}
+@media screen and (max-height: 719.98px) {
+  :root { --pfas-header-h: 44px; --frame-gutter-y: 10px; }
 }
 /* The dark set: the same meanings, values chosen for 4.5:1 text on each ground.
    Screen only: paper is always the light set, so a person reading in the dark

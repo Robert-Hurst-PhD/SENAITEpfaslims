@@ -237,8 +237,7 @@ def mdl_rev2(spikes, blanks, existing=None):
     elif len(numeric) < len(blanks):
         if len(blanks) >= 100:
             v = _rank_99(numeric + [float("-inf")] * (len(blanks) - len(numeric)))
-            # an ND at the 99th rank is no number: -inf reached the MDL
-            # (LOW-1)
+            # an ND at the 99th rank is no number, never -inf
             out["mdl_b"] = None if v == float("-inf") else v
             out["mdl_b_rule"] = (u"99th percentile by rank, n >= 100 (§2(d)(iii)(B))" if out["mdl_b"] is not None
                                  else u"the blank at the 99th percentile gave no numerical result (§2(d)(iii)(B))")
@@ -246,8 +245,7 @@ def mdl_rev2(spikes, blanks, existing=None):
             out["mdl_b"] = max(numeric)
             out["mdl_b_rule"] = u"some blanks numerical: the highest result (§2(d)(iii)(B))"
     elif len(numeric) < 2:
-        # one blank has no standard deviation (it raised ZeroDivisionError and
-        # the study page failed)
+        # one blank has no standard deviation
         out["mdl_b"] = None
         out["mdl_b_rule"] = u"one method blank: no standard deviation (§2(d)(iii)(C) needs several)"
     else:

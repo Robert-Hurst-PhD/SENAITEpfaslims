@@ -366,7 +366,7 @@ def cell(col, ctx, profile, errors, where):
             code = lookup(maps, col["map"], v, ctx)
             if code is None:
                 errors.append({"row": where, "field": col.get("heading"), "type": "BLOCKING",
-                               "message": u"%s: %r has no code in the map %s -- add it (Code maps)"
+                               "message": u"%s: %r has no code in the map %s: add it on Code maps"
                                           % (col.get("heading"), u"%s" % v, col["map"])})
                 continue
             if code and code not in coded:
@@ -421,6 +421,11 @@ def render(f, rows):
     return nl.join(lines) + (nl if lines else u"")
 
 
+# the parts a file or package name fills in by itself, as the name editor's
+# chips read them (batch_id is the same value as batch)
+NAME_TOKENS = (("sdg", u"SDG"), ("batch", u"Batch"), ("date", u"Date"))
+
+
 def _name(pattern, tokens, errors):
     try:
         return (pattern or u"").format(**tokens)
@@ -435,7 +440,9 @@ def write(profile, facts, today=None):
     "delivery": (name, bytes)} -- the delivery is the one file, or a zip of
     them all."""
     errors = [{"row": 0, "field": "profile", "type": "BLOCKING", "message": m} for m in problems(profile)]
-    today = today or date.today()
+    if today is None:
+        from senaite.pfas import lab_time
+        today = lab_time.today()                  # the laboratory's day names the files
     batch = facts.get("batch") or {}
     tokens = {"batch_id": batch.get("id") or u"", "batch": batch.get("id") or u"",
               "sdg": batch.get("sdg") or batch.get("id") or u"",

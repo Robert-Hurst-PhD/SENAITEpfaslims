@@ -4,38 +4,26 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Lab Settings</title>
+  <title metal:fill-slot="title">Settings reference</title>
 </head>
 <body>
-<tal:t metal:fill-slot="header-title">Lab Settings</tal:t>
+<tal:t metal:fill-slot="header-title">Help</tal:t>
+  <tal:tabs metal:fill-slot="tabs">
+    <div class="pfas-seg-bar">
+    <nav class="pfas-seg pfas-seg-strip" aria-label="Help sections">
+      <a class="pfas-seg-item" tal:repeat="t view/help_tabs" tal:attributes="href t/url;
+           aria-selected python:'true' if t['slug'] == 'settings-reference' else 'false'"><span tal:replace="t/title"></span></a>
+    </nav>
+    </div>
+  </tal:tabs>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url;
                        groups view/groups;
-                       unset_n view/unconfigured_count;
                        total view/total_count">
 
-  <div class="pfas-note is-flush">
-    Every setting the laboratory owns, in one place, enumerated from the settings
-    registry rather than a maintained list &mdash; so a newly declared setting
-    appears here without anyone remembering to add it. Each row says whether it is
-    still the <strong>default in code</strong>, has been <strong>customised</strong>
-    by the lab, or is <strong>not configured</strong>. Settings are edited in the
-    page that owns them, linked on the right: this console lists and never writes,
-    so there is exactly one owner for each fact.
-  </div>
-
-  <!-- The count that matters. A judging criterion with no value does not fall
-       back to a plausible number — it refuses, and the batch cannot be released.
-       Until now nothing told a lab WHICH criterion. -->
-  <div tal:condition="unset_n" class="alert alert-error">
-    &#9888; <tal:n tal:replace="unset_n">2</tal:n> setting(s) are NOT CONFIGURED.
-    A judging criterion with no value blocks release rather than assuming one.
-    <a class="btn-sm btn-secondary"
-       tal:attributes="href string:${purl}/@@pfas-lab-settings?status=unset">Show me which</a>
-  </div>
-  <div tal:condition="not:unset_n" class="alert alert-success">
-    Every judging criterion has a value.
-  </div>
+  <!-- Documentation: what each setting is, its default, who may change it
+       and the page that edits it; the editors show the values in force -->
+  <p class="pfas-lead">Every setting the laboratory owns, its default and the page that edits it.</p>
 
   <form method="GET" class="pfas-filterbar"
         tal:attributes="action string:${purl}/@@pfas-lab-settings">
@@ -45,23 +33,13 @@
              tal:attributes="value view/query" />
     </div>
     <div class="pfas-field">
-      <label for="tier">Who may edit</label>
+      <label for="tier">Who may change it</label>
       <select name="tier" id="tier" class="pfas-select">
         <option value="">Anyone who may configure</option>
         <option tal:repeat="opt view/tier_options"
                 tal:attributes="value python:opt[0];
                                 selected python:view.tier_filter() == opt[0]"
                 tal:content="python:opt[1]">Lab</option>
-      </select>
-    </div>
-    <div class="pfas-field">
-      <label for="status">Status</label>
-      <select name="status" id="status" class="pfas-select">
-        <option value="">Any status</option>
-        <option tal:repeat="opt view/status_options"
-                tal:attributes="value python:opt[0];
-                                selected python:view.status_filter() == opt[0]"
-                tal:content="python:opt[1]">Default</option>
       </select>
     </div>
     <button type="submit" class="btn btn-primary">Filter</button>
@@ -77,11 +55,7 @@
     <button type="button" class="pfas-seg-item" role="tab" tal:repeat="g groups"
        tal:attributes="aria-selected python:'true' if g['id'] == firstid else 'false';
                        data-pane string:ls-${g/id}">
-      <tal:l tal:replace="g/label">Group</tal:l><span class="pfas-seg-count"><tal:c
-        tal:condition="python:g['shown'] == g['total']">(<tal:n tal:replace="g/total">0</tal:n>)</tal:c><tal:c
-        tal:condition="python:g['shown'] != g['total']">(<tal:n tal:replace="g/shown">0</tal:n> of <tal:t tal:replace="g/total">0</tal:t>)</tal:c></span><span
-        class="pfas-seg-flag" tal:condition="g/unset"
-        tal:attributes="title string:${g/unset} not configured">&#9888; <tal:n tal:replace="g/unset">1</tal:n></span>
+      <tal:l tal:replace="g/label">Group</tal:l>
     </button>
   </nav>
 
@@ -89,48 +63,29 @@
     <div tal:attributes="id string:ls-${g/id}; class python:'pfas-pane pfas-boxed is-active' if g['id'] == firstid else 'pfas-pane pfas-boxed'">
 
       <div class="table-wrap" tal:condition="g/rows">
-        <table class="pfas-table">
+        <table class="pfas-table" data-col-resize="lab-settings-1">
           <thead><tr>
-            <th>Setting</th><th>Value</th><th>Default</th>
-            <th>Status</th><th>Who may edit</th><th>Edit in</th>
+            <th>Setting</th><th>Default</th><th>Who may change it</th>
+            <th class="row-plus-cell"><span class="pfas-sr-hide">Editor</span></th>
           </tr></thead>
           <tbody>
             <tal:rows tal:repeat="r g/rows">
             <tr>
               <td>
                 <div class="pfas-cell-name" tal:content="r/label">Label</div>
-                <div class="pfas-prob" tal:condition="r/judging">
-                  decides pass / fail
-                </div>
                 <div class="pfas-muted" tal:condition="r/help|nothing"
                      tal:content="r/help"></div>
               </td>
               <td>
-                <span class="pfas-cell-name" tal:content="r/display_value">value</span>
-                <span class="pfas-muted" tal:condition="r/unit|nothing"
-                      tal:content="r/unit"></span>
-              </td>
-              <!-- the default only where it differs from the value in force -->
-              <td class="pfas-muted">
-                <tal:s tal:condition="python:r['has_seed'] and r.get('customised')" tal:content="r/display_seed">seed</tal:s>
-                <tal:s tal:condition="python:not r['has_seed'] and r.get('value') in (None, u'')">no default &mdash; must be set</tal:s>
-              </td>
-              <td>
-                <!-- a tag only for something to act on -->
-                <span tal:condition="python:r['status_class'] in ('badge-expired', 'badge-quarantine')"
-                      tal:attributes="class string:badge ${r/status_class}"
-                      tal:content="r/status_label">NOT CONFIGURED</span>
-                <span tal:condition="python:r['status_class'] not in ('badge-expired', 'badge-quarantine')"
-                      tal:content="r/status_label">Default</span>
+                <tal:s tal:condition="r/has_seed|nothing" tal:content="r/display_seed">seed</tal:s>
+                <tal:s tal:condition="python:not r.get('has_seed') and not r.get('seed_detail')">No default: set by the lab</tal:s>
+                <div class="pfas-muted" tal:condition="r/seed_detail|nothing" tal:content="r/seed_detail">wording</div>
               </td>
               <td class="pfas-muted"
                   tal:content="python:'Lab manager / QAO' if r['tier'] == 'lab' else 'System admin'">Lab</td>
               <td>
                 <a class="btn-sm btn-secondary" tal:condition="r/owner_href"
                    tal:attributes="href r/owner_href; title string:${r/owner_view}">Open editor</a>
-                <span tal:condition="not:r/owner_href" class="pfas-muted">
-                  this page
-                </span>
               </td>
             </tr>
             </tal:rows>
@@ -154,10 +109,9 @@
   </tal:groups>
   </tal:first>
 
-  <p class="pfas-muted pfas-mt">
-    <tal:t tal:replace="total">0</tal:t> settings declared. Values are read from
-    the page that owns each one, so what you see here is what the software uses.
-  </p>
+  <div class="pfas-muted pfas-mt">
+    <tal:t tal:replace="total">0</tal:t> settings declared.
+  </div>
 
   </tal:def>
 </metal:content>

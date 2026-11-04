@@ -172,14 +172,17 @@ a.pfas-search-all {
 .pfas-subbar-actions { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .pfas-subbar-actions:empty { display: none; }
 
-@media (max-width: 768px) {
-  /* phone: the search box hides behind an icon and opens full width */
+@media (max-width: 1024px) {
+  /* narrow: the search box folds to its icon and opens full width, so the
+     context chip keeps its room */
   .pfas-topbar-search { display: none; }
   .pfas-topbar-search-toggle { display: list-item; }
   body.pfas-search-mobile .pfas-topbar-search {
     display: flex; position: absolute; left: 8px; right: 8px; top: 10px;
     max-width: none; margin: 0; z-index: 9200;
   }
+}
+@media (max-width: 768px) {
   .pfas-topbar-title { font-size: var(--fs-base); padding: 0 var(--sp-2); }
   /* the context zone (core's object tabs, a PFAS chip) takes its own row */
   /* the bar grows by the wrapped row instead of drawing it over the page */
@@ -212,6 +215,21 @@ a.pfas-search-all {
   width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%;
   font-size: var(--fs-sm); font-weight: 700; line-height: 1;
 }
+
+/* Notifications bell (bell.py): a coral count of what is open; the list
+   is fetched after the page loads */
+.pfas-topbar .pfas-bell .dropdown-toggle::after { display: none; }
+.pfas-topbar .pfas-topbar-bell { position: relative; }
+.pfas-bell-count { position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--s-danger); color: var(--on-accent); font-size: var(--fs-xs);
+  font-weight: 700; line-height: 18px; text-align: center; }
+.pfas-bell-menu { width: 400px; max-width: calc(100vw - 32px); max-height: 70vh; overflow-y: auto; }
+.pfas-bell-item { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px var(--sp-2); padding: 8px 16px;
+  border-left: 3px solid var(--s-warn-bd); }
+.pfas-bell-item.is-bad { border-left-color: var(--s-danger); }
+.pfas-bell-text { flex: 1 0 100%; display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: normal; }
+.pfas-bell-detail, .pfas-bell-at { font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-bell-foot { padding: 8px 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
 
 /* Accessibility ------- */
 /* the page title is the page's one heading, drawn as the bar's text */

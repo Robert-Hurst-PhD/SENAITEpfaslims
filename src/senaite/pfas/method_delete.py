@@ -33,7 +33,6 @@ from __future__ import absolute_import, unicode_literals
 import json
 import logging
 import os
-from datetime import datetime
 
 logger = logging.getLogger("senaite.pfas.method_delete")
 
@@ -104,6 +103,7 @@ def references(method_id, src):
     """[(what, which)] for every use of `method_id` in `src` (collect()'s
     shape; records as stored, the SOP / logbook slugs already resolved to
     method ids by their own stores)."""
+    from senaite.pfas import print_doc
     rows = []
 
     def add(what, items):
@@ -139,7 +139,8 @@ def references(method_id, src):
         [r.get("number") for r in src.get("cocs") or []
          if any((row or {}).get("method") == method_id for row in r.get("rows") or [])])
     add(u"Issued method revisions",
-        [u"Rev {0} ({1})".format(r.get("rev"), (r.get("issued_at") or u"")[:10])
+        [u"Rev {0} ({1})".format(r.get("rev"), print_doc.lab_or(r.get("issued_at"), (r.get("issued_at") or u"")[:10],
+                                                                u"%Y-%m-%d"))
          for r in src.get("revisions") or []])
     if method_id and src.get("reference_method") == method_id:
         rows.append((u"Reference Definitions take their limits from it",
@@ -179,10 +180,7 @@ def removals(src):
 def history_entry(method_id, label, profile, who, at, removed):
     """The Configuration History entry a deletion writes: who, when, the
     profile as it stood (path by path) and what went with it."""
-    try:
-        from senaite.pfas.config_history import IGNORED_KEYS
-    except ImportError:                                     # tests: loaded by path
-        from config_history import IGNORED_KEYS
+    from senaite.pfas.config_history import IGNORED_KEYS
     return {
         "at": at, "who": who, "store": HISTORY_STORE, "key": method_id,
         "label": u"Method deleted: {0}".format(_u(label or method_id)),
@@ -197,12 +195,10 @@ def history_entry(method_id, label, profile, who, at, removed):
 
 def deleted_ids(portal):
     """The ids of deleted methods: the installer seeds none of them again.
-    Never raises (an unreadable store means none)."""
-    try:
-        from zope.annotation.interfaces import IAnnotations
-        return frozenset((IAnnotations(portal).get(DELETED_KEY) or {}).keys())
-    except Exception:                                       # noqa: BLE001
-        return frozenset()
+    An unreadable store raises: read as "none deleted" it would bring every
+    deleted method back."""
+    from zope.annotation.interfaces import IAnnotations
+    return frozenset((IAnnotations(portal).get(DELETED_KEY) or {}).keys())
 
 
 def _tombstone(portal, method_id, who, at, label):
@@ -567,8 +563,8 @@ def delete(portal, method_id, who=None):
     from bika.lims import api
     from senaite.pfas import config_history
     removed = removals(src)
-    who = who or _current_user()
-    at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    who = who or config_history.actor()
+    at = config_history.now()
     # recorded first, in the same transaction: no entry, no deletion
     config_history.append(portal, history_entry(method_id, src["label"], src["profile"],
                                                 who, at, removed[1:] if has_profile else removed))
@@ -586,36 +582,18 @@ def delete(portal, method_id, who=None):
     _forget(portal, method_id)
     _drop_empty_edd_rows(portal, method_id)
     _tombstone(portal, method_id, who, at, src["label"])
+    from senaite.pfas.retention_sync import sync
     try:
-        from senaite.pfas.retention_sync import sync
         for line in sync(portal):
             logger.info("retention: %s", line)
     except Exception as exc:                                # noqa: BLE001
         logger.warning("method %s deleted; Sample Type retention not synced: %s", method_id, exc)
     # the worker's copy follows the commit, never a deletion that rolled back
-    import transaction
-    transaction.get().addAfterCommitHook(_export_after_commit, args=(portal,))
+    from senaite.pfas import after_commit
+    from senaite.pfas.method_profile_store import export_profiles_to_file
+    after_commit.run_once("method profiles export", export_profiles_to_file, portal)
     logger.info("method %s deleted by %s", method_id, who)
     return removed
-
-
-def _export_after_commit(ok, portal):
-    if not ok:
-        return
-    try:
-        from senaite.pfas.method_profile_store import export_profiles_to_file
-        export_profiles_to_file(portal)
-    except Exception as exc:                                # noqa: BLE001
-        logger.error("method deleted but the worker's export was not rewritten: %s", exc)
-
-
-def _current_user():
-    try:
-        from bika.lims import api
-        user = api.get_current_user()
-        return (user.getId() if user is not None else None) or u"system"
-    except Exception:                                       # noqa: BLE001
-        return u"system"
 
 
 def _delete_generated_profiles(portal, method_id):
@@ -633,16 +611,14 @@ def _delete_generated_profiles(portal, method_id):
 
 def _forget(portal, method_id):
     """The method's records outside its profile: the wizard's links and
-    sessions, and the legacy annotation copy of its profile."""
+    sessions."""
     from zope.annotation.interfaces import IAnnotations
     from senaite.pfas.method_bridge import METHOD_ASSOC_KEY
-    from senaite.pfas.method_profile_store import PFAS_METHOD_PROFILES_KEY
     from senaite.pfas.browser.method_wizard import WIZARD_SESSIONS_KEY
     ann = IAnnotations(portal)
-    for key in (METHOD_ASSOC_KEY, PFAS_METHOD_PROFILES_KEY):
-        store = ann.get(key)
-        if store is not None and method_id in store:
-            del store[method_id]
+    store = ann.get(METHOD_ASSOC_KEY)
+    if store is not None and method_id in store:
+        del store[method_id]
     sessions = ann.get(WIZARD_SESSIONS_KEY)
     for wid in _wizard_sessions(portal, method_id):
         if sessions is not None and wid in sessions:

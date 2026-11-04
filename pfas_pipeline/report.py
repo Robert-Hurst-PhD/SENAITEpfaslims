@@ -1,13 +1,11 @@
 """
-Report Generator — replaces RunFullPDFPipeline / MergePDFsStable (Adobe COM).
-
-Key change per your requirement: the PDF is no longer assembled from loose
-files on S:\\PFAS — it is GENERATED FROM the extraction log + barcode scans
-+ QC results captured during analysis.  Sections:
+Report generator: the batch report PDF is GENERATED FROM the extraction log,
+barcode scans and the QC results captured during analysis, never assembled
+from loose files. Sections:
 
   1. Cover / batch summary
   2. Summary results table (with qualifiers)
-  3. QC Log (Sheet 6 equivalent)
+  3. QC Log
   4. Calibration & CCV table
   5. IS / Surrogate response table
   6. LFSM / LFSMD recovery table
@@ -19,7 +17,6 @@ Pure-Python: reportlab + pypdf — runs in the SENAITE Docker container.
 """
 
 from __future__ import annotations
-from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -32,6 +29,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from .models import Batch
 from .extraction_log import ExtractionLog
+from . import lab_clock
 
 
 _styles = getSampleStyleSheet()
@@ -46,6 +44,12 @@ _GRID = TableStyle([
     ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
     ("VALIGN",     (0, 0), (-1, -1), "TOP"),
 ])
+
+
+def _run_day(batch) -> str:
+    """The run's date on the laboratory's calendar (the recorded date as is
+    when no zone is set)."""
+    return lab_clock.day(batch.date) or ""
 
 
 def _tbl(headers: list[str], rows: list[list], col_widths=None) -> Table:
@@ -75,9 +79,12 @@ def generate_batch_report(
     story.append(Paragraph(
         f"Method: {batch.method_id or '—'} &nbsp;|&nbsp; Matrix: {batch.matrix} "
         f"&nbsp;|&nbsp; Analyst: {batch.analyst} "
-        f"&nbsp;|&nbsp; Date: {batch.date:%Y-%m-%d} "
+        f"&nbsp;|&nbsp; Date: {_run_day(batch)} "
         f"&nbsp;|&nbsp; Instrument file: {batch.instrument_file}", _BODY))
     story.append(Spacer(1, 12))
+    if lab_clock.footer():
+        story.append(Paragraph(lab_clock.footer(), _BODY))
+        story.append(Spacer(1, 6))
 
     n_flags = len(batch.qc_flags)
     story.append(Paragraph(
@@ -154,7 +161,7 @@ def generate_batch_report(
         story.append(_tbl(
             ["Analyte", "LFSM %", "LFSMD %", "RPD %", "Pass"],
             [[r.analyte, f"{r.recovery_lfsm:.1f}", f"{r.recovery_lfsmd:.1f}",
-              f"{r.rpd_pct:.1f}", "✓" if r.passes else "✗ RPD"]
+              f"{r.rpd_pct:.1f}" if r.rpd_judged else "not judged", "✓" if r.passes else "✗ RPD"]
              for r in batch.lfsmd_results],
         ))
     story.append(PageBreak())
@@ -164,13 +171,13 @@ def generate_batch_report(
     if extraction_log:
         el = extraction_log.to_dict()
         story.append(Paragraph(
-            f"Started {el['started']} — "
-            f"Completed {el['completed'] or 'in progress'}", _BODY))
+            f"Started {lab_clock.stamp(el['started'])} — "
+            f"Completed {lab_clock.stamp(el['completed']) or 'in progress'}", _BODY))
         if el["steps"]:
             story.append(Spacer(1, 6))
             story.append(_tbl(
                 ["Time", "Step", "Detail", "Value", "By"],
-                [[s["at"][11:19], s["step"], s["detail"], s["value"], s["by"]]
+                [[lab_clock.clock(s["at"]), s["step"], s["detail"], s["value"], s["by"]]
                  for s in el["steps"]],
             ))
         if el["reagent_scans"]:
@@ -178,7 +185,7 @@ def generate_batch_report(
             story.append(Paragraph("Reagents & standards used", _H2))
             story.append(_tbl(
                 ["Time", "Step", "Item", "Lot #", "Expiry"],
-                [[(s.get("at") or "")[11:19], s.get("step", ""),
+                [[lab_clock.clock(s.get("at") or ""), s.get("step", ""),
                   s.get("name") or s.get("catalog_number") or "",
                   s.get("lot_number") or "", (s.get("expiry_date") or "")[:10]]
                  for s in el["reagent_scans"]],
@@ -200,7 +207,8 @@ def generate_batch_report(
             for row in sig_rows:
                 if row and row[0].lower().startswith(s["role"].lower()):
                     row[1] = s["initials"]
-                    row[3] = s["at"][:10]
+                    # a sign-off is a UTC instant: its date on the lab's calendar
+                    row[3] = lab_clock.day(s["at"]) or s["at"][:10]
     sig = Table(sig_rows, colWidths=[1.6*inch, 1.6*inch, 0.8*inch, 1.6*inch])
     sig.setStyle(TableStyle([
         ("FONTSIZE", (0, 0), (-1, -1), 11),
@@ -212,25 +220,3 @@ def generate_batch_report(
     return output_path
 
 
-def merge_external_pdfs(main_report: Path, attachments: list[dict],
-                        output_path: Path) -> Path:
-    """
-    MergePDFsStable replacement.  attachments = [{"path":…, "label":…}, …]
-    (CoC, instrument raw report, checklist).  Adds bookmarks per document.
-    """
-    from pypdf import PdfWriter, PdfReader
-
-    writer = PdfWriter()
-    offset = 0
-
-    docs = [{"path": main_report, "label": "Batch Report"}] + attachments
-    for d in docs:
-        reader = PdfReader(str(d["path"]))
-        for page in reader.pages:
-            writer.add_page(page)
-        writer.add_outline_item(d["label"], offset)
-        offset += len(reader.pages)
-
-    with open(output_path, "wb") as f:
-        writer.write(f)
-    return output_path

@@ -48,7 +48,7 @@
         <button class="btn-sm btn-secondary" type="submit" name="action" value="compute"
                 tal:condition="python:edit and view.mxb_runs()">Compute</button>
 
-        <table class="pfas-table">
+        <table class="pfas-table" data-col-resize="assigned-levels-1">
           <thead><tr><th>Analyte</th><th>Level</th></tr></thead>
           <tbody>
             <tr tal:repeat="a view/analytes">
@@ -70,11 +70,11 @@
 
     <section class="bench-block" tal:condition="python:len(view.records()) > 0">
       <h2 class="bench-h">Record</h2>
-      <table class="pfas-table">
+      <table class="pfas-table" data-col-resize="assigned-levels-2">
         <thead><tr><th>Saved</th><th>By</th><th>Source</th><th>Unit</th><th>Runs</th><th>Analytes</th></tr></thead>
         <tbody>
           <tr tal:repeat="h view/records">
-            <td tal:content="h/at">2026-10-08</td><td tal:content="h/by">demo_labmanager</td>
+            <td tal:content="python:view.lab_at(h.get('at'), h.get('at'))">2026-10-08</td><td tal:content="h/by">demo_labmanager</td>
             <td tal:content="python:dict(view.sources()).get(h['source'], h['source'])">Certificate</td>
             <td tal:content="h/unit">ng/g</td>
             <td tal:content="python:', '.join(h.get('runs') or [])">WS-1</td>

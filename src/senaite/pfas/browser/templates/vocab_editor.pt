@@ -28,17 +28,17 @@
       <input type="hidden" name="list" tal:attributes="value name" />
       <fieldset class="pfas-ro" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
       <div class="section-group-hdr" tal:content="view/title">List</div>
-      <table class="pfas-table pfas-table-form">
+      <table class="pfas-table pfas-table-form" data-col-resize="vocab-editor-1">
         <thead><tr><th>Term</th><th>Offered for new records</th></tr></thead>
         <tbody>
           <tr tal:repeat="t view/terms">
             <td><input type="hidden" tal:attributes="name string:t__${repeat/t/index}__key; value t/key" />
                 <input type="text" tal:attributes="name string:t__${repeat/t/index}__label; value t/label;
                                                    aria-label string:Label for ${t/key}" /></td>
-            <td><input type="checkbox" value="on"
+            <td><label class="pfas-switch"><input type="checkbox" value="on"
                        tal:attributes="name string:t__${repeat/t/index}__active;
                                        aria-label string:Offer ${t/label};
-                                       checked python:'checked' if t['active'] else None" /></td>
+                                       checked python:'checked' if t['active'] else None" /><span class="pfas-switch-track"></span></label></td>
           </tr>
         </tbody>
       </table>

@@ -5,8 +5,11 @@ The extraction batch is the WORKSHEET: its samples are the samples of
 its analyses (core's Add Analyses is how they are selected), and its QC
 members are records on it, populated from the method profile's QC
 composition or the project plan, each QC given its parent before labels are
-issued. Every member carries the injection name the LIMS issues: a
-sample's SENAITE id, a QC "<worksheet>-<role><n>".
+issued. Every member carries the injection name the LIMS issues: until the
+batch's first labels, a sample's SENAITE id and a QC "<worksheet>-<role><n>";
+at that first issue the batch takes its number for the day and each member
+its name by the scheme (injection_names.py, name_members). A batch whose
+labels were issued before keeps its names.
 
     member = {"id", "role", "sample_uid", "sample_id", "client_sid", "matrix",
               "parent" (a sample member's id), "lfsm_of" (an LFSMD: its LFSM
@@ -54,6 +57,16 @@ def _int(v):
         return None
 
 
+def blank_count(profile, role):
+    """How many of `role` a batch gets while its `per_batch` is blank: none
+    for a QC type the method does not switch on, none for the sample
+    duplicate (it stands in for the LFSMD), else one. The method profile
+    shows this number in an empty per-batch box."""
+    if not (((profile or {}).get("qc_acceptance") or {}).get(role) or {}).get("enabled"):
+        return 0
+    return 0 if role == u"Dup" else 1
+
+
 def plan_qc(profile, comp, n_samples):
     """{role: count} the batch needs. The method's QC types that are switched
     on, each `per_batch` (blank: 1; the sample duplicate 0, as it stands in
@@ -69,7 +82,7 @@ def plan_qc(profile, comp, n_samples):
             continue
         count = _int(conf.get("per_batch"))
         if count is None:
-            count = 0 if role == u"Dup" else 1
+            count = blank_count(profile, role)
         if role == u"LFSM":
             every = _int(conf.get("frequency"))
             if every:
@@ -114,6 +127,41 @@ def sync_samples(members, samples):
                     "matrix": s.get("matrix") or u"", "parent": u"", "lfsm_of": u"",
                     "level": u"", "amount": u"", "unit": u"", "injection": s["id"]})
     return out
+
+
+def name_members(members, method_code, matrix_code, batch):
+    """Members named by the scheme (injection_names.py), for an extraction
+    batch numbered `batch` (261006-01). A member already named by it keeps its
+    name; the rest are named and marked. `matrix_code(matrix)` gives a
+    matrix's code. Names stay unique in the batch."""
+    from senaite.pfas import injection_names as nm
+    members = [dict(m) for m in members or []]
+    by_id = dict((m["id"], m) for m in members)
+    samples = [m for m in members if m.get("role") == u"Sample"]
+    mats = [s.get("matrix") for s in samples if s.get("matrix")]
+    main = max(set(mats), key=mats.count) if mats else u""
+    used = set(m.get("injection") for m in members if m.get("named"))
+    for m in members:
+        if m.get("named"):
+            continue
+        role = m.get("role") or u""
+        parent = by_id.get(m.get("parent")) or {}
+        if role == u"Sample":
+            name = nm.extracted(method_code, matrix_code(m.get("matrix") or main),
+                                m.get("sample_id") or m.get("injection"), batch)
+        elif parent:
+            name = nm.extracted(method_code, matrix_code(parent.get("matrix") or main),
+                                parent.get("sample_id") or parent.get("injection"), batch,
+                                qc=nm.role_part(role, m.get("level")))
+        else:
+            name = nm.extracted(method_code, matrix_code(main), nm.role_part(role, m.get("level")), batch)
+        base, n = name, 1
+        while name in used:
+            n += 1
+            name = u"%s_%02d" % (base, n)
+        used.add(name)
+        m["injection"], m["named"] = name, True
+    return members
 
 
 def _injection(ws_id, role, members):
@@ -322,24 +370,121 @@ def new_request(requests, members, injection, kind, fold, reason, by, at):
     return requests, u""
 
 
+def planned_fold(pct=None, take=None, to=None):
+    """A planned dilution's fold: from the share of the extract (a %, 10 % is
+    10-fold) or from the volumes (taken, made up to). None when it is not a
+    dilution (a fold of 1 or less, or nothing given)."""
+    def num(v):
+        try:
+            return float(u"%s" % v)
+        except (TypeError, ValueError):
+            return None
+    p, t, v = num(pct), num(take), num(to)
+    fold = None
+    if p:
+        fold = 100.0 / p
+    elif t and v:
+        fold = v / t
+    return round(fold, 6) if fold and fold > 1 else None
+
+
+def add_planned(requests, members, plans, by, at):
+    """(requests, errors): a dilution request per planned dilution,
+    marked planned with its route. One run with this run ("with") is named now
+    and marked in_run, so it is never offered again as a separate run; one run
+    separately waits in Ready to build like any request."""
+    from senaite.pfas.sample_table import route_key
+    errors = []
+    for p in plans or []:
+        requests, err = new_request(requests, members, p.get("injection"), u"dilution", p.get("fold"),
+                                    u"Planned dilution", by, at)
+        if err:
+            errors.append(u"%s: %s" % (p.get("injection"), err))
+            continue
+        req = requests[-1]
+        route = route_key(p.get("route"))
+        # a re-prepared smaller aliquot goes to the next extraction batch
+        runs = u"separately" if route == u"reprep" else (p.get("runs") or u"separately")
+        req.update(planned=True, route=route, runs=runs)
+        if req["runs"] == u"with":
+            req.update(in_run=True, new_injection=made_name(req, requests))
+    return requests, errors
+
+
 def made_name(request, requests):
     """The LIMS-issued name of what the bench makes: '<injection>-D<fold>' for
     a dilution, '<injection>-RI<n>' for a re-injection."""
     base = request["injection"]
+    # a name by the scheme ends in its repeat part: _DIL10, _RE1 (injection_names.py)
+    scheme = u"_" in base
     if request["kind"] == u"dilution":
-        return u"%s-D%s" % (base, request["fold"])
+        return (u"%s_DIL%s" if scheme else u"%s-D%s") % (base, request["fold"])
     n = len([r for r in requests if r.get("kind") == u"reinjection" and r.get("injection") == base
              and r.get("new_injection")]) + 1
-    return u"%s-RI%d" % (base, n)
+    return (u"%s_RE%d" if scheme else u"%s-RI%d") % (base, n)
 
 
-def mark_made(requests, rid, by, at):
-    """(requests, request, error): the request made, its injection named."""
+# how a labelled standard was handled when a dilution was made: the worker
+# judges the injection IS against the topped-up
+# level, or expects it at 1 / fold when not added; a surrogate not added is
+# corrected by the fold, one added or topped up is read as measured
+HANDLINGS = ((u"not_added", u"Not added"), (u"topped_up", u"Topped up"), (u"added", u"Added"))
+
+
+from senaite.pfas.rounding import number as _num
+
+
+def prep_from_form(form, rid):
+    """A dilution's prep as the Make dialog posts it (fields <name>.<request id>)."""
+    g = lambda k: (form.get(u"%s.%s" % (k, rid)) or u"").strip()     # noqa: E731
+    return {"extract_ul": _num(g("extract_ul")), "final_ul": _num(g("final_ul")),
+            "diluent_lot": g("diluent_lot"), "is_handling": g("is_handling"),
+            "is_lot": g("is_lot"), "is_ul": _num(g("is_ul")),
+            "sur_handling": g("sur_handling"), "sur_lot": g("sur_lot"), "sur_ul": _num(g("sur_ul"))}
+
+
+def prep_problems(prep, fold):
+    """What a dilution's prep lacks: volumes, the diluent, how each labelled
+    standard was handled and, where added, its lot and volume. [] when complete."""
+    out = []
+    if not prep.get("extract_ul") or prep["extract_ul"] <= 0:
+        out.append(u"Enter the extract taken (\u00b5L).")
+    if not prep.get("final_ul") or prep["final_ul"] <= 0:
+        out.append(u"Enter the final volume (\u00b5L).")
+    if not prep.get("diluent_lot"):
+        out.append(u"Choose the diluent lot.")
+    for key, what in ((u"is", u"internal standard"), (u"sur", u"surrogate")):
+        h = prep.get(u"%s_handling" % key)
+        if h not in dict(HANDLINGS):
+            out.append(u"Say how the %s was handled." % what)
+        elif h != u"not_added" and (not prep.get(u"%s_lot" % key) or not prep.get(u"%s_ul" % key)):
+            out.append(u"Choose the %s lot and its volume." % what)
+    return out
+
+
+def dilution_given(prep):
+    """The dilution the volumes make (final / extract), or None."""
+    if prep.get("extract_ul") and prep.get("final_ul"):
+        return prep["final_ul"] / prep["extract_ul"]
+    return None
+
+
+def matches_fold(prep, fold):
+    """The volumes give the fold asked for (within 1 %)."""
+    given, f = dilution_given(prep), _num(fold)
+    return bool(given and f) and abs(given - f) <= 0.01 * f
+
+
+def mark_made(requests, rid, by, at, prep=None):
+    """(requests, request, error): the request made, its injection named; a
+    dilution keeps its prep (each dilution is its own vial)."""
     requests = [dict(r) for r in requests or []]
     req = next((r for r in requests if r.get("id") == rid), None)
     if req is None or req.get("status") != u"open":
         return requests, None, u"No open request %s." % rid
     req.update(status=u"made", made_by=by, made_at=at, new_injection=made_name(req, requests))
+    if prep is not None:
+        req["prep"] = dict(prep, given=dilution_given(prep), matches=matches_fold(prep, req.get("fold")))
     return requests, req, u""
 
 
@@ -402,6 +547,32 @@ def label_rows(members, containers, meta):
 
 # ── the worksheet annotation ──────────────────────────────────────────────────
 
+CODE_KEY = "senaite.pfas.extraction_batch_code"          # on the worksheet
+CODES_KEY = "senaite.pfas.extraction_batch_codes"        # on the portal: every code issued
+
+
+def batch_code_of(ws):
+    """The worksheet's extraction batch number (261006-01), or "" when it was
+    never given one (a batch named before the scheme keeps its names)."""
+    from zope.annotation.interfaces import IAnnotations
+    return IAnnotations(ws).get(CODE_KEY) or u""
+
+
+def issue_batch_code(portal, ws, day_iso):
+    """The day's next extraction batch number, given to the worksheet once."""
+    from zope.annotation.interfaces import IAnnotations
+    from senaite.pfas import injection_names as nm
+    have = batch_code_of(ws)
+    if have:
+        return have
+    ann = IAnnotations(portal)
+    codes = list(ann.get(CODES_KEY) or [])
+    code = nm.batch_code(day_iso, nm.next_batch_number(day_iso, codes))
+    ann[CODES_KEY] = codes + [code]
+    IAnnotations(ws)[CODE_KEY] = code
+    return code
+
+
 def load(ws):
     from zope.annotation.interfaces import IAnnotations
     try:
@@ -463,33 +634,46 @@ def is_worksheet(obj):
 def worksheets_of(batch):
     """The worksheets holding the batch's analyses."""
     seen, out = set(), []
-    try:
-        for sample in batch.getAnalysisRequests() or []:
-            for an in sample.getAnalyses(full_objects=True):
-                ws = an.getWorksheet() if hasattr(an, "getWorksheet") else None
-                if ws is not None and ws.UID() not in seen:
-                    seen.add(ws.UID())
-                    out.append(ws)
-    except Exception:                                       # noqa: BLE001
-        pass
+    for sample in batch.getAnalysisRequests() or []:
+        for an in sample.getAnalyses(full_objects=True):
+            ws = an.getWorksheet() if hasattr(an, "getWorksheet") else None
+            if ws is not None and ws.UID() not in seen:
+                seen.add(ws.UID())
+                out.append(ws)
     return out
 
 
 def home(obj):
     """Where the extraction record lives: the worksheet. Given a client
     Batch (an older link), its one worksheet; the Batch itself only while it
-    has no worksheet or several (an older record not yet moved)."""
-    if obj is None or is_worksheet(obj):
+    has no worksheet or several (an older record not yet moved). Anything
+    else (the site, a page opened outside a batch) is its own home."""
+    if getattr(obj, "portal_type", "") != "Batch":
         return obj
     wss = worksheets_of(obj)
     return wss[0] if len(wss) == 1 else obj
 
 
+def samples_on(ws):
+    """The worksheet's samples, found through the analysis catalog: only the
+    samples are woken, never each analysis (a worksheet holds hundreds). In
+    no set order; samples_of keeps the worksheet's own."""
+    from bika.lims import api
+    from senaite.pfas.core_fields import samples_of
+    try:
+        # the catalog itself: api.search with a portal_type finds nothing here
+        brains = api.get_tool("senaite_catalog_analysis")(getWorksheetUID=api.get_uid(ws))
+        # a byte-string path: traversal finds nothing by a unicode one
+        paths = sorted(set(str(b.getPath().rsplit(str("/"), 1)[0]) for b in brains))
+        return [s for s in (api.get_object_by_path(p, None) for p in paths) if s is not None]
+    except Exception:                                       # noqa: BLE001
+        return samples_of(ws)
+
+
 def linked_batch(ws):
     """The client Batch most of the worksheet's samples belong to, or None."""
-    from senaite.pfas.core_fields import samples_of
     counts = {}
-    for s in samples_of(ws) if is_worksheet(ws) else []:
+    for s in samples_on(ws) if is_worksheet(ws) else []:
         b = s.getBatch() if hasattr(s, "getBatch") else None
         if b is not None:
             counts[b.UID()] = (counts.get(b.UID(), (0, b))[0] + 1, b)

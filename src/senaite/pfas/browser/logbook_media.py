@@ -1,20 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-@@pfas-logbook-media — storage and serving for guided-step images (GIF/photo).
+@@pfas-logbook-media — storage and serving for the guided extraction's stage
+images (GIF/photo), set on the method profile's extraction stages.
 
-Follows the add-on's established binary convention (see sop_documents.py,
-reagents.py): the BYTES live on the filesystem under /data, and only a token
-string is stored in ZODB (inside the logbook definition's steps_json). There
-is no NamedBlobFile/NamedBlobImage usage anywhere in this add-on, and a Data.fs
-full of GIFs would wreck pack/backup times.
+Follows the add-on's binary convention (see sop_documents.py, reagents.py):
+the BYTES live on the filesystem under /data, and only a token string is
+stored in ZODB (on the stage). A Data.fs full of GIFs would wreck pack and
+backup times.
 
 Filenames are IMMUTABLE tokens (uuid4 hex + extension) and are never
-overwritten. That matters for controlled documents: `_handle_new_revision`
-copies a definition verbatim, so a draft shares its parent's tokens, and
-replacing a step image mints a NEW token rather than mutating the file an
-archived revision still points at. PreparedStandard pins
-(logbook_slug, logbook_revision), so an archived revision's imagery must stay
-byte-identical forever.
+overwritten: replacing an image mints a NEW token, so a profile revision
+that names the old one still shows it.
 
 GET  ?f=<token>        → serve inline (so it renders in an <img>)
 POST action=upload     → multipart, manager-only, returns JSON {ok, token, url}
@@ -205,12 +201,8 @@ class PFASLogbookMediaView(BrowserView):
         # Uploading step imagery is editing lab configuration.
         if not require_manager(self.context, self.request):
             return self._json({"ok": False, "error": "Forbidden"}, status=403)
-        try:
-            from plone.protect.interfaces import IDisableCSRFProtection
-            from zope.interface import alsoProvides
-            alsoProvides(self.request, IDisableCSRFProtection)
-        except ImportError:
-            pass
+        from senaite.pfas.browser.perms import disable_csrf
+        disable_csrf(self.request)
 
         upload = self.request.form.get("media")
         token, error = save_media(upload)

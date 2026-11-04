@@ -9,160 +9,261 @@
       cf_groups   config_forms.render(section, stored)
       cf_form     id of the form element the inputs belong to (HTML form=
                   attribute, so a section can sit inside another form's markup)
+      cf_flat     optional; True draws each group under a plain heading
+                  instead of an open disclosure (a page of tabs: no second
+                  level)
+      cf_sec      optional; with cf_flat, the section is drawn inside a
+                  page section (details.pfas-sec) whose summary names it: a
+                  section of one group draws no heading of its own
+
+  Every control says what it counts as when changed (data-kind,
+  config_forms.change_kind), for a page that counts unsaved changes.
 
   A default is a placeholder, never a value: an empty input saves as unset.
 -->
 <metal:section define-macro="section">
-  <details tal:repeat="g cf_groups" open="open">
+  <tal:g define="flat cf_flat|nothing; in_sec cf_sec|nothing" repeat="g cf_groups">
+  <details open="open" tal:condition="not:flat">
     <summary tal:content="g/title">Calibration</summary>
     <div class="section-body">
-      <div class="field-grid">
-        <div tal:repeat="fld g/shown"
-             tal:attributes="class python:'field-row field-row-wide' if (fld['kind'] in ('text', 'textarea', 'multi') or fld['pair']) else 'field-row'">
+      <metal:fields define-macro="section-fields">
+      <!-- a rule every field of the group follows: one line above them -->
+      <p class="hint cf-group-help" tal:condition="g/help|nothing" tal:content="g/help"></p>
+      <!-- one settings layout: each field is a label cell (the name in bold,
+           its help under it) and a control cell beside it; a switch sits
+           left of its state word; a text area spans the block. A field shown
+           only for another field's value carries the condition on both
+           cells (pfas-components.js hides each). -->
+      <div class="cf-settings">
+        <tal:f repeat="fld g/shown">
+        <div tal:attributes="class python:'cf-label' + (' is-wide' if fld['kind'] == 'textarea' else '') + (' is-na' if fld.get('na') else '');
+                             data-show-if python:fld['show_if'] and fld['show_if'][0] or None;
+                             data-show-value python:fld['show_if'][1] if fld['show_if'] and not fld.get('show_values') else None;
+                             data-show-values python:fld.get('show_values') or None">
+          <!-- a control with its own box is named by this label; a group of
+               chips, a picker or a segment is named by its own aria-label -->
+          <label tal:condition="python:fld['kind'] != 'multi' and fld['widget'] != 'seg'"
+                 tal:attributes="for fld/name"><span tal:replace="python:fld['pair_label'] if fld['pair'] else fld['label']">Label</span><span tal:condition="fld/unit"
+                 tal:replace="string: (${fld/unit})" /></label>
+          <span class="cf-label-t" tal:condition="python:fld['kind'] == 'multi' or fld['widget'] == 'seg'"
+                tal:content="fld/label">Key analytes</span>
+          <span class="hint" tal:condition="python:fld['help'] and not fld.get('na')" tal:content="fld/help">hint</span>
+          <span class="hint" tal:condition="python:fld['pair'] and fld['pair']['help']" tal:content="python:fld['pair']['help']">hint</span>
+          <span class="hint is-na" tal:condition="fld/na|nothing" tal:content="fld/na">N/A</span>
+        </div>
+        <div tal:attributes="class python:'cf-control' + (' is-switch' if fld['kind'] == 'bool' else '') + (' is-wide' if fld['kind'] == 'textarea' else '') + (' is-na' if fld.get('na') else '');
+                             data-show-if python:fld['show_if'] and fld['show_if'][0] or None;
+                             data-show-value python:fld['show_if'][1] if fld['show_if'] and not fld.get('show_values') else None;
+                             data-show-values python:fld.get('show_values') or None">
           <tal:multi condition="python:fld['kind'] == 'multi'">
-            <div class="cf-label" tal:content="fld/label">Tier 1 matrices</div>
-            <div class="cf-chips">
-              <label class="cf-chip" tal:repeat="o fld/options">
+            <!-- the search picker: ONE hidden field posts the chosen list as
+                 JSON under the field's own name (pfas-components.js) -->
+            <div class="pfas-picker" tal:condition="python:fld['widget'] == 'picker'"
+                 tal:attributes="data-name fld/name; data-options fld/options_json; data-noun fld/noun; data-title fld/label">
+              <input type="hidden" tal:attributes="name fld/name; form cf_form; data-kind fld/counts_as; value fld/value" />
+            </div>
+            <div class="cf-chips" role="group" tal:condition="python:fld['widget'] != 'picker'"
+                 tal:attributes="aria-label fld/label">
+              <label class="pfas-switch cf-chip" tal:repeat="o fld/options">
                 <input type="checkbox" value="on"
-                       tal:attributes="name o/name; form cf_form;
-                                       checked python:'checked' if o['checked'] else None" />
+                       tal:attributes="name o/name; form cf_form; data-kind fld/counts_as;
+                                       checked python:'checked' if o['checked'] else None" /><span class="pfas-switch-track"></span>
                 <span tal:content="o/label">Eggs</span>
               </label>
             </div>
           </tal:multi>
           <tal:bool condition="python:fld['kind'] == 'bool'">
-            <label class="pfas-check" tal:attributes="for fld/name">
+            <label class="pfas-switch">
               <input type="checkbox" value="on"
-                     tal:attributes="id fld/name; name fld/name; form cf_form;
+                     tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as;
                                      checked python:'checked' if fld['checked'] else None" />
-              <span tal:content="fld/label">Label</span>
+              <span class="pfas-switch-track"></span>
             </label>
+            <!-- the switch's state in a word, right of it, drawn here so the
+                 page reads without the script; pfas-components.js keeps it
+                 in step. Hidden from assistive tech: the box says its own
+                 state. -->
+            <span class="pfas-switch-word" aria-hidden="true" tal:content="python:'On' if fld['checked'] else 'Off'">Off</span>
           </tal:bool>
           <tal:pair condition="fld/pair">
-            <label tal:attributes="for fld/name">
-              <span tal:replace="fld/pair_label">Recovery</span><span tal:condition="fld/unit"
-                    tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
-                    class="req" title="required"> *</span>
-            </label>
             <div data-range="data-range"
-                 tal:attributes="data-scale python:fld['scale'] or None; data-unit python:fld['unit'] or None">
+                 tal:attributes="data-scale python:fld['scale'] or None; data-unit python:fld['unit'] or None;
+                                 data-empty python:fld['empty']">
               <input type="number"
-                     tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+                     tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as; value fld/value;
+                                     readonly python:'readonly' if fld.get('na') else None;
                                      placeholder fld/placeholder; step fld/step;
                                      min fld/min; max fld/max; aria-label fld/label;
                                      required python:'required' if fld['required'] else None" />
               <input type="number"
-                     tal:attributes="id fld/pair/name; name fld/pair/name; form cf_form; value fld/pair/value;
+                     tal:attributes="id fld/pair/name; name fld/pair/name; form cf_form; data-kind fld/counts_as; value fld/pair/value;
+                                     readonly python:'readonly' if fld.get('na') else None;
                                      placeholder fld/pair/placeholder; step fld/pair/step;
                                      min fld/pair/min; max fld/pair/max; aria-label fld/pair/label;
                                      required python:'required' if fld['pair']['required'] else None" />
             </div>
-            <span class="hint" tal:condition="python:fld['pair']['help']" tal:content="python:fld['pair']['help']">hint</span>
           </tal:pair>
           <tal:other condition="python:fld['kind'] not in ('bool', 'multi') and not fld['pair']">
-            <label tal:attributes="for fld/name">
-              <span tal:replace="fld/label">Label</span><span tal:condition="fld/unit"
-                    tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
-                    class="req" title="required"> *</span>
-            </label>
-            <input tal:condition="python:fld['kind'] in ('number', 'int')" type="number"
-                   tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
-                                   placeholder fld/placeholder;
+            <!-- data-resolved: the number an empty box resolves to, drawn
+                 muted in the box by its stepper and never posted -->
+            <!-- a number that may be a word (auto) is a text box: a number box drops a word -->
+            <input tal:condition="python:fld['kind'] in ('number', 'int') and not fld.get('words')" type="number"
+                   tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as; value fld/value;
+                                   placeholder fld/placeholder; data-resolved python:fld.get('resolved') or None;
+                                   readonly python:'readonly' if fld.get('na') else None;
                                    step fld/step;
                                    min fld/min; max fld/max;
                                    required python:'required' if fld['required'] else None" />
-            <input tal:condition="python:fld['kind'] == 'text'" type="text"
-                   tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+            <input tal:condition="python:fld['kind'] == 'text' or fld.get('words')" type="text"
+                   tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as; value fld/value;
+                                   readonly python:'readonly' if fld.get('na') else None;
                                    placeholder fld/placeholder; data-chips fld/widget;
                                    data-options python:fld['options_json'] or None;
                                    required python:'required' if fld['required'] else None" />
             <textarea tal:condition="python:fld['kind'] == 'textarea'" rows="3"
-                      tal:attributes="id fld/name; name fld/name; form cf_form;
+                      tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as;
                                       placeholder fld/placeholder"
                       tal:content="fld/value"></textarea>
-            <select tal:condition="python:fld['kind'] == 'choice'"
-                    tal:attributes="id fld/name; name fld/name; form cf_form">
+            <select tal:condition="python:fld['kind'] == 'choice' and fld['widget'] != 'seg'"
+                    tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as">
               <option value="" tal:condition="not:fld/required"
                       tal:content="python:fld.get('placeholder') or u'(unset)'">(unset)</option>
               <option tal:repeat="c fld/choices"
                       tal:attributes="value python:c[0]; selected python:'selected' if c[0] == fld['value'] else None"
                       tal:content="python:c[1]">option</option>
             </select>
+            <tal:seg condition="python:fld['kind'] == 'choice' and fld['widget'] == 'seg'">
+              <!-- a choice drawn as a segmented control: the buttons write the
+                   hidden input, which is what the form posts -->
+              <input type="hidden" tal:attributes="id fld/name; name fld/name; form cf_form; data-kind fld/counts_as; value fld/value" />
+              <div class="pfas-seg pfas-seg-sm is-fit" role="group" data-field="data-field" data-quiet="data-quiet"
+                   tal:attributes="aria-label fld/label; data-input fld/name">
+                <button type="button" class="pfas-seg-item" tal:repeat="c fld/choices"
+                        tal:attributes="data-value python:c[0];
+                                        aria-pressed python:'true' if c[0] == fld['value'] else 'false'"
+                        tal:content="python:c[1]">option</button>
+              </div>
+              <!-- what each choice means, under the choices it explains -->
+              <span class="hint" tal:repeat="h python:fld.get('choice_help') or ()"
+                    tal:content="python:u'%s: %s' % (h[0], h[1])"></span>
+            </tal:seg>
           </tal:other>
-          <span class="hint" tal:condition="fld/help" tal:content="fld/help">hint</span>
         </div>
+        </tal:f>
       </div>
+      </metal:fields>
     </div>
   </details>
+  <tal:flat condition="flat">
+    <div class="section-group-hdr" tal:condition="python:g['title'] and not (in_sec and len(cf_groups) == 1)"
+         tal:content="g/title">Calibration</div>
+    <metal:f use-macro="context/@@pfas-config-form-macros/macros/section-fields" />
+  </tal:flat>
+  </tal:g>
 </metal:section>
 
 <!--
   Draws one declared TABLE (config_forms.render_table): a sub-tab per group
   (e.g. matrix) with its set/total count, the group's unit in the column
-  headings, one row per key. Same caller contract: cf_groups, cf_form.
+  headings, one row per key. Same caller contract: cf_groups, cf_form, and
+  optionally cf_id (the section id), which names the group panes
+  <cf_form>-<cf_id>-g<n> so two tables on one form never share an id.
 -->
 <metal:table define-macro="table">
+  <tal:t define="pfx_id cf_id|nothing;
+                 cf_pfx python:'%s-%s' % (cf_form, pfx_id) if pfx_id else cf_form">
   <nav class="pfas-seg pfas-seg-strip is-spaced" data-tabs="data-tabs" data-hash="data-hash" data-quiet="data-quiet"
        role="tablist" aria-label="Groups" tal:condition="python:len(cf_groups) > 1">
     <button type="button" class="pfas-seg-item" role="tab" tal:repeat="grp cf_groups"
        tal:attributes="aria-selected python:'true' if repeat['grp'].index == 0 else 'false';
-                       data-pane string:${cf_form}-g${grp/index}"><tal:m tal:replace="grp/label">Matrix</tal:m><span
-       class="pfas-seg-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></button>
+                       data-pane string:${cf_pfx}-g${grp/index}"><tal:m tal:replace="grp/label">Matrix</tal:m></button>
   </nav>
   <div tal:repeat="grp cf_groups"
-       tal:attributes="id string:${cf_form}-g${grp/index};
+       tal:attributes="id string:${cf_pfx}-g${grp/index};
                        class python:'pfas-pane is-active' if repeat['grp'].index == 0 else 'pfas-pane'">
-    <table class="factor-table cf-table">
+    <!-- pfas-cf: the shared table rules (spacing, widened columns, the
+         scroll cue); data-sheet names the table for its kept widths;
+         is-sticky-first: the row headings (the first column) stay in view
+         while the rest scroll sideways -->
+    <table class="factor-table cf-table pfas-cf is-sticky-first" tal:attributes="data-sheet string:${cf_pfx}-g${grp/index}">
       <thead>
         <tr>
           <th class="rl-name" tal:content="grp/row_heading">Analyte</th>
-          <th tal:repeat="col grp/columns"><span tal:replace="col/label">RL</span><span
-              class="rl-unit" tal:condition="col/unit" tal:content="string: (${col/unit})"> (ng/L)</span></th>
+          <!-- a column's unit on a second line under its name (a pair's
+               unit is in its value); a min / max pair is ONE column named
+               for the pair, its upper end's heading and cell hidden and
+               still posting -->
+          <th tal:repeat="col grp/columns"
+              tal:attributes="class python:'is-right' if col.get('align') == 'right' else None;
+                              hidden python:'hidden' if col.get('pair_end') == 'hi' else None"><span tal:replace="col/label">RL</span> <span
+              class="pfas-th-unit" tal:condition="python:col.get('unit') and not col.get('pair')" tal:content="col/unit">ng/L</span></th>
           <th tal:repeat="lbl grp/info_labels|nothing" tal:content="lbl">Action level / MCL</th>
         </tr>
       </thead>
       <tbody>
         <tr tal:repeat="row grp/rows">
-          <td><span tal:content="row/label">PFOA</span>
-              <code class="rl-kw" tal:condition="python:row['sublabel'] and row['sublabel'] != row['label']"
-                    tal:content="row/sublabel">PFOA</code>
-              <!-- a tag only for something to act on;
-                   any other note is plain text -->
+          <td><span tal:content="row/label"
+                    tal:attributes="title python:row['sublabel'] if row['sublabel'] and row['sublabel'] != row['label'] else None">PFOA</span>
+              <!-- the name only: no alias or note beside it; a coral tag only
+                   for something to act on, a grey one for a status -->
               <span tal:condition="python:row['note'] and row['warn']" class="sur-tag sur-nocore"
-                    tal:content="row/note">unlinked</span>
-              <span tal:condition="python:row['note'] and not row['warn']" class="cf-hint"
-                    tal:content="row/note">quantifies PFOA</span>
-              <tal:s condition="row/suggest">
-                <span class="sur-tag sur-override" title="suggested; not saved until you use it"
-                      tal:content="string:suggested: ${row/suggest/label}">suggested: 13C8-PFOA</span>
-                <button type="button" class="btn-sm"
-                        tal:attributes="data-cf-use row/suggest/target;
-                                        data-cf-value row/suggest/value">Use</button>
-              </tal:s></td>
+                    tal:content="row/note">unlinked</span><span
+                    tal:condition="python:row['note'] and row.get('tag') and not row['warn']" class="pfas-tag"
+                    tal:content="row/note">not verified</span></td>
           <td tal:repeat="cell row/cells"
-              tal:attributes="data-pair python:cell['pair'] and cell['pair']['id'];
+              tal:attributes="class python:'is-right' if cell.get('align') == 'right' else None;
+                              data-pair python:cell['pair'] and cell['pair']['id'];
                               data-pair-end python:cell['pair'] and cell['pair']['end'];
                               data-scale python:cell['pair'] and cell['pair']['scale'] or None;
                               data-unit python:cell['pair'] and cell['pair']['unit'] or None;
-                              data-label python:cell['pair'] and cell['pair']['label'] or None">
-            <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
-                   tal:attributes="name cell/name; form cf_form; value cell/value;
+                              data-label python:cell['pair'] and cell['pair']['label'] or None;
+                              hidden python:'hidden' if cell['pair'] and cell['pair']['end'] == 'hi' else None">
+            <!-- data-resolved: what an empty cell resolves to (the method
+                 default), drawn muted and never posted -->
+            <input tal:condition="python:cell['kind'] in ('number', 'int') and not cell.get('words')" type="number" class="rl-in"
+                   tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; value cell/value;
                                    step cell/step;
                                    min cell/min; max cell/max; placeholder cell/placeholder;
+                                   data-resolved python:cell.get('resolved') or None;
                                    aria-label python:'%s %s' % (row['label'], cell['label'])" />
-            <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
-                   tal:attributes="name cell/name; form cf_form; value cell/value;
+            <!-- a number that may be a word: a text box, its blank showing what it resolves to -->
+            <input tal:condition="python:cell['kind'] == 'text' or cell.get('words')" type="text" class="rl-in"
+                   tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; value cell/value;
+                                   placeholder python:cell['placeholder'] if cell.get('inherited') else (cell.get('resolved') or None if cell.get('words') else None);
                                    data-chips cell/widget; data-options python:cell['options_json'] or None;
                                    aria-label python:'%s %s' % (row['label'], cell['label'])" />
-            <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
-                   tal:attributes="name cell/name; form cf_form;
-                                   checked python:'checked' if cell['checked'] else None" />
-            <select tal:condition="python:cell['kind'] == 'choice'" class="rl-in"
-                    tal:attributes="name cell/name; form cf_form;
+            <label class="pfas-switch" tal:condition="python:cell['kind'] == 'bool'"><input type="checkbox" value="on"
+                   tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as;
+                                   checked python:'checked' if cell['checked'] else None" /><span class="pfas-switch-track"></span></label>
+            <!-- a choice drawn as a segmented control: its buttons write the
+                 hidden input, which is what the form posts; every state is
+                 a word, the chosen one pressed -->
+            <tal:seg condition="python:cell['kind'] == 'choice' and cell.get('widget') == 'seg'">
+              <input type="hidden" tal:attributes="id cell/name; name cell/name; form cf_form; data-kind cell/counts_as; value cell/value" />
+              <div class="pfas-seg pfas-seg-sm is-fit" role="group" data-field="data-field" data-quiet="data-quiet"
+                   tal:attributes="aria-label python:'%s %s' % (row['label'], cell['label']); data-input cell/name">
+                <button type="button" class="pfas-seg-item" tal:repeat="c cell/choices"
+                        tal:attributes="data-value python:c[0];
+                                        aria-pressed python:'true' if c[0] == cell['value'] else 'false'"
+                        tal:content="python:c[1]">option</button>
+              </div>
+            </tal:seg>
+            <!-- a cell that inherits the row above (Certificate format): its
+                 blank option reads a muted "·" (is-inherited while chosen,
+                 data-inherits for the script); a row that is the default
+                 shows the default selected and has no blank option. A cell
+                 that resolves to the method default reads that default
+                 with "· default", muted the same way, or nothing when the
+                 method sets none -->
+            <select tal:condition="python:cell['kind'] == 'choice' and cell.get('widget') != 'seg'" class="rl-in"
+                    tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as;
+                                    class python:'rl-in is-inherited' if (cell.get('inherited') or cell.get('resolves')) and not cell.get('default') and not cell['value'] else 'rl-in';
+                                    data-inherits python:'data-inherits' if (cell.get('inherited') or cell.get('resolves')) and not cell.get('default') else None;
                                     aria-label python:'%s %s' % (row['label'], cell['label'])">
-              <option value="" tal:content="python:cell.get('placeholder') or u'\u2014 none \u2014'">&#8212; none &#8212;</option>
+              <option value="" tal:condition="python:not cell.get('default')"
+                      tal:content="python:cell.get('placeholder') or (cell.get('resolved') and u'%s \u00b7 default' % cell['resolved']) or (u'' if cell.get('resolves') else u'\u2014 none \u2014')">&#8212; none &#8212;</option>
               <option tal:repeat="c cell/choices"
-                      tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
+                      tal:attributes="value python:c[0]; selected python:'selected' if c[0] == (cell['value'] or cell.get('default')) else None"
                       tal:content="python:c[1]">Std &#8212; lot 123</option>
             </select>
           </td>
@@ -176,45 +277,71 @@
         </tr>
       </tbody>
     </table>
+    <!-- what a blank cell of a column means, one line each -->
+    <span class="hint cf-col-help" tal:repeat="h grp/helps|nothing" tal:content="h"></span>
   </div>
+  </tal:t>
 </metal:table>
 
 <!--
   Draws one declared COLLECTION (config_forms.render_collection): a row per
   stored item and a "+ Add" button that clones the template row (the last
   entry of cf_rows) with the next index; clearing a row's name removes it.
-  The header comes from the first entry's cell labels. Caller: cf_rows, cf_form.
+  The header comes from the first entry's cell labels, each aligned as its
+  cells are, a column's unit on a second line (a pair's unit is in its
+  value). A min / max pair is ONE column named for the pair: its lower
+  end's cell holds the value (the page draws one value for both ends), its
+  upper end's heading and cell are hidden and still post. With no rows the
+  header stays, one muted line (pfas-empty-row) says what would fill the
+  table (the collection's empty sentence) and the Add button sits under it.
+  Caller: cf_rows, cf_form.
+  A search-picker column posts from a hidden cell of its row; its pickers,
+  one per row named after the row (the template entry's "pickers"), are
+  drawn under the table unless the caller sets cf_no_lists and draws them
+  elsewhere (coll-pickers).
 -->
 <metal:collection define-macro="collection">
   <div class="cf-coll-wrap" tal:define="tpl python:cf_rows[-1]">
-  <table class="factor-table cf-coll">
+  <table class="factor-table cf-coll pfas-cf" tal:attributes="data-sheet tpl/id">
     <thead>
-      <tr><th tal:repeat="cell python:cf_rows[0]['cells']" tal:content="cell/label">Matrix</th></tr>
+      <tr><th tal:repeat="cell python:cf_rows[0]['cells']"
+              tal:attributes="hidden python:'hidden' if cell.get('widget') == 'picker' or (cell['pair'] and cell['pair']['end'] == 'hi') else None;
+                              class python:'is-right' if cell.get('align') == 'right' else None"><span
+              tal:replace="python:cell['pair']['label'] if cell['pair'] and cell['pair']['end'] == 'lo' else cell['label']">Matrix</span> <span class="pfas-th-unit"
+              tal:condition="python:cell.get('unit') and not cell['pair']" tal:content="cell/unit">ng/L</span></th></tr>
     </thead>
     <tbody>
+      <tr class="pfas-empty-row" tal:condition="python:len(cf_rows) == 1">
+        <td tal:attributes="colspan python:len([c for c in tpl['cells'] if c.get('widget') != 'picker' and not (c['pair'] and c['pair']['end'] == 'hi')]) or 1"
+            tal:content="tpl/empty">Nothing here yet. Add the first row.</td>
+      </tr>
       <tal:r repeat="row python:cf_rows[:-1]">
       <tr>
         <td tal:repeat="cell row/cells"
-            tal:attributes="data-pair python:cell['pair'] and cell['pair']['id'];
+            tal:attributes="class python:'is-right' if cell.get('align') == 'right' else None;
+                            data-pair python:cell['pair'] and cell['pair']['id'];
                             data-pair-end python:cell['pair'] and cell['pair']['end'];
                             data-scale python:cell['pair'] and cell['pair']['scale'] or None;
                             data-unit python:cell['pair'] and cell['pair']['unit'] or None;
-                            data-label python:cell['pair'] and cell['pair']['label'] or None">
+                            data-label python:cell['pair'] and cell['pair']['label'] or None;
+                            hidden python:'hidden' if cell.get('widget') == 'picker' or (cell['pair'] and cell['pair']['end'] == 'hi') else None">
           <metal:cell define-macro="coll-cell">
+          <input tal:condition="python:cell.get('widget') == 'picker'" type="hidden"
+                 tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; value cell/value" />
           <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
-                 tal:attributes="name cell/name; form cf_form; value cell/value;
+                 tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; value cell/value;
                                  data-chips cell/widget; data-options python:cell['options_json'] or None;
                                  placeholder cell/placeholder; aria-label cell/label" />
           <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
-                 tal:attributes="name cell/name; form cf_form; value cell/value;
+                 tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; value cell/value;
                                  step cell/step;
                                  min cell/min; max cell/max;
                                  placeholder cell/placeholder; aria-label cell/label" />
-          <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
-                 tal:attributes="name cell/name; form cf_form; aria-label cell/label;
-                                 checked python:'checked' if cell['checked'] else None" />
+          <label class="pfas-switch" tal:condition="python:cell['kind'] == 'bool'"><input type="checkbox" value="on"
+                 tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; aria-label cell/label;
+                                 checked python:'checked' if cell['checked'] else None" /><span class="pfas-switch-track"></span></label>
           <select tal:condition="python:cell['kind'] == 'choice'" class="rl-in"
-                  tal:attributes="name cell/name; form cf_form; aria-label cell/label">
+                  tal:attributes="name cell/name; form cf_form; data-kind cell/counts_as; aria-label cell/label">
             <option value="">&#8212; none &#8212;</option>
             <option tal:repeat="c cell/choices"
                     tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
@@ -229,17 +356,46 @@
   <template class="cf-row-template">
     <tr class="cf-new-row">
       <td tal:repeat="cell tpl/cells"
-          tal:attributes="data-pair python:cell['pair'] and cell['pair']['id'];
+          tal:attributes="class python:'is-right' if cell.get('align') == 'right' else None;
+                          data-pair python:cell['pair'] and cell['pair']['id'];
                           data-pair-end python:cell['pair'] and cell['pair']['end'];
                           data-scale python:cell['pair'] and cell['pair']['scale'] or None;
                           data-unit python:cell['pair'] and cell['pair']['unit'] or None;
-                          data-label python:cell['pair'] and cell['pair']['label'] or None"><metal:c use-macro="context/@@pfas-config-form-macros/macros/coll-cell" /></td>
+                          data-label python:cell['pair'] and cell['pair']['label'] or None;
+                          hidden python:'hidden' if cell.get('widget') == 'picker' or (cell['pair'] and cell['pair']['end'] == 'hi') else None"><metal:c use-macro="context/@@pfas-config-form-macros/macros/coll-cell" /></td>
     </tr>
   </template>
+  <!-- what a blank cell of a column means, one line each -->
+  <span class="hint cf-col-help" tal:repeat="h tpl/helps|nothing" tal:content="h"></span>
   <button type="button" class="btn btn-sm btn-secondary cf-add-row"
           tal:attributes="data-next tpl/next"
           tal:content="string:+ Add ${tpl/noun}">+ Add matrix</button>
+  <tal:l condition="not:cf_no_lists|nothing" define="cf_pickers tpl/pickers|nothing">
+    <metal:p use-macro="context/@@pfas-config-form-macros/macros/coll-pickers" />
+  </tal:l>
   </div>
 </metal:collection>
+
+<!--
+  A collection's search pickers (config_forms.collection_pickers): one per
+  row, labelled "<row> <column>", hidden while the row's show_if column does
+  not hold its value; each drives the hidden field in its row. The page
+  keeps them with the rows (pfas-components.js, .pfas-picker-lists): a row
+  added, renamed or rescoped redraws its picker. Caller: cf_pickers (None:
+  nothing drawn).
+-->
+<metal:pickers define-macro="coll-pickers">
+  <div class="pfas-picker-lists" tal:condition="cf_pickers"
+       tal:attributes="data-prefix cf_pickers/prefix; data-column cf_pickers/column; data-show cf_pickers/show;
+                       data-show-value cf_pickers/show_value; data-key cf_pickers/key; data-label cf_pickers/label;
+                       data-noun cf_pickers/noun; data-options cf_pickers/options_json">
+    <div class="field-row field-row-wide" tal:repeat="r cf_pickers/rows"
+         tal:attributes="data-for r/name; hidden python:'hidden' if r['hidden'] else None">
+      <div class="cf-label" tal:content="r/label">Tier 2 matrices</div>
+      <div class="pfas-picker" tal:attributes="data-name r/name; data-options r/options_json;
+                                               data-noun cf_pickers/noun; data-title r/title"></div>
+    </div>
+  </div>
+</metal:pickers>
 </body>
 </html>

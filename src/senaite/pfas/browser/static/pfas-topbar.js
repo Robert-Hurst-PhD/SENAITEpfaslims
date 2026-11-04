@@ -4,11 +4,22 @@
    - dropdowns: a [data-pfas-drop] button toggles its sibling .dropdown-menu
      (no Bootstrap JS: PFAS pages do not load it; on core pages the buttons
      carry no data-toggle, so Bootstrap leaves them alone);
-   - menu button: PFAS pages collapse their panel, core pages the sidebar;
+   - menu button: it asks PFAS.nav (pfas-sidebar.js), which folds and opens
+     the panel on PFAS and core pages alike; a page drawn without the
+     navigation has no PFAS.nav of its own, so the button does nothing there;
+     in the head it puts the session's fold on the root element, so the
+     first paint is already folded;
    - core pages: an H1 that only repeats the bar's title is hidden, so the
      title sits in the bar once (6C); an H1 that says something
      else (a batch's "Samples" listing) stays as the section heading. */
 (function () {
+  var PFAS = window.PFAS = window.PFAS || {};
+  PFAS.nav = PFAS.nav || { toggle: function () {} };
+  /* the wide screen's fold, from the session, before the first paint
+     (pfas-sidebar.css html.pfas-panel-folded; PFAS.nav keeps it in step) */
+  try {
+    if (window.sessionStorage.getItem('pfas_panel_collapsed') === '1') document.documentElement.classList.add('pfas-panel-folded');
+  } catch (e) {}
   function closeAll(except) {
     /* only the bar's own menus: core's Bootstrap dropdowns (a sample's
        workflow menu) open and close themselves */
@@ -36,14 +47,6 @@
     if (e.key === 'Escape') closeAll(null);
   });
   window.addEventListener('resize', function () { closeAll(null); });
-
-  window.pfasTopbarToggle = function () {
-    if (window.pfasTogglePanel && document.getElementById('pfas-shell')) {
-      window.pfasTogglePanel();
-    } else if (window.pfasSidebarCollapseToggle) {
-      window.pfasSidebarCollapseToggle();
-    }
-  };
 
   function coreTitle() {
     if (document.body.classList.contains('pfas-app')) return;
@@ -82,11 +85,7 @@ function pfasSearchInit() {
   var endpoint = form.getAttribute('data-endpoint');
   var timer = null, seq = 0, active = -1;
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
-    });
-  }
+  var esc = window.PFAS.components.esc;
   function links() { return box.querySelectorAll('a.pfas-search-hit'); }
   function setActive(i) {
     var l = links();
@@ -137,7 +136,7 @@ function pfasSearchInit() {
        page focused is not someone typing, so "/" still opens site search */
     var idle = t && t.hasAttribute && t.hasAttribute('autofocus') && !t.value;
     if (e.key === '/' && t !== input && (idle || (!/INPUT|TEXTAREA|SELECT/.test(tag) && !(t && t.isContentEditable)))) {
-      e.preventDefault(); input.focus(); input.select();
+      e.preventDefault(); document.body.classList.add('pfas-search-mobile'); input.focus(); input.select();   /* folded to its icon: the box opens first */
     }
   });
   document.addEventListener('click', function (e) {
@@ -253,8 +252,15 @@ if (document.readyState === 'loading') {
 /* Opening a form moves the keyboard into it: a button that reveals a form
    or dialog (Add Reagent, New Deviation...) left focus on the button, so a
    keyboard user had to hunt for the fields it opened. After such a click,
-   the first field that has just become visible gets the focus. */
+   the first field that has just become visible gets the focus. A tab, a
+   step or another segmented choice only changes what is shown, and a Help
+   button opens the panel beside the page: neither opens a form, so nothing
+   is focused for them and the focus stays where the person put it. */
 (function () {
+  function opensNoForm(btn) {
+    return !!(btn.closest('.pfas-seg, [role=tablist]') || btn.getAttribute('role') === 'tab' ||
+              btn.classList.contains('btn-help'));
+  }
   var FIELD = 'input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])';
   function visible(el) {
     return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
@@ -262,13 +268,14 @@ if (document.readyState === 'loading') {
   function shown() {
     var out = [];
     Array.prototype.forEach.call(document.querySelectorAll(FIELD), function (f) {
-      if (visible(f) && !f.closest('#pfas-topbar, .pfas-sidebar')) out.push(f);
+      if (visible(f) && !f.closest('#pfas-topbar, #sidebar')) out.push(f);
     });
     return out;
   }
   document.addEventListener('click', function (e) {
     var btn = e.target.closest ? e.target.closest('button, a.btn, a.btn-sm, [role=button]') : null;
     if (!btn || btn.type === 'submit' || btn.closest('form') && btn.type !== 'button') return;
+    if (opensNoForm(btn)) return;
     var before = shown();
     setTimeout(function () {
       if (document.activeElement && document.activeElement !== btn &&
@@ -374,3 +381,56 @@ if (document.readyState === 'loading') {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 }());
+
+
+/* The notifications bell (bell.py, @@pfas-bell): "For you" and
+   "Outstanding actions", fetched once the page has loaded; the count is
+   both; with nothing open there is no badge. */
+function pfasBellInit() {
+  var li = document.querySelector('.pfas-bell[data-endpoint]');
+  if (!li) { return; }
+  var count = li.querySelector('.pfas-bell-count'), list = li.querySelector('.pfas-bell-list');
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) { e.className = cls; }
+    if (text) { e.textContent = text; }
+    return e;
+  }
+  function section(title, entries) {
+    if (!entries.length) { return; }
+    list.appendChild(el('div', 'dropdown-header', title));
+    entries.forEach(function (it) {
+      var row = el('div', 'pfas-bell-item is-' + (it.level === 'bad' ? 'bad' : 'warn'));
+      var text = el('div', 'pfas-bell-text');
+      text.appendChild(el('strong', '', it.title));
+      if (it.detail) { text.appendChild(el('span', 'pfas-bell-detail', it.detail)); }
+      if (it.at) { text.appendChild(el('span', 'pfas-bell-at', it.at)); }
+      row.appendChild(text);
+      (it.actions || []).forEach(function (a) {
+        var b = el('a', 'btn-sm btn-secondary', a.label);
+        b.href = a.url;
+        row.appendChild(b);
+      });
+      list.appendChild(row);
+    });
+  }
+  fetch(li.getAttribute('data-endpoint'), { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || !d.count) { return; }
+      count.textContent = d.count > 99 ? '99+' : String(d.count);
+      count.hidden = false;
+      list.innerHTML = '';
+      section('For you', d.for_you || []);
+      section('Outstanding actions', d.actions || []);
+      if (d.settings_url) {
+        var foot = el('div', 'pfas-bell-foot', 'E-mail reminders: ');
+        var s = el('a', 'btn-sm btn-secondary', 'System, Notifications');
+        s.href = d.settings_url;
+        foot.appendChild(s);
+        list.appendChild(foot);
+      }
+    })
+    .catch(function () {});
+}
+if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', pfasBellInit); } else { pfasBellInit(); }

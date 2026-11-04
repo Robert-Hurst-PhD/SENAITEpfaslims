@@ -16,7 +16,7 @@
     These sets are calibrated by an <strong>external metrology laboratory</strong>
     &mdash; the point where the equipment chain leaves this laboratory, the same
     way a reagent's chain ends at its manufacturer's certificate. A set with no
-    certificate, an expired calibration, or no NIST traceability makes every
+    certificate or an expired calibration makes every
     balance verification performed with it untraceable, and the Data Review
     traceability gate will reject the affected worksheets. All dates ISO 8601.
   </div>
@@ -33,7 +33,7 @@
       <input type="hidden" name="action" value="save" />
       <input type="hidden" name="id" value="" tal:attributes="value request/form/id|nothing" />
       <div class="pfas-form-row">
-        <div class="pfas-form-field"><label>Set identifier *</label>
+        <div class="pfas-form-field"><label>Set identifier</label>
           <input type="text" name="set_id" required placeholder="WS-001" /></div>
         <div class="pfas-form-field"><label>Weight class</label>
           <input type="text" name="weight_class" placeholder="ASTM Class 1 / OIML E2" /></div>
@@ -43,30 +43,24 @@
       <div class="pfas-form-field is-spaced"><label>Description</label>
           <input type="text" name="description" placeholder="1 mg - 100 g, 12 weights" /></div>
 
-      <h3 class="pfas-mt-md">External calibration (metrology laboratory)</h3>
-      <p class="pfas-hint">Required. Without it the set establishes no traceability.</p>
+      <h3 class="pfas-mt-md">External calibration</h3>
       <div class="pfas-form-row">
-        <div class="pfas-form-field"><label>Calibration laboratory *</label>
+        <div class="pfas-form-field"><label>Calibration service</label>
           <input type="text" name="cal_lab" required /></div>
         <div class="pfas-form-field"><label>Its accreditation</label>
           <input type="text" name="cal_lab_accreditation"
                  placeholder="ISO/IEC 17025, scope no." /></div>
-        <div class="pfas-form-field"><label>Certificate number *</label>
+        <div class="pfas-form-field"><label>Certificate number</label>
           <input type="text" name="cal_cert_number" required /></div>
       </div>
       <div class="pfas-form-row">
-        <div class="pfas-form-field"><label>Calibration date *</label>
+        <div class="pfas-form-field is-centered"><label>Calibration date</label>
           <input type="date" name="cal_date" required /></div>
-        <div class="pfas-form-field"><label>Calibration due *</label>
+        <div class="pfas-form-field is-centered"><label>Calibration due</label>
           <input type="date" name="cal_due_date" required /></div>
       </div>
       <div class="pfas-check">
-        <input type="checkbox" name="nist_traceable" value="1" checked="checked"
-               id="nist" />
-        <label for="nist">Calibration is NIST-traceable</label>
-      </div>
-      <div class="pfas-check">
-        <input type="checkbox" name="active" value="1" checked="checked" id="act" />
+        <label class="pfas-switch"><input type="checkbox" name="active" value="1" checked="checked" id="act" /><span class="pfas-switch-track"></span></label>
         <label for="act">In service</label>
       </div>
       <div class="pfas-form-field is-spaced"><label>Notes</label><input type="text" name="notes" /></div>
@@ -75,9 +69,9 @@
   </div>
 
   <h3 class="pfas-card-title">Registered sets</h3>
-  <table class="pfas-table log-table">
+  <table class="pfas-table log-table" data-col-resize="facility-weight-sets-log-table">
     <thead><tr>
-      <th>Set</th><th>Class</th><th>Calibration laboratory</th>
+      <th>Set</th><th>Class</th><th>Calibration service</th>
       <th>Certificate</th><th>Calibrated</th><th>Due</th><th>Status</th>
     </tr></thead>
     <tbody>

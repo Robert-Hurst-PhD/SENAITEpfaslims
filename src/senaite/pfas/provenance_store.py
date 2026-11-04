@@ -149,10 +149,7 @@ class ProvenanceStore(object):
         path = os.path.join(self.upload_dir, base)
         if not os.path.isfile(path):
             return None
-        try:
-            from senaite.pfas import import_layouts as L
-        except ImportError:                                  # loaded by path (tests)
-            import import_layouts as L
+        from senaite.pfas import import_layouts as L
         with io.open(path, "rb") as fh:
             raw = fh.read()
         text = L.decode(raw)

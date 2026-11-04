@@ -5,55 +5,33 @@ three-tier quality hierarchy (see senaite.pfas.ruleset):
 
     project QAPP ruleset  ->  lab method profile  ->  PUBLISHED-METHOD BASELINE
 
-This module owns the third tier only: the value the published analytical
-method itself specifies, independent of anything a lab or a client project
-configures. It is a versioned reference table in the style of
-analyte_reference.py -- module-level data plus small accessor functions, no
-mutable state, no Plone/Zope imports, so it can be loaded and tested by path
-(`importlib.util.spec_from_file_location`) exactly like holding_time.py.
+This module owns the third tier only: the value the published method itself
+specifies, independent of what a lab or a client project configures. Module
+data plus small accessors, no mutable state, no Plone/Zope imports, so it
+loads and tests by path like holding_time.py. Read by ruleset.py (the
+CONFORMS / DEPARTS verdict) and project_specs.py.
 
-Nothing in this add-on calls this module yet.
-recording that. Do not add a docstring anywhere that claims a consumer exists
-until one does.
-
-SEEDING DISCIPLINE (Sec8: never fabricate a regulatory value)
+SEEDING (Sec8: never fabricate a regulatory value)
 ------------------------------------------------------------------------
-A method profile in data/qc/method_profiles.json (read-only; never write it)
-carries many numeric criteria, but "the lab currently uses this number" is
-not the same claim as "the published method specifies this number". Two
-signals in that data distinguish them:
+"The lab uses this number" is not "the published method specifies this
+number". A value is seeded here only after a recorded value-by-value check
+against the method text. `verify_against_method: true` on a qc_acceptance
+tier, or `_seeded: true` on a profile, marks a value not checked; the absence
+of either flag is no proof of the opposite.
 
-  * `verify_against_method: true` on a qc_acceptance tier, or `_seeded: true`
-    on a whole profile, both mean explicitly NOT verified against the method
-    text -- a placeholder the lab has not checked.
-  * The ABSENCE of either flag is not by itself proof of the opposite. The
-    bar this module holds to is a closed, citable verification: a recorded
-    check (2026-06-19) that
-    `eis_overrides` / `eis_matrix_overrides` for EPA_1633A were fetched from
-    the official EPA 1633A PDF (EPA 820-R-24-007, December 2024, Tables 6 and
-    8) and checked value-by-value -- after which the `verify_against_method`
-    flag was deliberately REMOVED from that data because it was no longer
-    true. That closed verification is the only thing seeded below.
+  Seeded: the EPA_1633A EIS recovery windows, checked against EPA 1633A
+  (EPA 820-R-24-007, December 2024, Tables 6 and 8).
 
-  Deliberately left OUT, and why:
-    - qc_acceptance.LFB / LFSM (EPA_1633A): carry `verify_against_method:
-      true` in the live data -- explicitly unverified.
-    - qc_acceptance.LFSMD (EPA_1633A): carries the SAME 40/130 window as the
-      flagged LFB/LFSM tiers but the flag itself is absent on this one tier.
-      That is a data inconsistency (found, not fixed here -- out of scope for
-      an additive module), not a second verification; it is left out for the
-      same reason as LFB/LFSM.
-    - The entire EPA_537_1 profile: `_seeded: true` at the profile root.
-    - cal_r2_min: closed as "per-method, lab-set via the UI" -- the
-      lab OWNS this number, the method does not hand it down. Not a baseline.
-    - holding_times (EPA_537_1 = 14 days): cited to Sec10, not to a
-      Table in the method text the way EIS is, and it already has its own
-      single-source-of-truth home in holding_time.py / method_profile_store.
-      Duplicating it here would create a second source for one fact for no benefit this module needs. Left to its existing owner.
+  Not seeded:
+    - qc_acceptance.LFB / LFSM / LFSMD (EPA_1633A): not verified against the
+      method text.
+    - The EPA_537_1 profile: `_seeded: true`.
+    - cal_r2_min: the lab's own number, set in the UI. Not a baseline.
+    - holding_times (EPA_537_1 = 14 days): cited to Sec10; owned by
+      holding_time.py / method_profile_store.
     - Every other qc_acceptance / instrument_verification number (rpd_max,
-      sn_quan_min, ccv recovery, r2_min, ...): no Q-xxx closure ties any of
-      them to method text. `get_baseline` returns None for all of them, which
-      is the correct, intended answer -- see ruleset.py's UNKNOWN rule.
+      sn_quan_min, ccv recovery, r2_min, ...): nothing ties them to method
+      text, so `get_baseline` returns None (ruleset.py's UNKNOWN rule).
 
 Python 2.7 compatible. No f-strings, no pathlib, no type annotations.
 """
@@ -62,10 +40,8 @@ from __future__ import absolute_import, unicode_literals
 import collections
 
 # ── Comparison shapes ─────────────────────────────────────────────────────────
-# This distinction is the most important thing in this module. A single
-# `value < baseline` test gets ceilings backwards and is meaningless for
-# windows -- so shape is carried explicitly and every comparison dispatches
-# on it. See `compare()`.
+# Every comparison dispatches on shape (compare()): a single
+# `value < baseline` test gets ceilings backwards and means nothing for windows.
 SHAPE_MIN = "min"        # a floor: looser means LOWER      (e.g. cal_r2_min, sn_min)
 SHAPE_MAX = "max"        # a ceiling: looser means HIGHER   (e.g. rpd_max)
 SHAPE_WINDOW = "window"  # two-sided range: looser means WIDER; each end is
@@ -93,19 +69,14 @@ EndVerdict = collections.namedtuple(
 
 
 # ── EPA 1633A EIS/OPR recovery -- the one seeded baseline ────────────────────
-# Source: EPA 1633A, December 2024 (EPA 820-R-24-007), Tables 6 and 8.
-# Checked value by value 2026-06-19. Values transcribed from
-# method_profile_store.DEFAULT_PROFILES["EPA_1633A"]["eis_overrides"] /
-# ["eis_matrix_overrides"], which is itself the verified transcription of the
-# official PDF -- this module does not re-derive them, it cites the same
-# closed verification. Keyed by the compound display name as it appears on
-# the instrument export and in the method profile ("13C4-PFBA", "D3-NMeFOSA",.
-# ..), NOT the internal M-prefix SENAITE keyword.
-# A citation is CLIENT-FACING: it travels through disclosure.format_departure
-# onto a certificate, so it names the regulatory authority and stops there. The
-# internal verification trail belongs in the comment above -- not on a
-# document a client reads. It was previously appended here
-# and did print, which is both a leak and a duplication of the comment above.
+# Source: EPA 1633A, December 2024 (EPA 820-R-24-007), Tables 6 and 8, checked
+# value by value; the same values as method_profile_store.DEFAULT_PROFILES
+# ["EPA_1633A"]["eis_overrides"] / ["eis_matrix_overrides"]. Keyed by the
+# labelled compound's keyword, as the method profile's EIS rows are
+# ("13C4-PFBA", "D3-NMeFOSA"; Table 6's 13C8-PFOSA under the library's
+# 13C8-FOSA).
+# A citation is client-facing (disclosure.format_departure prints it on a
+# certificate): it names the regulatory source and nothing internal.
 EIS_CITATION = "EPA 1633A (December 2024, EPA 820-R-24-007), Tables 6 and 8"
 
 # Table 6, aqueous column. Also the fallback for any 1633A matrix whose class
@@ -127,7 +98,7 @@ _EIS_AQUEOUS = {
     "13C2-4:2FTS":   (40.0, 200.0),
     "13C2-6:2FTS":   (40.0, 200.0),
     "13C2-8:2FTS":   (40.0, 300.0),
-    "13C8-PFOSA":    (40.0, 130.0),
+    "13C8-FOSA" :    (40.0, 130.0),
     "D3-NMeFOSA":    (10.0, 130.0),
     "D5-NEtFOSA":    (10.0, 130.0),
     "D3-NMeFOSAA":   (40.0, 170.0),
@@ -164,7 +135,7 @@ _EIS_MATRIX_OVERRIDES = {
         "13C2-4:2FTS":  (40.0, 165.0),
         "13C2-6:2FTS":  (40.0, 215.0),
         "13C2-8:2FTS":  (40.0, 275.0),
-        "13C8-PFOSA":   (40.0, 130.0),
+        "13C8-FOSA" :   (40.0, 130.0),
         "D3-NMeFOSAA":  (40.0, 135.0),
         "D5-NEtFOSAA":  (40.0, 150.0),
         "D7-NMeFOSE":   (20.0, 130.0),
@@ -187,7 +158,7 @@ _EIS_MATRIX_OVERRIDES = {
         "13C2-4:2FTS":  (30.0, 300.0),
         "13C2-6:2FTS":  (35.0, 300.0),
         "13C2-8:2FTS":  (40.0, 365.0),
-        "13C8-PFOSA":   (25.0, 180.0),
+        "13C8-FOSA" :   (25.0, 180.0),
         "D3-NMeFOSA":   (5.0, 130.0),
         "D5-NEtFOSA":   (5.0, 130.0),
         "D3-NMeFOSAA":  (30.0, 250.0),
@@ -206,7 +177,7 @@ _EIS_MATRIX_OVERRIDES = {
         "13C2-4:2FTS":  (40.0, 300.0),
         "13C2-6:2FTS":  (40.0, 300.0),
         "13C2-8:2FTS":  (40.0, 300.0),
-        "13C8-PFOSA":   (20.0, 140.0),
+        "13C8-FOSA" :   (20.0, 140.0),
         "D3-NMeFOSA":   (20.0, 130.0),
         "D5-NEtFOSA":   (20.0, 130.0),
         "D3-NMeFOSAA":  (30.0, 150.0),
@@ -220,13 +191,7 @@ MATRIX_CLASSES = ("aqueous", "leachate", "solid", "tissue", "biosolid")
 
 
 def _method_engine():
-    try:
-        from senaite.pfas import method_engine
-    except ImportError:          # standalone (tests): no Zope for the package
-        import os as _os
-        import sys as _sys
-        _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-        import method_engine     # noqa: E402
+    from senaite.pfas import method_engine
     return method_engine
 
 
@@ -265,8 +230,7 @@ def _eis_baseline(analyte, matrix):
 
 
 # key -> handler(analyte, matrix) -> Baseline or None. A criterion key with no
-# entry here has never been verified against a method text; get_baseline
-# returns None for it unconditionally, which is correct, not incomplete.
+# entry here is not verified against a method text: get_baseline returns None.
 _REGISTRY = {
     ("EPA_1633A", "eis_recovery"): _eis_baseline,
 }
@@ -276,12 +240,9 @@ def get_baseline(method_id, key, analyte=None, matrix=None):
     """The published-method baseline for (method_id, key[, analyte, matrix]),
     or None when nothing has been verified against the method text.
 
-    None is not "no opinion" and must never be read as a permissive default --
-    the caller (senaite.pfas.ruleset) treats it as UNKNOWN, never CONFORMS.
-    Do not add an entry to _REGISTRY without a citation to the method text and
-    a record that it was
-    actually checked against that text -- "the lab has used this number for a
-    while" is not that record.
+    None is never a permissive default: the caller (senaite.pfas.ruleset)
+    treats it as UNKNOWN, never CONFORMS. An entry in _REGISTRY needs a
+    citation to the method text and a record that it was checked against it.
     """
     handler = _REGISTRY.get((method_id, key))
     if handler is None:
@@ -319,23 +280,17 @@ def compare(baseline, resolved_value):
     `resolved_value` is a plain number for SHAPE_MIN / SHAPE_MAX. For
     SHAPE_WINDOW it is a (low, high) 2-tuple/list, OR a {"min": low, "max":
     high} dict (the shape ruleset.py's ResolvedCriterion.value actually uses)
-    -- either element/key may be None, meaning that end was not resolved and
-    is skipped, not treated as a departure. Passing a dict where a 2-tuple was
-    expected is a common mix-up (Python 2.7 would otherwise silently unpack
-    dict KEYS as if they were the bounds and compare strings to floats), so
-    it is detected and handled explicitly rather than left to fail loudly
-    only sometimes.
+    -- either element/key may be None: that end was not resolved and is
+    skipped, not a departure. A dict is read by key: unpacked as a tuple,
+    Python 2.7 would compare its key strings to floats.
 
     Returns (conformance, [EndVerdict, ...]). SHAPE_WINDOW may return up to
     two EndVerdicts, one per end, EACH JUDGED INDEPENDENTLY -- a window can be
     looser at one end and tighter at the other simultaneously; conformance is
     DEPARTS if either end departs.
 
-    `baseline=None` means no published-method value was ever verified for
-    this criterion; that is not this function's concern (a comparison needs
-    something to compare against) -- callers must check for it and resolve
-    UNKNOWN themselves rather than calling compare() with no baseline. See
-    ruleset.resolve().
+    `baseline=None` (no verified published value) raises: the caller resolves
+    UNKNOWN itself (ruleset.resolve()).
     """
     if baseline is None:
         raise ValueError(

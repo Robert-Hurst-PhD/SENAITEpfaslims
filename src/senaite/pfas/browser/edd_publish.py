@@ -4,10 +4,8 @@ The EDD export at publication.
 
 On a sample's publication, when its client exports EDDs: the batch's EDD is
 generated in the client's profile and stored on the batch (none when it has
-a blocking error). A sample's sample-type code override is kept on the
-sample.
+a blocking error).
 
-    sample annotation  edd_store.SAMPLE_TYPE_KEY  the code override
     batch annotation   edd_store.EXPORT_KEY       {csv, filename, generated,
                                                    error_count, blocking_count}
 
@@ -21,30 +19,12 @@ import logging
 from Products.CMFCore.utils import getToolByName
 from zope.annotation.interfaces import IAnnotations
 
-from senaite.pfas.edd_store import EXPORT_KEY, SAMPLE_TYPE_KEY
+from senaite.pfas.edd_store import EXPORT_KEY
 
 logger = logging.getLogger("senaite.pfas.browser.edd_publish")
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
-
-def set_ar_sample_type(ar_obj, sample_type_code):
-    """Persist a sample's sample-type code override (at intake)."""
-    try:
-        ann = IAnnotations(ar_obj)
-        ann[SAMPLE_TYPE_KEY] = sample_type_code
-    except Exception as exc:
-        logger.warning("Cannot set the EDD sample type on %s: %s", ar_obj.getId(), exc)
-
-
-def get_ar_sample_type(ar_obj, default="GW"):
-    """A sample's sample-type code (its override, else the default)."""
-    try:
-        ann = IAnnotations(ar_obj)
-        return ann.get(SAMPLE_TYPE_KEY) or default
-    except Exception:
-        return default
-
 
 def get_batch_edd(batch_obj):
     """Return stored EDD dict for a batch, or None."""

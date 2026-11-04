@@ -43,12 +43,6 @@ def resolve(method_id, ids, what=u"this page"):
     return method_id
 
 
-def chosen(posted, fallback, ids, what=u"this page"):
-    """The method a form names, else `fallback` (the batch's), resolved
-    against the configured `ids` (MethodUnresolved when neither is one)."""
-    return resolve((posted or u"").strip() or fallback, ids, what)
-
-
 # ── Portal readers ───────────────────────────────────────────────────────────
 
 def ids(portal):

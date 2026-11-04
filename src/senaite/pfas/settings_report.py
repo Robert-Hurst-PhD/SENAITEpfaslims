@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """The settings report: every QC setting, how it is applied and where.
 
-
 Two halves:
 
 * APPLICATION -- for each QC type and instrument check: what criterion the
@@ -20,12 +19,8 @@ from __future__ import absolute_import, unicode_literals
 import hashlib
 import json
 
-try:
-    from senaite.pfas import config_forms as cf
-    from senaite.pfas import method_profile_sections as mps
-except Exception:          # tests: loaded without the package
-    import config_forms as cf
-    import method_profile_sections as mps
+from senaite.pfas import config_forms as cf
+from senaite.pfas import method_profile_sections as mps
 
 # (code, criterion, evaluated, how the pipeline applies it / why not, check kind)
 QC_APPLICATION = [
@@ -68,7 +63,7 @@ INSTRUMENT_APPLICATION = [
      u"Each CCV injection's calculated / expected concentration.", "ccv", "ccv_recovery"),
     (u"Internal standard response", u"Area window vs calibration / last CCV", True,
      u"Every injection's IS area.", "is_response", "is_response"),
-    (u"Retention time", u"RRT deviation", True, u"Every peak's relative RT.", "rt", "rrt_deviation"),
+    (u"Retention time", u"RT deviation", True, u"Every peak's relative RT.", "rt", "rrt_deviation"),
     (u"Ion ratio", u"Qualifier / quantifier tolerance", True, u"Every detected peak.",
      "ion_ratio", "ion_ratio"),
     (u"Signal to noise", u"Minimum S/N (quantitation)", True, u"Every reported peak.", "sn", "sn_min"),
@@ -86,17 +81,14 @@ INSTRUMENT_APPLICATION = [
 
 # The rule switches the pipeline actually reads (pinned against the code by
 # tests/test_settings_report.py). A switch outside this set changes nothing.
-CONSUMED_TOGGLES = frozenset(["is_response", "rrt_deviation", "ion_ratio", "cal_r2",
+CONSUMED_TOGGLES = frozenset(["is_response", "is_vs_ccv", "rrt_deviation", "ion_ratio", "cal_r2",
                               "ccv_recovery", "sn_min", "single_transition_confirm",
                               "ccv_frequency", "mdl_check", "surrogate_recovery",
                               "over_range"])
 
 
 def _switch_labels():
-    try:
-        from senaite.pfas.qc.rules import RULE_LIBRARY
-    except Exception:                                       # noqa: BLE001
-        return {}
+    from senaite.pfas.qc.rules import RULE_LIBRARY
     return dict((r["key"], r.get("label") or r["key"]) for r in RULE_LIBRARY)
 
 
@@ -175,6 +167,14 @@ def _tier_text(t):
     return u", ".join(parts) or u"no criterion"
 
 
+def _scope_text(profile, tier, scopes):
+    """Where a tier applies, in words: all matrices, or the matrices its own
+    list names."""
+    if not mps._qc_tiers().is_listed(tier):
+        return scopes[u"all"]
+    return u", ".join(mps.tier_matrices(profile, tier)) or u"no matrices"
+
+
 def qc_application(profile):
     """One row per QC type the method stores (or the table names): enabled,
     evaluated, how, and each tier as text with its scope and source."""
@@ -195,7 +195,7 @@ def qc_application(profile):
                     if t.get(mps.LOW_LEVEL_KEY) is not None else u"")
             tiers.append({"name": t.get("name") or u"", "criterion": _tier_text(t),
                           "applies": u"%s; %s%s" % (groups.get(t.get("analyte_group") or u"all", t.get("analyte_group")),
-                                                   scopes.get(t.get("matrix_scope") or u"all", t.get("matrix_scope")),
+                                                   _scope_text(profile, t, scopes),
                                                    (u"; " + when) if when else u""),
                           "source": t.get("citation") or (u"VERIFY against the method"
                                                           if t.get("verify_against_method") else u"method profile")})

@@ -47,16 +47,19 @@ def mdl_due(records, today):
         if key not in latest or r["approved_at"] > latest[key]:
             latest[key] = r["approved_at"]
     out = []
+    from senaite.pfas import print_doc
     for (method, matrix), at in latest.items():
-        due = _plus_months(at, MDL_DUE_MONTHS)
-        out.append({"method": method, "matrix": matrix, "approved": at[:10],
+        # approved on the laboratory's day (the stamp is UTC); due from that day
+        day = print_doc.lab_or(at, at[:10], u"%Y-%m-%d")
+        due = _plus_months(day, MDL_DUE_MONTHS)
+        out.append({"method": method, "matrix": matrix, "approved": day,
                     "due": due, "overdue": due < (today or u"")[:10]})
     return sorted(out, key=lambda e: e["due"])
 
 
 def chart_hidden(records):
     """The worksheets of every study that has not opted into the control
-    charts and blank history (`in_charts`, off by default; lab, 2026-10-09:
+    charts and blank history (`in_charts`, off by default:
     study runs are kept apart from routine data)."""
     out = set()
     for r in records or []:
@@ -89,7 +92,7 @@ def new(records, kind, method, matrix, by, at, **params):
 
 
 def normalise(rec):
-    """Records from before 2026-10-09 named one `level`; now `levels`."""
+    """Older records name one `level`; read as `levels`."""
     if "levels" not in rec:
         rec["levels"] = [rec["level"]] if rec.get("level") else []
     rec.pop("level", None)

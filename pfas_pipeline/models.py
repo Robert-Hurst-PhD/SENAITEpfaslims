@@ -1,7 +1,4 @@
-"""
-Typed data models for every entity in the PFAS QC pipeline.
-Typed records the worker passes between import, QC, summary and push.
-"""
+"""Typed records the worker passes between import, QC, summary and push."""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -55,9 +52,8 @@ class InstrumentRow:
     # "N.D." or "". Distinct from a computed qualifier — "BLoQ" means detected
     # but below quantitation, which is not the same claim as "not detected".
     conc_qualifier:      str             = ""
-    # The unit the instrument reports the concentration in ("ng/mL"). Mapped
-    # in _COL_MAP all along but never carried onto the row, so nothing could
-    # check a spike level or a reporting limit against it.
+    # The unit the instrument reports the concentration in ("ng/mL"): a spike
+    # level or a reporting limit is checked against it.
     conc_units:          str             = ""
     # Ion-ratio redundancy: software versions name the
     # expected ratio differently, and some exports give only the method's;
@@ -70,9 +66,9 @@ class InstrumentRow:
     # analyte's row (its area, its retention time): the import profile's
     # "labelled standards from columns" makes the standard's own rows from them
     is_observed_rt:               Optional[float] = None
-    # Value provenance (2026-10-11): the export file and the 1-based line the
-    # row was read from (None for a row no file line gives: a legacy reader,
-    # a row made from another's columns); what the instrument reported BEFORE
+    # Value provenance: the export file and the 1-based line the
+    # row was read from (None for a row no file line gives, such as one made
+    # from another's columns); what the instrument reported BEFORE
     # the extract corrections scaled it, and the factors applied. The scaled
     # fields stay the values every rule reads; these only remember.
     source_file:                  str = ""
@@ -90,18 +86,13 @@ def reported_conc(row) -> "float | None":
 
     ``calculated_conc`` is the value after the instrument has applied the
     sample factor (dilution / weight); ``measured_conc`` is the raw reading off
-    the calibration curve. The reported result is the corrected one.
-
-    This existed twice with opposite precedence — ``build_summary`` took the
-    raw value while ``injection_store`` took the corrected one — so a 1:10
-    dilution was reported ten times high on the summary and correctly in the
-    review pages. Both now call this.
+    the calibration curve. The reported result is the corrected one; the
+    summary and the review pages both read it here.
 
     The fall-back to ``measured_conc`` covers a genuinely BLANK reported cell.
-    It must NOT override a cell the instrument filled in with a verdict: on a
-    real export ``br-PFHxS`` carried "Not Detected" as its calculated
-    concentration and 0.000188 as its raw curve reading, and falling through
-    resurrected a number the instrument had explicitly declined to report.
+    A cell the instrument filled with a verdict ("Not Detected") reports
+    None: the raw curve reading never replaces a value the instrument
+    declined to report.
     """
     if getattr(row, "calculated_conc", None) is not None:
         return row.calculated_conc
@@ -121,14 +112,14 @@ class QCFlag:
     value:          str     # displayed value (numeric or N.D. etc.)
     issue:          str     # "(SUR)", "(CAL)", "(REC)", "(N.C.)", etc.
     link:           str = ""
-    # WHICH CHECK RAISED THIS, as an identity rather than as display text.
-    #
-    # `source` is shown to a human and reads better with the method in it
-    # ("FDA_32PFAS Calibration"). Control flow used to match on `source`
-    # exactly, so the moment the profiled checks started prefixing the method,
-    # every calibration / r2 / CCV / RT review check began reporting AUTO_PASS
-    # while carrying flags. One field cannot be both a label and a key.
+    # WHICH CHECK RAISED THIS, as an identity rather than as display text:
+    # `source` is a label shown to a human and may carry the method
+    # ("FDA_32PFAS Calibration"); control flow matches on check_kind, never
+    # on `source`.
     check_kind:     str = ""
+    # True when the rule that raised this is in the state Evaluate: the flag
+    # is shown and stored, and blocks nothing.
+    advisory:       bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -153,7 +144,7 @@ class ISRawResult:
     pct_from_cal:   Optional[float]   # response / average_response  (col D formula)
     average_response: Optional[float]
     flag:           Optional[QCFlag]  = None
-    # : the window the check applied, whether the METHOD configured
+    # the window the check applied, whether the METHOD configured
     # it (False = the built-in fallback: reported as "no criterion"), and the
     # standard's role in the method's grid
     window_min:     Optional[float] = None
@@ -251,6 +242,11 @@ class LFSMDResult:
     # the limits applied: the RPD's and the duplicate's own recovery window
     window:           Optional[dict] = None
     recovery_window:  Optional[dict] = None
+    # the two measured concentrations the RPD is of (LFSM, LFSMD)
+    conc_lfsm:        Optional[float] = None
+    conc_lfsmd:       Optional[float] = None
+    # False: the RPD was not judged (a raw side with no reading); rpd_pct None
+    rpd_judged:       bool = True
 
     @property
     def passes(self) -> bool:
@@ -304,29 +300,17 @@ class SummaryResult:
     # it; None when nothing was subtracted.
     blank_subtracted: Optional[float]   = None
     # A reviewer finding, deliberately NOT in `flags`: flags are folded into
-    # the displayed value by display() below and pushed to Analysis Remarks,
-    # both of which reach the client certificate. "the method profile named a
-    # different surrogate than the instrument used" is a question for the
-    # reviewer, which is what the QC Review Report exists to carry.
+    # the displayed value by display() and pushed to Analysis Remarks, both
+    # of which reach the client certificate. A finding such as a surrogate
+    # mismatch is for the reviewer: the QC Review Report carries it.
     is_mismatch:      str               = ""
 
     def display(self) -> str:
         """The displayed value with its qualifiers, e.g. `8.39 (BLoQ)`.
 
-        ONE parenthesis, semicolon-separated, which is the format
-        `build_summary`'s own docstring records from real output:
-        `8.39 (BLoQ)`, `0.0537 (BLoQ; N.C.)`, `10.6 (BLoQ; SUR)`.
-
-        This produced neither of the two-code forms. It emitted a SEPARATE
-        parenthesis per group -- `0.0537 (BLoQ) (N.C.)` -- and joined multiple
-        flags with the empty string, so a result carrying two of them read
-        `12 (N.C.HRMS)`: two qualifier codes run together into a third thing that
-        is not a code at all, on a document a client reads.
-
-        Found by printing the output rather than by any assertion about the list
-        (: for any artefact a person reads, print it and read it).
-        Reachable all along with N.C. + SUR; wiring the FDA §10.2(4) HRMS flag
-        (§31) simply made a second code common.
+        ONE parenthesis, semicolon-separated, the format `build_summary`'s
+        docstring records: `8.39 (BLoQ)`, `0.0537 (BLoQ; N.C.)`,
+        `10.6 (BLoQ; SUR)`. Two codes never run together into one.
         """
         if self.result_ppt is None:
             return self.qualifier
@@ -350,7 +334,7 @@ class Batch:
     injections:         list[InstrumentRow]  = field(default_factory=list)
     qc_flags:           list[QCFlag]         = field(default_factory=list)
     is_results:         list[ISRawResult]    = field(default_factory=list)
-    # : every surrogate recovery the run judged (or could not, for
+    # every surrogate recovery the run judged (or could not, for
     # want of a criterion): dicts injection_name, compound, value, window_min,
     # window_max, guidance, status, std_role
     surrogate_results:  list                 = field(default_factory=list)
@@ -374,7 +358,7 @@ class Batch:
     reagents:           list[dict]           = field(default_factory=list)
     extraction_log:     Optional[dict]       = None
     # Dilution map from FM-ENV-003: {dilution_injection: {parent, factor}}.
-    # Empty for a batch that recorded none, which is every historical batch.
+    # Empty for a batch that recorded none.
     dilutions:          dict                 = field(default_factory=dict)
     # Matrix-spike pedigree from the extraction log:
     # {injection: {parent, spike_ppt, level}}. Identifies an LFSM by what the
@@ -385,7 +369,7 @@ class Batch:
     # pushed -- but judged against the blank limit too.
     field_blanks:       list                 = field(default_factory=list)
     # field duplicates (the CoC's Field QC): client samples, left out of a
-    # method's CCV interval where it counts field samples only (§10.3)
+    # method's CCV interval where it counts field samples only
     field_duplicates:   list                 = field(default_factory=list)
     # trip blanks (the CoC's Field QC): client samples judged against the
     # method's own trip blank limit, never another blank's

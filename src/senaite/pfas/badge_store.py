@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Badges and registered lab terminals (part C).
+"""Badges and registered lab terminals.
 
 The rules: a badge alone signs a person in, but only at a
 REGISTERED lab terminal, never for a Manager / site-admin account; a scan
@@ -8,11 +8,11 @@ switches user; terminals sign out after 10 minutes idle.
 Stored in SQLite (/data/qc/badges.db), not the ZODB: every failed scan is a
 write, and the ZODB would turn a stream of them into conflicts and growth.
 
-    issue(userid, by, when) -> the badge CODE, returned once and never stored:
+    issue(con, userid, by, when) -> the badge CODE, returned once and never stored:
                                only sha256(code) is kept; a new badge revokes
                                the previous one
     revoke(userid, by, when), status(userid), user_for_code(code)
-    register_terminal(name, by, when) -> the terminal TOKEN (kept in that
+    register_terminal(con, name, by, when) -> the terminal TOKEN (kept in that
                                browser's cookie; only its hash is stored)
     terminal_for_token(token), revoke_terminal(id, by, when), terminals()
     failure(terminal_id, now), locked(terminal_id, now), clear(terminal_id)
@@ -68,6 +68,13 @@ def _hash(secret):
     return hashlib.sha256(secret).hexdigest()
 
 
+def idle_exempt(url, exempt):
+    """True when the request's PATH (not its query or fragment) is one the
+    idle sign-out leaves alone."""
+    path = (url or "").split("?", 1)[0].split("#", 1)[0]
+    return any(x in path for x in exempt)
+
+
 def normalise(code):
     """What a scanner or a person typed, as the code: upper case, no spaces
     or dashes (a badge may print it in groups)."""
@@ -114,7 +121,7 @@ def revoke(con, userid, by, when):
 def status(con, userid):
     row = con.execute("SELECT issued_at, issued_by FROM badges WHERE userid=?", (userid,)).fetchone()
     # positional: under Python 2 a sqlite3.Row refuses unicode column names
-    # (unicode_literals), which made every lookup of a real badge fail
+    # (unicode_literals)
     return {"active": row is not None, "issued_at": row[0] if row else "",
             "issued_by": row[1] if row else ""}
 

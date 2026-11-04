@@ -3,8 +3,7 @@
 
 Every save of a configuration store records ONE entry per (store, key) per
 transaction: who, when, and the path-level changes with the value before and
-after. ISO 17025 §8.3 expects that record for acceptance criteria; before
-this, a method profile was one JSON value overwritten on every save.
+after. ISO 17025 §8.3 expects that record for acceptance criteria.
 
 HOW A STORE TAKES PART
     config_history.track(portal, "method_profile", method_id, getter)
@@ -19,9 +18,8 @@ value through the same getter, diffs, and writes one entry. So:
 
 STORAGE
 One OOBTree on the portal, keyed "<ISO timestamp>-<uuid>" so concurrent saves
-never contend on a counter; each value is one JSON entry. ZODB rather than
-SQLite on purpose: an entry must commit or roll back
-WITH the change it describes, which a separate SQLite file cannot do.
+never contend on a counter; each value is one JSON entry. ZODB, not SQLite:
+an entry must commit or roll back WITH the change it describes.
 
 The diff, apply and conflict functions are pure (no Zope) and shared with
 tools/config_save_audit.py. Python 2.7 compatible.
@@ -40,19 +38,22 @@ HISTORY_KEY = "senaite.pfas.config_history"
 
 # Keys nobody edits: timestamps, seeding markers and values the system derives.
 # A change to one of these alone records nothing (they would bury real edits).
+# The analyte panel is not among them: it follows the services' Method links,
+# and a link made or broken is recorded ("Analyte links: +a, -b").
 IGNORED_KEYS = frozenset(["updated_at", "_seeded", "matrix_uid_map",
-                          "master_analyte_set", "display_analyte_set",
+                          "analyte_links_v", "display_analyte_set",
                           "method_id"])
 
-# Keys counted in the version stamp but kept out of history entries. Empty
-# since 2026-09-30: the surrogate map used to be a copy derived from the
-# analysis services and was recorded there; it is now owned by each
-# method profile and recorded, and reverted, with it.
+# Keys counted in the version stamp but kept out of history entries. The
+# surrogate map is owned by each method profile and recorded, and reverted,
+# with it.
 HISTORY_ONLY_IGNORED = frozenset()
 
 # Stores whose save FAILS when its history entry cannot be written: the
-# acceptance criteria, the instrument maps and the certificate wording ("refuse the save"). Elsewhere a missing entry is logged.
-STRICT_STORES = frozenset(["method_profile", "import_profile", "qc_qualifiers"])
+# acceptance criteria, the instrument maps and the certificate wording.
+# Elsewhere a missing entry is logged.
+STRICT_STORES = frozenset(["method_profile", "import_profile", "qc_qualifiers",
+                          "lab_identity", "person_roles", "lab_timezone"])
 
 
 class HistoryNotRecorded(Exception):
@@ -204,9 +205,11 @@ def set_note(note):
     reg.note = note
 
 
-def track(portal, store, key, getter, label=u""):
+def track(portal, store, key, getter, label=u"", action=u"", reason=u""):
     """Register a (store, key) about to be written in this transaction.
-    `portal` may be None for stores that live outside the ZODB (files, SQLite)."""
+    `portal` may be None for stores that live outside the ZODB (files, SQLite).
+    `action` names the act ("retire layout") and `reason` is the one the
+    person gave; both are written on the entry when given."""
     try:
         if portal is None:
             from bika.lims import api
@@ -215,7 +218,13 @@ def track(portal, store, key, getter, label=u""):
         ident = (store, u"%s" % key)
         if ident not in reg.items:
             reg.items[ident] = {"before": _safe(getter), "getter": getter,
-                                "label": label, "portal": portal}
+                                "label": label, "portal": portal,
+                                "action": action, "reason": reason}
+        else:
+            item = reg.items[ident]
+            item["label"] = merge_label(item["label"], label)
+            item["action"] = merge_label(item.get("action"), action)
+            item["reason"] = merge_label(item.get("reason"), reason)
         if not reg.hooked:
             txn.addBeforeCommitHook(_write_entries, (reg,))
             reg.hooked = True
@@ -256,15 +265,67 @@ def _safe(getter):
         return _UNREADABLE
 
 
+AT_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def now():
+    """The one audit time stamp: UTC, "YYYY-MM-DD HH:MM:SS" (sorts as text,
+    as every entry's key does)."""
+    return datetime.utcnow().strftime(AT_FORMAT)
+
+
+def shown_at(at):
+    """An entry's stored UTC time as the history shows it: on the
+    laboratory's clock, in the stored form."""
+    from senaite.pfas import lab_time
+    return lab_time.show(at, "utc", AT_FORMAT)
+
+
+def lab_day_window(day_from, day_to):
+    """(since, until) for entries() and count() from From and To, typed as
+    the laboratory's days ("YYYY-MM-DD"): the first second of the first day
+    and the last second of the last day on the laboratory's clock, as UTC in
+    the stored form, so that they compare as text. While the zone does not
+    convert, or for text that is not a day, the text as typed (a bare date
+    bound covers its whole day); an empty bound is None."""
+    from datetime import timedelta
+    from senaite.pfas import lab_time
+
+    def bound(day, last):
+        if not day:
+            return None
+        if not lab_time.active():
+            return day
+        try:
+            start = datetime.strptime(day, "%Y-%m-%d")
+        except ValueError:
+            return day
+        if not last:
+            return lab_time.to_utc(start).isoformat(" ")
+        return (lab_time.to_utc(start + timedelta(days=1)) - timedelta(seconds=1)).isoformat(" ")
+
+    return bound(day_from, False), bound(day_to, True)
+
+
+def actor():
+    """Who acts: this transaction's set_actor name, else the signed-in user's
+    id, else "system"."""
+    try:
+        _txn, reg = _registry()
+    except ImportError:         # outside Zope there is no transaction
+        reg = None
+    return _who(reg)
+
+
 def _who(reg):
-    if reg.actor:
+    if reg is not None and reg.actor:
         return reg.actor
     try:
         from bika.lims import api
         user = api.get_current_user()
         uid = user.getId() if user is not None else None
         return uid or u"system"
-    except Exception:
+    except ImportError:         # outside SENAITE nobody is signed in
         return u"system"
 
 
@@ -294,13 +355,16 @@ def _write_one(reg, store, key, item):
     if not changes:
         return
     entry = {
-        "at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "at": now(),
         "who": _who(reg), "store": store, "key": key, "label": item["label"],
         "changes": [{"path": list(p), "before": b, "after": a}
                     for p, b, a in changes],
     }
     if reg.note:
         entry["note"] = reg.note
+    for field in ("action", "reason"):
+        if item.get(field):
+            entry[field] = item[field]
     if store in REDACTED_STORES:
         entry["changes"] = [{"path": list(p), "before": u"(redacted)",
                              "after": u"(redacted)"} for p, b, a in changes]
@@ -327,26 +391,57 @@ def _append(portal, entry):
 
 def append(portal, entry):
     """Write an entry directly (used for reverts, which are their own act)."""
-    entry.setdefault("at", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+    entry.setdefault("at", now())
     return _append(portal, entry)
 
 
-def entries(portal, store=None, key=None, limit=200):
-    """Newest first, optionally for one store and/or key."""
+def _keep(e, store, key, since, until):
+    if store and e.get("store") != store:
+        return False
+    if key and u"%s" % e.get("key") != u"%s" % key:
+        return False
+    at = u"%s" % (e.get("at") or u"")
+    # "at" is "YYYY-MM-DD HH:MM:SS" (UTC): text order is time order; a bare
+    # date bound covers its whole day
+    if since and at < since:
+        return False
+    if until and at[:len(until)] > until:
+        return False
+    return True
+
+
+def _newest(portal, store=None, key=None, since=None, until=None):
+    """The matching entries, newest first, read one at a time."""
     tree = _btree(portal, create=False)
     if not tree:
-        return []
-    out = []
+        return
     for eid in reversed(list(tree.keys())):
         e = json.loads(tree[eid])
-        if store and e.get("store") != store:
-            continue
-        if key and u"%s" % e.get("key") != u"%s" % key:
+        if _keep(e, store, key, since, until):
+            yield e
+
+
+def entries(portal, store=None, key=None, limit=200, since=None, until=None, offset=0):
+    """Newest first, optionally for one store and/or key and a time window
+    (since / until: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS", UTC), skipping the
+    first `offset` that match."""
+    out, skipped = [], 0
+    for e in _newest(portal, store, key, since, until):
+        if skipped < offset:
+            skipped += 1
             continue
         out.append(e)
         if len(out) >= limit:
             break
     return out
+
+
+def count(portal, store=None, key=None, since=None, until=None):
+    """How many entries match (for paging)."""
+    tree = _btree(portal, create=False)
+    if not tree:
+        return 0
+    return len([1 for eid in tree.keys() if _keep(json.loads(tree[eid]), store, key, since, until)])
 
 
 def get_entry(portal, eid):
@@ -356,9 +451,15 @@ def get_entry(portal, eid):
     return json.loads(tree[eid])
 
 
-def last_change(portal, store, key):
-    found = entries(portal, store, key, limit=1)
-    return found[0] if found else None
+def last_change(portal, store, key, path=None):
+    """The newest entry for one store and key; with `path` (a sequence of
+    keys), the newest whose changes include that path exactly."""
+    want = None if path is None else [u"%s" % p for p in path]
+    for e in _newest(portal, store, key):
+        if want is None or any([u"%s" % p for p in ch.get("path") or []] == want
+                               for ch in e.get("changes") or []):
+            return e
+    return None
 
 
 # ── store registry: how to read and save each store, for reverts ────────────
@@ -370,9 +471,14 @@ STORES = {}
 TITLES = {}      # display names for stores recorded but not revertable here
 
 
-def register_store(name, getter, saver, title=u""):
-    """getter(portal, key) -> stored value; saver(portal, key, value)."""
-    STORES[name] = {"getter": getter, "saver": saver, "title": title or name}
+def register_store(name, getter, saver, title=u"", map_changes=None, as_saved=None):
+    """getter(portal, key) -> stored value; saver(portal, key, value).
+    map_changes(current, changes) -> (changes, refusal): an entry's changes
+    as the store holds them now (a revert applies those); as_saved(value) ->
+    the value as the saver would store it (a revert that would store nothing
+    new is refused)."""
+    STORES[name] = {"getter": getter, "saver": saver, "title": title or name,
+                    "map_changes": map_changes, "as_saved": as_saved}
 
 
 def stamp(value):
@@ -382,6 +488,29 @@ def stamp(value):
         value = dict((k, v) for k, v in value.items()
                      if k not in IGNORED_KEYS and k not in ("updated_at", "_seeded"))
     return fingerprint(value)
+
+
+PANEL_KEY = "master_analyte_set"
+
+
+def panel_change(changes):
+    """The paths of `changes` (an entry's) that touch the analyte panel: the
+    panel is the cache of the services' Method links, so such an entry is
+    undone in Setup, never reverted from history."""
+    return [u"/".join(u"%s" % x for x in ch["path"]) for ch in changes or []
+            if ch.get("path") and ch["path"][0] == PANEL_KEY]
+
+
+def merge_label(existing, new):
+    """One transaction may save a value twice under two labels (a profile
+    saved under its name, then its analyte links refreshed): the entry keeps
+    both, the first first."""
+    existing, new = existing or u"", new or u""
+    if not existing or existing == new:
+        return new or existing
+    if not new:
+        return existing
+    return u"%s; %s" % (existing, new)
 
 
 def revert(portal, eid):
@@ -394,12 +523,25 @@ def revert(portal, eid):
     spec = STORES.get(entry["store"])
     if spec is None:
         return False, u"This kind of setting cannot be reverted from history yet."
+    if entry["store"] == "method_profile" and panel_change(entry.get("changes")):
+        return False, (u"Not reverted: the analyte panel follows the services' Method "
+                       u"links. Link or unlink the service in Setup (Analysis Services, "
+                       u"Methods) and the panel follows.")
     current = spec["getter"](portal, entry["key"])
-    bad = revert_conflicts(current, entry["changes"])
+    changes = entry["changes"]
+    if spec.get("map_changes"):
+        changes, refusal = spec["map_changes"](current, changes)
+        if refusal:
+            return False, refusal
+    bad = revert_conflicts(current, changes)
     if bad:
         return False, (u"Not reverted: a later change touched "
                        + u", ".join(u"/".join(u"%s" % x for x in p) for p in bad[:4])
                        + u". Revert the later change first.")
+    value = reverted(current, changes)
+    stored = spec["as_saved"](copy.deepcopy(value)) if spec.get("as_saved") else value
+    if not diff(current, stored):
+        return False, u"Not reverted: the stored setting would not change."
     set_note(u"revert of %s" % eid)
-    spec["saver"](portal, entry["key"], reverted(current, entry["changes"]))
+    spec["saver"](portal, entry["key"], value)
     return True, u"Reverted."

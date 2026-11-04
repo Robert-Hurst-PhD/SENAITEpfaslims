@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Receipt temperatures on the chain of custody, corrected.
-
-"Any thermometer used for sample receipt should be recorded
-within the CoC with the associated correction factor applied."
+"""Receipt temperatures on the chain of custody, corrected: every
+thermometer used at sample receipt is recorded on the CoC with its
+correction factor applied.
 
 A logbook field of type `thermometer` names the instrument the temperatures
 were taken with (an IR gun or a thermometer registered on Equipment). When the
@@ -14,7 +13,9 @@ next quarterly study changes it. A table column declared
 (observed + factor). The record is re-frozen only if the instrument or the
 receipt date changes.
 
-    freeze(unit, correction, as_of)       -> record
+    freeze(unit, calibration, as_of)      -> record (facility_qc.calibration:
+                                             a single factor, or the points
+                                             of a multi-point calibration)
     corrected(value, record)              -> float | None
     enrich(data, schema, get_unit, get_correction, as_of)  (in place)
 
@@ -24,10 +25,8 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-try:
-    from senaite.pfas import equipment_types as et
-except ImportError:                                  # tests
-    import equipment_types as et
+from senaite.pfas import equipment_types as et
+from senaite.pfas import temp_calibration as tc
 
 RECORD_SUFFIX = u"_record"
 CORRECTED_SUFFIX = u"_corrected"
@@ -42,21 +41,22 @@ def freeze(unit, correction, as_of):
            "serial": unit.get("serial_number") or u"", "kind": unit.get("unit_type") or u"",
            "as_of": (as_of or u"")[:10], "required": needs,
            "correction": None, "study_date": None, "study_id": None}
-    if needs and correction:
-        rec.update(correction=correction.get("correction"), study_date=correction.get("study_date"),
-                   study_id=correction.get("study_id"), status=u"corrected")
+    cal = correction or {}
+    if needs and cal.get("model") == tc.MULTI:
+        # a multi-point calibration: its points frozen, each container
+        # corrected on its own (temp_calibration)
+        rec.update(model=tc.MULTI, points=list(cal.get("points") or []),
+                   missing=list(cal.get("missing") or []),
+                   status=u"corrected" if cal.get("points") else u"uncorrected")
+    elif needs and cal.get("correction") is not None:
+        rec.update(correction=cal.get("correction"), study_date=cal.get("study_date"),
+                   study_id=cal.get("study_id"), status=u"corrected")
     else:
         rec["status"] = u"uncorrected" if needs else u"not_required"
     return rec
 
 
-def _num(v):
-    if v in (None, u"", ""):
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+from senaite.pfas.rounding import number as _num
 
 
 def corrected(value, record):
@@ -65,8 +65,8 @@ def corrected(value, record):
     v = _num(value)
     if v is None:
         return None
-    c = (record or {}).get("correction")
-    return round(v + c, 3) if c is not None else v
+    fixed, _outside = tc.correct(v, record or {})
+    return fixed if fixed is not None else v
 
 
 def thermometer_fields(schema):
@@ -76,7 +76,7 @@ def thermometer_fields(schema):
 def enrich(data, schema, get_unit, get_correction, as_of):
     """Freeze each thermometer field's record and correct the columns that
     name it. `get_unit(uid)` and `get_correction(uid, as_of)` are
-    facility_qc.get_unit / current_correction."""
+    facility_qc.get_unit / calibration."""
     as_of = (as_of or u"")[:10]
     records = {}
     for name in thermometer_fields(schema):
@@ -109,29 +109,9 @@ def enrich(data, schema, get_unit, get_correction, as_of):
     return data
 
 
-# ── the CoC schema change ───────────────────────────────────────
+# ── the CoC's receipt thermometer field ─────────────────────────
 
 RECEIPT_FIELD = {"name": "receipt_thermometer", "label": "Receipt thermometer",
                  "type": "thermometer", "required": True}
 
 
-def add_receipt_thermometer(schema, table="containers", column="temp_c"):
-    """The CoC schema with a receipt-thermometer field after the containers
-    table, and that table's temperature column corrected by it. Returns
-    (schema, changed); a schema that already has it is returned unchanged."""
-    import copy
-    out = copy.deepcopy(schema or [])
-    names = [f.get("name") for f in out]
-    changed = False
-    if RECEIPT_FIELD["name"] not in names:
-        at = names.index(table) + 1 if table in names else len(out)
-        out.insert(at, dict(RECEIPT_FIELD))
-        changed = True
-    for f in out:
-        if f.get("name") == table and f.get("type") == "table":
-            for c in f.get("columns") or []:
-                if c.get("name") == column and c.get("corrected_by") != RECEIPT_FIELD["name"]:
-                    c["type"] = "number"
-                    c["corrected_by"] = RECEIPT_FIELD["name"]
-                    changed = True
-    return out, changed

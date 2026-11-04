@@ -57,16 +57,18 @@
             <td colspan="3" i18n:translate="">Results are corrected for the batch's method blank.</td></tr>
       </table>
 
+      <!-- the lab's column order: Analyte, CAS, Result in the matrix's
+           unit, Qualifier, MDL, RL, Dilution; an MDL never set prints a dash -->
       <table class="pfas-coa-res">
         <thead>
           <tr>
             <th i18n:translate="">Analyte</th>
             <th tal:condition="python:smp['fmt'].get('coa_show_cas')" i18n:translate="">CAS No.</th>
-            <th class="num" i18n:translate="">Result</th>
+            <th class="num"><span i18n:translate="">Result</span>
+              <tal:u condition="smp/result_unit|nothing">(<tal:x content="smp/result_unit">ng/L</tal:x>)</tal:u></th>
             <th i18n:translate="">Qual</th>
-            <th class="num" i18n:translate="">RL</th>
             <th class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')" i18n:translate="">MDL</th>
-            <th i18n:translate="">Units</th>
+            <th class="num" i18n:translate="">RL</th>
             <th class="num" tal:condition="python:smp['fmt'].get('coa_show_dilution')" i18n:translate="">Dil.</th>
           </tr>
         </thead>
@@ -76,9 +78,9 @@
             <td tal:condition="python:smp['fmt'].get('coa_show_cas')" tal:content="r/cas">335-67-1</td>
             <td class="num res" tal:content="r/result">4.2</td>
             <td tal:content="r/qualifiers"></td>
+            <td class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')"><tal:m
+                condition="r/mdl" content="r/mdl"></tal:m><tal:m condition="not:r/mdl">&mdash;</tal:m></td>
             <td class="num" tal:content="r/rl"></td>
-            <td class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')" tal:content="r/mdl"></td>
-            <td tal:content="r/unit"></td>
             <td class="num" tal:condition="python:smp['fmt'].get('coa_show_dilution')" tal:content="r/dilution"></td>
           </tr>
         </tbody>
@@ -88,6 +90,7 @@
         <span i18n:translate="">Detected results in bold.</span>
         <span i18n:translate="">U = not detected at or above the reporting limit (RL).</span>
         <span i18n:translate="">MDL = method detection limit.</span>
+        <span tal:repeat="c smp/rule_codes|nothing" tal:content="c/line">J = estimated.</span>
         <span tal:condition="smp/codes" i18n:translate="">Other codes: see Quality control qualifications.</span>
         <span tal:condition="not:smp/any_rl" class="pfas-coa-error" i18n:translate="">
           No reporting limits are configured for this method and matrix.</span>
@@ -100,7 +103,7 @@
         <thead tal:condition="qs/rows">
           <tr>
             <th tal:condition="python:qs['injections'] &gt; 1" i18n:translate="">Injection</th>
-            <th i18n:translate="">Labelled standard</th>
+            <th i18n:translate="">Isotope standard</th>
             <th i18n:translate="">Role</th>
             <th i18n:translate="">Measured as</th>
             <th class="num" i18n:translate="">Value (%)</th>

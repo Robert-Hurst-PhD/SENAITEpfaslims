@@ -11,28 +11,32 @@ PDF under /data/qc/studies/.
 Staff create studies and exclude results with a reason; approval and
 assigning a study's parts to analysts (study_runs: one worksheet per part)
 are manager tier (perms.TIER_CONFIG). A reference sample's receipt is
-recorded here by any staff member, beside its CoA.
+recorded on Reagent Inventory's Reference samples, beside its CoA.
 """
 from __future__ import absolute_import, unicode_literals
 
 import logging
 import os
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas import lab_time
+from senaite.pfas import print_doc
 from senaite.pfas import study_data as sd
 from senaite.pfas import study_records as sr
 from senaite.pfas import study_runs as sru
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action, is_staff, refuse
+from senaite.pfas.paths import is_plain_name
+from senaite.pfas.browser.view_helpers import send_pdf
 
 logger = logging.getLogger("senaite.pfas.browser.method_studies")
 
 GATES = {"approve": TIER_CONFIG, "assign": TIER_CONFIG, "charts": TIER_CONFIG,
-         "delete_draft": TIER_CONFIG}
+         "delete_draft": TIER_CONFIG, "design_entry": TIER_CONFIG}
 QC_DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 PDF_DIR = os.path.join(os.path.dirname(QC_DB), "studies")
 
@@ -69,7 +73,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return self._serve_asymmetry()
         if f.get("evidence_file") and self.record() is not None:
             return self._serve_evidence()
-        if self.request.get("REQUEST_METHOD") == "POST":
+        if self.request.method == "POST":
             action = f.get("action") or u""
             denied = deny_gated_action(self.context, self.request, action, GATES)
             if denied is not None:
@@ -89,8 +93,6 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self._approve()
             elif action == "assign":
                 self._assign()
-            elif action == "receipt":
-                self._receipt()
             elif action == "charts":
                 self._charts()
             elif action == "idc_save":
@@ -118,19 +120,21 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
 
     def mdl_due(self):
         """Annual MDL verification: when each method x matrix is due."""
-        from datetime import date
-        return sr.mdl_due(self.records(), date.today().isoformat())
+        return sr.mdl_due(self.records(), lab_time.today().isoformat())
 
     def print_css(self):
-        from senaite.pfas import print_doc
         rec = self.record() or {}
         return print_doc.document_css(u"Method study %s" % rec.get("id", u""), None,
                                       print_doc.current_user_label(self.context), size="letter")
 
+    def when(self, value):
+        """A study's stamp, stored on the server's clock as "... UTC", on the
+        laboratory's clock; as stored while no zone converts."""
+        return print_doc.lab_or(value, value or u"")
+
     def print_head(self):
-        from senaite.pfas import print_doc
         rec = self.record() or {}
-        approved = u" ".join(x for x in (rec.get("approved_by"), rec.get("approved_at")) if x)
+        approved = u" ".join(x for x in (rec.get("approved_by"), self.when(rec.get("approved_at"))) if x)
         cells = [(u"Study", rec.get("id", u"")), (u"Kind", self.kind_label(rec.get("kind"))),
                  (u"Method", u"%s / %s" % (rec.get("method", u""), rec.get("matrix", u""))),
                  (u"Status", rec.get("status", u"")), (u"Approved", approved)]
@@ -176,12 +180,17 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         return out
 
     def spike_roles(self):
-        """Every QC type the methods define: the MDL's spiked-replicate
-        choices (checked against the chosen method on create)."""
+        """The spiked QC types any of the methods runs: the MDL's
+        spiked-replicate choices (checked against the chosen method on
+        create)."""
         out = set()
         for m in self.methods():
-            out.update(self.profile(m).get("qc_acceptance") or {})
-        return sorted(out)
+            out.update(sd.spike_role_choices(self.profile(m)))
+        return [c for c in sd.SPIKED_ROLES if c in out]
+
+    def preparations(self):
+        """The study design's preparations: the blanks and the spike levels."""
+        return list(sd.PREPARATIONS)
 
     def spike_role(self, rec):
         return sd.spike_role(rec)
@@ -190,7 +199,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         return sd.blank_role(self.profile(rec.get("method"))) or u""
 
     def default_since(self):
-        return (date.today() - timedelta(days=365 * sd.MDL_MONTHS // 12)).isoformat()
+        return (lab_time.today() - timedelta(days=365 * sd.MDL_MONTHS // 12)).isoformat()
 
     # ── the data ───────────────────────────────────────────────────────────
     def _levels(self, batch_ids):
@@ -281,6 +290,15 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def fortified_by_level(self):
         spikes, _blanks = self.data()
         return dict((lv, self.fortified(lv)) for lv in set(r.get("level") or u"" for r in spikes))
+
+    def method_level_labels(self, method, matrix):
+        """The spike level labels one method defines for one matrix, any role."""
+        per = ((self.profile(method).get("spike_levels") or {}).get(matrix)) or {}
+        out = []
+        for e in [e for role_levels in per.values() for e in role_levels or []]:
+            if e.get("label") and e["label"] not in out:
+                out.append(e["label"])
+        return out
 
     def level_labels(self):
         """Every spike level label the methods define, any role (the form's
@@ -536,6 +554,10 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def _serve_evidence(self):
         rec = self.record()
         eid, name = self.request.form.get("eid") or u"", os.path.basename(self.request.form.get("file") or u"")
+        # the entry id names a folder under the study: a known entry only
+        if not is_plain_name(eid) or eid not in (rec.get("entries") or {}):
+            self.request.response.setStatus(404)
+            return u"No such file."
         path = os.path.join(self._design_dir(rec, eid), name)
         if not name or not os.path.exists(path):
             self.request.response.setStatus(404)
@@ -647,6 +669,12 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         rec = self.record() or {}
         return sru.elements_for(rec.get("kind"), rec)
 
+    def by_day(self):
+        """A planned study is given out one day at a time: its days
+        set the levels and replicates."""
+        rec = self.record() or {}
+        return bool(sru.day_elements(rec)) and not sru._cells(rec)
+
     def element_label(self, element):
         for e in self.elements():
             if e[0] == element:
@@ -679,7 +707,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if not hasattr(self, "_usable_lots"):
             from senaite.pfas.browser.bench_inventory import usable_lots
             try:
-                self._usable_lots = usable_lots(self.portal(), date.today().isoformat())
+                self._usable_lots = usable_lots(self.portal(), lab_time.today().isoformat())
             except Exception:                                # noqa: BLE001
                 logger.exception("usable lots")
                 self._usable_lots = []
@@ -758,61 +786,6 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         ws.reindexObject()
         return ws
 
-    # ── reference samples: receipt and CoA ─────────────────────────────────
-    def reference_samples(self):
-        """Every usable reference-sample lot with its receipt and CoA."""
-        from senaite.pfas.browser.reagents import _get_coa_meta
-        out = []
-        for l in self.lot_options(sru.REFERENCE_LOT):
-            out.append(dict(l, receipt=self._receipt_of(l["uid"]),
-                            coa=_get_coa_meta(self.portal(), l["uid"]) or None))
-        return out
-
-    def _reagent(self, uid):
-        folder = self.portal().get("pfas_reagents")
-        obj = folder.get(uid) if folder is not None and uid else None
-        return obj if getattr(obj, "portal_type", "") == "Reagent" else None
-
-    def _receipt_of(self, uid):
-        obj = self._reagent(uid)
-        return sru.load_receipt(obj) if obj is not None else None
-
-    def _receipt(self):
-        """Record a reference sample's receipt; its CoA goes where every
-        lot's CoA goes (the reagent's own)."""
-        f = self.request.form
-        uid = (f.get("uid") or u"").strip()
-        if uid not in [l["uid"] for l in self.lot_options(sru.REFERENCE_LOT)]:
-            self.error = u"Only a usable reference-sample lot takes a receipt here."
-            return
-        obj = self._reagent(uid)
-        receipt, self.error = sru.new_receipt(f, sru.load_receipt(obj), _user(), _now())
-        if self.error:
-            return
-        from senaite.pfas.browser.reagents import _get_reagent, _save_coa, _save_reagent, _str_to_date
-        received = _str_to_date((f.get("received_at") or u"").strip()[:10])
-        if received is None:
-            self.error = u"Give the date it was received as a date."
-            return
-        upload, data = f.get("coa_file"), None
-        if upload is not None and getattr(upload, "filename", u""):
-            data = upload.read()
-            if not data.startswith(b"%PDF"):
-                self.error = u"The CoA must be a PDF."
-                return
-        # checked first, written after: a refused receipt changes nothing
-        if data is not None and not _save_coa(self.portal(), uid, data, upload.filename,
-                                              "application/pdf", _user()):
-            self.error = u"The CoA was not saved."
-            return
-        sru.save_receipt(obj, receipt)
-        # the lot's own Received Date, through the inventory's save (its
-        # derived expiry and its modified event, the audit log's snapshot)
-        lot = _get_reagent(self.portal(), uid)
-        lot["received_date"] = received.isoformat()
-        _save_reagent(self.portal(), lot)
-        self.message = u"Receipt recorded."
-
     # ── actions ────────────────────────────────────────────────────────────
     def _create(self):
         f = self.request.form
@@ -867,16 +840,37 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self.error = u"Choose the analyst whose capability this demonstrates."
                 return self.template()
         recs = self.records()
-        ws = [w.strip() for w in (f.get("worksheets") or u"").replace(u",", u" ").split() if w.strip()]
-        levels = [l for l in self.level_labels() if f.get(u"level.%s" % l)]
+        # the study design: the preparations chosen (blanks and the
+        # method's spike levels for this matrix), replicates per level, days
+        preps = [p.strip() for p in (f.get("preparations") or u"").split(u",") if p.strip()]
+        known = dict(sd.PREPARATIONS)
+        if any(p not in known for p in preps):
+            self.error = u"Choose the preparations from the list."
+            return self.template()
+        levels = [p for p in preps if p not in sd.BLANK_PREPARATIONS]
+        for level in levels:
+            if level not in self.method_level_labels(method, matrix):
+                self.error = u"%s has no %s spike level for %s." % (method, level, matrix)
+                return self.template()
+        try:
+            replicates, days = int(f.get("replicates") or 0), int(f.get("days") or 0)
+        except ValueError:
+            replicates, days = 0, 0
+        plan = {"preparations": preps, "replicates": replicates, "days": days} if preps else None
+        # one reference sample, or none
         lots = dict((l.get("uid"), l) for l in self.reference_lots())
-        rms = [{"uid": uid, "name": lots[uid].get("name") or u"", "lot_number": lots[uid].get("lot_number") or u""}
-               for uid in sorted(lots) if f.get(u"rm.%s" % uid)]
+        uid = (f.get("reference_sample") or u"").strip()
+        rms = ([{"uid": uid, "name": lots[uid].get("name") or u"", "lot_number": lots[uid].get("lot_number") or u""}]
+               if uid in lots else [])
+        # the MDL's period: the last 12 months unless a range is given
+        custom = f.get("period") == u"custom"
+        since = (f.get("since") or u"").strip() if custom else (lab_time.today() - timedelta(days=365)).isoformat()
+        until = (f.get("until") or u"").strip() if custom else u""
         rec = sr.new(recs, kind, method, matrix, _user(), _now(), levels=levels, reference_materials=rms,
-                     worksheets=ws, since=(f.get("since") or u"").strip(),
-                     until=(f.get("until") or u"").strip(), title=(f.get("title") or u"").strip(),
-                     fortified=(f.get("fortified") or u"").strip() or None, analyst=analyst,
+                     since=since, until=until, title=(f.get("title") or u"").strip(),
+                     fortified=None, analyst=analyst,
                      spike_role=spike)
+        rec["plan"] = plan
         if design is not None:
             rec["design"] = design                  # a copy: the template may change later
             rec["title"] = design["name"]
@@ -954,9 +948,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return u"No certificate."
         with open(path, "rb") as fh:
             body = fh.read()
-        self.request.response.setHeader("Content-Type", "application/pdf")
-        self.request.response.setHeader("Content-Disposition", 'inline; filename="%s-certificate.pdf"' % rec["id"])
-        return body
+        return send_pdf(self.request.response, body, "%s-certificate.pdf" % rec["id"])
 
     def _approve(self):
         rec = self.record()
@@ -1023,10 +1015,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         else:
             with open(path, "rb") as fh:
                 body = fh.read()
-        resp = self.request.response
-        resp.setHeader("Content-Type", "application/pdf")
-        resp.setHeader("Content-Disposition", 'inline; filename="%s.pdf"' % rec["id"])
-        return body
+        return send_pdf(self.request.response, body, "%s.pdf" % rec["id"])
 
 
 class PFASMethodStudyMacrosView(BrowserView):

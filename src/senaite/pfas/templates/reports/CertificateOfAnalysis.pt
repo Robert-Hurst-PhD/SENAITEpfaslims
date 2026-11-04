@@ -81,7 +81,7 @@
       <div class="bn"
            tal:condition="accred/frozen_at">
         Governing criteria recorded at technical review
-        (<tal:v replace="accred/frozen_at"/>).
+        (<tal:v replace="accred/frozen_shown"/>).
       </div>
     </div>
   </tal:accred>
@@ -142,6 +142,9 @@
         &middot; <span tal:content="meta/report_id"></span>
       </tal:rid>
       &middot; <span i18n:translate="">uncontrolled when printed</span>
+      <tal:z define="zone att/times_line" condition="zone">
+        &middot; <span tal:content="zone"></span>
+      </tal:z>
     </div>
   </tal:stamp>
 

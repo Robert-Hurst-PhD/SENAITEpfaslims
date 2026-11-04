@@ -23,7 +23,7 @@
     <div class="pfas-print-preview">
       <div class="pfas-print-preview-label">Print header preview</div>
       <div class="pfas-print-head">
-        <img class="pfas-print-logo" tal:condition="ps/logo_url" tal:attributes="src ps/logo_url"/>
+        <img class="pfas-print-logo" tal:condition="ps/logo_url" tal:attributes="src python:view.logo_src()"/>
         <div>
           <div class="pfas-print-lab" tal:content="ps/lab_name">Lab</div>
           <div class="pfas-print-line">
@@ -42,41 +42,44 @@
     <form method="post" class="pfas-form-narrow"
           tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
       <input type="hidden" name="action" value="save"/>
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
 
-      <div class="pfas-form-field is-spaced"><label>Laboratory name</label>
-        <input type="text" name="lab_name" tal:attributes="value ps/lab_name"/></div>
-      <div class="pfas-form-field is-spaced"><label>Address</label>
-        <input type="text" name="lab_address" tal:attributes="value ps/lab_address"/></div>
-      <div class="pfas-form-field is-spaced"><label>Phone</label>
-        <input type="text" name="lab_phone" tal:attributes="value ps/lab_phone"/></div>
-      <div class="pfas-form-field is-spaced"><label>Email</label>
-        <input type="text" name="lab_email" tal:attributes="value ps/lab_email"/></div>
-      <div class="pfas-form-field is-spaced"><label>Logo URL</label>
-        <input type="text" name="logo_url" tal:attributes="value ps/logo_url"/>
-        <span class="pfas-hint">Absolute URL or portal-relative path to a logo image.</span></div>
-      <div class="pfas-form-field is-spaced"><label>Accreditation line</label>
-        <input type="text" name="accreditation" tal:attributes="value ps/accreditation"/>
-        <span class="pfas-hint">e.g. “ISO/IEC 17025:2017 — Certificate #1234”.</span></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Laboratory name</span>
+        <div tal:content="ps/lab_name">DEMO Laboratory</div></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Address</span>
+        <div tal:content="ps/lab_address">address</div></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Phone</span>
+        <div tal:content="ps/lab_phone">phone</div></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Email</span>
+        <div tal:content="ps/lab_email">email</div></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Accreditation line</span>
+        <div tal:content="ps/accreditation">accreditation</div></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Logo</span>
+        <div><img class="pfas-print-logo" tal:condition="ps/logo_url" tal:attributes="src python:view.logo_src()"/>
+          <span tal:condition="not:ps/logo_url">None</span></div></div>
+      <div class="pfas-form-field is-spaced">
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Edit on Laboratory</a>
+        <span class="pfas-hint">These come from the Laboratory record and the site logo.</span></div>
       <div class="pfas-form-field is-spaced"><label>Footer text</label>
         <input type="text" name="footer_text" tal:attributes="value ps/footer_text"/>
-        <span class="pfas-hint">Printed at the bottom of every page (controlled-copy notice).</span></div>
+        <span class="pfas-hint">The controlled-copy notice printed at the bottom of every page.</span></div>
 
       <div class="pfas-check is-spaced">
-        <input type="checkbox" name="show_form_code" id="sfc"
-               tal:attributes="checked ps/show_form_code"/>
+        <label class="pfas-switch"><input type="checkbox" name="show_form_code" id="sfc"
+               tal:attributes="checked ps/show_form_code"/><span class="pfas-switch-track"></span></label>
         <label for="sfc">Show form code block (FM-ENV-xxx)</label></div>
       <div class="pfas-check is-spaced">
-        <input type="checkbox" name="show_print_date" id="spd"
-               tal:attributes="checked ps/show_print_date"/>
+        <label class="pfas-switch"><input type="checkbox" name="show_print_date" id="spd"
+               tal:attributes="checked ps/show_print_date"/><span class="pfas-switch-track"></span></label>
         <label for="spd">Show print date/time in the header</label></div>
       <div class="pfas-check is-spaced">
-        <input type="checkbox" name="show_page_footer" id="spf"
-               tal:attributes="checked ps/show_page_footer"/>
+        <label class="pfas-switch"><input type="checkbox" name="show_page_footer" id="spf"
+               tal:attributes="checked ps/show_page_footer"/><span class="pfas-switch-track"></span></label>
         <label for="spf">Show page footer</label></div>
 
       <!-- ── QA sign-off attestation signers ──────────────────────────────── -->
       <h3 class="pfas-subhead">QA Sign-off Attestation</h3>
-      <p class="pfas-hint is-flush">The Prepared, Verified, Authorized sign-off block on SOPs and prep logs; signatures come from each person&#8217;s Lab Contact. <tal:h define="hid string:sign-rights"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <p class="pfas-hint is-flush">The Prepared, Verified, Authorized sign-off block on SOPs and prep logs; signatures come from each person&#8217;s Lab Contact. <tal:h define="hid string:sign-rights"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
       <div class="pfas-form-field is-spaced"><label>Quality assurance officer</label>
         <select name="qao_initials" class="pfas-select">
           <option value="">— none —</option>
@@ -85,31 +88,32 @@
                                   selected python:s['initials']==ps.get('qao_initials')"
                   tal:content="string:${s/fullname} (${s/initials})">name</option>
         </select></div>
-      <div class="pfas-form-field is-spaced"><label>Laboratory director</label>
-        <select name="director_initials" class="pfas-select">
-          <option value="">— none —</option>
-          <option tal:repeat="s view/staff"
-                  tal:attributes="value s/initials;
-                                  selected python:s['initials']==ps.get('director_initials')"
-                  tal:content="string:${s/fullname} (${s/initials})">name</option>
-        </select></div>
+      <div class="pfas-form-field is-spaced"><span class="pfas-label">Laboratory director</span>
+        <div><strong tal:content="python:view.director_name() or u'None'">AN3</strong>
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Laboratory</a></div></div>
       <div class="pfas-check is-spaced">
-        <input type="checkbox" name="show_signoff" id="sso"
-               tal:attributes="checked ps/show_signoff"/>
+        <label class="pfas-switch"><input type="checkbox" name="show_signoff" id="sso"
+               tal:attributes="checked ps/show_signoff"/><span class="pfas-switch-track"></span></label>
         <label for="sso">Show QA sign-off block on controlled records</label></div>
 
       <!-- Certificate of Analysis layout (coa_sections.py / coa_format.py). -->
       <h3 id="certificate" class="pfas-subhead">Certificate of Analysis</h3>
       <p class="pfas-hint">
-        The results format is set per method and matrix on the method&#8217;s <em>Reporting</em> tab. <tal:h define="hid string:reporting-format"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
-        <a class="btn-sm btn-secondary"
+        The results format is set per method and matrix on the method&#8217;s <em>Reporting</em> tab. <tal:h define="hid string:reporting-format"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h> <a class="btn-sm btn-secondary"
            tal:attributes="href string:${view/portal_url}/@@pfas-method-profiles">Open Method Profiles</a>
       </p>
-      <div class="pfas-form-field is-spaced"><label for="qs-int">Quality system &#8212; internal</label>
-        <textarea id="qs-int" name="coa_qs_internal" rows="3" tal:content="ps/coa_qs_internal">text</textarea></div>
-      <div class="pfas-form-field is-spaced"><label for="qs-qapp">Quality system &#8212; under a QAPP</label>
-        <textarea id="qs-qapp" name="coa_qs_qapp" rows="4" tal:content="ps/coa_qs_qapp">text</textarea></div>
-      <p class="pfas-hint">Printed for batches of a project with a QAPP; may use {qapp_title}, {qapp_id}, {qapp_rev} and {project}.</p>
+      <div class="pfas-form-field is-spaced"><label for="qs-int">Quality System: Laboratory QAM</label>
+        <textarea id="qs-int" name="coa_qs_internal" rows="3" tal:content="ps/coa_qs_internal"
+                  tal:attributes="data-tokens view/qam_tokens_json">text</textarea></div>
+      <p class="pfas-hint" tal:define="qam view/lab_qam">
+        <tal:q condition="qam">Laboratory QAM: <strong tal:content="python:u'%s %s' % (qam['id'], qam['title'])">QAM-001 Quality Manual</strong></tal:q>
+        <tal:q condition="not:qam">No controlled document is marked as the laboratory&#8217;s QAM.</tal:q>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-sop">Controlled Documents</a></p>
+      <div class="pfas-banner is-warn" tal:condition="view/qam_missing">The statement names the QAM; certificates print &#8220;QAM not on file&#8221; until one is marked.</div>
+      <div class="pfas-form-field is-spaced"><label for="qs-qapp">Quality System: QAPP</label>
+        <textarea id="qs-qapp" name="coa_qs_qapp" rows="4" tal:content="ps/coa_qs_qapp"
+                  tal:attributes="data-tokens view/qapp_tokens_json">text</textarea></div>
+      <p class="pfas-hint">Printed for batches of a project with a QAPP.</p>
       <div class="pfas-form-field is-spaced"><label>Sign-off layout</label>
         <select name="coa_signature_style" class="pfas-select">
           <option value="compact" tal:attributes="selected python:ps.get('coa_signature_style','compact')=='compact'">Compact: one line per signatory</option>
@@ -121,59 +125,6 @@
       </button>
     </form>
 
-
-    <!-- ── QC QUALIFIERS ────────────────────────────────────────────────────
-         What a certificate says when a QC criterion fails. Report
-         configuration, so it belongs on the report editor.
-         ─────────────────────────────────────────────────────────────────── -->
-    <h2 id="qualifiers" class="pfas-subhead is-major">QC Qualifiers on Certificates</h2>
-    <p class="form-note">A failed QC criterion either qualifies the result (code and wording below) or holds it; control-material failures always hold. Edit the draft wording before issuing. <tal:h define="hid string:qualified-release"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-
-    <form method="post" class="pfas-form-narrow"
-          tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
-      <input type="hidden" name="action" value="save_qualifiers" />
-      <table class="pfas-table">
-        <thead>
-          <tr>
-            <th class="pfas-col-name">Failure</th>
-            <th class="pfas-col-md">Disposition</th>
-            <th class="pfas-col-id">Code</th>
-            <th>Statement printed on the certificate</th>
-          </tr>
-        </thead>
-        <tbody tal:define="disps view/qualifier_dispositions">
-          <tr tal:repeat="row view/qualifier_rows">
-            <td>
-              <strong tal:content="row/label">Surrogate recovery</strong>
-              <div class="pfas-sub"
-                   tal:condition="row/customised">edited by the lab</div>
-            </td>
-            <td>
-              <select class="pfas-select pfas-fill"
-                      tal:attributes="name string:qual_disp.${row/key}">
-                <option tal:repeat="d disps"
-                        tal:attributes="value d/key;
-                                        selected python:d['key'] == row['disposition']"
-                        tal:content="d/label">Qualify</option>
-              </select>
-            </td>
-            <td>
-              <input type="text" maxlength="6" class="pfas-input pfas-fill"
-                     tal:attributes="name string:qual_code.${row/key};
-                                     value row/code" />
-            </td>
-            <td>
-              <textarea rows="4" class="pfas-fill is-sm"
-                        tal:attributes="name string:qual_text.${row/key}"
-                        tal:content="row/statement"></textarea>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <button class="btn btn-primary pfas-mt" type="submit">
-        Save QC Qualifiers
-      </button>
-    </form>
 
   </div>
   </div><!-- /content slot -->

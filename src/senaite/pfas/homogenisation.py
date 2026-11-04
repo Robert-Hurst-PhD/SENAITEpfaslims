@@ -10,11 +10,11 @@ Who owns what (one owner per fact):
                                  HomogenisationMethod, CompositeUnits,
                                  CompositeDescription; core's Composite
     what was done                annotation RECORD_KEY on the sample: records
-                                 appended, never edited (H-P3)
+                                 appended, never edited
 
 The method "none" (not homogenised: a liquid mixed by inversion, a sample
 taken as it is) is always offered; the lab cannot remove it. A sample whose
-method is blank predates this record and is treated as not requested.
+method is blank is treated as not requested.
 
 Pure helpers first; the storage helpers import Plone lazily. Python 2.7 and 3.
 """
@@ -130,7 +130,7 @@ def composite_problems(composite, units, description):
 
 
 def composite_line(composite, units, description):
-    """The certificate's line for a composite sample (H-P5), or ""."""
+    """The certificate's line for a composite sample, or ""."""
     if not composite:
         return u""
     try:
@@ -143,8 +143,7 @@ def composite_line(composite, units, description):
 
 
 def record_warnings(req, method, unit_name, cleaned, units_combined, methods):
-    """What a homogenisation record must explain in a note (H-P3, DB4
-    pattern): a method other than the one requested, a method that names a
+    """What a homogenisation record must explain in a note: a method other than the one requested, a method that names a
     homogeniser unit with none chosen, a unit not confirmed cleaned, a
     composite whose count differs from the sample's. `req` = sample_request.
     """
@@ -185,8 +184,16 @@ def awaiting(req, records):
     return bool((req or {}).get("method")) and req["method"] != NONE_ID and not records
 
 
+def _shown_at(at):
+    """A record's UTC stamp as the stage shows it: on the laboratory's clock
+    while the zone converts, the stored text's minute otherwise."""
+    from senaite.pfas import print_doc
+    at = at or u""
+    return print_doc.lab_or(at, at[:16].replace(u"T", u" "))
+
+
 def stage_rows(samples, methods):
-    """What the processing stage (FM-ENV-004) confirms per sample (H-P4):
+    """What the processing stage (FM-ENV-004) confirms per sample:
     `samples` = [(sample_id, request, records)]. Each row carries the
     request, the record in force and `warning` -- a requested method with
     no record, which needs a note at the stage."""
@@ -205,7 +212,7 @@ def stage_rows(samples, methods):
             "method": title_of(methods, rec.get("method")) if rec else u"",
             "unit": rec.get("unit_name") or u"",
             "units_combined": rec.get("units_combined"),
-            "by": rec.get("by") or u"", "at": (rec.get("at") or u"")[:16].replace(u"T", u" "),
+            "by": rec.get("by") or u"", "at": _shown_at(rec.get("at")),
             "note": rec.get("note") or u"",
             "warning": warning})
     return out

@@ -14,9 +14,9 @@
          tal:attributes="class python:'alert alert-success' if view.message['ok'] else 'alert alert-error'"
          tal:content="view/message/text">message</div>
 
-    <p class="form-note">Every configuration save: who, when and each value before and after. A revert puts one change back. <tal:h define="hid string:config-history"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="form-note">Every configuration save: who, when and each value before and after. A revert puts one change back. <tal:h define="hid string:config-history"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
-    <form method="get" class="pfas-filterbar">
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit">
       <div class="pfas-field"><label for="ch-store">Setting</label>
       <select name="store" id="ch-store" class="pfas-select">
         <option value="">All settings</option>
@@ -26,31 +26,52 @@
       </select></div>
       <div class="pfas-field"><label for="ch-key">Key</label>
       <input type="text" name="key" id="ch-key" class="pfas-input" placeholder="e.g. EPA_537_1" tal:attributes="value view/key_filter" /></div>
-      <button type="submit" class="btn btn-primary">Filter</button>
+      <div class="pfas-field"><label>When</label>
+        <input type="hidden" name="when" tal:attributes="value view/when_filter" />
+        <nav class="pfas-seg" aria-label="When">
+          <a class="pfas-seg-item" tal:repeat="w view/when_links"
+             tal:attributes="href w/url; aria-selected python:'true' if w['on'] else 'false'"
+             tal:content="w/label">7 days</a>
+        </nav></div>
+      <div class="pfas-field"><label for="ch-from">From</label>
+        <input type="date" name="from" id="ch-from" class="pfas-input" tal:attributes="value view/date_from" /></div>
+      <div class="pfas-field"><label for="ch-to">To</label>
+        <input type="date" name="to" id="ch-to" class="pfas-input" tal:attributes="value view/date_to" /></div>
+      <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
     </form>
 
-    <p tal:condition="not:view/rows" class="form-note">No changes recorded yet.</p>
+    <tal:p tal:define="pg view/paging; rows view/rows">
+    <p tal:condition="not:rows" class="form-note">No changes recorded for these filters.</p>
 
-    <table class="pfas-table pfas-table-form" tal:condition="view/rows">
-      <colgroup><col width="12%" /><col width="8%" /><col width="20%" /><col width="52%" /><col width="8%" /></colgroup>
+    <table class="pfas-table pfas-table-form ch-table" data-col-resize="config-history-ch-table" tal:condition="rows">
+      <colgroup><col width="14%" /><col width="18%" /><col /><col width="8%" /></colgroup>
       <thead>
-        <tr><th>When (UTC)</th><th>Who</th><th>Setting</th><th>Changes</th><th></th></tr>
+        <tr><th>When<tal:z condition="not:view/zone_active"> (UTC)</tal:z> / Who</th><th>Setting</th><th>Changes</th><th></th></tr>
       </thead>
       <tbody>
-        <tr tal:repeat="r view/rows">
-          <td tal:content="r/at">2026-09-30 12:00:00</td>
-          <td tal:content="r/who">admin</td>
+        <tr tal:repeat="r rows">
+          <td class="cell-nowrap"><span tal:replace="r/at">2026-09-30 12:00:00</span>
+            <div class="form-note" tal:content="r/who">admin</div></td>
           <td>
             <strong tal:content="r/label">EPA 537.1</strong>
             <div class="form-note" tal:condition="python:r['store'] != r['label']" tal:content="r/store">Method profile</div>
             <div class="form-note" tal:condition="r/note" tal:content="r/note">revert of ...</div>
           </td>
           <td>
-            <div tal:repeat="c r/changes">
+            <div tal:repeat="c python:r['changes'][:6]">
               <code tal:content="c/path">qc_acceptance / LFSM</code>:
               <span tal:content="c/before">130</span> &#8594;
               <strong tal:content="c/after">131</strong>
             </div>
+            <!-- a long change list folds to six lines -->
+            <details class="pfas-fold" tal:condition="python:len(r['changes']) > 6">
+              <summary tal:content="python:u'Show all %d' % len(r['changes'])">Show all</summary>
+              <div tal:repeat="c python:r['changes'][6:]">
+                <code tal:content="c/path">qc_acceptance / LFSM</code>:
+                <span tal:content="c/before">130</span> &#8594;
+                <strong tal:content="c/after">131</strong>
+              </div>
+            </details>
           </td>
           <td>
             <form method="post" tal:condition="python:editable and r['revertable']">
@@ -64,6 +85,14 @@
         </tr>
       </tbody>
     </table>
+
+    <div class="pfas-paging" tal:condition="python:pg['total'] > 0">
+      <span tal:content="python:u'%d\u2013%d of %d' % (pg['first'], pg['last'], pg['total'])">1-20 of 340</span>
+      <span class="pfas-muted" tal:content="python:u'Page %d of %d' % (pg['page'], pg['pages'])">Page 1 of 17</span>
+      <a class="btn btn-secondary" tal:condition="pg/prev" tal:attributes="href pg/prev">Previous</a>
+      <a class="btn btn-secondary" tal:condition="pg/next" tal:attributes="href pg/next">Next</a>
+    </div>
+    </tal:p>
   </div>
   </div>
 </html>

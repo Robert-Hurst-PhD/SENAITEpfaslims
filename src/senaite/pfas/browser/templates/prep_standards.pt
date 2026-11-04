@@ -18,6 +18,8 @@
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
+    <tal:lots condition="python:view.tab() == 'lots'">
+
     <!-- Filters: one bar, applies on change -->
     <form method="GET" class="pfas-filterbar" id="ps-filters" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${context/absolute_url}/@@pfas-prep-standards">
@@ -30,10 +32,9 @@
       <div class="pfas-field">
         <label for="ps-status">Status</label>
         <select id="ps-status" name="status" class="pfas-select">
-          <option value="">&#8212; All Status &#8212;</option>
-          <option value="active"    tal:attributes="selected python:request.form.get('status')=='active'">Active</option>
-          <option value="exhausted" tal:attributes="selected python:request.form.get('status')=='exhausted'">Exhausted</option>
-          <option value="expired"   tal:attributes="selected python:request.form.get('status')=='expired'">Expired</option>
+          <option value="all"       tal:attributes="selected python:'selected' if not view.status_filter() else None">All statuses</option>
+          <option tal:repeat="s view/statuses" tal:attributes="value python:s[0]; selected python:view.status_filter()==s[0]"
+                  tal:content="python:s[1]">Active</option>
         </select>
       </div>
       <div class="pfas-field">
@@ -47,7 +48,7 @@
       </div>
       <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
       <span class="pfas-filterbar-spacer"></span>
-      <button type="button" class="btn btn-primary" onclick="openModal()">
+      <button type="button" class="btn btn-primary" onclick="pfasOpenNew()">
         + New Prepared Standard
       </button>
     </form>
@@ -55,15 +56,15 @@
     <tal:stds tal:define="stds view/prepared_standards">
 
       <div class="pfas-empty" tal:condition="not:stds">
-        <p class="pfas-empty-glyph">&#129514;</p>
+        <p class="pfas-empty-glyph"><svg class="pfas-ico" aria-hidden="true"><use href="#ico-prep-standards"/></svg></p>
         <p>No prepared standards recorded yet.</p>
-        <button type="button" class="btn btn-primary" onclick="openModal()">
+        <button type="button" class="btn btn-primary" onclick="pfasOpenNew()">
           Record First Standard
         </button>
       </div>
 
       <div class="table-wrap" tal:condition="stds">
-        <table class="pfas-table pfas-table-fixed">
+        <table class="pfas-table pfas-table-fixed" data-col-resize="prep-standards-1">
           <thead>
             <tr>
               <th class="pfas-col-name">Name / Lot</th>
@@ -73,19 +74,21 @@
               <th class="pfas-col-date">Prepared Date</th>
               <th class="pfas-col-expiry">Expiry</th>
               <th class="pfas-col-status">Status</th>
-              <th class="pfas-col-actions-sm">Actions</th>
+              <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             <tal:rows tal:repeat="std stds">
-              <tr tal:define="std_json python:__import__('json').dumps(std).replace('&amp;', '\\u0026').replace('&lt;', '\\u003c').replace('&gt;', '\\u003e')">
+              <tr tal:attributes="data-href string:${view/portal_url}/@@pfas-prep-standards?record=${std/uid}"
+                  tal:define="std_json python:__import__('json').dumps(std).replace('&amp;', '\\u0026').replace('&lt;', '\\u003c').replace('&gt;', '\\u003e')">
                 <td>
                   <div class="pfas-cell-name" tal:content="std/title">Name</div>
                   <div class="pfas-sub" tal:content="std/lot_number">LOT</div>
                 </td>
                 <td class="pfas-muted" tal:content="std/standard_type">—</td>
                 <td>
-                  <span class="pfas-muted" tal:condition="std/logbook_slug">
+                  <span class="pfas-mono" tal:condition="std/entry_id" tal:content="std/entry_id">FM-ENV-002-261013-01</span>
+                  <span class="pfas-muted" tal:condition="python:std['logbook_slug'] and not std['entry_id']">
                     <tal:x tal:replace="std/logbook_title">Logbook</tal:x>
                     rev <tal:x tal:replace="std/logbook_revision">1</tal:x>
                   </span>
@@ -99,21 +102,22 @@
                     &#8675; inherited: <span tal:content="std/expiry_inherited_from">parent</span>
                   </div>
                 </td>
-                <td>
-                  <span tal:attributes="class python:'badge badge-' + std['status']"
-                        tal:content="std/status">active</span>
+                <td tal:define="attn_label python:(std.get('status') or u'').capitalize();
+                                attn_cls python:'badge badge-' + std['status'];
+                                attn_reasons python:view.attention(std)">
+                  <metal:a use-macro="context/@@pfas-macros/macros/status-attention" />
                 </td>
-                <!-- Same layout as Reagent Inventory: Edit, and More for
-                     everything else. -->
-                <td class="row-actions-cell pfas-col-actions-sm">
-                  <div class="row-actions">
-                    <button type="button" class="btn-sm btn-secondary" title="Edit this standard's preparation record"
-                            tal:attributes="onclick string:editStandard(${std_json})">Edit</button>
+                <!-- every action in the row's "+" menu, as on Reagent Inventory -->
+                <td class="row-plus-cell">
                     <details class="row-more">
-                      <summary class="btn-sm btn-secondary" title="Where used, the certificate, a label, mark emptied">More &#9662;</summary>
+                      <summary class="row-plus" aria-label="Actions for this standard" title="Actions">+</summary>
                       <div class="row-more-menu">
+                        <a class="btn-sm btn-secondary" title="Its recipe, parentage, steps and labels"
+                           tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards?record=${std/uid}">Record</a>
+                        <button type="button" class="btn-sm btn-secondary" title="Edit this standard's preparation record"
+                                tal:attributes="onclick string:editStandard(${std_json})">Edit</button>
                         <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
-                           tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Where used</a>
+                           tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Usage</a>
                         <a class="btn-sm btn-secondary" target="_blank" title="Open the preparation certificate (PDF)"
                            tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}">Certificate</a>
                         <a class="btn-sm btn-secondary" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
@@ -135,7 +139,6 @@
                         </form>
                       </div>
                     </details>
-                  </div>
                 </td>
               </tr>
             </tal:rows>
@@ -144,11 +147,57 @@
       </div>
 
     </tal:stds>
+    </tal:lots>
+
+    <tal:log condition="python:view.tab() != 'lots'">
+    <tal:d define="entries view/entries; fm python:[x for x in view.prep_forms() if x['code'] == view.tab()][0]">
+      <form method="GET" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+            tal:attributes="action string:${context/absolute_url}/@@pfas-prep-standards">
+        <input type="hidden" name="tab" tal:attributes="value view/tab" />
+        <div class="pfas-field"><label for="pe-from">From</label>
+          <input type="date" id="pe-from" name="from" class="pfas-input" tal:attributes="value python:view.date_range()[0]" /></div>
+        <div class="pfas-field"><label for="pe-to">To</label>
+          <input type="date" id="pe-to" name="to" class="pfas-input" tal:attributes="value python:view.date_range()[1]" /></div>
+        <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+        <span class="pfas-filterbar-spacer"></span>
+        <button type="button" class="btn btn-secondary" onclick="window.print()">Print</button>
+        <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">Logbooks</a>
+      </form>
+
+      <p class="pfas-muted" tal:condition="not:entries">No entries in this range.</p>
+      <div class="table-wrap" tal:condition="entries">
+        <table class="pfas-table" data-col-resize="prep-standards-2">
+          <thead><tr><th>Entry</th><th>Prepared</th><th>By</th><th>Lots made</th><th>Made from</th><th>Reviewed</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="e entries">
+              <td class="pfas-mono" tal:content="e/id">FM-ENV-002-261014-01</td>
+              <td tal:content="e/prepared_date">2026-10-14</td>
+              <td tal:content="e/prepared_by">AN1</td>
+              <td tal:content="e/lot_numbers">C1, C2</td>
+              <td tal:content="e/parents_text">PDS mix PDS-1</td>
+              <td>
+                <span tal:condition="e/reviewed_by" tal:content="python:u'%s %s' % (e['reviewed_by'], view.lab_at(e['reviewed_at'], e['reviewed_at'][:10], u'%Y-%m-%d'))">qao</span>
+                <form method="POST" tal:condition="not:e/reviewed_by"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
+                  <input type="hidden" name="action" value="review_prep" />
+                  <input type="hidden" name="prep_form" tal:attributes="value view/tab" />
+                  <input type="hidden" name="entry_id" tal:attributes="value e/id" />
+                  <span class="badge badge-pending">Not reviewed</span>
+                  <button type="submit" class="btn-sm btn-secondary">Review</button>
+                </form>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </tal:d>
+    </tal:log>
 
     <!-- ── Create/Edit modal ─────────────────────────────────────────── -->
     <div class="pfas-modal" id="psModal">
       <div class="pfas-modal-box is-wide">
-        <h2 id="psModalTitle">New Prepared Standard</h2>
+        <h2 id="psModalTitle">Edit Prepared Standard</h2>
 
         <div data-tabs="data-tabs">
         <!-- Tab bar -->
@@ -160,7 +209,7 @@
 
         <form method="POST"
               tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
-          <input type="hidden" name="action" value="add" id="psFormAction" />
+          <input type="hidden" name="action" value="edit" id="psFormAction" />
           <input type="hidden" name="uid" id="psUid" value="" />
           <input type="hidden" name="parent_reagents_json" id="parentJson" value="[]" />
           <input type="hidden" name="analyte_concentrations_json" id="analyteJson" value="[]" />
@@ -169,12 +218,12 @@
           <div class="pfas-pane is-active" id="tabBasic">
             <div class="pfas-form-row">
               <div class="pfas-form-field is-wide">
-                <label>Standard name *</label>
+                <label>Standard name</label>
                 <input type="text" name="title" id="psTitle" required
                        placeholder="e.g. Native Mix 100 ng/mL" />
               </div>
               <div class="pfas-form-field">
-                <label>In-house lot # *</label>
+                <label>In-house lot #</label>
                 <input type="text" name="lot_number" id="psLot" required
                        placeholder="2026-06-22-001" />
               </div>
@@ -189,21 +238,6 @@
                   </tal:opts>
                 </select>
               </div>
-              <div class="pfas-form-field">
-                <label>Prep logbook</label>
-                <select name="logbook_slug" id="psLogbookSlug" onchange="onLogbookChange(this)">
-                  <option value="">— None —</option>
-                  <tal:lbs tal:repeat="lb view/prep_logbooks">
-                    <option tal:attributes="value lb/logbook_slug;
-                                            data-revision lb/revision;
-                                            data-title lb/title;
-                                            data-expiry lb/default_expiry_days"
-                            tal:content="python:'{} (Rev {})'.format(lb['title'], lb['revision'])">Logbook</option>
-                  </tal:lbs>
-                </select>
-              </div>
-              <input type="hidden" name="logbook_revision" id="psLogbookRevision" value="" />
-              <input type="hidden" name="logbook_title" id="psLogbookTitle" value="" />
             </div>
             <div class="pfas-form-row">
               <div class="pfas-form-field">
@@ -212,15 +246,13 @@
               </div>
               <div class="pfas-form-field">
                 <label>Date prepared</label>
-                <input type="date" name="prepared_date" id="psPrepDate"
-                       onchange="autoExpiry()" />
+                <input type="date" name="prepared_date" id="psPrepDate" />
               </div>
             </div>
             <div class="pfas-form-row">
               <div class="pfas-form-field">
                 <label>Expiry date</label>
                 <input type="date" name="expiry_date" id="psExpiry" />
-                <span class="pfas-hint">Auto-filled from logbook default. Adjust if needed.</span>
               </div>
               <div class="pfas-form-field">
                 <label>Volume / amount prepared</label>
@@ -233,6 +265,10 @@
                   <option value="">Choose a location</option>
                   <option tal:repeat="s view/core_storage" tal:attributes="value s" tal:content="s">Location</option>
                 </select>
+              </div>
+              <div class="pfas-form-field">
+                <label for="psCond">Storage conditions</label>
+                <input type="text" name="storage_conditions" id="psCond" required="required" />
               </div>
             </div>
             <!-- Equipment. A prepared standard's assigned value rests on a mass
@@ -269,13 +305,6 @@
             </div>
             <div class="pfas-form-row">
               <div class="pfas-form-field is-full">
-                <label>Expiry justification (required if not default)</label>
-                <input type="text" name="expiry_notes" id="psExpiryNotes"
-                       placeholder="e.g. Extended per supervisor review — see audit trail" />
-              </div>
-            </div>
-            <div class="pfas-form-row">
-              <div class="pfas-form-field is-full">
                 <label>Notes</label>
                 <textarea name="notes" id="psNotes" rows="2"></textarea>
               </div>
@@ -284,39 +313,38 @@
 
           <!-- Tab 2: Parent reagents (parentage) -->
           <div class="pfas-pane" id="tabParents">
-            <p class="pfas-lead">
-              Record the procured reagents consumed to prepare this standard.
-              Search your inventory and add each reagent used.
-            </p>
-            <div class="pfas-suggest reagent-lookup">
-              <input type="text" id="reagentSearch" class="pfas-input" placeholder="Search reagent inventory..."
-                     oninput="lookupReagent(this.value)" autocomplete="off" />
-              <div class="pfas-suggest-list" id="lookupResults"></div>
+            <p class="pfas-hint" id="parentsPinned" hidden="hidden">Recorded by its prep entry.</p>
+            <div id="parentsEdit">
+              <div class="pfas-suggest reagent-lookup">
+                <input type="text" id="reagentSearch" class="pfas-input" placeholder="Search reagent inventory..."
+                       oninput="lookupReagent(this.value)" autocomplete="off" />
+                <div class="pfas-suggest-list" id="lookupResults"></div>
+              </div>
+              <table class="pfas-mini-table" data-col-resize="prep-standards-parentsTable" id="parentsTable">
+                <thead>
+                  <tr>
+                    <th>Reagent Name</th><th>Supplier</th><th>Lot #</th>
+                    <th>Qty Used</th><th>Unit</th><th></th>
+                  </tr>
+                </thead>
+                <tbody id="parentsBody"></tbody>
+              </table>
             </div>
-            <table class="pfas-mini-table" id="parentsTable">
-              <thead>
-                <tr>
-                  <th>Reagent Name</th><th>Supplier</th><th>Lot #</th>
-                  <th>Qty Used</th><th>Unit</th><th></th>
-                </tr>
-              </thead>
-              <tbody id="parentsBody"></tbody>
-            </table>
           </div>
 
-          <!-- Tab 3: Analyte concentrations -->
+          <!-- Tab 3: Analyte concentrations: typed on a lot made before recipes;
+               a lot made from its recipe has them calculated, never edited -->
           <div class="pfas-pane" id="tabAnalytes">
-            <p class="pfas-lead">
-              Record the final analyte concentrations in this standard.
-              These are printed on the internal certificate.
-            </p>
-            <table class="pfas-mini-table" id="analytesTable">
-              <thead>
-                <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
-              </thead>
-              <tbody id="analytesBody"></tbody>
-            </table>
-            <button type="button" class="btn-sm btn-secondary" onclick="addAnalyteRow()">+ Add Analyte</button>
+            <p class="pfas-hint" id="analytesPinned" hidden="hidden">Calculated from its recipe.</p>
+            <div id="analytesEdit">
+              <table class="pfas-mini-table" data-col-resize="prep-standards-analytesTable" id="analytesTable">
+                <thead>
+                  <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
+                </thead>
+                <tbody id="analytesBody"></tbody>
+              </table>
+              <button type="button" class="btn-sm btn-secondary" onclick="addAnalyteRow()">+ Add Analyte</button>
+            </div>
           </div>
 
           <div class="form-actions is-end">
@@ -327,6 +355,204 @@
         </div>
       </div>
     </div>
+
+    <!-- ── The lot record (?record=<uid>): recipe, parentage, steps, labels ── -->
+    <tal:rec condition="view/record">
+    <div class="pfas-modal open" id="psRecord" tal:define="r view/record">
+      <div class="pfas-modal-box is-wide" role="dialog" aria-modal="true" aria-labelledby="psRecordTitle">
+        <h2 id="psRecordTitle" tal:content="r/title">Lot DEMO-PS-L3 &#183; DEMO 537.1 CAL-3</h2>
+        <dl class="rc-facts">
+          <div tal:condition="r/recipe"><dt>Recipe, pinned</dt><dd tal:content="r/recipe">537_CAL Rev 1</dd></div>
+          <div tal:condition="r/log"><dt>Recorded on</dt><dd><tal:x replace="r/log">FM-ENV-002 Rev 1</tal:x>
+            <span class="pfas-mono" tal:condition="r/entry_id" tal:content="r/entry_id">FM-ENV-002-261013-01</span></dd></div>
+          <div><dt>Made</dt><dd tal:content="r/made">2026-10-13 by DEMO analyst</dd></div>
+          <div><dt>Expires</dt><dd><tal:x replace="r/expires">2026-11-12</tal:x><tal:n condition="r/expiry_note"> &#183;
+            <tal:x replace="r/expiry_note">the recipe's shelf life</tal:x></tal:n></dd></div>
+        </dl>
+        <h4 class="rc-h">Made from</h4>
+        <ul class="lr-tree">
+          <li tal:repeat="n r/tree" tal:attributes="class python:'lr-row d%d%s' % (min(n['depth'], 5), ' is-problem' if n['problem'] else '')">
+            <span class="pfas-mono" tal:content="n/lot">DEMO-PS-L3</span>
+            <span tal:content="n/name">DEMO 537.1 CAL-3</span>
+            <small tal:content="n/note">this lot</small>
+          </li>
+        </ul>
+        <tal:s condition="r/steps">
+          <h4 class="rc-h">Steps</h4>
+          <table class="pfas-table">
+            <tbody><tr tal:repeat="st r/steps">
+              <td class="pfas-num" tal:content="python:st[0]">1</td><td tal:content="python:st[1]">Take the stock</td>
+              <td>&#10003; <tal:x replace="python:st[2]">DEMO analyst</tal:x></td>
+            </tr></tbody>
+          </table>
+        </tal:s>
+        <tal:c condition="r/conc">
+          <h4 class="rc-h">Concentrations</h4>
+          <table class="pfas-table" data-col-resize="prep-standards-3">
+            <thead><tr><th>Analyte</th><th>Concentration</th><th>How</th></tr></thead>
+            <tbody><tr tal:repeat="c r/conc">
+              <td tal:content="c/analyte">PFOA</td><td tal:content="python:c['value'] or u'&#8212;'">2 ng/mL</td>
+              <td class="pfas-muted" tal:content="c/how">calculated, as acid</td>
+            </tr></tbody>
+          </table>
+        </tal:c>
+        <h4 class="rc-h">Labels</h4>
+        <dl class="rc-facts" tal:condition="r/sitting_text">
+          <div><dt>Made in the same sitting</dt><dd tal:content="r/sitting_text">DEMO-PS-L1 to DEMO-PS-L7</dd></div>
+        </dl>
+        <div class="form-actions">
+          <a class="btn btn-secondary" target="_blank" tal:attributes="href r/label_url">Print label</a>
+          <a class="btn btn-secondary" target="_blank" tal:condition="r/labels_url" tal:attributes="href r/labels_url"
+             tal:content="python:u'Print all %d labels' % len(r['sitting'])">Print all 7 labels</a>
+          <span class="pfas-filterbar-spacer"></span>
+          <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards">Close</a>
+          <a class="btn btn-primary" target="_blank" tal:attributes="href r/cert_url">Print certificate</a>
+        </div>
+      </div>
+    </div>
+    </tal:rec>
+
+    <!-- ── New Prepared Standard: one sitting, made from its recipe ──── -->
+    <div id="psNewData" hidden="hidden" tal:attributes="data-new view/new_standard_json"></div>
+    <div class="pfas-modal" id="psNew">
+      <div class="pfas-modal-box is-wide" role="dialog" aria-modal="true" aria-labelledby="psNewTitle">
+        <h2 id="psNewTitle">New Prepared Standard</h2>
+        <form method="POST" id="psNewForm" tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
+          <input type="hidden" name="action" value="make_recipe" />
+          <div class="pfas-form-row">
+          <div class="pfas-form-field is-full">
+            <label>Prep log
+              <tal:h define="hid string:new-prepared-standard"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
+            <div class="pfas-seg" id="psNewLog" role="group" aria-label="Prep log">
+              <button type="button" class="pfas-seg-item" tal:repeat="l python:view.new_standard()['logs']"
+                      tal:attributes="data-log l/slug; aria-selected python:'true' if repeat['l'].start else 'false'"
+                      tal:content="string:${l/code} ${l/title}">FM-ENV-002 Calibration Curve Prep</button>
+            </div>
+          </div>
+          </div>
+          <div class="pfas-form-row">
+            <div class="pfas-form-field">
+              <label for="psNewMethod">Method</label>
+              <select id="psNewMethod" name="method"></select>
+            </div>
+            <div class="pfas-form-field">
+              <label for="psNewRecipe">Standard</label>
+              <select id="psNewRecipe" name="recipe"></select>
+            </div>
+          </div>
+          <div class="pfas-empty" id="psNewEmpty" hidden="hidden">
+            <p>This method has no recipe on this log yet.</p>
+            <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes">Recipes</a>
+          </div>
+
+          <div data-tabs="data-tabs" id="psNewBody">
+            <div class="pfas-seg" id="psNewTabs">
+              <button type="button" class="pfas-seg-item" data-pane="psNewDetails" aria-selected="true">Details</button>
+              <button type="button" class="pfas-seg-item" data-pane="psNewParentsPane" aria-selected="false">Parent Reagents</button>
+              <button type="button" class="pfas-seg-item" data-pane="psNewConc" aria-selected="false">Analyte Concentrations</button>
+            </div>
+            <div class="pfas-pane is-active" id="psNewDetails">
+              <div class="pfas-form-row">
+                <div class="pfas-form-field is-wide">
+                  <label for="psNewName">Standard name</label>
+                  <input type="text" id="psNewName" readonly="readonly" />
+                  <span class="pfas-hint" id="psNewSitting"></span>
+                </div>
+                <div class="pfas-form-field">
+                  <label for="psNewLot">In-house lot # <span class="badge">from recipe</span></label>
+                  <input type="text" id="psNewLot" readonly="readonly" />
+                </div>
+              </div>
+              <div class="pfas-form-row">
+                <div class="pfas-form-field">
+                  <label for="psNewType">Standard type</label>
+                  <select id="psNewType" name="standard_type" required="required">
+                    <option value="">&#8212; Select &#8212;</option>
+                    <option tal:repeat="t view/standard_types" tal:attributes="value python:t[0]" tal:content="python:t[1]">type</option>
+                  </select>
+                </div>
+                <div class="pfas-form-field">
+                  <label for="psNewBy">Prepared by <span class="badge">signed in</span></label>
+                  <input type="text" id="psNewBy" readonly="readonly" />
+                </div>
+                <div class="pfas-form-field">
+                  <label for="psNewDate">Date prepared</label>
+                  <input type="date" id="psNewDate" name="prepared_date" required="required" />
+                </div>
+              </div>
+              <div class="pfas-form-row">
+                <div class="pfas-form-field">
+                  <label for="psNewExpiry">Expiry date <span class="badge">from recipe</span></label>
+                  <input type="text" id="psNewExpiry" readonly="readonly" />
+                  <span class="pfas-hint">Prep date + the recipe's shelf life, no later than the earliest parent's expiry.</span>
+                </div>
+                <div class="pfas-form-field">
+                  <label for="psNewFinal">Volume / amount prepared <span class="badge">from recipe</span></label>
+                  <span class="pfas-inline"><input type="text" class="pfas-input is-num" id="psNewFinal" name="final" />
+                    <span id="psNewFinalUnit">mL</span></span>
+                </div>
+              </div>
+              <div class="pfas-form-row">
+                <div class="pfas-form-field">
+                  <label for="psNewStorage">Storage location <span class="badge">from recipe</span></label>
+                  <select id="psNewStorage" name="storage_location">
+                    <option value="">Choose a location</option>
+                    <option tal:repeat="l view/core_storage" tal:attributes="value l" tal:content="l">Fridge</option>
+                  </select>
+                </div>
+                <div class="pfas-form-field">
+                  <label for="psNewCond">Storage conditions <span class="badge">from recipe</span></label>
+                  <input type="text" id="psNewCond" name="storage_conditions" required="required" />
+                </div>
+              </div>
+              <div class="pfas-form-row">
+                <div class="pfas-form-field" tal:define="units view/facility_balances">
+                  <label for="psNewBalance">Balance used</label>
+                  <select id="psNewBalance" name="equip_balance_unit_id">
+                    <option value="">&#8212; not recorded &#8212;</option>
+                    <option tal:repeat="b units"
+                            tal:attributes="value b/id; selected python:'selected' if len(units) == 1 else None"
+                            tal:content="string:${b/name} (${b/serial_number})">Bal</option>
+                  </select>
+                </div>
+                <div class="pfas-form-field" tal:define="units view/facility_pipettes">
+                  <label for="psNewPipette">Pipette used</label>
+                  <select id="psNewPipette" name="equip_pipette_unit_id">
+                    <option value="">&#8212; not recorded &#8212;</option>
+                    <option tal:repeat="u units"
+                            tal:attributes="value u/id; selected python:'selected' if len(units) == 1 else None"
+                            tal:content="string:${u/name} (${u/serial_number})">Pip</option>
+                  </select>
+                </div>
+              </div>
+              <div class="pfas-form-row">
+                <div class="pfas-form-field is-full">
+                  <label for="psNewNotes">Notes</label>
+                  <textarea id="psNewNotes" name="notes" rows="2"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="pfas-pane" id="psNewParentsPane">
+              <table class="pfas-mini-table" data-col-resize="prep-standards-pfas-mini-table">
+                <thead><tr><th>Made from</th><th>Lot</th><th>Amount taken</th><th>Unit</th></tr></thead>
+                <tbody id="psNewParents"></tbody>
+              </table>
+            </div>
+            <div class="pfas-pane" id="psNewConc">
+              <p class="pfas-hint">Calculated when saved from the lots and volumes used.</p>
+              <a class="btn-sm btn-secondary" id="psNewRecipeCard" target="_blank"
+                 tal:attributes="data-base string:${view/portal_url}/@@pfas-recipes; href string:${view/portal_url}/@@pfas-recipes">Open the recipe</a>
+            </div>
+          </div>
+
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="psNewSave">Save &amp; Generate Certificate</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/prep_standard_new.js?v=${context/@@pfas-macros/asset_version}"></script>
 
     <div class="pane-footer">
       <span>In-house prepared standards with full preparation parentage and auto-generated internal certificates</span>
@@ -339,7 +565,6 @@
      the Zope root, where there is no portal_url tool. */
   var LOOKUP_URL = '<tal:u replace="view/portal_url">/senaite</tal:u>'
                  + '/@@pfas-reagents?action=lookup_json&q=';
-  var currentLogbookExpiry = 365;
 
   /* ── Tab switching ────────────────────────────────────────────────── */
   /* the shared segmented control switches the pane; its pill is placed again
@@ -351,30 +576,7 @@
     if (window.PFAS && PFAS.components) { PFAS.components.placePill(seg); }
   }
 
-  /* ── Modal open/close ─────────────────────────────────────────────── */
-  /* the top bar's "+" menu lands here with ?new=1 */
-  window.pfasOpenNew = function () { openModal(); };
-  function openModal() {
-    document.getElementById('psFormAction').value = 'add';
-    document.getElementById('psUid').value = '';
-    document.getElementById('psTitle').value = '';
-    document.getElementById('psLot').value = '';
-    document.getElementById('psType').value = '';
-    document.getElementById('psLogbookSlug').value = '';
-    document.getElementById('psLogbookRevision').value = '';
-    document.getElementById('psLogbookTitle').value = '';
-    document.getElementById('psPrepBy').value = '';
-    document.getElementById('psPrepDate').value = '';
-    document.getElementById('psExpiry').value = '';
-    document.getElementById('psExpiryNotes').value = '';
-    document.getElementById('psVol').value = '';
-    document.getElementById('psStorage').value = '';
-    document.getElementById('psNotes').value = '';
-    document.getElementById('parentsBody').innerHTML = '';
-    document.getElementById('analytesBody').innerHTML = '';
-    document.getElementById('psModal').classList.add('open');
-    switchTab('tabBasic');
-  }
+  /* ── Edit dialog ─────────────────────────────────────────────────── */
   function closePsModal() { document.getElementById('psModal').classList.remove('open'); }
   document.getElementById('psModal').addEventListener('click', function(e) {
     if (e.target === this) closePsModal();
@@ -382,21 +584,23 @@
 
   function editStandard(data) {
     if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) { return; } }
-    document.getElementById('psFormAction').value = 'edit';
     document.getElementById('psUid').value = data.uid || '';
     document.getElementById('psTitle').value = data.title || '';
     document.getElementById('psLot').value = data.lot_number || '';
     document.getElementById('psType').value = data.standard_type || '';
-    document.getElementById('psLogbookSlug').value = data.logbook_slug || '';
-    document.getElementById('psLogbookRevision').value = data.logbook_revision || '';
-    document.getElementById('psLogbookTitle').value = data.logbook_title || '';
     document.getElementById('psPrepBy').value = data.prepared_by || '';
     document.getElementById('psPrepDate').value = data.prepared_date || '';
     document.getElementById('psExpiry').value = data.expiry_date || '';
-    document.getElementById('psExpiryNotes').value = data.expiry_notes || '';
     document.getElementById('psVol').value = data.volume_prepared || '';
     document.getElementById('psStorage').value = data.storage_location || '';
+    document.getElementById('psCond').value = data.storage_conditions || '';
     document.getElementById('psNotes').value = data.notes || '';
+    /* a lot made from its recipe keeps the parents and the calculated
+       concentrations of its prep entry: neither is posted, so neither changes */
+    var pinned = !!(data.recipe && data.recipe.id);
+    ['parentJson', 'analyteJson'].forEach(function (id) { document.getElementById(id).disabled = pinned; });
+    ['parentsEdit', 'analytesEdit'].forEach(function (id) { document.getElementById(id).hidden = pinned; });
+    ['parentsPinned', 'analytesPinned'].forEach(function (id) { document.getElementById(id).hidden = !pinned; });
     /* Parent reagents */
     document.getElementById('parentsBody').innerHTML = '';
     (data.parent_reagents || []).forEach(function(p) {
@@ -409,32 +613,6 @@
     });
     document.getElementById('psModal').classList.add('open');
     switchTab('tabBasic');
-  }
-
-  /* ── Logbook selection ─────────────────────────────────────────────── */
-  function onLogbookChange(sel) {
-    var opt = sel.options[sel.selectedIndex];
-    var rev = opt.getAttribute('data-revision') || '';
-    var title = opt.getAttribute('data-title') || '';
-    var expiry = parseInt(opt.getAttribute('data-expiry') || '365');
-    document.getElementById('psLogbookRevision').value = rev;
-    document.getElementById('psLogbookTitle').value = title;
-    currentLogbookExpiry = expiry;
-    autoExpiry();
-    /* Load analyte template for this logbook */
-    if (rev) {
-      /* Analytes from logbook template could be loaded via AJAX, but for now
-         just note the logbook reference — user fills concentrations manually */
-    }
-  }
-
-  function autoExpiry() {
-    var pd = document.getElementById('psPrepDate').value;
-    if (!pd) return;
-    var d = new Date(pd);
-    d.setDate(d.getDate() + currentLogbookExpiry);
-    var iso = d.toISOString().slice(0,10);
-    document.getElementById('psExpiry').value = iso;
   }
 
   /* ── Reagent lookup ────────────────────────────────────────────────── */
@@ -536,9 +714,7 @@
     document.getElementById('analyteJson').value = JSON.stringify(analytes);
   }
 
-  function escHtml(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/\x3c/g,'&lt;').replace(/\x3e/g,'&gt;').replace(/"/g,'&quot;');
-  }
+  var escHtml = window.PFAS.components.esc;
   </script>
 
   </div><!-- /content slot -->

@@ -5,12 +5,12 @@ the extraction log, the QC Review report and the batch logbooks.
     signed_fields(design, people, preview=False) -> {field: value}
 
 `people`: {"preparer": (who, date), "reviewer": (who, date)} -- `who` as the
-record names the person. The Director is the one named in Site Settings.
+record names the person. The Director is the one named on the Laboratory page.
 
 A person is looked up as a user only when the record names them by user id;
 any other name prints as written and has no signature -- a name is never
 matched to an account. A signature prints only for a user holding that sign
-right (Lab Staff). When the design PLACES a role's signature and it cannot be
+right on People & Roles. When the design PLACES a role's signature and it cannot be
 given -- not a user, no sign right, no signature on file -- the document is
 refused outside a preview (sign rights are enforced
 on designed documents). A design that places no signature is not affected.
@@ -54,13 +54,18 @@ def _person(role, who, date, placed, problems):
                             % (who or u"nobody named", role))
         return cd.signatory({"fullname": who, "date": date})
     info = staff.staff_info(who)
-    signature = info["signature"] if role in info["sign_as"] else u""
+    # the director's right is being named on the Laboratory page (the only caller
+    # for that role passes that person)
+    may = role == "director" or role in info["sign_as"]
+    signature = info["signature"] if may else u""
     if role + "_signature" in placed:
-        if role not in info["sign_as"]:
-            problems.append(u"%s may not sign as %s" % (info["fullname"], role))
+        if not may:
+            problems.append(u"%s may not sign as %s" % (cd.staff_name(info, who), role))
         elif not signature:
-            problems.append(u"%s has no signature on file" % info["fullname"])
-    return cd.signatory({"fullname": info["fullname"], "jobtitle": info["jobtitle"],
+            problems.append(u"%s has no signature on file" % cd.staff_name(info, who))
+    # a full name, else the placeholder: never the account id staff_info
+    # falls back to
+    return cd.signatory({"fullname": cd.staff_name(info, who), "jobtitle": info["jobtitle"],
                          "credentials": info["credentials"], "date": date}, signature)
 
 
@@ -80,9 +85,9 @@ def signed_fields(design, people, preview=False):
     else:
         p = cd.signatory(None)
         if "director_signature" in placed:
-            problems.append(u"no Laboratory Director is set (Site Settings)")
+            problems.append(u"no Laboratory Director is set: name one on Laboratory")
     for k in ("name", "title", "credentials", "signature"):
         out["director_%s" % k] = p.get(k) or u""
     if problems and not preview:
-        raise SignatoryError(u"signatories: " + u"; ".join(problems) + u" (Lab Staff)")
+        raise SignatoryError(u"signatories: " + u"; ".join(problems) + u" on People & Roles")
     return out

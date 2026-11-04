@@ -39,5 +39,5 @@ def sidecar_batch_id(sidecar_path) -> str:
     try:
         with open(str(sidecar_path), encoding="utf-8") as fh:
             return (json.load(fh) or {}).get("batch_id") or ""
-    except Exception:                                       # noqa: BLE001
+    except (OSError, ValueError, AttributeError):
         return ""

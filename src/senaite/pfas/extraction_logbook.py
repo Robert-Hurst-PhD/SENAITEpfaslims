@@ -3,6 +3,8 @@
 lays it out). Pure; Python 2.7 and 3."""
 from __future__ import absolute_import, unicode_literals
 
+from senaite.pfas import print_doc
+
 DASH = u"\u2014"
 
 
@@ -43,25 +45,42 @@ def roster(members, sample_rows=None, ports=None):
 
 
 def _answer_rows(stage, answers):
-    try:
-        from senaite.pfas.stage_form import answer_rows
-    except ImportError:                                     # loaded by path (tests)
-        from stage_form import answer_rows
+    from senaite.pfas.stage_form import answer_rows
     return answer_rows(stage, answers)
 
 
+def _stamp(at):
+    """A stored stamp (UTC) on the laboratory's clock; as stored while no
+    zone converts."""
+    return print_doc.lab_or(at, _text(at))
+
+
+def _logged(at):
+    """A dilution's logged stamp (UTC) to the minute on the laboratory's clock."""
+    at = at or u""
+    return print_doc.lab_or(at, at[:16].replace(u"T", u" "))
+
+
+def dilutions(sample_rows):
+    """FM-ENV-003's dilutions as printed: [diluted from, injection,
+    fold, route, aliquot, by, at]."""
+    from senaite.pfas.sample_table import dilutions as _dil, route_key, _routes
+    labels = dict(_routes())
+    return [[_text(r.get("dilution_of")), _text(r.get("sample_id")), _text(r.get("dilution_factor")),
+             _text(labels.get(route_key(r.get("route")))), _text(r.get("aliquot")),
+             _text(r.get("logged_by")), _text(_logged(r.get("logged_at")))]
+            for r in _dil(sample_rows)]
+
+
 def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=None,
-                 extracted=None):
+                 extracted=None, dilution_rows=None):
     """Everything the logbook prints, as plain data. `spike_rows`: FM-ENV-003's
     batch QC as spike rows (sample_id, spike_of, spike_amount, spike_unit,
     logged_by, logged_at, qc_type), printed first in the spikes. `extracted`:
-    roster() -- what the batch extracted."""
+    roster(members, sample_rows=None, ports=None) -- what the batch extracted."""
     session, profile = session or {}, profile or {}
     method_name = profile.get("display_name") or session.get("method_id") or u""
-    try:
-        from senaite.pfas.stage_plan import stages_for
-    except ImportError:                                     # loaded by path (tests)
-        from stage_plan import stages_for
+    from senaite.pfas.stage_plan import stages_for
     stages_config = stages_for(session, profile)       # the plan the extraction followed
     completed = session.get("stages") or {}
     summary, details = [], []
@@ -69,7 +88,7 @@ def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=
         order = u"%s" % sc.get("order", u"")
         sd = completed.get(order) or {}
         summary.append({"order": order, "name": _text(sc.get("name")),
-                        "completed": _text(sd.get("completed_at")),
+                        "completed": _stamp(sd.get("completed_at")),
                         "analyst": _text(sd.get("analyst")),
                         "deviations": _text(sd.get("deviations"))})
         if not sd:
@@ -114,14 +133,14 @@ def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=
                                                r.get("spike_unit") or u"ppt"))
                                  if (r.get("spike_amount") or r.get("spike_ppt"))
                                  else (u"%s (method level)" % (r.get("level") or u"?"))),
-                           _text(r.get("logged_by")), _text(r.get("logged_at")),
+                           _text(r.get("logged_by")), _stamp(r.get("logged_at")),
                            _text(r.get("qc_type"))])
     for name, rec in sorted((session.get("pedigree") or {}).items()):
         if isinstance(rec, dict):
             spikes.append([_text(name), _text(rec.get("parent_sample")),
                            _text(rec.get("spike_lot")), _text(rec.get("spike_volume_ul")),
                            _text(rec.get("spike_ppt")), _text(rec.get("spike_entered_by")),
-                           _text(rec.get("spike_entered_at")), _text(rec.get("spike_source"))])
+                           _stamp(rec.get("spike_entered_at")), _text(rec.get("spike_source"))])
         elif isinstance(rec, list):
             pedigree.append({"name": name, "rows": [
                 [_text(l.get("level")), _text(l.get("lot")),
@@ -134,13 +153,14 @@ def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=
         "header": [(u"Batch ID", _text(batch_id)), (u"Batch Title", _text(batch_title)),
                    (u"Method", _text(method_name)),
                    (u"Lead Analyst", _text(session.get("analyst"))),
-                   (u"Started", _text(session.get("started_at"))),
-                   (u"Finalized", _text(session.get("finalized_at"))),
+                   (u"Started", _stamp(session.get("started_at"))),
+                   (u"Finalized", _stamp(session.get("finalized_at"))),
                    (u"Reviewing Analyst", _text(session.get("finalized_by"))),
                    (u"PDF Generated", generated)],
         "extracted": list(extracted or []),
+        "dilutions": dilutions(dilution_rows),
         "summary": summary, "details": details, "spikes": spikes, "pedigree": pedigree,
         "signoff": [(u"Extraction Analyst", _text(session.get("analyst"))),
                     (u"Reviewing Analyst", _text(session.get("finalized_by"))),
-                    (u"Date Finalized", _text(session.get("finalized_at")))],
+                    (u"Date Finalized", _stamp(session.get("finalized_at")))],
     }

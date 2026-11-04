@@ -18,7 +18,7 @@ daily checklist, the sensor endpoint) reads instruments without changing.
 Views: @@pfas-equipment (the list, with due status), @@pfas-equipment-types
 (what each type obliges, plus the lab-wide facility defaults and the sensor
 API key -- what the Unit Registry held), @@pfas-equipment-settings (one
-instrument's PFAS settings). @@pfas-facility-units now redirects.
+instrument's PFAS settings).
 
 Core overrides (upgrade note): the worksheet add form (FolderView) and Manage
 Results (ManageResultsView) offer only instruments whose type is "offered in
@@ -33,6 +33,7 @@ import logging
 from bika.lims import api
 from bika.lims.browser.worksheet.views import FolderView, ManageResultsView
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 
@@ -47,7 +48,14 @@ logger = logging.getLogger("senaite.pfas.equipment")
 TYPE_KEY = "senaite.pfas.equipment_type"
 ITEM_KEY = "senaite.pfas.equipment"
 ITEM_FIELDS = ("sensor_id", "temp_min", "temp_max", "humidity_min", "humidity_max",
-               "study_tolerance", "weight_points_json", "extra_config_json")
+               "study_tolerance", "weight_points_json", "extra_config_json",
+               # a pipette's calibration limits: accuracy +/- %, precision CV %
+               "pipette_accuracy_pct", "pipette_precision_cv",
+               # the method profiles whose samples a monitored unit stores
+               # (their storage range joins its own on the Monitoring page)
+               "profiles_json",
+               # a multi-point thermometer's working temperatures (temp_calibration)
+               "working_temps_json")
 STATUS_LABEL = {"ok": u"OK", "due_soon": u"Due soon", "overdue": u"Overdue",
                 "missing": u"No record", "not_set": u"Not set"}
 
@@ -80,7 +88,6 @@ def type_requirements(itype):
     stored = _ann_json(itype, TYPE_KEY) if itype is not None else None
     if not stored:
         req = et.seed("other")
-        req["in_worksheets"] = True
         req["configured"] = False
         return req
     req = et.normalise(stored)
@@ -253,25 +260,27 @@ def reference_check(reference_uid, on_date):
 
 
 def offered_in_worksheets(brain_or_obj):
+    """Runs samples: its type's kind is Analytical instrument. A type nobody
+    has set up keeps core's behaviour (offered), so nothing leaves a picker
+    until the lab says what the type is."""
     inst = api.get_object(brain_or_obj)
-    return type_requirements(_instrument_type(inst)).get("in_worksheets", True)
+    req = type_requirements(_instrument_type(inst))
+    return et.runs_samples(req) or not req.get("configured")
 
 
 # ── views ────────────────────────────────────────────────────────────────────
 
-class PFASEquipmentView(BrowserView):
+class PFASEquipmentView(ViewHelpers, BrowserView):
     """Every instrument, grouped by type, with what is due."""
     template = ViewPageTemplateFile("templates/equipment.pt")
 
     def __call__(self):
         return self.template()
 
-    def portal_url(self):
-        return api.get_portal().absolute_url()
-
     _RECORDS = {"balance_analytical": "pfas-balance-log", "balance_prep": "pfas-balance-log",
                 "pipette": "pfas-pipette-calibration", "refrigerator": "pfas-temperature-log",
                 "freezer": "pfas-temperature-log", "room_sensor": "pfas-temperature-log",
+                "water_bath": "pfas-temperature-log", "saa": "pfas-waste-log",
                 "thermometer": "pfas-temperature-log", "ir_gun": "pfas-temperature-log",
                 "nitrogen_evaporator": "pfas-temperature-log",
                 "eyewash": "pfas-eyewash-log", "water_system": "pfas-water-log"}
@@ -300,7 +309,7 @@ TYPES_GATES = {
 }
 
 
-class PFASEquipmentTypesView(GateMixin, BrowserView):
+class PFASEquipmentTypesView(ViewHelpers, GateMixin, BrowserView):
     """What each equipment type obliges; the lab-wide facility defaults and
     the sensor API key (what the Unit Registry held)."""
     template = ViewPageTemplateFile("templates/equipment_types.pt")
@@ -327,9 +336,6 @@ class PFASEquipmentTypesView(GateMixin, BrowserView):
             return ""
         return self.template()
 
-    def portal_url(self):
-        return api.get_portal().absolute_url()
-
     def kinds(self):
         return [{"key": k, "label": l} for k, l in et.KINDS]
 
@@ -354,6 +360,9 @@ class PFASEquipmentTypesView(GateMixin, BrowserView):
                 continue
             save_type_requirements(api.get_object_by_uid(uid), req)
 
+    def correction_models(self):
+        return et.CORRECTION_MODELS
+
     def add_type_url(self):
         # SENAITE 2.6 keeps instrument types as Dexterity items under setup/
         return self.portal_url() + "/setup/instrumenttypes/++add++InstrumentType"
@@ -361,6 +370,14 @@ class PFASEquipmentTypesView(GateMixin, BrowserView):
     def facility_defaults(self):
         from senaite.pfas.browser.facility_qc import facility_defaults_for_form
         return facility_defaults_for_form()
+
+    def unit_choices(self, current):
+        """Equipment Types' unit picker, grouped by quantity."""
+        from senaite.pfas.equipment_types import unit_choices
+        return unit_choices(current)
+
+    def conductivity_units(self):
+        return list(db.CONDUCTIVITY_UNITS)
 
     def balance_unit_types(self):
         return [{"key": k, "label": l} for k, l in et.KINDS if k in et.BALANCE_KINDS]
@@ -378,7 +395,7 @@ class PFASEquipmentTypesView(GateMixin, BrowserView):
 ITEM_GATES = {"save": TIER_CONFIG}
 
 
-class PFASEquipmentSettingsView(GateMixin, BrowserView):
+class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
     """One instrument's PFAS settings."""
     template = ViewPageTemplateFile("templates/equipment_settings.pt")
 
@@ -419,13 +436,20 @@ class PFASEquipmentSettingsView(GateMixin, BrowserView):
         data = {}
         for k in ("sensor_id",):
             data[k] = (f.get(k) or u"").strip() or None
-        for k in ("temp_min", "temp_max", "humidity_min", "humidity_max", "study_tolerance"):
+        for k in ("temp_min", "temp_max", "humidity_min", "humidity_max", "study_tolerance",
+                  "pipette_accuracy_pct", "pipette_precision_cv"):
             raw = (f.get(k) or u"").strip()
             try:
                 data[k] = float(raw) if raw else None
             except ValueError:
                 data[k] = None
         u = self.unit()
+        if u["unit_type"] in et.MONITORED_KINDS:
+            # what it holds per method: "MID" its samples, "MID:processed", "MID:extract"
+            mids = [m for m in self.method_ids() if f.get("profile.%s" % m)]
+            mids += ["%s:%s" % (m, k) for m in self.method_ids() for k in ("processed", "extract")
+                     if f.get("profile.%s:%s" % (m, k))]
+            data["profiles_json"] = json.dumps(mids) if mids else None
         if u["unit_type"] in et.BALANCE_KINDS:
             pts = []
             for i in range(20):
@@ -436,6 +460,12 @@ class PFASEquipmentSettingsView(GateMixin, BrowserView):
                     except ValueError:
                         pass
             data["weight_points_json"] = json.dumps(pts) if pts else None
+        # a multi-point unit's working temperatures (kept when not on the form)
+        if "working_temps" in f:
+            temps = sorted(set(et.working_temps(f.get("working_temps"))))
+            data["working_temps_json"] = json.dumps(temps) if temps else None
+        else:
+            data["working_temps_json"] = u.get("working_temps_json")
         if u["unit_type"] == "water_system":
             extra = {}
             for k in ("conductivity_max", "toc_max"):
@@ -450,6 +480,58 @@ class PFASEquipmentSettingsView(GateMixin, BrowserView):
             pass
         _set_ann_json(self.inst, ITEM_KEY, data)
 
+    def multi_point(self):
+        """The unit is calibrated over its working temperatures (its type's
+        correction option)."""
+        u = self.unit()
+        return bool(u) and db._requires_correction(u) and db._model(u) == db.tc.MULTI
+
+    def working_temps_text(self):
+        return u", ".join(u"%g" % t for t in db.unit_working_temps(self.unit()))
+
+    def method_ids(self):
+        from senaite.pfas.method_profile_store import list_method_ids
+        return list_method_ids(api.get_portal())
+
+    def hold_conflict(self):
+        """Why what the unit holds cannot all be kept at once (ranges that do
+        not overlap), or u"" (facility_qc.range_conflict)."""
+        from senaite.pfas import facility_qc as fq
+        from senaite.pfas import method_profile_sections as mps
+        from senaite.pfas.method_profile_store import raw_profile
+        u = self.unit() or {}
+        portal = api.get_portal()
+        ranges = mps.kept_ranges(self.stored_profiles(), lambda mid: raw_profile(portal, mid))
+        def num(v):
+            try:
+                return float(v) if v not in (None, u"") else None
+            except (TypeError, ValueError):
+                return None
+        lo, hi = fq.effective_range(num(u.get("temp_min")), num(u.get("temp_max")), [(r[1], r[2]) for r in ranges])
+        if not fq.range_conflict(lo, hi):
+            return u""
+        return u"These ranges do not overlap: %s. No temperature meets them all." % u"; ".join(
+            u"%s %s to %s \u00b0C" % (r[0], u"%g" % r[1] if r[1] is not None else u"?",
+                                       u"%g" % r[2] if r[2] is not None else u"?") for r in ranges)
+
+    def kept_choices(self):
+        """Per method, a switch for each kept item the unit may hold."""
+        mine = set(self.stored_profiles())
+        out = []
+        for m in self.method_ids():
+            items = []
+            for key, label in (("", u"Samples"), (":processed", u"Processed samples"), (":extract", u"Extracts")):
+                entry = m + key
+                items.append({"name": "profile.%s" % entry, "label": label, "on": entry in mine})
+            out.append({"mid": m, "items": items})
+        return out
+
+    def stored_profiles(self):
+        try:
+            return json.loads(self.unit().get("profiles_json") or "[]") or []
+        except (TypeError, ValueError):
+            return []
+
     def extra(self):
         try:
             return json.loads(self.unit().get("extra_config_json") or "{}") or {}
@@ -459,16 +541,46 @@ class PFASEquipmentSettingsView(GateMixin, BrowserView):
     def saved(self):
         return self.request.form.get("saved") == "1"
 
-    def portal_url(self):
-        return api.get_portal().absolute_url()
-
-
-class PFASFacilityUnitsRedirect(BrowserView):
-    """The Unit Registry folded into Equipment."""
+class PFASReferenceThermometersView(ViewHelpers, BrowserView):
+    """Equipment Checks > Reference Thermometers: the registered references
+    (core Instruments of kind reference_thermometer) and the external
+    certificate each is calibrated under (its SENAITE certifications). A
+    temperature study picks one of these; nothing is typed."""
+    template = ViewPageTemplateFile("templates/reference_thermometers.pt")
 
     def __call__(self):
-        self.request.response.redirect(api.get_portal().absolute_url() + "/@@pfas-equipment")
-        return ""
+        flatten_form(self.request)
+        return self.template()
+
+    def add_url(self):
+        return self.portal_url() + "/bika_setup/bika_instruments/createObject?type_name=Instrument"
+
+    def rows(self):
+        from senaite.pfas import lab_time
+        today = lab_time.today()
+        out = []
+        for u in reference_thermometers():
+            inst = _by_uid(u["id"], "Instrument")
+            cert, vf, vt = None, None, None
+            try:
+                cert = inst.getLatestValidCertification() if inst is not None else None
+            except Exception:                               # noqa: BLE001
+                cert = None
+            if cert is not None:
+                vf, vt = _cert_dates(cert)
+            if cert is None:
+                status, cls = u"No certificate", "badge-fail"
+            elif vt and vt < today:
+                status, cls = u"Expired", "badge-fail"
+            else:
+                status, cls = u"Traceable", "badge-ok"
+            out.append({"name": u["name"], "serial": u["serial_number"] or u"",
+                        "model": getattr(inst, "getModel", lambda: u"")() if inst is not None else u"",
+                        "lab": (getattr(cert, "getAgency", lambda: u"")() or u"") if cert is not None else u"",
+                        "certificate": (cert.Title() or u"") if cert is not None else u"",
+                        "calibrated": vf.isoformat() if vf else u"", "due": vt.isoformat() if vt else u"",
+                        "status": status, "status_cls": cls, "url": u.get("url") or u""})
+        return out
 
 
 # ── core worksheet pickers: analysis instruments only ───────────────────────

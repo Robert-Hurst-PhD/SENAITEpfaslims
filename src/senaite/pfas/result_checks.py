@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Do a worksheet's core results match the method and the pipeline? (core
-integration)
+"""Do a worksheet's core results match the method and the pipeline?
 
 Three questions Data Review answers from what core holds and what the worker
 recorded in its push log (pfas_pipeline/push_log.py):
@@ -44,10 +43,7 @@ def _shown(value, fmt):
     """The pushed value as the certificate states it, by the lab's rounding."""
     if not fmt:
         return value
-    try:
-        from senaite.pfas import rounding
-    except ImportError:                                     # tests, outside Plone
-        import rounding
+    from senaite.pfas import rounding
     text = rounding.round_sig(value, fmt[0], fmt[1])
     return text if text is not None else value
 

@@ -20,14 +20,12 @@ re-injected, and the record of it must not change after the result exists.
     merge_samples(rows, edits, column)    -> rows with the column recorded
     missing(rows, edits, column)          -> sample ids with no value
     append_dilution(rows, parent, injection, factor, by, at) -> (rows, error)
-    seed_sample_capture(profile)          -> True when stages were given the key
     processing_stage(stages)              -> the stage that is the Sample
                                              Processing Log (FM-ENV-004)
-    seed_processing_checks(profile)       -> True when the processing stage
-                                             was given its checks key
 
-Spikes are not recorded here any more: an extraction batch's QC and each
-one's parent and level are its members (extraction_batch.py); older `spikes` rows are read by dilution_ref.spikes_from_rows.
+Spikes are not recorded here: an extraction batch's QC and each one's
+parent and level are its members (extraction_batch.py); FM-ENV-003 `spikes`
+rows are read by dilution_ref.spikes_from_rows.
 
 Pure; Python 2.7 and 3.
 """
@@ -67,7 +65,7 @@ def rows_for_card(rows, batch_samples):
         if sid and sid not in seen:
             seen.add(sid)
             row = dict(r)
-            # older rows (the Run Builder's) name the column `matrix`
+            # a Run Builder row names the column `matrix`
             row["matrix_type"] = r.get("matrix_type") or r.get("matrix") or u""
             out.append(row)
     for s in batch_samples or []:
@@ -156,17 +154,73 @@ def port_warnings(edits):
 
 def _factor_ok(text):
     """The one rule for a fold (dilution_ref.parse_factor)."""
-    try:
-        from senaite.pfas.dilution_ref import parse_factor
-    except ImportError:                                     # tests: plain import path
-        from dilution_ref import parse_factor
+    from senaite.pfas.dilution_ref import parse_factor
     return parse_factor(text) is not None
 
 
-def append_dilution(rows, parent, injection, factor, by, at):
+def _routes():
+    from senaite.pfas.method_profile_sections import DILUTION_ROUTES
+    return DILUTION_ROUTES
+
+
+def route_key(route):
+    """A route's key from its key or its label; blank = the extract diluted."""
+    text = (u"%s" % (route or u"")).strip()
+    for key, label in _routes():
+        if text in (key, label):
+            return key
+    return text or u"extract"
+
+
+def _num(text):
+    try:
+        return float(u"%s" % text)
+    except (TypeError, ValueError):
+        return None
+
+
+def plan_problem(fold, route, settings):
+    """Why a planned dilution is refused by the method's dilution settings
+    (the route it allows, its largest dilution), or u"". Unset checks nothing."""
+    route = route_key(route)
+    if route not in ((settings or {}).get("routes") or [u"extract"]):
+        return u"%s is not a route this method allows." % dict(_routes()).get(route, route)
+    cap = (settings or {}).get("max_fold")
+    if cap not in (None, u"") and (_num(fold) or 0) > float(cap):
+        return u"The largest dilution this method allows is %s-fold." % _fmt(cap)
+    return u""
+
+
+def _route_problem(fold, route, aliquot, approval, settings):
+    """Why the method's dilution settings refuse this dilution, or u"".
+    An unset limit checks nothing."""
+    problem = plan_problem(fold, route, settings)
+    if problem:
+        return problem
+    if route == u"reprep":
+        amount = _num(aliquot)
+        if amount is None or amount <= 0:
+            return u"Give the aliquot taken for the re-prep, in mL or g."
+        least = settings.get("min_aliquot")
+        if least not in (None, u"") and amount < float(least):
+            return u"The smallest aliquot for a re-prep is %s." % _fmt(least)
+        if settings.get("client_approval") and not (approval or u"").strip():
+            return u"A smaller aliquot needs the client's approval: say who approved it and when."
+    return u""
+
+
+def _fmt(v):
+    v = float(v)
+    return u"%d" % v if v == int(v) else u"%s" % v
+
+
+def append_dilution(rows, parent, injection, factor, by, at, route=u"", aliquot=None, approval=u"",
+                    settings=None):
     """Append one dilution. Refused (rows unchanged, reason given) without a
     parent, an injection name or a usable factor, or when the injection name
-    is already a sample or a logged dilution."""
+    is already a sample or a logged dilution; with the method's dilution
+    settings (method_profile_sections.dilution_settings), a route it does not
+    allow or a fold, aliquot or approval its limits refuse."""
     parent, injection = (parent or u"").strip(), (injection or u"").strip()
     rows = [dict(r) for r in rows or [] if isinstance(r, dict)]
     if not parent:
@@ -177,9 +231,19 @@ def append_dilution(rows, parent, injection, factor, by, at):
         return rows, u"Give the dilution as its total fold, a number above 1 (e.g. 2 or 10); ratios are not accepted."
     if any((r.get("sample_id") or u"").strip() == injection for r in rows):
         return rows, u"{0} is already in the record.".format(injection)
-    rows.append({"sample_id": injection, "dilution_of": parent,
-                 "dilution_factor": (u"%s" % factor).strip(),
-                 "logged_by": by or u"", "logged_at": at or u""})
+    key = route_key(route)
+    if settings is not None:
+        problem = _route_problem(factor, key, aliquot, approval, settings)
+        if problem:
+            return [dict(r) for r in rows], problem
+    row = {"sample_id": injection, "dilution_of": parent,
+           "dilution_factor": (u"%s" % factor).strip(), "route": dict(_routes()).get(key, key),
+           "logged_by": by or u"", "logged_at": at or u""}
+    if (u"%s" % (aliquot or u"")).strip():
+        row["aliquot"] = (u"%s" % aliquot).strip()
+    if (approval or u"").strip():
+        row["approval"] = approval.strip()
+    rows.append(row)
     return rows, u""
 
 
@@ -187,55 +251,14 @@ def dilutions(rows):
     return [r for r in rows or [] if isinstance(r, dict) and _is_dilution(r)]
 
 
-def seed_sample_capture(profile):
-    """Give every stage the key once: the test-portion stage ("weigh",
-    "aliquot mass", "sample loading") records the sample amount, the
-    reconstitution stage the final volume; the lab can change either in the
-    stage editor."""
-    changed = False
-    for st in (profile or {}).get("extraction_stages") or []:
-        if STAGE_KEY in st:
-            continue
-        text = u"{0} {1}".format(st.get("name") or u"", st.get("description") or u"").lower()
-        if any(w in text for w in (u"weigh", u"aliquot mass", u"sample loading")):
-            st[STAGE_KEY] = u"amount"
-        elif u"reconstitut" in text:
-            st[STAGE_KEY] = u"final_volume"
-        else:
-            st[STAGE_KEY] = u""
-        changed = True
-    return changed
-
-
 def processing_stage(stages):
     """The stage where the test portion is taken -- the first one recording
-    the sample amount. It is the Sample Processing Log, FM-ENV-004 (2026-10-06: the guided extraction is the one record of homogenising and
-    weighing out aliquots), or None when the method has no such stage."""
+    the sample amount. It is the Sample Processing Log, FM-ENV-004 (the
+    guided extraction is the one record of homogenising and weighing out
+    aliquots), or None when the method has no such stage."""
     for st in sorted(stages or [], key=lambda s: s.get("order", 0)):
         if capture_column(st) == AMOUNT:
             return st
     return None
 
 
-# FM-ENV-004's grinder check was carried to the processing stage on
-# 2026-10-06 and removed the same day: each sample's homogenisation record
-# confirms its homogeniser was cleaned, per unit and per use.
-GRINDER_CHECK = u"Grinder cleaned / blank passed"
-
-
-CHECKS_MARK = u"processing_checks_v"     # profile key: this migration ran
-
-
-def seed_processing_checks(profile):
-    """Once per method: the processing stage gets an empty `confirmations`
-    (the lab adds checks in the stage editor), and the grinder check seeded
-    earlier is taken off it. Marked on the profile so a check the lab adds
-    back later is never taken off again."""
-    profile = profile if profile is not None else {}
-    if profile.get(CHECKS_MARK) == 2:
-        return False
-    st = processing_stage(profile.get("extraction_stages"))
-    if st is not None:
-        st[u"confirmations"] = [c for c in st.get(u"confirmations") or [] if c != GRINDER_CHECK]
-    profile[CHECKS_MARK] = 2
-    return True

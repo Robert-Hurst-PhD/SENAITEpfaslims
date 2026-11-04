@@ -11,16 +11,13 @@ every page and the certificate show for the summed analyte; blank means the
 plain name (the analyte's display name without its "lr-" prefix). "lr-" names
 the linear PEAK, never the reported total.
 
-Replaces `isomer_summation` ([{"linear", "branched", "reported", "enabled"}]).
 Reporting is ALWAYS one analyte out (the sum); the isomer peaks are kept only
 for the lab's own review -- control charts, retention time, calibration --
-under their peak names (revised the same day).
-Pure; Python 2.7.
+under their peak names. Pure; Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
 KEY = "isomers"
-LEGACY = "isomer_summation"
 
 
 PEAK_PREFIXES = ("lr-", "br-")
@@ -35,37 +32,6 @@ def is_peak_name(keyword):
 def plain_name(keyword, titles):
     title = titles.get(keyword) or keyword
     return title[3:] if title.lower().startswith("lr-") else title
-
-
-def from_legacy(profile):
-    out = {}
-    for pair in profile.get(LEGACY) or []:
-        if not isinstance(pair, dict) or not pair.get("reported"):
-            continue
-        kw = pair["reported"].strip()
-        entry = out.setdefault(kw, {"linear": "", "branched": [], "reported": ""})
-        if pair.get("linear") and not entry["linear"]:
-            entry["linear"] = pair["linear"].strip()
-        br = (pair.get("branched") or "").strip()
-        if br and br not in entry["branched"]:
-            entry["branched"].append(br)
-    return out
-
-
-def migrate(profile):
-    """True if `profile` was migrated in place (idempotent)."""
-    changed = False
-    if KEY not in profile:
-        profile[KEY] = from_legacy(profile)
-        changed = True
-    if LEGACY in profile:
-        profile.pop(LEGACY)
-        changed = True
-    for entry in (profile.get(KEY) or {}).values():
-        if isinstance(entry, dict) and "summed" in entry:
-            entry.pop("summed")         # always summed: one analyte out
-            changed = True
-    return changed
 
 
 def entries(profile):
@@ -103,9 +69,82 @@ def labels(profile, keywords, titles):
     return dict((kw, label(profile, kw, titles)) for kw in keywords)
 
 
-def check(profile, titles):
-    """Refusals for a whole saved profile."""
+def peak_names(profile):
+    """{peak name: the analyte it sums into} over the profile's isomers."""
+    out = {}
+    for kw, e in entries(profile).items():
+        for peak in ([e["linear"]] if e.get("linear") else []) + list(e.get("branched") or []):
+            out[peak] = kw
+    return out
+
+
+def peaks_of(profile, keyword):
+    """The analyte's isomer peaks, linear first: each is integrated and
+    quantified as its own analyte; [] for an analyte without isomers."""
+    e = entries(profile).get(keyword) or {}
+    return ([e["linear"]] if e.get("linear") else []) + [b for b in e.get("branched") or [] if b]
+
+
+def integration_names(profile, keywords):
+    """`keywords` with each analyte that has isomers replaced by its peaks,
+    each name once: the rows a raw run is integrated with."""
+    out = []
+    for kw in keywords:
+        for name in peaks_of(profile, kw) or [kw]:
+            if name not in out:
+                out.append(name)
+    return out
+
+
+def partners(profile):
+    """{peak: its partner}: a linear peak's partner is its first branched
+    peak, a branched peak's its linear peak."""
+    out = {}
+    for e in entries(profile).values():
+        linear = e.get("linear")
+        branched = [b for b in e.get("branched") or [] if b]
+        if not linear:
+            continue
+        if branched:
+            out[linear] = branched[0]
+        for b in branched:
+            out[b] = linear
+    return out
+
+
+def branched_peaks(profile):
+    """Every branched peak name: integrated as the sum of the peaks in its
+    own window, leaving out its linear partner's peak."""
+    return set(b for e in entries(profile).values() for b in e.get("branched") or [] if b)
+
+
+def summed_of(profile, name):
+    """The analyte a peak name sums into, else None."""
+    return peak_names(profile).get(name)
+
+
+def check(profile, titles, library=None):
+    """Refusals for a whole saved profile. With the compound `library`, every
+    peak name must be a spelling the library knows: the linear peak one of
+    its own analyte's, a branched peak an analyte's."""
     errors = []
+    if library is not None:
+        from senaite.pfas import compound_library as cl
+        def resolves(peak):
+            """The analyte a peak name names: the name itself, or what follows
+            its lr-/br- prefix, as the library spells it."""
+            base = peak[3:] if (peak or "").lower().startswith(PEAK_PREFIXES) else peak
+            return cl.keyword_of(library, peak) or cl.keyword_of(library, base)
+        for kw in sorted(entries(profile)):
+            e = entries(profile)[kw]
+            if e.get("linear") and resolves(e["linear"]) != kw:
+                errors.append("%s: the linear peak %s is not lr- plus a spelling of %s in the compound "
+                              "library (Setup > Analysis Services, the PFAS tab's export names)."
+                              % (kw, e["linear"], kw))
+            for peak in e.get("branched") or []:
+                if cl.role_of(library, resolves(peak) or peak) != "analyte":
+                    errors.append("%s: the branched peak %s is not br- plus an analyte of the compound "
+                                  "library." % (kw, peak))
     panel = list(profile.get("master_analyte_set") or [])
     taken = {}                       # name -> what already uses it
     for kw in panel:

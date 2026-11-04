@@ -35,19 +35,19 @@
           <div class="sv" tal:content="stats/total">0</div>
           <div class="sl">Total</div>
         </div>
-        <div class="stat-box good">
+        <div class="stat-box">
           <div class="sv" tal:content="stats/r2_pass">0</div>
           <div class="sl">R&sup2; Pass</div>
         </div>
-        <div class="stat-box warn">
+        <div class="stat-box">
           <div class="sv" tal:content="stats/pending">0</div>
           <div class="sl">Pending</div>
         </div>
-        <div class="stat-box good">
+        <div class="stat-box">
           <div class="sv" tal:content="stats/approved">0</div>
           <div class="sl">Approved</div>
         </div>
-        <div class="stat-box warn">
+        <div tal:attributes="class python:'stat-box is-flag' if stats['rejected'] else 'stat-box'">
           <div class="sv" tal:content="stats/rejected">0</div>
           <div class="sl">Rejected</div>
         </div>
@@ -98,8 +98,8 @@
         <label for="cal-run">Run</label>
         <input type="hidden" name="run_date" value="" />
         <select id="cal-run" name="run" class="pfas-select">
-          <option tal:repeat="r runs" tal:content="python:u'%s  %s  (%s, %d curves)' % (r['run_date'], r['batch_id'], r['method'], r['n'])"
-                  tal:attributes="value r/batch_id; data-date r/run_date; selected python:'selected' if r == sel else None">run</option>
+          <option tal:repeat="r runs" tal:content="python:u'%s %s' % (r['run_date'], r['batch_id'])"
+                  tal:attributes="value r/batch_id; data-date r/run_date; data-method r/method; selected python:'selected' if r == sel else None">run</option>
         </select>
       </div>
       <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
@@ -111,7 +111,11 @@
       form.addEventListener('change', function (e) {
         var run = form.elements['run'], date = form.elements['run_date'];
         if (e.target === run) {
-          date.value = run.options[run.selectedIndex].getAttribute('data-date') || '';
+          var opt = run.options[run.selectedIndex];
+          date.value = opt.getAttribute('data-date') || '';
+          /* a run belongs to one method: the Method filter follows it */
+          var m = form.elements['method'];
+          if (m && opt.getAttribute('data-method')) { m.value = opt.getAttribute('data-method'); }
         } else {
           if (e.target.name === 'method') { form.elements['analyte'].value = ''; }
           if (run) { run.disabled = true; }
@@ -159,16 +163,6 @@
   </script>
 
   <!-- Point-detail modal (shared, populated by JS) -->
-  <div id="pfas-cal-modal" class="cal-detail-modal"
-       onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="cal-detail-box">
-      <h4 id="pfas-modal-title">Point Detail
-        <button class="cal-detail-close"
-                onclick="document.getElementById('pfas-cal-modal').classList.remove('open')">&times;</button>
-      </h4>
-      <table class="cal-detail-table" id="pfas-modal-table"><tbody></tbody></table>
-    </div>
-  </div>
 
   </div><!-- /content slot -->
 </body>

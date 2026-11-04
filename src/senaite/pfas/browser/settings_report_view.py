@@ -17,16 +17,28 @@ from datetime import datetime
 
 from bika.lims import api
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
+from senaite.pfas import print_doc
 from senaite.pfas import settings_report as sr
+from senaite.pfas.browser.formutil import quote_text
 from senaite.pfas.browser.perms import require_manager
 from senaite.pfas.browser.perms import refuse
+from senaite.pfas.browser.view_helpers import send_pdf
 
 logger = logging.getLogger("senaite.pfas.settings_report")
 
 
-class PFASSettingsReportView(BrowserView):
+def _shown_revision(rec):
+    """A revision record (or status) as the report shows it: its issue
+    stamp, stored on the server's clock (UTC), on the laboratory's; the
+    record itself while no zone converts."""
+    at = rec.get("issued_at")
+    return dict(rec, issued_at=print_doc.lab_or(at, at)) if at else rec
+
+
+class PFASSettingsReportView(ViewHelpers, BrowserView):
 
     print_template = ViewPageTemplateFile("templates/settings_report_print.pt")
     body_template = ViewPageTemplateFile("templates/settings_report_body.pt")
@@ -36,12 +48,8 @@ class PFASSettingsReportView(BrowserView):
             return refuse(self.request, "Forbidden")
         form = self.request.form
         if self.request.method == "POST" and form.get("action") == "issue_revision":
-            try:
-                from plone.protect.interfaces import IDisableCSRFProtection
-                from zope.interface import alsoProvides
-                alsoProvides(self.request, IDisableCSRFProtection)
-            except ImportError:
-                pass
+            from senaite.pfas.browser.perms import disable_csrf
+            disable_csrf(self.request)
             return self._issue()
         if form.get("method_id") and form.get("rev"):
             return self._issued_pdf()
@@ -71,13 +79,11 @@ class PFASSettingsReportView(BrowserView):
                 "user": rep["user"], "fingerprint": rep["fingerprint"]}
 
     def print_css(self):
-        from senaite.pfas import print_doc
         c = self._control()
         return print_doc.document_css(c["doc_id"], c["revision"], c["user"], c["generated"],
                                       size="A4 landscape", margin="14mm 12mm 16mm")
 
     def print_head(self):
-        from senaite.pfas import print_doc
         c = self._control()
         cells = [(u"Document", c["doc_id"]), (u"Revision", c["revision"]),
                  (u"Generated", c["generated"]), (u"Configuration", c["fingerprint"])]
@@ -92,14 +98,11 @@ class PFASSettingsReportView(BrowserView):
         from senaite.pfas.qc.rules import method_toggles
         recs = mr.records(api.get_portal(), mid)
         st = mr.status(recs, mr.fingerprint(profile, method_toggles(profile, mid)))
-        return st, sorted(recs, key=lambda r: -r.get("rev", 0))
+        return _shown_revision(st), [_shown_revision(r) for r in sorted(recs, key=lambda r: -r.get("rev", 0))]
 
     @property
     def body_macros(self):
         return self.body_template.macros
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def report(self):
         if getattr(self, "_report", None) is not None:
@@ -138,7 +141,7 @@ class PFASSettingsReportView(BrowserView):
             "title": (u"%s \u2014 QC settings" % methods[0]["name"]) if only and methods
                      else u"QC Settings Report",
             "revision_label": self._label(methods[0]["revision"]) if only and methods else u"",
-            "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "generated": print_doc.now_label(),
             "user": (user.getProperty("fullname") or user.getId()) if user else u"",
             "fingerprint": sr.fingerprint(profiles, reg, ps,
                                           [p["specs"] for p in projects],
@@ -168,9 +171,9 @@ class PFASSettingsReportView(BrowserView):
                           "req": eq.type_requirements(t)})
         insts = []
         for u in fq.list_units(active_only=False):
-            cf = fq.current_correction(u["id"]) if fq._requires_correction(u) else None
+            cf = fq.calibration(u["id"], unit=u) if fq._requires_correction(u) else None
             st = None
-            if cf:
+            if cf and cf.get("study_id"):
                 det = fq.get_study(cf["study_id"]) or {}
                 st = {"study": det.get("study") or {},
                       "changes": len(fq.study_point_changes(cf["study_id"]))}
@@ -235,10 +238,7 @@ class PFASSettingsReportView(BrowserView):
         return HTML(string=html).write_pdf()
 
     def _send(self, pdf, name):
-        resp = self.request.response
-        resp.setHeader("Content-Type", "application/pdf")
-        resp.setHeader("Content-Disposition", 'attachment; filename="%s"' % name)
-        return pdf
+        return send_pdf(self.request.response, pdf, name, inline=False)
 
     def _issued_pdf(self):
         from senaite.pfas import method_revisions as mr
@@ -266,7 +266,7 @@ class PFASSettingsReportView(BrowserView):
         recs = mr.records(portal, mid)
         fp = mr.fingerprint(profile, method_toggles(profile, mid))
         if recs and mr.status(recs, fp)["unissued"] is False:
-            self.request.response.redirect(back + "?error=%s" % _q(
+            self.request.response.redirect(back + "?error=%s" % quote_text(
                 u"%s: nothing changed since Revision %s" % (mid, mr.status(recs, fp)["rev"])))
             return ""
         user = api.get_current_user()
@@ -274,7 +274,8 @@ class PFASSettingsReportView(BrowserView):
         when = datetime.now().strftime("%Y-%m-%d %H:%M")
         rev = mr.next_number(recs)
         reason = (self.request.form.get("reason") or u"").strip()
-        self.report()["revision_label"] = self._label(None, {"rev": rev, "at": when, "by": who}) + (
+        self.report()["revision_label"] = self._label(None, {"rev": rev, "at": print_doc.lab_or(when, when),
+                                                             "by": who}) + (
             u" \u2014 %s" % reason if reason else u"")
         from senaite.pfas.browser.report_designs import DesignedReportError
         try:
@@ -283,11 +284,11 @@ class PFASSettingsReportView(BrowserView):
             self.request.response.setStatus(501)
             return "PDF rendering (WeasyPrint) is not installed on this server."
         except DesignedReportError as exc:
-            self.request.response.redirect(back + "?error=%s" % _q(u"%s: not issued. %s" % (mid, exc)))
+            self.request.response.redirect(back + "?error=%s" % quote_text(u"%s: not issued. %s" % (mid, exc)))
             return ""
         mr.issue(portal, mid, pdf, fp, who, when, reason, rev=rev)
         logger.info("method %s: revision %s issued by %s", mid, rev, who)
-        self.request.response.redirect(back + "?ok=%s" % _q(u"%s Revision %s issued." % (mid, rev)))
+        self.request.response.redirect(back + "?ok=%s" % quote_text(u"%s Revision %s issued." % (mid, rev)))
         return ""
 
     def _pdf(self):
@@ -300,16 +301,7 @@ class PFASSettingsReportView(BrowserView):
         except DesignedReportError as exc:
             self.request.response.setStatus(500)
             return u"%s" % exc
-        name = "%s-settings-%s.pdf" % (self.method_id() or "pfas", datetime.now().strftime("%Y%m%d-%H%M"))
-        resp = self.request.response
-        resp.setHeader("Content-Type", "application/pdf")
-        resp.setHeader("Content-Disposition", 'attachment; filename="%s"' % name)
-        return pdf
+        name = "%s-settings-%s.pdf" % (self.method_id() or "pfas", print_doc.now_label("%Y%m%d-%H%M"))
+        return self._send(pdf, name)
 
 
-def _q(text):
-    try:
-        from urllib import quote
-    except ImportError:                       # pragma: no cover
-        from urllib.parse import quote
-    return quote((u"%s" % text).encode("utf-8"))

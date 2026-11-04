@@ -34,14 +34,13 @@
     .fb-list { display:flex; flex-direction:column; gap:8px; }
     .fb-empty { font-size:var(--fs-sm); color:var(--s-secondary); font-style:italic; padding:8px 2px; }
     .fb-hint { font-size:var(--fs-xs); color:var(--s-secondary); margin:0 0 8px; }
-    .fb-row, .fb-step { border:1px solid var(--s-border); border-radius:6px;
+    .fb-row { border:1px solid var(--s-border); border-radius:6px;
                         padding:8px 10px; background:var(--s-bg); }
     .fb-row-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
     .fb-idx { font-size:var(--fs-xs); font-weight:var(--fw-heading); color:var(--s-secondary);
               min-width:18px; text-align:center; }
     .fb-in { padding:5px 8px; border:1px solid var(--s-border); border-radius:4px;
              font-size:var(--fs-sm); background:var(--s-bg); color:var(--s-body); }
-    .fb-in-name { width:150px; font-family: var(--font-mono); }
     .fb-in-label { flex:1 1 180px; min-width:120px; }
     .fb-in-type { width:170px; }
     .fb-in-sm { width:90px; }
@@ -66,27 +65,6 @@
                padding:8px; border:1px solid var(--s-border); border-radius:4px; }
     .fb-jsonlabel { font-size:var(--fs-xs); font-weight:var(--fw-heading); color:var(--s-secondary);
                     display:block; margin:8px 0 3px; }
-    .fb-banner { font-size:var(--fs-xs); background:var(--s-warn-lt); border:1px solid var(--s-warn-bd);
-                 color:var(--s-warn-text); border-radius:5px; padding:8px 10px; margin-bottom:10px; }
-    .fb-step-body { display:flex; gap:12px; margin-top:8px; flex-wrap:wrap; }
-    .fb-step-instr { flex:1 1 280px; display:flex; flex-direction:column; }
-    .fb-step-media { flex:0 0 190px; display:flex; flex-direction:column; gap:5px; }
-    .fb-instr { width:100%; box-sizing:border-box; font-size:var(--fs-sm); }
-    .fb-thumb { border:1px dashed var(--s-border); border-radius:5px; min-height:96px;
-                display:flex; align-items:center; justify-content:center;
-                background:var(--s-light); overflow:hidden; }
-    .fb-thumb img { max-width:100%; max-height:150px; display:block; }
-    .fb-thumb-empty { font-size:var(--fs-xs); color:var(--s-secondary); }
-    .fb-file { font-size:var(--fs-xs); }
-    .fb-assign { margin-top:9px; padding-top:8px; border-top:1px dashed var(--s-border);
-                 display:flex; flex-wrap:wrap; gap:6px 14px; }
-    .fb-assign-item { font-size:var(--fs-xs); display:flex; align-items:center; gap:4px; }
-    .fb-assign-item.is-taken { opacity:.55; }
-    .fb-tybadge { font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.03em;
-                  background:var(--s-light); border:1px solid var(--s-border);
-                  border-radius:3px; padding:1px 4px; color:var(--s-secondary); }
-    .fb-taken { font-size:var(--fs-xs); color:var(--s-secondary); font-style:italic; }
-    .fb-unassigned { font-size:var(--fs-xs); color:var(--s-secondary); }
     .fld-help { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:3px;
                 display:block; line-height:1.35; }
     /* derived storage key, kept quiet */
@@ -99,36 +77,12 @@
                   border-radius:3px; padding:1px 5px; }
     .fb-keyedit { border:none; background:transparent; font-size:var(--fs-xs);
                   color: var(--s-primary-dk); cursor:pointer; text-decoration:underline; }
-    .fb-uplabel { font-size:var(--fs-xs); color:var(--s-secondary);
-                  display:flex; flex-direction:column; gap:3px; }
-    /* animation gallery */
-    .fb-gal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45);
-                       z-index:9000; display:flex; align-items:center;
-                       justify-content:center; padding:20px; }
-    .fb-gal { background:var(--s-bg); border-radius:12px; padding:18px;
-              max-width:760px; width:100%; max-height:86vh; overflow:auto;
-              box-shadow:0 10px 40px rgba(0,0,0,.3); }
-    .fb-gal-title { font-size:var(--fs-md); font-weight:var(--fw-heading); margin-bottom:12px; }
-    .fb-gal-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
-                   gap:10px; }
-    .fb-gal-cell { border:1px solid var(--s-border); border-radius:8px;
-                   background:var(--s-light); padding:8px; cursor:pointer;
-                   display:flex; flex-direction:column; align-items:center; gap:5px; }
-    .fb-gal-cell:hover { border-color:var(--s-primary); background:var(--s-primary-lt); }
-    .fb-gal-cell.is-on { border-color:var(--s-primary); box-shadow:0 0 0 2px var(--focus); }
-    .fb-gal-cell img { width:96px; height:96px; image-rendering:pixelated;
-                       image-rendering:crisp-edges; border-radius:5px; }
-    .fb-gal-cap { font-size:var(--fs-xs); color:var(--s-secondary); text-align:center;
-                  line-height:1.25; }
-    .fb-gal-bar { display:flex; justify-content:flex-end; margin-top:14px; }
-    /* step thumbnails keep the pixel look */
-    .fb-thumb img { image-rendering:pixelated; image-rendering:crisp-edges; }
   </style>
   </tal:styles>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
-  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-flow" /></tal:tabs>
   <tal:r metal:fill-slot="header-right">
     
   </tal:r>
@@ -139,18 +93,39 @@
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
-    <div class="pfas-intro">
-      <p>
-        Each logbook describes a preparation procedure with versioned revisions.
-        A prepared standard links to one revision. Issuing a new revision creates a draft copy.
-      </p>
+    <div class="pfas-between">
+      <nav class="pfas-seg" aria-label="Templates view">
+        <a class="pfas-seg-item" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks;
+           aria-selected python:'true' if view.view_mode() == 'list' else 'false'">List</a>
+        <a class="pfas-seg-item" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks?view=use;
+           aria-selected python:'true' if view.view_mode() == 'use' else 'false'">By use</a>
+      </nav>
       <button type="button" class="btn btn-primary" onclick="openModal()">+ New Logbook</button>
     </div>
 
-    <tal:fams tal:define="fams view/logbook_families">
+    <!-- By use: each batch's records in their order, then what is made ahead -->
+    <tal:use condition="python:view.view_mode() == 'use'">
+      <section class="pfas-card lb-use" tal:repeat="g view/by_use">
+        <h3 tal:content="g/label">For each batch, in order</h3>
+        <div class="lb-use-steps">
+          <div class="lb-use-step" tal:repeat="st g/steps">
+            <h4 tal:content="st/label">Sample receipt</h4>
+            <ul tal:condition="st/templates">
+              <li tal:repeat="t st/templates"><button type="button" class="btn-sm btn-secondary" tal:attributes="data-edit-uid t/uid"
+                  tal:content="python:u'%s %s' % (t.get('logbook_code') or u'', t['title'])">CoC</button></li>
+            </ul>
+            <p class="pfas-muted" tal:condition="python:st['role'] == 'instrument'">The Run Builder, not a logbook.</p>
+            <button type="button" class="btn-sm btn-secondary" tal:condition="python:st['role'] != 'instrument'"
+                    tal:attributes="onclick string:openModal(null, '${st/role}')">+ New logbook</button>
+          </div>
+        </div>
+      </section>
+    </tal:use>
+
+    <tal:fams tal:define="fams view/logbook_families" tal:condition="python:view.view_mode() == 'list'">
 
       <div class="pfas-empty" tal:condition="not:fams">
-        <p class="pfas-empty-glyph">&#128209;</p>
+        <p class="pfas-empty-glyph"><svg class="pfas-ico" aria-hidden="true"><use href="#ico-book-open"/></svg></p>
         <p>No preparation logbooks defined yet.</p>
         <button type="button" class="btn btn-primary" onclick="openModal()">
           Create First Logbook
@@ -158,38 +133,64 @@
       </div>
 
       <div class="table-wrap" tal:condition="fams">
-        <table class="pfas-table lb-table">
+        <table class="pfas-table lb-table" data-col-resize="prep-logbooks-lb-table">
           <thead>
             <tr>
               <th>Logbook Name</th>
-              <th>Type</th>
+              <th>Used for</th>
               <th class="pfas-center">Current Rev</th>
-              <th>Default Expiry</th>
               <th>Status</th>
-              <th>Revisions</th>
-              <th>Actions</th>
+              <th class="row-action"><span class="pfas-sr-hide">Recipes</span></th>
+              <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             <tal:rows tal:repeat="fam fams">
               <tr>
                 <td class="pfas-cell-name" tal:content="fam/title">Logbook Name</td>
-                <td class="pfas-muted" tal:content="fam/standard_type">—</td>
+                <td tal:content="fam/role_label">Standard prep</td>
                 <td class="pfas-center">
                   <strong tal:content="fam/revision">1</strong>
                 </td>
                 <td>
-                  <span class="expiry-chip"
-                        tal:content="python:'{} days'.format(fam['default_expiry_days'])">365 days</span>
-                </td>
-                <td>
                   <span tal:attributes="class python:'badge badge-' + fam['status']"
-                        tal:content="fam/status">draft</span>
+                        tal:content="python:(fam['status'] or '').capitalize()">Draft</span>
                 </td>
-                <td>
-                  <details class="revision-panel">
-                    <summary tal:content="python:'Rev {} history'.format(fam['revision'])">History</summary>
-                    <ul class="rev-list pfas-mt">
+                <!-- a prep log's recipes: what is made on it -->
+                <td class="row-action">
+                  <a class="btn-sm btn-secondary" tal:condition="python:fam['role'] in ('reagent_prep', 'standard_prep')"
+                     tal:attributes="href string:${view/portal_url}/@@pfas-recipes">Recipes</a>
+                </td>
+                <!-- Edit, New revision, Revision history (a drawer), Archive -->
+                <td class="row-plus-cell">
+                  <details class="row-more">
+                    <summary class="row-plus" aria-label="Actions for this logbook" title="Actions">+</summary>
+                    <div class="row-more-menu">
+                      <a class="btn-sm btn-secondary" title="This log's entries: review and print"
+                         tal:condition="python:fam['role'] in ('reagent_prep', 'standard_prep')"
+                         tal:attributes="href python:'%s/@@pfas-prep-standards?tab=%s' % (view.portal_url(), fam.get('logbook_code') or fam['logbook_slug'])">Entries</a>
+                      <button type="button" class="btn-sm btn-secondary" data-edit-uid=""
+                              tal:attributes="data-edit-uid fam/uid">Edit</button>
+                      <form method="POST"
+                            tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                        <input type="hidden" name="action" value="new_revision" />
+                        <input type="hidden" name="uid" tal:attributes="value fam/uid" />
+                        <button type="submit" class="btn-sm btn-secondary">New revision</button>
+                      </form>
+                      <button type="button" class="btn-sm btn-secondary" data-revs=""
+                              tal:attributes="data-revs string:revs-${repeat/fam/index};
+                                              data-title python:u'%s: revision history' % fam['title']">Revision history</button>
+                      <form method="POST" tal:condition="python:fam['status'] != 'archived'"
+                            tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                        <input type="hidden" name="action" value="archive" />
+                        <input type="hidden" name="uid" tal:attributes="value fam/uid" />
+                        <button type="submit" class="btn-sm btn-danger"
+                                onclick="return confirm('Archive this revision? It will no longer be active.')">Archive</button>
+                      </form>
+                    </div>
+                  </details>
+                  <template tal:attributes="id string:revs-${repeat/fam/index}">
+                    <ul class="rev-list">
                       <tal:revs tal:repeat="rev python:view.all_revisions(fam['logbook_slug'])">
                         <li>
                           <span>Rev <strong tal:content="rev/revision">1</strong></span>
@@ -197,6 +198,9 @@
                                 tal:content="rev/status">draft</span>
                           <span class="pfas-aux"
                                 tal:content="python:rev['archived_date'] or ''">—</span>
+                          <details class="row-more">
+                          <summary class="row-plus" aria-label="Actions for this revision" title="Actions">+</summary>
+                          <div class="row-more-menu">
                           <form method="POST" class="pfas-inline-form"
                                 tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
                             <input type="hidden" name="action" value="activate" />
@@ -204,7 +208,6 @@
                             <button type="submit" class="btn-sm btn-secondary"
                                     tal:condition="python:rev['status'] != 'active'">Activate</button>
                           </form>
-                          <!-- Archive: shown for non-archived revisions -->
                           <form method="POST" class="pfas-inline-form"
                                 tal:condition="python:rev['status'] != 'archived'"
                                 tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
@@ -213,7 +216,6 @@
                             <button type="submit" class="btn-sm btn-warn"
                                     onclick="return confirm('Archive this revision? It will no longer be active.')">Archive</button>
                           </form>
-                          <!-- Delete: only for draft revisions that are not builtin -->
                           <form method="POST" class="pfas-inline-form"
                                 tal:condition="python:rev['status'] == 'draft' and not rev.get('builtin', False)"
                                 tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
@@ -223,25 +225,13 @@
                                     onclick="return confirm('Permanently delete this draft revision? This cannot be undone.')">Delete</button>
                           </form>
                           <button type="button" class="btn-sm btn-secondary" data-edit-uid=""
-                                  tal:attributes="data-edit-uid rev/uid"
-                                  >Edit</button>
+                                  tal:attributes="data-edit-uid rev/uid">Edit</button>
+                          </div>
+                          </details>
                         </li>
                       </tal:revs>
                     </ul>
-                  </details>
-                </td>
-                <td>
-                  <div class="row-actions">
-                    <button type="button" class="btn-sm btn-secondary" data-edit-uid=""
-                            tal:attributes="data-edit-uid fam/uid"
-                            >Edit</button>
-                    <form method="POST" class="pfas-inline-form"
-                          tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
-                      <input type="hidden" name="action" value="new_revision" />
-                      <input type="hidden" name="uid" tal:attributes="value fam/uid" />
-                      <button type="submit" class="btn-sm btn-secondary">New Revision</button>
-                    </form>
-                  </div>
+                  </template>
                 </td>
               </tr>
             </tal:rows>
@@ -266,19 +256,20 @@
           <input type="hidden" name="revision" id="lbRevision" value="1" />
           <input type="hidden" name="active" id="activeHidden" value="on" />
 
+          <!-- what it is used for, asked first; fixed once revision 1 is issued -->
+          <div class="pfas-form-field is-full">
+            <label>Used for</label>
+            <div class="pfas-pill-row" id="lbRoles">
+              <button type="button" class="pfas-chip-toggle" aria-pressed="false" tal:repeat="r view/roles"
+                      tal:attributes="data-value python:r[0]" tal:content="python:r[1]">Standard prep</button>
+            </div>
+            <input type="hidden" name="used_for" id="lbUsedFor" value="" />
+            <span class="fld-help" id="lbRoleFixed" hidden="hidden">Fixed: revision 1 is issued.</span>
+          </div>
           <div class="pfas-form-row">
             <div class="pfas-form-field is-wide">
-              <label>Logbook name *</label>
+              <label>Logbook name</label>
               <input type="text" name="title" id="lbTitle" required placeholder="e.g. Native Stock Standard Preparation" />
-            </div>
-            <div class="pfas-form-field">
-              <label>Standard type</label>
-              <select name="standard_type" id="lbType">
-                <option value="">— Select —</option>
-                <tal:opts tal:repeat="t view/standard_types">
-                  <option tal:content="python:t[1]" tal:attributes="value python:t[0]">type</option>
-                </tal:opts>
-              </select>
             </div>
           </div>
 
@@ -300,20 +291,9 @@
               <span class="fld-help">Printed on the record and shown in the
                 batch list.</span>
             </div>
-            <div class="pfas-form-field is-narrow">
-              <label>List position</label>
-              <input type="number" name="sort_order" id="lbSortOrder"
-                     value="100" step="1" min="0" max="999" />
-              <span class="fld-help">Lower shows first.</span>
-            </div>
           </div>
 
           <div class="pfas-form-row">
-            <div class="pfas-form-field">
-              <label>Default expiry (days)</label>
-              <input type="number" name="default_expiry_days" id="lbExpiry"
-                     value="365" step="1" min="1" max="3650" />
-            </div>
             <div class="pfas-form-field">
               <label>Status</label>
               <select name="status" id="lbStatus">
@@ -323,9 +303,9 @@
               </select>
             </div>
             <div class="pfas-form-field is-check">
-              <label class="pfas-check">
+              <label class="pfas-switch pfas-check">
                 <!-- no name= here; activeHidden is synced by serializeForm() -->
-                <input type="checkbox" id="lbActive" />
+                <input type="checkbox" id="lbActive" /><span class="pfas-switch-track"></span>
                 Show in Batch Index
               </label>
             </div>
@@ -337,7 +317,6 @@
             <div class="fb-tabs">
               <div class="pfas-seg" id="fbTabs">
                 <button type="button" class="pfas-seg-item" data-pane="fb-pane-fields" aria-selected="true">Fields</button>
-                <button type="button" class="pfas-seg-item" data-pane="fb-pane-steps" aria-selected="false">Instructions</button>
                 <button type="button" class="pfas-seg-item" data-pane="fb-pane-json" aria-selected="false">JSON</button>
               </div>
               <span class="fb-tabs-note">These fields are what the analyst fills in.</span>
@@ -353,20 +332,6 @@
               <div class="fb-errors" id="fbErrors" hidden="hidden"></div>
             </div>
 
-            <!-- Steps -->
-            <div class="pfas-pane fb-pane" id="fb-pane-steps">
-              <p class="fb-hint" id="fbStepsIntro">Split the logbook into guided steps, each with a picture and the fields it fills. Empty: one plain form.</p>
-              <div class="fb-banner" id="fbStep252" hidden="hidden"></div>
-              <div id="fbStepList" class="fb-list"></div>
-              <div class="fb-addbar">
-                <button type="button" class="btn-sm btn-secondary" id="fbAddStep">+ Add Step</button>
-                <button type="button" class="btn-sm btn-secondary" id="fbSeedSteps"
-                        title="Create one step per line of the Procedure text">
-                  Seed steps from Procedure</button>
-                <span class="fb-unassigned" id="fbUnassigned"></span>
-              </div>
-            </div>
-
             <!-- Raw JSON escape hatch -->
             <div class="pfas-pane fb-pane" id="fb-pane-json">
               <p class="fb-hint">
@@ -376,8 +341,6 @@
               </p>
               <label class="fb-jsonlabel">Field schema</label>
               <textarea id="fbFieldsJsonRaw" rows="8" class="fb-json"></textarea>
-              <label class="fb-jsonlabel">Guided steps</label>
-              <textarea id="fbStepsJsonRaw" rows="6" class="fb-json"></textarea>
               <div class="fb-addbar">
                 <button type="button" class="btn-sm btn-secondary" id="fbApplyJson">Apply JSON &#8594; Builder</button>
                 <span class="fb-errors-inline" id="fbJsonErr"></span>
@@ -387,7 +350,6 @@
             </div>
             <!-- Serialized on submit by serializeForm() -->
             <input type="hidden" name="field_schema_json" id="lbFieldSchema" value="[]" />
-            <input type="hidden" name="steps_json" id="lbStepsJson" value="[]" />
           </div>
 
           <div class="pfas-form-row">
@@ -398,24 +360,11 @@
             </div>
           </div>
 
-          <div class="pfas-form-row">
-            <div class="pfas-form-field is-full">
-              <label>Procedure (step-by-step)</label>
-              <textarea name="procedure" id="lbProc" rows="5"
-                        placeholder="1. Weigh ...&#10;2. Dissolve in ..."></textarea>
-            </div>
-          </div>
-
-          <div class="pfas-form-field is-full is-spaced">
-            <label>Analyte template (default concentrations for this logbook)</label>
-            <table class="pfas-mini-table" id="analyteTable">
-              <thead>
-                <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
-              </thead>
-              <tbody id="analyteBody"></tbody>
-            </table>
-            <button type="button" class="btn-sm btn-secondary" onclick="addAnalyteRow()">+ Add Analyte</button>
-            <input type="hidden" name="analyte_template_json" id="analyteJson" value="[]" />
+          <!-- what is made on a prep log is its recipes -->
+          <div class="pfas-form-field is-full is-spaced" id="lbRecipes" hidden="hidden">
+            <label>Recipes made on this log</label>
+            <ul id="lbRecipeList"></ul>
+            <a class="btn-sm btn-secondary" id="lbNewRecipe" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?new=1">+ New recipe on this log</a>
           </div>
 
           <div class="pfas-form-row">
@@ -441,8 +390,8 @@
 
   <script>
   /* All logbook records, keyed by uid. Edit buttons carry only a uid, so no
-     record data is ever interpolated into an attribute (quotes in a title or
-     in step instructions would break that). */
+     record data is ever interpolated into an attribute (quotes in a title
+     would break that). */
   var LB_RECORDS = <tal:r tal:replace="structure view/records_json" />;
 
   /* Canonical field-type vocabulary — generated from
@@ -450,11 +399,6 @@
      type the renderer does not honour. */
   var LB_FIELD_TYPES = <tal:t tal:replace="structure view/field_types_json" />;
   var LB_LOT_TYPES   = <tal:l tal:replace="structure view/lot_types_json" />;
-  var LB_MEDIA_URL   = "<tal:m tal:replace="view/media_url" />";
-
-  /* Built-in pixel-art lab animations shipped with the add-on. */
-  var LB_LIBRARY      = <tal:g tal:replace="structure view/media_library_json" />;
-  var LB_LIBRARY_BASE = "<tal:b tal:replace="string:${view/portal_url}/++resource++senaite.pfas/labgifs/" />";
   </script>
 
   <!-- Builder lives in a static resource: Chameleon parses inline <script>
@@ -470,26 +414,44 @@
     if (rec) { editLogbook(rec); }
   });
 
-  function openModal(data) {
+  /* Used for: one role, as toggle pills; fixed once revision 1 is issued */
+  function setRole(role, fixed) {
+    document.getElementById('lbUsedFor').value = role || '';
+    document.querySelectorAll('#lbRoles .pfas-chip-toggle').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-value') === role ? 'true' : 'false');
+      b.disabled = !!fixed;
+    });
+    document.getElementById('lbRoleFixed').hidden = !fixed;
+  }
+  document.querySelectorAll('#lbRoles .pfas-chip-toggle').forEach(function (b) {
+    b.addEventListener('click', function () { setRole(b.getAttribute('data-value'), false); });
+  });
+  function showRecipes(data) {
+    var box = document.getElementById('lbRecipes'), list = document.getElementById('lbRecipeList');
+    var prep = data.role === 'reagent_prep' || data.role === 'standard_prep';
+    box.hidden = !prep;
+    list.textContent = '';
+    (data.recipes || []).forEach(function (n) { var li = document.createElement('li'); li.textContent = n; list.appendChild(li); });
+    var a = document.getElementById('lbNewRecipe');
+    a.href = a.href.split('?')[0] + '?new=1\u0026log=' + encodeURIComponent(data.logbook_slug || '');
+  }
+  function openModal(data, role) {
     var modal = document.getElementById('lbModal');
     if (!data) {
+      setRole(role || '', false);
+      document.getElementById('lbRecipes').hidden = true;
       document.getElementById('modalTitle').textContent = 'New Preparation Logbook';
       document.getElementById('formAction').value = 'add';
       document.getElementById('editUid').value = '';
       document.getElementById('lbSlug').value = '';
       document.getElementById('lbRevision').value = '1';
       document.getElementById('lbTitle').value = '';
-      document.getElementById('lbType').value = '';
-      document.getElementById('lbExpiry').value = '365';
       document.getElementById('lbStatus').value = 'draft';
       document.getElementById('lbDesc').value = '';
-      document.getElementById('lbProc').value = '';
       document.getElementById('lbNotes').value = '';
       document.getElementById('lbMethodSlug').value = '';
       document.getElementById('lbCode').value = '';
-      document.getElementById('lbSortOrder').value = '100';
       document.getElementById('lbActive').checked = true;
-      clearAnalyteRows();
       lbLoadBuilder('[]', '[]', '');
     }
     modal.classList.add('open');
@@ -511,11 +473,10 @@
     document.getElementById('lbSlug').value = data.logbook_slug || '';
     document.getElementById('lbRevision').value = data.revision || 1;
     document.getElementById('lbTitle').value = data.title || '';
-    document.getElementById('lbType').value = data.standard_type || '';
-    document.getElementById('lbExpiry').value = data.default_expiry_days || 365;
+    setRole(data.role || '', data.role_fixed);
+    showRecipes(data);
     document.getElementById('lbStatus').value = data.status || 'draft';
     document.getElementById('lbDesc').value = data.description || '';
-    document.getElementById('lbProc').value = data.procedure || '';
     document.getElementById('lbNotes').value = data.notes || '';
     /* A stored reference may be a slug ("fda-32-pfas") while the options are
        method IDs: select the option it names, or the save clears the link. */
@@ -531,53 +492,31 @@
       }
     })(document.getElementById('lbMethodSlug'), data.method_slug || '');
     document.getElementById('lbCode').value = data.logbook_code || '';
-    document.getElementById('lbSortOrder').value = data.sort_order != null ? data.sort_order : 100;
-    lbLoadBuilder(data.field_schema_json || '[]',
-                  data.steps_json || '[]',
-                  data.procedure || '');
+    lbLoadBuilder(data.field_schema_json || '[]');
     document.getElementById('lbActive').checked = data.active !== false;
-    var tmpl = [];
-    try { tmpl = JSON.parse(data.analyte_template_json || '[]'); } catch(e) {}
-    clearAnalyteRows();
-    tmpl.forEach(function(row) { addAnalyteRow(row.analyte, row.concentration, row.unit); });
     document.getElementById('lbModal').classList.add('open');
     placeBuilderTabs();
   }
-  function clearAnalyteRows() {
-    document.getElementById('analyteBody').innerHTML = '';
-  }
-  function addAnalyteRow(analyte, conc, unit) {
-    var tbody = document.getElementById('analyteBody');
-    var tr = document.createElement('tr');
-    var T='\x3ctd\x3e', ET='\x3c/td\x3e', I='\x3cinput type="text" ';
-    tr.innerHTML = T+I+'class="a-name" value="'+(analyte||'')+'" placeholder="PFOA" /\x3e'+ET
-      + T+I+'class="a-conc" value="'+(conc||'')+'" placeholder="100" /\x3e'+ET
-      + T+I+'class="a-unit" value="'+(unit||'')+'" placeholder="ng/mL" /\x3e'+ET
-      + T+'\x3cbutton type="button" class="pfas-row-remove" onclick="this.closest(\'tr\').remove()"\x3e\u00d7\x3c/button\x3e'+ET;
-    tbody.appendChild(tr);
-  }
   function serializeForm() {
-    serializeAnalytes();
+    if (!document.getElementById('lbUsedFor').value) { alert('Say what the logbook is used for.'); return false; }
     document.getElementById('activeHidden').value =
       document.getElementById('lbActive').checked ? 'on' : 'off';
-    /* Writes #lbFieldSchema and #lbStepsJson; returns false (blocking submit)
-       if the builder found validation errors. */
+    /* Writes #lbFieldSchema; returns false (blocking submit) if the builder
+       found validation errors. */
     return lbSerializeBuilder();
   }
 
-  function serializeAnalytes() {
-    var rows = document.querySelectorAll('#analyteBody tr');
-    var data = [];
-    rows.forEach(function(tr) {
-      var a = tr.querySelector('.a-name').value.trim();
-      var c = tr.querySelector('.a-conc').value.trim();
-      var u = tr.querySelector('.a-unit').value.trim();
-      if (a) data.push({analyte: a, concentration: c, unit: u});
-    });
-    document.getElementById('analyteJson').value = JSON.stringify(data);
-  }
   document.getElementById('lbModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
+  });
+  /* "Revision history" in a row's menu: that logbook's revisions in the drawer */
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest ? ev.target.closest('[data-revs]') : null;
+    if (!btn) return;
+    var tpl = document.getElementById(btn.getAttribute('data-revs'));
+    var d = btn.closest('details');
+    if (d) d.removeAttribute('open');
+    if (tpl) window.PFAS.components.drawer.open(btn.getAttribute('data-title'), tpl.content.cloneNode(true));
   });
   </script>
 

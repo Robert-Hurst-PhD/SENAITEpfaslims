@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """What the guided extraction shows, and the summary of what it recorded
-("Extraction
-UI, Data Review, reporting template").
+for Data Review and the logbook.
 
     mode(session, orders, view_order)  -> "edit" | "view" | "review" | "done"
     next_stage(orders, session)        -> the first stage not yet completed
@@ -68,7 +67,10 @@ def done_on(data):
     done, which a correction does not move -- or "" when never."""
     data = data or {}
     first = ((data.get("corrections") or [{}])[0].get("previous") or {}).get("completed_at")
-    return (u"%s" % (first or data.get("completed_at") or u""))[:10]
+    at = u"%s" % (first or data.get("completed_at") or u"")
+    # the stamp is UTC; the day is the laboratory's
+    from senaite.pfas import print_doc
+    return print_doc.lab_or(at, at[:10], u"%Y-%m-%d")
 
 
 def unconfirmed(stage_def, ticked):
@@ -88,10 +90,7 @@ def stage_summary(order, name, data, stage_def=None):
     """`stage_def`: the stage as the extraction's plan has it (its own
     questions name the answers)."""
     data = data or {}
-    try:
-        from senaite.pfas.stage_form import answer_rows
-    except ImportError:                                     # loaded by path (tests)
-        from stage_form import answer_rows
+    from senaite.pfas.stage_form import answer_rows
     lot = lambda r: {"role": r.get("role") or u"", "name": r.get("name") or u"",  # noqa: E731
                      "lot": r.get("lot") or u"", "qty": r.get("qty_used") or u"",
                      "from_inventory": bool(r.get("from_inventory"))}

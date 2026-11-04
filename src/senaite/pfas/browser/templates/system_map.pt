@@ -20,7 +20,21 @@
     <div class="pfas-filterbar pfas-map-tools">
       <div class="pfas-field">
         <label for="map-find">Find</label>
-        <input id="map-find" class="pfas-input" type="search" placeholder="Worksheet, sample, lot, method" />
+        <input id="map-find" class="pfas-input is-find" type="search" placeholder="Worksheet, sample, lot" />
+      </div>
+      <div class="pfas-field">
+        <label>Worksheets from</label>
+        <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Worksheets from">
+          <a class="pfas-seg-item" tal:repeat="w view/period_links"
+             tal:attributes="href w/url; aria-selected python:'true' if w['on'] else 'false'" tal:content="w/label">30 days</a>
+        </nav>
+      </div>
+      <div class="pfas-field">
+        <label>Group by</label>
+        <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Group worksheets by">
+          <a class="pfas-seg-item" tal:repeat="w view/group_links"
+             tal:attributes="href w/url; aria-selected python:'true' if w['on'] else 'false'" tal:content="w/label">Month</a>
+        </nav>
       </div>
       <label class="pfas-switch">
         <input type="checkbox" id="map-path-only" />
@@ -33,15 +47,16 @@
         <span>Cross-links</span>
       </label>
       <span class="pfas-filterbar-spacer"></span>
-      <button type="button" class="btn btn-sm btn-secondary" id="map-fit">Fit</button>
-      <button type="button" class="btn btn-sm btn-secondary" id="map-reset">Reset view</button>
-      <div class="pfas-map-legend" aria-label="Node kinds">
-        <span><i class="k-method"></i>Method</span>
-        <span><i class="k-matrix"></i>Matrix and settings</span>
-        <span><i class="k-worksheet"></i>Worksheet</span>
-        <span><i class="k-sample"></i>Sample and result</span>
-        <span><i class="k-lot"></i>Lots</span>
-      </div>
+      <button type="button" class="btn btn-secondary" id="map-fit">Fit</button>
+      <button type="button" class="btn btn-secondary" id="map-reset">Reset view</button>
+    </div>
+    <div class="pfas-map-legend" aria-label="Node kinds">
+      <span><i class="k-method"></i>Method</span>
+      <span><i class="k-matrix"></i>Matrix and settings</span>
+      <span><i class="k-worksheet"></i>Worksheet</span>
+      <span><i class="k-sample"></i>Sample and result</span>
+      <span><i class="k-lot"></i>Lots</span>
+      <span><i class="k-equipment"></i>Equipment</span>
     </div>
 
     <div class="pfas-map" id="pfas-map"
@@ -66,6 +81,10 @@
         <h3></h3>
         <span class="badge pfas-map-badge" hidden="hidden"></span>
         <dl></dl>
+        <!-- the node's panel: why it is highlighted, where it is set, its records -->
+        <div class="pfas-map-part" data-part="why" hidden="hidden"><h4>Why it is highlighted</h4><ul></ul></div>
+        <div class="pfas-map-part" data-part="set" hidden="hidden"><h4>Where it is set</h4><div class="pfas-map-btns"></div></div>
+        <div class="pfas-map-part" data-part="records" hidden="hidden"><h4>Records and files</h4><div class="pfas-map-btns"></div></div>
         <div class="pfas-map-acts">
           <a class="btn btn-sm btn-primary pfas-map-open" hidden="hidden">Open</a>
           <button type="button" class="btn btn-sm btn-secondary pfas-map-pathbtn" hidden="hidden">Path to here</button>

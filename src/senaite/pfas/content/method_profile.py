@@ -21,8 +21,7 @@ from senaite.pfas import messageFactory as _
 
 class IMethodProfile(model.Schema):
     """Method profile — the complete nested QC configuration for one method,
-    stored as a JSON string.  Blob strategy preserves read-time back-fill and
-    all existing CRUD semantics while gaining audit trail and ACL from Dexterity."""
+    stored as a JSON string; Dexterity gives it the audit trail and ACL."""
 
     profile_json = schema.Text(
         title=_(u"Profile JSON"),

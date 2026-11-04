@@ -29,54 +29,45 @@ _ROLE = {"analyte": u"target", "surrogate": u"surrogate", "injection_is": u"inte
 
 
 def _py(v):
-    """A Zope DateTime (or datetime) as a naive datetime on its own clock."""
+    """A Zope DateTime as a naive datetime on the laboratory's clock (an
+    instant, converted while the zone converts; on its own clock otherwise).
+    A datetime or date is already on the laboratory's clock and is kept."""
     if v is None or v == u"":
         return None
     if isinstance(v, (datetime, date)):
         return v
+    from senaite.pfas.edd_builder import lab_clock
+    wall = lab_clock(v)
+    if isinstance(wall, datetime):
+        return wall
     try:
         y, mo, d, h, mi, s = v.parts()[:6]
         return datetime(int(y), int(mo), int(d), int(h), int(mi), int(s))
-    except Exception:                                       # noqa: BLE001
+    except (AttributeError, TypeError, ValueError):
         return None
 
 
 def _field(obj, name):
-    try:
-        f = obj.getField(name)
-        return f.get(obj) if f is not None else None
-    except Exception:                                       # noqa: BLE001
-        return None
+    f = obj.getField(name)
+    return f.get(obj) if f is not None else None
 
 
 def _our_qc_type(ar):
     """The sample's own QC role (as the default format derives it)."""
     from zope.annotation.interfaces import IAnnotations
-    try:
-        ours = (IAnnotations(ar).get("senaite.pfas.qc_type", "") or "").strip()
-    except Exception:                                       # noqa: BLE001
-        ours = ""
+    ours = (IAnnotations(ar).get("senaite.pfas.qc_type", "") or "").strip()
     if not ours:
-        try:
-            from senaite.pfas.coc_records import FIELD_QC_CODES
-            ours = FIELD_QC_CODES.get(_field(ar, "FieldQCType") or u"", "")
-        except Exception:                                   # noqa: BLE001
-            ours = ""
+        from senaite.pfas.coc_records import FIELD_QC_CODES
+        ours = FIELD_QC_CODES.get(_field(ar, "FieldQCType") or u"", "")
     return ours or u"NA"
 
 
 def _unit(portal, method_id, matrix, analysis):
-    try:
-        from senaite.pfas.method_profile_store import get_profile
-        u = ((get_profile(portal, method_id) or {}).get("unit_map") or {}).get(matrix or u"", u"")
-        if u:
-            return u
-    except Exception:                                       # noqa: BLE001
-        pass
-    try:
-        return analysis.getUnit() or u""
-    except Exception:                                       # noqa: BLE001
-        return u""
+    from senaite.pfas.method_profile_store import get_profile
+    u = ((get_profile(portal, method_id) or {}).get("unit_map") or {}).get(matrix or u"", u"")
+    if u:
+        return u
+    return analysis.getUnit() or u""
 
 
 def _library():
@@ -90,11 +81,8 @@ def field_sample(builder, ar, batch_profile_id, library):
     from zope.annotation.interfaces import IAnnotations
     from bika.lims import api
     from senaite.pfas import compound_library
-    try:
-        if (IAnnotations(ar).get("senaite.pfas.qc_type", "") or "").strip() == "Dilution":
-            return None
-    except Exception:                                       # noqa: BLE001
-        pass
+    if (IAnnotations(ar).get("senaite.pfas.qc_type", "") or "").strip() == "Dilution":
+        return None
     portal = builder.portal
     st = ar.getSampleType()
     matrix = st.Title() if st else u""
@@ -110,24 +98,13 @@ def field_sample(builder, ar, batch_profile_id, library):
          "sample_point": sp.Title() if sp else u"", "coc_number": _field(ar, "CoCNumber") or u"",
          "duplicate_of": (_field(ar, "FieldQCOf") or u"") if field_qc == u"Field duplicate" else u"",
          "results": []}
-    method_id = u""
-    try:
-        method = ar.getMethod()
-        if method:
-            from senaite.pfas.method_bridge import get_profile_id_for_method
-            method_id = get_profile_id_for_method(portal, method) or u""
-    except Exception:                                       # noqa: BLE001
-        pass
-    method_id = method_id or batch_profile_id or u""
+    method_id = batch_profile_id or u""          # the batch's method governs
     cas = compound_library.cas_by_keyword(library, dashed=True)
     roles = dict((kw, c.get("role")) for kw, c in compound_library.compounds(library).items())
     cert, reported = builder._certificate_rows(ar)
     for analysis in ar.getAnalyses(full_objects=True):
-        try:
-            if analysis.isRetested():
-                continue
-        except Exception:                                   # noqa: BLE001
-            pass
+        if analysis.isRetested():
+            continue
         if api.get_uid(analysis) not in reported:
             continue
         kw = analysis.getKeyword()
@@ -135,28 +112,20 @@ def field_sample(builder, ar, batch_profile_id, library):
         if row is None:
             continue
         test_kind, factor = u"initial", 1
-        try:
-            if analysis.isRetest():
-                from senaite.pfas.browser.dilution_retests import _load
-                rec = _load(analysis.getRetestOf()) or {}
-                factor = rec.get("factor") or 1
-                test_kind = u"dilution 1" if rec.get("factor") else u"reanalysis"
-        except Exception:                                   # noqa: BLE001
-            pass
-        codes = ["N.D."] if row["detected"] is False else []
-        codes += [c.strip() for c in (row.get("qualifiers") or "").split(",") if c.strip() and c.strip() != "U"]
+        if analysis.isRetest():
+            from senaite.pfas.browser.dilution_retests import _load
+            rec = _load(analysis.getRetestOf()) or {}
+            factor = rec.get("factor") or 1
+            test_kind = u"dilution 1" if rec.get("factor") else u"reanalysis"
+        # the codes the keyed profiles issue for the same row: the dilution
+        # rule's D is carried by the dilution factor, a lab QC code D is not
+        from senaite.pfas.edd_builder import certificate_codes
+        codes = certificate_codes(row)
         for interim in analysis.getInterimFields() or []:
             if (interim.get("keyword") or "").lower() in ("qualifier", "lab_qualifier") and interim.get("value"):
                 codes.append(u"%s" % interim.get("value"))
-        ws = None
-        try:
-            ws = analysis.getWorksheet()
-        except Exception:                                   # noqa: BLE001
-            ws = None
-        try:
-            precision = analysis.getPrecision()
-        except Exception:                                   # noqa: BLE001
-            precision = None
+        ws = analysis.getWorksheet()
+        precision = analysis.getPrecision()
         s["results"].append({
             "keyword": kw, "cas": cas.get(kw) or u"", "role": _ROLE.get(roles.get(kw), u"target"),
             "method": method_id, "test_kind": test_kind,
@@ -176,6 +145,16 @@ def _qc_db():
     conn = sqlite3.connect(DEFAULT_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _judged_at(text):
+    """The worker's UTC stamp of a judged QC row ("YYYY-MM-DDTHH:MM:SS") on
+    the laboratory's clock; None when it cannot be read."""
+    from senaite.pfas.edd_builder import lab_clock
+    try:
+        return lab_clock(datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S"))
+    except (TypeError, ValueError):
+        return None
 
 
 def _fmt(value, precision):
@@ -222,7 +201,7 @@ def lab_qc_samples(builder, worksheets, field, library):
     out = []
     try:
         conn = _qc_db()
-    except Exception as exc:                               # noqa: BLE001
+    except sqlite3.Error as exc:
         logger.warning("EDD: the QC database cannot be read: %s", exc)
         return out
     try:
@@ -238,11 +217,7 @@ def lab_qc_samples(builder, worksheets, field, library):
             except sqlite3.Error as exc:
                 logger.warning("EDD: %s's QC results cannot be read: %s", ws_id, exc)
                 continue
-            finished = None
-            try:
-                finished = builder._extracted(type(str("_A"), (object,), {"getWorksheet": lambda self: ws})())
-            except Exception:                               # noqa: BLE001
-                finished = None
+            finished = builder._extracted(type(str("_A"), (object,), {"getWorksheet": lambda self: ws})())
             for m in members:
                 inj = m.get("injection") or u""
                 # the parent is a sample member (its id); that member names
@@ -297,10 +272,7 @@ def lab_qc_samples(builder, worksheets, field, library):
                         run_date = None
                     for j in judged:
                         if j["qc_type"] == role and j.get("created_at"):
-                            try:
-                                judged_at = datetime.strptime(j["created_at"][:19], "%Y-%m-%dT%H:%M:%S")
-                            except ValueError:
-                                judged_at = None
+                            judged_at = _judged_at(j["created_at"])
                             break
                     s["results"].append({
                         "keyword": kw, "cas": cas.get(kw) or u"", "role": u"target", "method": ref["method"],
@@ -328,22 +300,16 @@ def collect(builder, batch_obj, client_obj, client_cfg):
     except AttributeError:
         ars = []
     if not ars:
-        try:
-            from Products.CMFCore.utils import getToolByName
-            cat = getToolByName(builder.portal, "senaite_catalog_sample")
-            ars = [b.getObject() for b in cat(portal_type="AnalysisRequest", getBatchUID=batch_obj.UID())]
-        except Exception:                                   # noqa: BLE001
-            ars = []
+        from Products.CMFCore.utils import getToolByName
+        cat = getToolByName(builder.portal, "senaite_catalog_sample")
+        ars = [b.getObject() for b in cat(portal_type="AnalysisRequest", getBatchUID=batch_obj.UID())]
     library = _library()
     batch_pid = builder._batch_method_profile(batch_obj)
     field = [s for s in (field_sample(builder, ar, batch_pid, library) for ar in ars) if s is not None]
     worksheets, seen = [], set()
     for ar in ars:
         for a in ar.getAnalyses(full_objects=True):
-            try:
-                ws = a.getWorksheet()
-            except Exception:                               # noqa: BLE001
-                ws = None
+            ws = a.getWorksheet()
             if ws is not None and api.get_uid(ws) not in seen:
                 seen.add(api.get_uid(ws))
                 worksheets.append(ws)

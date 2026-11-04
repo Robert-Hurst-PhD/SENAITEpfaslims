@@ -26,7 +26,6 @@
     .cp-flag { background: var(--s-danger-lt); color: var(--s-danger-dk); font-weight: 700;
       padding: 2px 8px; border-radius: 10px; font-size: var(--fs-xs); white-space: nowrap; }
     .cp-reason { color: var(--s-text); }
-    .cp-empty { padding: 30px; text-align: center; color: var(--s-secondary); }
   </style>
   </tal:styles>
 
@@ -35,13 +34,12 @@
     <div class="cp-head">
       <div class="cp-title" i18n:translate="">Controlled Publications</div>
       <div class="cp-sub" i18n:translate="">
-        Register of every issued Certificate of Analysis (ISO/IEC 17025 document
-        control). Each row is an immutable issuance; amended reissues supersede
+        Register of every issued Certificate of Analysis. Each row is an immutable issuance; amended reissues supersede
         the prior revision. The original report is never altered.
       </div>
     </div>
 
-    <table class="cp-tbl" tal:condition="rows">
+    <table class="cp-tbl" data-col-resize="controlled-publications-cp-tbl" tal:condition="rows">
       <thead>
         <tr>
           <th i18n:translate="">Report ID</th>
@@ -53,23 +51,13 @@
           <th i18n:translate="">Issued</th>
           <th i18n:translate="">Recipients</th>
           <th i18n:translate="">Amendment</th>
+          <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
         </tr>
       </thead>
       <tbody>
         <tr tal:repeat="r rows">
-          <td>
-            <!-- printed CoA PDF (issued document) -->
-            <span class="cp-rid" tal:content="r/report_id"></span>
-            <a class="btn-sm btn-secondary" tal:condition="r/pdf_url" target="_blank"
-               tal:attributes="href r/pdf_url"
-               title="Open the printed Certificate of Analysis (PDF)">Open PDF</a>
-            <!-- no stored PDF but current: the publisher to view/print -->
-            <a class="btn-sm btn-secondary" tal:condition="python:not r['pdf_url'] and r['coa_live']"
-               tal:attributes="href r/coa_live"
-               title="Generate / print the Certificate of Analysis">Print</a>
-          </td>
-          <td><span tal:content="r/sample_id"></span>
-              <a class="btn-sm btn-secondary" tal:attributes="href r/sample_url">Open</a></td>
+          <td><span class="cp-rid" tal:content="r/report_id"></span></td>
+          <td tal:content="r/sample_id"></td>
           <td tal:content="r/client"></td>
           <td tal:content="r/revision"></td>
           <td>
@@ -79,39 +67,45 @@
                   i18n:translate="">Superseded</span>
           </td>
           <td tal:content="r/authorizer"></td>
-          <td tal:content="r/issued_at"></td>
+          <td tal:content="python:view.lab_at(r['issued_at'], (r['issued_at'] or u'')[:16].replace(u'T', u' '))"></td>
           <td tal:content="r/recipients"></td>
           <td>
             <!-- flagged reissue: QAO fills in the reason (best-effort policy) -->
-            <tal:missing tal:condition="r/reason_missing">
-              <span class="cp-flag" i18n:translate="">Reason not recorded</span>
-              <form method="post" class="cp-reason-form"
-                    style="display:flex; gap:4px; margin-top:4px;">
-                <input type="hidden" name="action" value="record_reason"/>
-                <input type="hidden" name="sample_uid"
-                       tal:attributes="value r/sample_uid"/>
-                <input type="hidden" name="revision"
-                       tal:attributes="value r/revision"/>
-                <input type="text" name="reason" required="required"
-                       placeholder="Reason for this reissue"
-                       style="font-size:var(--fs-sm); padding:2px 6px; min-width:180px;"/>
-                <button type="submit" class="cp-badge cp-current"
-                        style="border:0; cursor:pointer;"
-                        i18n:translate="">Record</button>
-              </form>
-            </tal:missing>
+            <span class="cp-flag" tal:condition="r/reason_missing" i18n:translate="">Reason not recorded</span>
             <span class="cp-reason" tal:condition="python:not r['reason_missing'] and r['amendment_reason']"
                   tal:content="r/amendment_reason"></span>
             <span tal:condition="python:r['revision']==1 and not r['reason_missing'] and not r['amendment_reason']"
                   style="color:var(--s-secondary)">&mdash;</span>
           </td>
+          <td class="row-plus-cell">
+            <details class="row-more">
+              <summary class="row-plus" aria-label="Actions for this certificate" title="Actions">+</summary>
+              <div class="row-more-menu">
+                <a class="btn-sm btn-secondary" tal:condition="r/pdf_url" target="_blank" tal:attributes="href r/pdf_url"
+                   title="Open the printed Certificate of Analysis (PDF)">Open PDF</a>
+                <a class="btn-sm btn-secondary" tal:condition="python:not r['pdf_url'] and r['coa_live']"
+                   tal:attributes="href r/coa_live" title="Generate / print the Certificate of Analysis">Print</a>
+                <a class="btn-sm btn-secondary" tal:attributes="href r/sample_url">Open sample</a>
+                <!-- a flagged reissue: the QAO records its reason -->
+                <form method="post" class="cp-reason-form" tal:condition="r/reason_missing">
+                  <input type="hidden" name="action" value="record_reason"/>
+                  <input type="hidden" name="sample_uid" tal:attributes="value r/sample_uid"/>
+                  <input type="hidden" name="revision" tal:attributes="value r/revision"/>
+                  <input type="text" name="reason" required="required" placeholder="Reason for this reissue"/>
+                  <button type="submit" class="btn-sm btn-secondary" i18n:translate="">Record the reason</button>
+                </form>
+              </div>
+            </details>
+          </td>
         </tr>
       </tbody>
     </table>
 
-    <div class="cp-empty" tal:condition="not:rows" i18n:translate="">
-      No controlled publications recorded yet. Certificates issued via the
-      publish workflow will appear here.
+    <div class="pfas-empty is-boxed" tal:condition="not:rows">
+      <span i18n:translate="">No certificate has been issued yet. A certificate is issued from a published
+        sample&#8217;s report; the samples that can be published are listed under Reports.</span>
+      <a class="btn-sm btn-secondary" i18n:translate=""
+         tal:attributes="href string:${context/portal_url}/samples?review_state=published">Open Reports</a>
     </div>
   </tal:content>
 </head>

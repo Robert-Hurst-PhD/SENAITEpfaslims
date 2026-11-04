@@ -42,8 +42,34 @@ def flatten_form(request):
     return request
 
 
+def quote_text(text):
+    """`text` quoted for a URL's query string."""
+    try:
+        from urllib import quote
+    except ImportError:                       # pragma: no cover
+        from urllib.parse import quote
+    return quote((u"%s" % text).encode("utf-8"))
+
+
 def first(value, default=u""):
     """First value if `value` arrived as a list/tuple, else the value itself."""
     if isinstance(value, (list, tuple)):
         return value[0] if value else default
     return default if value is None else value
+
+
+def json_list(form, field, what, default=None):
+    """The list a page's script wrote into the hidden field `field`. Absent:
+    `default` (a list; the saved rows are kept). Unreadable or not a list:
+    ValueError naming `what`, so the handler refuses the save and a broken
+    post never replaces a record's rows with nothing."""
+    if field not in form:
+        return list(default or [])
+    import json
+    try:
+        rows = json.loads(form.get(field) or "[]")
+    except (ValueError, TypeError):
+        raise ValueError("the {0} could not be read; nothing was saved".format(what))
+    if not isinstance(rows, list):
+        raise ValueError("the {0} is not a list; nothing was saved".format(what))
+    return rows

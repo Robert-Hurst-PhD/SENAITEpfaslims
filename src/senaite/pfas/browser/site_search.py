@@ -5,10 +5,10 @@
     ?q=...               the full results page
 
 Sources and who sees them: SENAITE's catalogs through senaite.app.spotlight
-(already permission-filtered); the sidebar the user is shown (so pages follow
-roles); and the PFAS stores -- method settings, equipment, lab settings,
-regulatory limits, logbook templates -- each only when that user's sidebar
-offers the page that owns it. Ranking and index entries: site_search.py.
+(already permission-filtered); the navigation map (every page the person's
+roles may open); and the PFAS stores -- inventory, equipment, method
+settings, lab settings, regulatory limits, logbook templates -- each on for
+the roles in site_search.SOURCES. Ranking and index entries: site_search.py.
 Python 2.7.
 """
 from __future__ import absolute_import
@@ -18,6 +18,7 @@ import logging
 
 from bika.lims import api
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import site_search as ss
@@ -29,7 +30,7 @@ DROPDOWN_PER_GROUP = 5
 PAGE_PER_GROUP = 50
 
 
-class PFASSiteSearchView(BrowserView):
+class PFASSiteSearchView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/site_search.pt")
 
@@ -49,9 +50,6 @@ class PFASSiteSearchView(BrowserView):
         return self.template()
 
     # ── data ────────────────────────────────────────────────────────────────
-
-    def portal_url(self):
-        return api.get_portal().absolute_url()
 
     def query(self):
         return (self.request.form.get("q") or u"").strip()[:200]
@@ -80,38 +78,28 @@ class PFASSiteSearchView(BrowserView):
 
     def _items(self, q):
         portal = api.get_portal()
-        pages = self._pages()
-        offered = u" ".join(p["url"] for p in pages)
-        items = list(pages) + self._records()
-        if "@@pfas-reagents" in offered or "@@pfas-prep-standards" in offered:
-            items += self._inventory(portal, offered)
-        if "@@pfas-equipment" in offered:
-            items += self._equipment(portal)
-        if "@@pfas-method-profiles" in offered:
+        roles = self._roles()
+        on = ss.sources_for(roles)
+        items = ss.pages_from_map(roles, self.portal_url()) + self._records()
+        if "inventory" in on:
+            items += self._inventory(portal)
+        if "equipment" in on:
+            items += self._equipment(portal, "equipment_types" in on)
+        if "method" in on:
             items += self._method_settings(portal)
-        if "@@pfas-lab-settings" in offered:
+        if "settings" in on:
             items += self._settings()
-        if "@@pfas-regulatory-limits" in offered or "@@pfas-lab-settings" in offered:
+        if "limits" in on:
             items += self._limits(portal)
-        if "@@pfas-logbook-batches" in offered and self._is_manager():
+        if "logbooks" in on:
             items += self._logbooks(portal)
         from senaite.pfas import help_dictionary
         items += ss.help_entries(help_dictionary.ENTRIES, self.portal_url() + "/@@pfas-help")
         return items
 
-    def _is_manager(self):
-        try:
-            return self.context.restrictedTraverse("@@pfas-macros").is_manager_role()
-        except Exception:                                   # noqa: BLE001
-            return False
-
-    def _pages(self):
-        try:
-            html = self.context.restrictedTraverse("@@pfas-macros").render_sidebar()
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("search: sidebar: %s", exc)
-            return []
-        return ss.pages_from_sidebar(html)
+    def _roles(self):
+        from senaite.pfas.browser.sidebar import _get_user_roles
+        return _get_user_roles(self.context)
 
     def _records(self):
         """SENAITE's catalogs, through its own Spotlight adapter (reads `q`
@@ -137,21 +125,19 @@ class PFASSiteSearchView(BrowserView):
                         "keywords": [self.query()], "boost": 5})
         return out
 
-    def _inventory(self, portal, offered):
+    def _inventory(self, portal):
         reagents, standards = [], []
         try:
-            if "@@pfas-reagents" in offered:
-                from senaite.pfas.browser.reagents import _list_reagents
-                reagents = _list_reagents(portal)
-            if "@@pfas-prep-standards" in offered:
-                from senaite.pfas.browser.prepared_standards import _list
-                standards = _list(portal)
+            from senaite.pfas.browser.reagents import _list_reagents
+            reagents = _list_reagents(portal)
+            from senaite.pfas.browser.prepared_standards import _list
+            standards = _list(portal)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("search: inventory: %s", exc)
         return ss.inventory_entries(reagents, standards, self.portal_url() + "/@@pfas-reagents",
                                     self.portal_url() + "/@@pfas-prep-standards")
 
-    def _equipment(self, portal):
+    def _equipment(self, portal, with_types):
         from senaite.pfas import equipment_types as et
         from senaite.pfas import facility_qc as fq
         try:
@@ -162,7 +148,7 @@ class PFASSiteSearchView(BrowserView):
         out = ss.equipment_entries(units, self.portal_url() + "/@@pfas-equipment",
                                    self.portal_url() + "/@@pfas-equipment-settings",
                                    dict(et.KINDS))
-        if self._is_manager():
+        if with_types:
             for b in api.search({"portal_type": "InstrumentType"}, "senaite_catalog_setup"):
                 out.append({"group": "equipment", "title": api.get_title(b),
                             "subtitle": u"Equipment type", "keywords": [u"type", u"equipment"],

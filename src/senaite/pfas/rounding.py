@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """Rounding to significant figures by a named rule.
 
-The lab's assignment, 2026-10-05 (a lab setting, not a citation of an agency
-document):
+The lab's assignment (a lab setting, not a citation of an agency document):
 
     iso   round half to even  (ISO 80000-1 Annex B: 2.25 -> 2.2, 2.35 -> 2.4)
     epa   round half up       (2.25 -> 2.3)
@@ -23,8 +22,8 @@ half to even in 3).
     judged_conc(value, n, rule) -> 2.0  a measured concentration as it is
                                 judged: the reported significant figures
 
-every result and QC check judges the ROUNDED value -- the
-value the report states is the final value. Measured values are rounded;
+Every result and QC check judges the ROUNDED value, the value the report
+states. Measured values are rounded;
 criteria (RL, x RL, MDL, MCL, windows) are used as configured. Instrument
 acquisition criteria (RT, ion ratio, S/N, calibration r2) are not rounded.
 
@@ -39,7 +38,7 @@ RULES = {
     "epa": ROUND_HALF_UP,
     "fda": ROUND_HALF_UP,
 }
-DEFAULT_RULE = "epa"          # what certificates did before the setting existed
+DEFAULT_RULE = "epa"          # the rule when none is set
 
 
 def to_decimal(value):
@@ -130,3 +129,12 @@ def judged_rule(rule, n):
     """What a run records it was judged with, and what a certificate checks
     it against: "epa;3;pct0"."""
     return "%s;%d;pct%d" % (rule, int(n), PCT_PLACES)
+
+
+def number(v):
+    """`v` as a float, or None when it is not a number (None, empty text,
+    words)."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None

@@ -16,56 +16,37 @@ Tracking number format: PF-YYMMDD-XXXXXXXX
              day, so a day's numbers cannot be found by trying them (numbers
              issued with the earlier 4-character suffix still work)
   e.g.     PF-260611-A3K9Q7ZD
-
-Idempotency
------------
-get_or_assign_tracking() checks the reverse index first — if the AR already has a
-tracking number (e.g. from a retract/re-receive), it returns the existing one rather
-than minting a new number that would orphan any QR slip already given to the client.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-import datetime
 import logging
 import random
 import string
 
-from persistent.mapping import PersistentMapping
-from zope.annotation.interfaces import IAnnotations
+from senaite.pfas import lab_time
+from senaite.pfas.annotation_store import mapping
 
 logger = logging.getLogger('senaite.pfas.tracking_store')
 
 TRACKING_KEY     = u'senaite.pfas.tracking'
 TRACKING_BY_UID  = u'senaite.pfas.tracking.by_uid'
 
-_CHARS = string.ascii_uppercase + string.digits  # 36 chars
+_CHARS = string.ascii_uppercase + string.digits
 _SUFFIX_LEN = 8
 
 
-def _get_store(portal):
-    """Return (fwd_map, rev_map) PersistentMappings, creating them if absent."""
-    ann = IAnnotations(portal)
-    if TRACKING_KEY not in ann:
-        ann[TRACKING_KEY] = PersistentMapping()
-    if TRACKING_BY_UID not in ann:
-        ann[TRACKING_BY_UID] = PersistentMapping()
-    return ann[TRACKING_KEY], ann[TRACKING_BY_UID]
+def _get_store(portal, create=False):
+    """(fwd_map, rev_map); a lookup (the anonymous tracker) creates neither."""
+    return mapping(portal, TRACKING_KEY, create), mapping(portal, TRACKING_BY_UID, create)
 
 
 def generate_tracking_number():
     """Mint a candidate PF-YYMMDD-XXXXXXXX number (not yet checked for collisions)."""
-    today = datetime.date.today()
+    today = lab_time.today()
     date_str = today.strftime('%y%m%d')
     rng = random.SystemRandom()
     suffix = ''.join(rng.choice(_CHARS) for _ in range(_SUFFIX_LEN))
     return 'PF-{0}-{1}'.format(date_str, suffix)
-
-
-def assign_tracking_number(portal, tracking_number, ar_uid):
-    """Store tracking_number <-> ar_uid in both indexes (overwrites old assignment)."""
-    fwd, rev = _get_store(portal)
-    fwd[tracking_number] = ar_uid
-    rev[ar_uid] = tracking_number
 
 
 def get_ar_uid_by_tracking(portal, tracking_number):
@@ -99,7 +80,9 @@ def tracking_for(portal, ar):
 
 
 def get_or_assign_tracking(portal, ar):
-    """Idempotent: return existing tracking number for *ar*, or mint and store one.
+    """Idempotent: the existing tracking number for *ar* (the reverse index,
+    e.g. after a retract / re-receive), else a new one minted and stored. A
+    second number would orphan the QR slip the client already holds.
 
     Retries up to 5 times on key collision (extremely unlikely, handled defensively).
     Returns None only if all retries collide.
@@ -109,7 +92,7 @@ def get_or_assign_tracking(portal, ar):
     if existing:
         return existing
 
-    fwd, rev = _get_store(portal)
+    fwd, rev = _get_store(portal, create=True)
     for _attempt in range(5):
         candidate = generate_tracking_number()
         if candidate not in fwd:

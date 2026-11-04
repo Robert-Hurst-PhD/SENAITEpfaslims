@@ -1,0 +1,17 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  Draws one grid (profile_grids.render_sheet).
+
+  Caller defines, ON A WRAPPING ELEMENT:
+      sheet   a profile_grids.Sheet (a tab's builder returns one)
+
+  The grid's markup is built in profile_grids.py; this macro is the one
+  place a page draws it.
+-->
+<metal:sheet define-macro="sheet"><tal:sheet define="grid nocall:context/@@pfas-grid-macros"
+    replace="structure python:grid.render(view, sheet)" /></metal:sheet>
+</body>
+</html>

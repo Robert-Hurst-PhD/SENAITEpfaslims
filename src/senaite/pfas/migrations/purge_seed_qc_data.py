@@ -5,7 +5,7 @@ Migration: archive seeded/synthetic QC rows not connected to the live database.
   docker exec <container> bin/instance run \
     /addon/src/senaite/pfas/migrations/purge_seed_qc_data.py
 
-The control-chart pool (/data/qc/pfas_qc_results.db) accumulated seed data:
+The control-chart pool (/data/qc/pfas_qc_results.db) may hold seed data:
 TEST_DATA*-flagged rows, SYNTHETIC_* batches, and demo B0xxx batches that do
 not correspond to any real SENAITE worksheet. This step MOVES (never deletes)
 every qc_results/batches/calibrations row whose batch_id is not a real
@@ -16,10 +16,11 @@ Idempotent. Python 2.7 compatible (runs in the Plone container).
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
+import os
 import sqlite3
 import sys
 
-DB = "/data/qc/pfas_qc_results.db"
+DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
 
 def _get_portal():
@@ -40,12 +41,11 @@ def run():
     setSite(portal)
 
     # Real worksheet ids from the live system — the connection test.
+    # a worksheet read that fails stops the run: a partial set would archive
+    # the rows of every worksheet it missed
     real_ws = set()
-    try:
-        for ws in portal["worksheets"].objectValues():
-            real_ws.add(ws.getId())
-    except Exception as exc:
-        print("WARN reading worksheets: {}".format(exc))
+    for ws in portal["worksheets"].objectValues():
+        real_ws.add(ws.getId())
     print("Real worksheets: {}".format(sorted(real_ws)))
     if not real_ws:
         print("REFUSING: no real worksheets found — archiving everything "
@@ -94,7 +94,7 @@ def run():
     archive("calibrations", not_real, ws_list)
     try:
         c.execute("DELETE FROM calibration_uses WHERE calibration_id NOT IN (SELECT id FROM calibrations)")
-    except Exception:                                       # noqa: BLE001 (an older database)
+    except sqlite3.OperationalError:                        # a database without the table
         pass
 
     conn.commit()

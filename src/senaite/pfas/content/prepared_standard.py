@@ -21,6 +21,8 @@ from senaite.pfas import messageFactory as _
 STATUS_ACTIVE    = u"active"
 STATUS_EXHAUSTED = u"exhausted"
 STATUS_EXPIRED   = u"expired"
+STATUS_PENDING   = u"pending"       # new lots: verified before use (lot_status)
+STATUS_QUARANTINE = u"quarantine"   # a rejected lot, until a manager releases it
 
 # the shipped types (the lab's list: vocab_store "prepared_standard_types")
 from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
@@ -75,13 +77,18 @@ class IPreparedStandard(model.Schema):
         title=_(u"Storage Location"),
         required=False,
     )
+    storage_conditions = schema.TextLine(
+        title=_(u"Recommended storage conditions"),
+        required=False,     # required on save (core_lists.lot_problems)
+    )
     volume_prepared = schema.TextLine(
         title=_(u"Volume / Amount Prepared"),
         required=False,
     )
     status = schema.Choice(
         title=_(u"Status"),
-        values=[STATUS_ACTIVE, STATUS_EXHAUSTED, STATUS_EXPIRED],
+        values=[STATUS_ACTIVE, STATUS_EXHAUSTED, STATUS_EXPIRED,
+                STATUS_PENDING, STATUS_QUARANTINE],
         default=STATUS_ACTIVE,
         required=False,
     )

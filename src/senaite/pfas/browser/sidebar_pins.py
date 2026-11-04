@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Per-user sidebar pins: pages a person pins appear under Dashboard.
+"""Per-user pins: pages a person pins are listed under Home in the panel.
 
-Requested 2026-09-30 ("pin things underneath the dashboard, similar to
-Windows Explorer"), stored on the server so pins follow the person to any lab
-computer.
+Pins are stored on the server, so they follow the person to any lab
+computer. Any page of the map (page_groups) can be pinned from its row's
+menu in the panel.
 
 Storage: one annotation on the portal, {user id: [path, ...]}, where a path is
-a sidebar link relative to the portal ("@@pfas-reagents", "samples"). Only the
-path is stored. The sidebar renders a pin by copying the user's OWN sidebar
-link for that path, so its label and icon come from the one sidebar
-definition, and a page the user can no longer reach simply does not appear.
+a page's path relative to the portal ("@@pfas-reagents", "samples"). Only the
+path is stored. A pin is listed by the map's label for its page
+(page_groups.nav_model, pins_for), so a page the user can no longer reach, or
+one no longer in the map, simply does not appear, and stays stored.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
@@ -61,6 +61,22 @@ def get_pins(context, user_id=None):
     return list(store.get(uid, []))
 
 
+def pins_for(context):
+    """The current user's pins as the panel's Home lists them: the stored
+    paths whose page they may open, each page once, in pin order, labelled
+    from the map: [{"path" (as stored), "url_path", "label", "place",
+    "ambiguous"}]. The same rows page_groups.nav_model gives the panel, by
+    the same call, so the two never differ."""
+    stored = get_pins(context)
+    if not stored:
+        return []
+    from senaite.pfas import page_groups as pg
+    # imported here: sidebar imports this module for get_pins
+    from senaite.pfas.browser.sidebar import _get_user_roles
+    model = pg.nav_model(_get_user_roles(context), "", "", None, stored)
+    return [s for s in model["sections"] if s["id"] == pg.HOME["id"]][0]["pins"]
+
+
 def set_pin(context, path, pinned, user_id=None):
     """Pin or unpin one path for a user; returns the new list."""
     uid = user_id or _user_id()
@@ -85,15 +101,17 @@ def set_pin(context, path, pinned, user_id=None):
 
 
 class PFASSidebarPinsView(BrowserView):
-    """POST @@pfas-sidebar-pins  path=<sidebar path>  pinned=1|0
-    (+ _authenticator). Answers with the user's pins as JSON."""
+    """POST @@pfas-sidebar-pins  path=<page path>  pinned=1|0
+    (+ _authenticator). Answers with the user's pins as JSON: "pins" the
+    stored paths, "rows" the pins as Home lists them (pins_for). A GET
+    answers the same; a refused POST answers {"error"} alone."""
 
     def __call__(self):
         flatten_form(self.request)
         resp = self.request.response
         resp.setHeader("Content-Type", "application/json")
         if self.request.get("REQUEST_METHOD", "GET") != "POST":
-            return json.dumps({"pins": get_pins(self.context)})
+            return json.dumps({"pins": get_pins(self.context), "rows": pins_for(self.context)})
         try:
             CheckAuthenticator(self.request)
             pins = set_pin(self.context, self.request.form.get("path", ""),
@@ -103,4 +121,4 @@ class PFASSidebarPinsView(BrowserView):
         except ValueError as exc:
             resp.setStatus(400)
             return json.dumps({"error": str(exc)})
-        return json.dumps({"pins": pins})
+        return json.dumps({"pins": pins, "rows": pins_for(self.context)})

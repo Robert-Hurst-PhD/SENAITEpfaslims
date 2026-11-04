@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""A core Sample Type renamed is the matrix renamed everywhere (: core owns matrix names).
+"""A core Sample Type renamed is the matrix renamed everywhere: core owns matrix names.
 
 Method profiles name their matrices by the Sample Type's title, and remember
 each one's UID (matrix_uid_map). When a Sample Type's title changes in core,
@@ -104,6 +104,7 @@ def rename_matrix(portal, uid, new):
     """Rename the matrix whose Sample Type is `uid` to `new` in every method
     profile, the regulatory limits and every project's specs. Returns [line]."""
     from senaite.pfas import method_profile_store as mps
+    from senaite.pfas import edd_store, project_specs as ps, regulatory_limits as rl
     out = []
     olds = set()
     for mid in mps.list_method_ids(portal):
@@ -115,33 +116,30 @@ def rename_matrix(portal, uid, new):
         renamed, n = rename_in(dict((k, v) for k, v in profile.items() if k != "matrix_uid_map"), old, new)
         renamed = keep_old_name(renamed, old, new)
         mps.save_profile(portal, mid, renamed)
-        out.append(u"%s: %s -> %s (%d place(s))" % (mid, old, new, n))
+        out.append(u"%s: %s renamed to %s (%d place(s))" % (mid, old, new, n))
     for old in olds:
         try:
-            from senaite.pfas import edd_store
             for pid, eprof in (edd_store.get_edd_profiles(portal) or {}).items():
                 eprof, n = rename_edd_maps(eprof, old, new)
                 if n:
                     edd_store.save_edd_profile(portal, pid, eprof)
-                    out.append(u"EDD profile %s: %s -> %s (%d)" % (pid, old, new, n))
+                    out.append(u"EDD profile %s: %s renamed to %s (%d)" % (pid, old, new, n))
         except Exception as exc:                            # noqa: BLE001
             logger.warning("EDD profiles not renamed: %s", exc)
         try:
-            from senaite.pfas import regulatory_limits as rl
             store, n = rename_in(rl.get_store(portal), old, new)
             if n:
                 rl.save_store(portal, store)
-                out.append(u"regulatory limits: %s -> %s (%d)" % (old, new, n))
+                out.append(u"regulatory limits: %s renamed to %s (%d)" % (old, new, n))
         except Exception as exc:                            # noqa: BLE001
             logger.warning("regulatory limits not renamed: %s", exc)
         try:
             from bika.lims import api
-            from senaite.pfas import project_specs as ps
             for project in api.get_portal().pfas_projects.objectValues():
                 specs, n = rename_in(ps.get_specs(project) or {}, old, new)
                 if n:
                     ps.save_specs(project, specs)
-                    out.append(u"project %s: %s -> %s (%d)" % (project.getId(), old, new, n))
+                    out.append(u"project %s: %s renamed to %s (%d)" % (project.getId(), old, new, n))
         except Exception as exc:                            # noqa: BLE001
             logger.warning("project specs not renamed: %s", exc)
     return out

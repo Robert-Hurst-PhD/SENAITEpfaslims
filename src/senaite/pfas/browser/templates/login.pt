@@ -18,7 +18,7 @@
 </head>
 <body class="pfas-login" tal:define="purl view/portal_url; tiles view/tiles; term view/terminal">
   <main class="login-shell">
-    <div class="login-clock" aria-hidden="true">
+    <div class="login-clock" aria-hidden="true" tal:attributes="data-lab-now view/lab_now">
       <span class="login-time" id="login-time"></span>
       <span class="login-date" id="login-date"></span>
     </div>

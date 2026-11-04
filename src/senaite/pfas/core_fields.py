@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Logbook fields that core SENAITE owns (: one owner per
-fact).
+"""Logbook fields that core SENAITE owns: one owner per fact.
 
-The collection date was typed twice: on the sample (core Date Sampled, which
-the certificate and the EDD print) and on the Chain of Custody logbook (which
-the holding-time gate read). Core owns it now. A logbook field named here is
-shown from the samples, read-only, never required and never stored; it is
-changed on the sample itself.
+The collection date is core's Date Sampled, which the certificate, the EDD
+and the holding-time gate read; it is never typed again on a logbook. A
+logbook field named here is shown from the samples, read-only, never required
+and never stored; it is changed on the sample itself.
 
     CORE_OWNED            {logbook field name: what core field it shows}
     samples_of(context)   the samples of a batch or a worksheet
-    date_sampled(sample)  "YYYY-MM-DD" or ""
+    date_sampled(sample)  "YYYY-MM-DD" (the lab's day) or ""
     summary(dates)        one line for the logbook field
     core_values(context)  {field name: line}
 
@@ -24,13 +22,10 @@ CORE_OWNED = {"sample_collection_date": "DateSampled"}
 def samples_of(context):
     """Samples of a Batch (its own) or a Worksheet (its analyses')."""
     out, seen = [], set()
-    try:
-        if getattr(context, "portal_type", "") == "Worksheet":
-            cands = [an.getRequest() for an in context.getAnalyses() or []]
-        else:
-            cands = list(context.getAnalysisRequests() or [])
-    except Exception:                                       # noqa: BLE001
-        cands = []
+    if getattr(context, "portal_type", "") == "Worksheet":
+        cands = [an.getRequest() for an in context.getAnalyses() or []]
+    else:
+        cands = list(context.getAnalysisRequests() or [])
     for s in cands:
         if s is not None and s.UID() not in seen:
             seen.add(s.UID())
@@ -39,11 +34,16 @@ def samples_of(context):
 
 
 def date_sampled(sample):
-    try:
-        dt = sample.getDateSampled()
-        return dt.strftime("%Y-%m-%d") if dt else u""
-    except Exception:                                       # noqa: BLE001
+    """The collection date on the laboratory's calendar; unset or UTC, its
+    UTC date as always."""
+    from senaite.pfas import lab_time
+    dt = sample.getDateSampled()
+    if not dt:
         return u""
+    if not lab_time.active():
+        return dt.strftime("%Y-%m-%d")
+    day = lab_time.lab_date(dt, "utc")
+    return day.isoformat() if day else u""
 
 
 def summary(dates):

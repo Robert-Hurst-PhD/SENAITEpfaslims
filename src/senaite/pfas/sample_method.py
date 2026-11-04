@@ -30,7 +30,7 @@ def _state(obj):
     try:
         from bika.lims import api
         return api.get_review_status(obj)
-    except Exception:                                    # tests
+    except ImportError:                                  # tests
         return getattr(obj, "review_state", u"")
 
 
@@ -39,11 +39,8 @@ def reported_analyses(sample):
     for an in sample.objectValues():
         if getattr(an, "portal_type", "") != "Analysis":
             continue
-        try:
-            if an.getHidden():
-                continue
-        except Exception:
-            pass
+        if an.getHidden():
+            continue
         if _state(an) in EXCLUDED_STATES:
             continue
         found.append(an)
@@ -61,22 +58,12 @@ def identify_from(analyses, added_for=None):
         return None, u""
     methods, missing, missing_kws = {}, 0, set()
     for an in analyses:
-        try:
-            m = an.getMethod()
-        except Exception:
-            m = None
+        m = an.getMethod()
         if m is None:
             missing += 1
-            try:
-                missing_kws.add(an.getKeyword())
-            except Exception:
-                missing_kws.add(None)
+            missing_kws.add(an.getKeyword())
             continue
-        try:
-            key = m.UID()
-        except Exception:
-            key = id(m)
-        methods.setdefault(key, m)
+        methods.setdefault(m.UID(), m)
     if not methods:
         return None, (u"Method not identified: none of this sample's analyses has a method. "
                       + REMEDY)
@@ -99,7 +86,7 @@ def _name(method):
             v = getattr(method, attr)()
             if v:
                 return u"%s" % v
-        except Exception:
+        except AttributeError:
             pass
     return u"?"
 
@@ -109,20 +96,17 @@ def project_added(sample):
     a method's panel for the sample's matrix (the effective profile's panel
     minus the method's own)."""
     def added_for(method):
-        try:
-            from bika.lims import api
-            from senaite.pfas.method_profile_store import get_profile
-            from senaite.pfas.project_specs import profile_for_batch
-            from senaite.pfas.report_limits import canonical_matrix
-            portal = api.get_portal()
-            mid = method.getMethodID()
-            bare = get_profile(portal, mid) or {}
-            matrix = canonical_matrix(bare, sample.getSampleTypeTitle())
-            eff = profile_for_batch(portal, sample.getBatch(), mid, matrix) or bare
-            return (set(eff.get("master_analyte_set") or [])
-                    - set(bare.get("master_analyte_set") or []))
-        except Exception:                                   # noqa: BLE001
-            return set()
+        from bika.lims import api
+        from senaite.pfas.method_profile_store import get_profile
+        from senaite.pfas.project_specs import profile_for_batch
+        from senaite.pfas.report_limits import canonical_matrix
+        portal = api.get_portal()
+        mid = method.getMethodID()
+        bare = get_profile(portal, mid) or {}
+        matrix = canonical_matrix(bare, sample.getSampleTypeTitle())
+        eff = profile_for_batch(portal, sample.getBatch(), mid, matrix) or bare
+        return (set(eff.get("master_analyte_set") or [])
+                - set(bare.get("master_analyte_set") or []))
     return added_for
 
 

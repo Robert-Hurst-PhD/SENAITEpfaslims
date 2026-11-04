@@ -21,6 +21,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import matrix_blank as mxb
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
+from senaite.pfas.browser.view_helpers import LabTime
 
 logger = logging.getLogger("senaite.pfas.browser.assigned_levels")
 
@@ -39,10 +40,8 @@ def history(obj):
     """Every record on the lot, oldest first."""
     if obj is None:
         return []
-    try:
-        return json.loads(IAnnotations(obj).get(mxb.LEVELS_KEY) or u"[]")
-    except (TypeError, ValueError):
-        return []
+    from senaite.pfas.annotation_store import read_json
+    return read_json(obj, mxb.LEVELS_KEY, [])
 
 
 def lot_record(portal, uid):
@@ -56,7 +55,7 @@ def lot_label(obj):
     return u"%s %s" % (obj.Title() or u"", getattr(obj, "lot_number", u"") or u"")
 
 
-class PFASAssignedLevelsView(BrowserView, GateMixin):
+class PFASAssignedLevelsView(BrowserView, GateMixin, LabTime):
 
     template = ViewPageTemplateFile("templates/assigned_levels.pt")
 

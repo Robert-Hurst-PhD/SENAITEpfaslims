@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Which configuration stores can be reverted from history, and how (R1).
+"""Which configuration stores can be reverted from history, and how.
 
 Each registration names the store's getter and its OWN save function, so a
 revert keeps every side effect of a normal save (JSON export, spec sync...).
@@ -36,32 +36,11 @@ def register_all():
     reg("project_specs", lambda p, k: project_specs.get_specs(project_specs.project_by_id(p, k)),
         lambda p, k, v: project_specs.save_for_project(p, k, v), u"Project specs")
 
-    # The service's pfas_quant_surrogate is only the SUGGESTED surrogate shown
-    # when a native first joins a method. Each method's
-    # own surrogate_map owns the link and is recorded as method_profile.
-    def _service(portal, keyword):
-        for svc in portal.bika_setup.bika_analysisservices.objectValues():
-            if svc.getKeyword() == keyword:
-                return svc
-        return None
-
-    def get_link(portal, keyword):
-        svc = _service(portal, keyword)
-        fld = svc.getField("pfas_quant_surrogate") if svc is not None else None
-        return {"pfas_quant_surrogate": (fld.get(svc) or "") if fld else ""}
-
-    def set_link(portal, keyword, value):
-        svc = _service(portal, keyword)
-        if svc is None:
-            raise ValueError("no analysis service %r" % keyword)
-        fld = svc.getField("pfas_quant_surrogate")
-        config_history.track(None, "analyte_service", keyword,
-                             lambda: {"pfas_quant_surrogate": fld.get(svc) or ""},
-                             label=u"Suggested surrogate: %s" % keyword)
-        fld.set(svc, (value or {}).get("pfas_quant_surrogate") or "")
-
-    reg("analyte_service", get_link, set_link, u"Suggested surrogate")
-    # Recorded, reverted in their own editor: settings, analyte_service,
+    # Each method's own surrogate_map owns the native-to-surrogate link and is
+    # recorded as method_profile; the services' retired suggested-surrogate
+    # field ("analyte_service" entries) stays readable in history, not
+    # revertable.
+    # Recorded, reverted in their own editor: settings,
     # logbook_definition, logbook_defs, client_edd, reagent_expiry,
     # facility_unit, weight_set, facility_api_key (redacted).
     for name, title in (("settings", u"Lab setting"),
@@ -69,15 +48,24 @@ def register_all():
                         ("logbook_defs", u"Logbook definitions"), ("client_edd", u"Client EDD settings"),
                         ("reagent_expiry", u"Expiry defaults"), ("facility_unit", u"Facility unit"),
                         ("weight_set", u"Weight set"), ("facility_api_key", u"Sensor API key"),
-                        # : equipment types and per-instrument settings
+                        # equipment types and per-instrument settings
                         ("equipment_type", u"Equipment type"), ("equipment", u"Equipment settings"),
                         ("site_language", u"Site language"),
-                        # : designed documents (labels first)
+                        # designed documents (labels first)
                         ("document_template", u"Document template"),
-                        # : staff (Lab Contact, title, credentials,
+                        # staff (Lab Contact, title, credentials,
                         # sign rights, signature fingerprint), the Director
                         ("staff", u"Lab staff"), ("lab_director", u"Laboratory Director"),
-                        ("badge", u"Badge"),
+                        # the Laboratory record and the site title (lab_identity)
+                        ("lab_identity", u"Laboratory"),
+                        ("badge", u"Badge"), ("person_roles", u"Person roles"),
+                        ("person_account", u"Person account"),
                         # a deleted method: recorded, never restored from here
-                        ("method_deleted", u"Method deleted")):
+                        ("method_deleted", u"Method deleted"),
+                        # backups and restores (backup_log)
+                        ("backup", u"Backups and restores"),
+                        ("vocabularies", u"Lists"), ("sample_subtypes", u"Sample sub-types"),
+                        ("instrument_export", u"Instrument export layout"),
+                        ("study_templates", u"Study templates"),
+                        ("backup_settings", u"Backup settings")):
         config_history.TITLES[name] = title

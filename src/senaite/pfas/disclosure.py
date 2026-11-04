@@ -2,43 +2,26 @@
 """Derive the accreditation / non-conformance disclosure from a frozen
 worksheet snapshot.
 
-The lab's rule, verbatim: *"You can always output data that does not conform.
-It just needs to be appropriately qualified as not a sample under accreditation
-(non-compliance) and how exactly it non-conforms."*
+Data that does not conform may always be output; it is qualified as not under
+accreditation (non-compliance), stating exactly how it non-conforms. So nothing
+here refuses: it returns a status and a specific statement ("LFSM acceptance
+40-140% per the project QAPP, where EPA 1633A Table 8 requires 50-130%").
 
-So there is no refusal anywhere in here. There is a status and a statement, and
-the statement has to be specific enough to be useful: "analysed under a
-project-specific QAPP" tells a reader nothing, whereas "LFSM acceptance
-40-140% per QAPP-2026-014 rev C, where EPA 1633A Table 8 requires 50-130%"
-does.
+Derived, never authored: the resolution that produced the results already
+records every departure (key, displacing tier and document revision, the
+method's value, how far each end moved). This module only reads and formats.
 
-WHY THIS IS DERIVED AND NOT AUTHORED. Every departure is already recorded by the
-resolution that produced the results: which key, which tier displaced it, which
-document revision did so, what the method said, and by how much each end moved.
-A hand-written disclosure beside that would be a second source of truth for the
-same fact -- the Sec1 rule 3 violation this project keeps finding in
- So this module only ever reads and formats; it never decides.
+What it never says:
 
-THREE THINGS IT REFUSES TO SAY, which matter more than what it says:
+  * that a sample IS accredited. Scope is the lab's scope of accreditation;
+    this module can only establish that something fell OUT of scope.
+  * "conforms" for "no departure detected": a criterion without a
+    published-method baseline resolves UNKNOWN, not passed.
+  * anything from live criteria when there is no snapshot: that is "not
+    recorded", never what the lab would do now.
 
-  * It never asserts a sample IS accredited. Accreditation scope is a property
-    of the lab's own scope of accreditation, not of whether a handful of
-    criteria happened to have baselines to compare against. This module can
-    establish that something FELL OUT of scope; it cannot establish that
-    anything is in it.
-
-  * "No departure detected" is not "conforms". Today exactly one criterion
-    carries a published-method baseline (EPA 1633A EIS recovery); every
-    other resolves UNKNOWN for want of a baseline, not because it passed. A
-    disclosure that reported those as conforming would be inventing the very
-    assurance it exists to qualify --'s rule on the time axis.
-
-  * No snapshot means "not recorded", full stop. It must never fall back to
-    resolving criteria live: that would describe what the lab would do NOW as
-    though it were what the lab DID.
-
-Pure and Zope-free -- plain dicts in, plain dicts out -- so the standalone
-harness exercises it under python3 exactly as it exercises ruleset.resolve().
+Pure and Zope-free (plain dicts in and out), so the standalone harness runs it
+under python3 like ruleset.resolve().
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -175,10 +158,8 @@ def build_disclosure(snapshot):
 def format_value(value):
     """A criterion value as a reader should see it.
 
-    Window criteria travel as {"min": x, "max": y}, and interpolating that dict
-    straight into a sentence prints `{'min': 5.0, 'max': 130.0}` — a Python repr
-    on a document a client reads. The whole purpose of this statement is that
-    someone can tell what changed, so the formatting is not cosmetic.
+    Window criteria travel as {"min": x, "max": y}; a dict must never print
+    as a Python repr on a client document.
 
     Renders a window as "5.0-130.0", a half-open window as ">= 5.0" or
     "<= 130.0", a boolean as required/not required, and anything else as itself.
@@ -205,9 +186,8 @@ def format_value(value):
 def format_departure(item):
     """One human-readable line for a departing criterion.
 
-    Deliberately names the applied value, the method's value, and the document
-    revision that displaced it. A reader has to be able to tell WHAT was
-    different and BY HOW MUCH; a bare "a QAPP applied" is not a disclosure.
+    Names the applied value, the method's value, and the document revision
+    that displaced it: a reader must tell WHAT was different and BY HOW MUCH.
     """
     key = item.get(u"key") or u"criterion"
     analyte = item.get(u"analyte")
@@ -220,9 +200,9 @@ def format_departure(item):
     elif doc:
         authority = u"{0}".format(doc)
     else:
-        # The lab tier legitimately has no document reference yet -- the method
-        # profile carries values with no link to a QAM or SOP revision. Say so
-        # rather than inventing one.
+        # The lab tier may have no document reference (the method profile
+        # carries values with no link to a QAM or SOP revision): say so,
+        # never invent one.
         authority = u"the lab's configured value (no controlled document "\
                     u"recorded)"
 

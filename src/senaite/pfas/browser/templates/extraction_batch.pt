@@ -21,9 +21,9 @@
     <!-- 1. Samples: the worksheet's (core's Add Analyses selects them) -->
     <section class="bench-block">
       <h2 class="bench-h">1. Samples</h2>
-      <p class="bench-sub"><tal:h define="hid string:extraction-batch"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+      <p class="bench-sub"><tal:h define="hid string:extraction-batch"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
         <a class="btn-sm btn-secondary" tal:condition="edit" tal:attributes="href view/add_samples_url">Add samples</a></p>
-      <table class="pfas-table" tal:condition="view/sample_members">
+      <table class="pfas-table" data-col-resize="extraction-batch-1" tal:condition="view/sample_members">
         <thead><tr><th>Injection name</th><th>Client sample ID</th><th>Matrix</th></tr></thead>
         <tbody><tr tal:repeat="m view/sample_members">
           <td tal:content="m/injection">DW-0001</td><td tal:content="m/client_sid">C-1</td><td tal:content="m/matrix">Drinking Water</td>
@@ -52,7 +52,7 @@
       <form method="post" tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
         <input type="hidden" name="action" value="save" />
         <input tal:replace="structure context/@@authenticator/authenticator" />
-        <table class="pfas-table">
+        <table class="pfas-table" data-col-resize="extraction-batch-2">
           <thead><tr><th>Injection name</th><th>QC</th><th>Made from</th><th>Level or lot</th><th>Added</th><th></th></tr></thead>
           <tbody><tr tal:repeat="m view/qc_members">
             <td tal:content="m/injection">WS-1-LFSM1</td>
@@ -115,7 +115,7 @@
       <h2 class="bench-h">4. Labels</h2>
       <p class="bench-sub">
         <span tal:replace="python:'%d labels' % len(view.label_rows())">12</span>
-        <tal:i condition="ls/issued">&#183; issued <span tal:replace="python:(ls['last'].get('at') or '')[:16].replace('T', ' ')">at</span>
+        <tal:i condition="ls/issued">&#183; issued <span tal:replace="ls/at">at</span>
           <strong tal:condition="not:ls/current">&#183; out of date</strong></tal:i>
       </p>
       <form method="post" class="dilution-form" tal:condition="python:edit and not probs and not ls['current']"
@@ -131,7 +131,7 @@
     <!-- 5. Requests from review: dilutions and re-injections -->
     <section class="bench-block" tal:condition="view/requests">
       <h2 class="bench-h">5. Requests from review</h2>
-      <table class="pfas-table">
+      <table class="pfas-table" data-col-resize="extraction-batch-3">
         <thead><tr><th>Injection</th><th>Asked for</th><th>Why</th><th>Asked by</th><th>Status</th><th>Made as</th><th></th></tr></thead>
         <tbody><tr tal:repeat="r view/requests">
           <td tal:content="r/injection">DW-0012</td>

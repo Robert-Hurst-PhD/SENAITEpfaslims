@@ -11,7 +11,7 @@ service's log files, never even mounted in this container, are retired).
 Never stored as a separate field — computed on every request so it can never
 drift from the real workflow.
 
-Stage detection rules (confirmed 2026-06-11):
+Stage detection rules:
   Stage 1 Received:       ws open + no extraction started
   Stage 2 Extraction:     ws open + extraction started, not finalized
   Stage 3 On Instrument:  ws open + extraction finalized
@@ -31,6 +31,7 @@ import logging
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 
@@ -246,15 +247,17 @@ def _build_stage_steps(current_stage):
 
 
 def _fmt_iso(iso_str):
-    """Trim ISO timestamp to YYYY-MM-DD HH:MM for display."""
+    """A UTC ISO timestamp as YYYY-MM-DD HH:MM for display, on the
+    laboratory's clock while the zone converts."""
     if not iso_str:
         return ""
-    return str(iso_str)[:16].replace("T", " ")
+    from senaite.pfas import print_doc
+    return print_doc.lab_or(iso_str, str(iso_str)[:16].replace("T", " "))
 
 
 # ── View ─────────────────────────────────────────────────────────────────────
 
-class PFASSampleStatusView(BrowserView):
+class PFASSampleStatusView(ViewHelpers, BrowserView):
     """
     @@pfas-sample-status — analyst/manager per-batch status view.
 
@@ -268,9 +271,6 @@ class PFASSampleStatusView(BrowserView):
     def __call__(self):
         flatten_form(self.request)
         return self.template()
-
-    def portal_url(self):
-        return _portal(self.context).absolute_url()
 
     def batches(self):
         """
@@ -310,7 +310,7 @@ class PFASSampleStatusView(BrowserView):
                     "method":      _get_method_name(ws),
                     "sample_ids":  sample_ids,
                     "sample_count": len(sample_ids),
-                    "created":     ws.created().strftime("%Y-%m-%d"),
+                    "created":     self.lab_at(ws.created(), ws.created().strftime("%Y-%m-%d"), u"%Y-%m-%d"),
                     "steps":       _build_stage_steps(stage),
                     # Extraction log details (empty strings if no log)
                     "extraction_started":

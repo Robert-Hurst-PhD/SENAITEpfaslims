@@ -12,6 +12,8 @@ keys, never shown as form numbers.
     next_code(codes)    -> the next free FM-ENV number
     duplicates(defs)    -> codes used by more than one logbook
     normalise(defs)     -> (defs in number order, renamed [(slug, old, new)])
+    extraction_def(defs, required) -> the method's extraction logbook, or None
+    label(d)            -> "FM-ENV-003 Extraction Log"
 
 Pure; Python 2.7 and 3.
 """
@@ -72,3 +74,20 @@ def normalise(defs):
                       key=lambda d: number(d["form_num"]))
     others = [d for d in out if number(d.get("form_num")) is None]
     return numbered + others, renamed
+
+
+def extraction_def(defs, required):
+    """The method's extraction logbook: among the logbooks a method requires
+    (its `required_logbooks`, which hold SLUGS), the one titled for
+    extraction. Matched on the slug -- the form number is what the lab reads,
+    never what a profile stores. None when the method requires none."""
+    required = [u"%s" % r for r in (required or [])]
+    for d in defs or []:
+        if (u"%s" % d.get("slug")) in required and u"extraction" in (d.get("title") or u"").lower():
+            return d
+    return None
+
+
+def label(d):
+    """How a logbook is named on a page: its form number, then its title."""
+    return u" ".join(x for x in ((d or {}).get("form_num") or u"", (d or {}).get("title") or u"") if x)

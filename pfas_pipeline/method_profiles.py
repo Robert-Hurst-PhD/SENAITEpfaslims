@@ -1,7 +1,7 @@
 """
 Method Profiles — per-method × per-analyte × per-matrix QC rule resolution.
 
-Replaces the flat CRITERIA dict.  Every QC check resolves its limits through:
+Every QC check resolves its limits through:
 
     profile = get_profile("FDA_32PFAS")
     rule = profile.qc_rules(analyte="PFOA", matrix="meat", qc_type="LFSM")
@@ -16,10 +16,8 @@ criteria must be configured, the notes each rule carries -- is the profile's
 module, loaded by path). A profile with no Engine settings has every feature
 off.
 
-Decision C: All rule logic reads from the stored profile JSON
-loaded at batch start via reload_from_profiles(). Python classes are
-interpreters, not sources of hardcoded values. Module-level constants
-_FDA_BIG4, _FDA_NO_LABELED_STD, _FDA_TIGHT_MATRICES have been removed.
+All rule logic reads the stored profile JSON loaded at batch start via
+reload_from_profiles(). The classes interpret it; they hold no lab values.
 """
 
 from __future__ import annotations
@@ -28,7 +26,6 @@ import dataclasses
 import json
 import logging
 import os
-import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -60,9 +57,10 @@ class CalibrationRule:
     r2_min:             Optional[float] = 0.99   # None: the method sets no r2 criterion
     point_pct_dev_max:  Optional[float] = None  # ±% each point vs curve
     low_point_pct_dev_max: Optional[float] = None  # looser limit at/below MRL
-    force_origin:       bool = False
+    force_origin:       bool = False         # origin == "force"
     default_fit:        str = "linear"
     default_weighting:  str = "1/x"
+    origin:             str = "exclude"      # exclude | include | force (the method profile's)
 
 
 @dataclass(frozen=True)
@@ -92,11 +90,9 @@ class ConfirmationRule:
     sn_min_quant:         Optional[float] = None
     sn_min_confirm:       Optional[float] = None
     single_transition_analytes: tuple = ()        # need orthogonal confirm
-    # HOW a single-transition positive is confirmed. FDA §10.2(4) cites LC-HRMS,
-    # but it is not the only orthogonal route -- a second column, a different
-    # ionisation mode or an alternative transition can also establish identity --
-    # so the technique is the lab's to name and the prompt quotes whatever it
-    # says. Hardcoding "LC-HRMS" told a lab to run an instrument it may not own.
+    # How a single-transition positive is confirmed. FDA §10.2(4) cites LC-HRMS,
+    # but a second column, another ionisation mode or another transition also
+    # establish identity, so the lab names the technique and the prompt quotes it.
     confirm_technique: str = "LC-HRMS"
     confirm_pct_diff_max: Optional[float] = None  # HRMS vs MS/MS %diff
     notes: str = ""
@@ -109,13 +105,11 @@ class ConfirmationRule:
 # (analyte_alias.native_name_to_keyword).
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Profile data cache — populated ONLY from the exported method profiles
+# Profile data cache: filled ONLY from the exported method profiles
 # (/data/qc/method_profiles.json, written by SENAITE on every profile save) at
 # batch start via reload_from_profiles(). There are NO built-in criteria: a
 # method missing from the export is not configured, and run_pipeline refuses
-# it rather than judging with numbers the lab never set (QC consolidation P1;
-# the inline defaults that used to sit here carried an FDA LCS tier, 1633A
-# FTS EIS limits and a retired QC-type list that no live profile had).
+# it rather than judging with numbers the lab never set.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LOADED = set()          # methods whose data came from the export
@@ -139,6 +133,32 @@ def profile_configured(method_id):
 _profile_data_cache = {}
 
 
+def _eis_keyed(pairs, where):
+    """{keyword: limits} from (name, limits) pairs: a name spelled as the
+    library's published name or alias is keyed by its compound; when two
+    names spell one compound the row under the keyword itself stands and the
+    other is logged, never applied by dict order."""
+    from .analyte_alias import LibraryUnavailable, keyword_of
+    out, spelled = {}, {}
+    for name, limits in pairs:
+        try:
+            kw = keyword_of(name) or name
+        except LibraryUnavailable:        # a run without a library is refused at its start
+            kw = name
+        if kw == name:
+            if name in spelled:
+                logger.warning("%s: EIS rows %s and %s name one compound; %s applies",
+                               where, spelled[name], name, name)
+            out[kw] = limits
+        elif kw in out:
+            logger.warning("%s: EIS rows %s and %s name one compound; %s applies",
+                           where, name, kw, kw)
+        else:
+            out[kw] = limits
+            spelled[kw] = name
+    return out
+
+
 def reload_from_profiles(profiles_path=None, batch_id=None):
     """
     Reload _profile_data_cache from the exported method profile JSON.
@@ -147,22 +167,14 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
     A method missing from the file (or no file at all) is left EMPTY and
     unconfigured -- see profile_configured(); nothing falls back to defaults.
 
-    `batch_id`, when given, additionally overlays that batch's RESOLVED
-    criteria (senaite.pfas.resolved_criteria_store, project -> lab ->
-    baseline) on top of whatever this reload just loaded from the global
-    file. This module does NOT decide which tier wins -- that resolution
-    already happened, in the add-on, before the file was written; this is
-    plumbing the already-resolved numbers into the same cache shape the
-    rest of this module reads, nothing more (see
-    _apply_resolved_overlay()'s docstring).
+    `batch_id`, when given, overlays that batch's RESOLVED criteria
+    (senaite.pfas.resolved_criteria_store, project -> lab -> baseline) on
+    what the global file loaded. The add-on resolved the tiers before
+    writing the file; this only copies the numbers into the cache shape
+    (_apply_resolved_overlay).
 
-    THE SAFETY PROPERTY: `batch_id=None` (every call site that predates
-    project support, and every batch with no linked project) makes this
-    function behave BYTE-FOR-BYTE as it did before batch_id existed --
-    the overlay branch below is never entered. A batch_id with no resolved
-    file on disk (the overwhelming common case even once batch_id IS
-    passed, since the file only exists for a project-linked batch) is
-    likewise a silent no-op: no warning, no fallback, nothing.
+    `batch_id=None`, or a batch with no resolved file on disk, never enters
+    the overlay branch: no warning, no fallback.
     """
     if profiles_path is None:
         profiles_path = PROFILES_PATH
@@ -194,8 +206,8 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
         logger.error("reload_from_profiles: %s is not a JSON object", profiles_path)
         _LOADED.clear()
         return
-    # every method in the export, whatever its id; a method no longer in it
-    # is no longer configured
+    # every method in the export, whatever its id; a method missing from it
+    # is not configured
     exported = [m for m, d in all_profiles.items() if isinstance(d, dict)]
     for method_id in list(_profile_data_cache.keys()):
         if method_id not in all_profiles:
@@ -208,24 +220,27 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
                     "configured", method_id, profiles_path)
     for method_id in exported:
         data = all_profiles[method_id]
-        # Phase B: normalize eis_overrides from store list format to dict.
-        # Store saves [{analyte, recovery_min, recovery_max}, ...] (UI-friendly);
-        # the engine uses {analyte: {recovery_min, recovery_max}} for fast lookup.
+        # eis_overrides: the store's list [{analyte, recovery_min,
+        # recovery_max}] becomes {keyword: {...}} for the lookup, every name
+        # keyed by the compound it spells (_eis_keyed); the matrix classes
+        # the same way.
         eis = data.get("eis_overrides")
         if isinstance(eis, list):
             data = dict(data)
-            data["eis_overrides"] = {
-                e["analyte"]: {
-                    "recovery_min": e.get("recovery_min"),
-                    "recovery_max": e.get("recovery_max"),
-                }
-                for e in eis if "analyte" in e
-            }
+            data["eis_overrides"] = _eis_keyed(
+                [(e["analyte"], {"recovery_min": e.get("recovery_min"),
+                                 "recovery_max": e.get("recovery_max")})
+                 for e in eis if isinstance(e, dict) and "analyte" in e], method_id)
+        classes = data.get("eis_matrix_overrides")
+        if isinstance(classes, dict):
+            data = dict(data)
+            data["eis_matrix_overrides"] = dict(
+                (cls, _eis_keyed(list(table.items()), "%s/%s" % (method_id, cls)))
+                for cls, table in classes.items() if isinstance(table, dict))
         _profile_data_cache[method_id] = data
         # SENAITE exports every profile with its Engine section (empty =
-        # every feature off). A profile without one was exported before the
-        # Engine settings existed: it is not judged with its features
-        # silently off, it is refused until SENAITE re-exports it.
+        # every feature off). A profile without one is refused until SENAITE
+        # re-exports it, never judged with its features silently off.
         if "engine" not in data:
             _STALE[method_id] = data
             _LOADED.discard(method_id)
@@ -246,87 +261,21 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
 # Per-batch resolved-criteria overlay (project QAPP -> lab -> baseline)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# The add-on (senaite.pfas.ruleset) does the actual tier resolution and
-# writes ONE JSON file per project-linked batch, alongside the global
-# method_profiles.json this module already reads
+# The add-on (senaite.pfas.ruleset) resolves the tiers and writes ONE JSON
+# file per project-linked batch beside method_profiles.json
 # (senaite.pfas.resolved_criteria_store.export_resolved_criteria). This
-# section reads that file back and injects each already-resolved value into
-# _profile_data_cache at the same key paths reload_from_profiles() itself
-# fills from the global file. It performs NO resolution of its own -- no
-# tier comparison, no fallthrough logic -- only translates {key, value} rows
-# into the profile-dict shape the rest of this module already expects. That
-# tier logic living exactly once, in the add-on, is deliberate (a second
-# copy here would be the "dead twin" shape this project has removed twice;.
+# section injects each resolved value into _profile_data_cache at the key
+# paths reload_from_profiles() fills. It resolves nothing: the tier logic
+# lives once, in the add-on.
 #
-# Key -> path mapping is a SMALL, DELIBERATE duplicate of
-# senaite.pfas.ruleset.SHAPES_BY_KEY / _LAB_EXTRACTORS -- not a resolution
-# copy, a location copy: "where does this key live in the profile dict",
-# the exact same shape method_baselines.matrix_class() already keeps
-# duplicated across this process boundary for the same reason (that module's
-# comment explains it: the worker is Python-3-only pipeline code and must
-# stay dependency-free of the Python-2.7 add-on package).
+# The key -> path map mirrors senaite.pfas.ruleset.SHAPES_BY_KEY /
+# _LAB_EXTRACTORS as a location copy only: the Python 3 worker must not
+# import the Python 2.7 add-on package (as method_baselines.matrix_class()).
 _OVERLAY_PATHS = {
     "cal_r2_min":  ("instrument_verification", "calibration", "r2_min"),
     "sn_quan_min": ("instrument_verification", "confirmation", "sn_quan_min"),
     "dup_rpd_max": ("qc_acceptance", "Dup", "tiers", 0, "rpd_max"),
 }
-
-# ── The CRITERIA wrinkle ─────────────────────────────────────────────────────
-#
-# `_profile_data_cache` is not the only live reader of cal_r2_min/sn_quan_min.
-# constants.CRITERIA (a flat dict `reload_criteria()` builds by re-reading
-# the global profiles file DIRECTLY, never through this cache) still has two
-# real consumers that never migrated to the profiled path Decision C
-# (this module's own docstring) declared authoritative:
-# qc_engine.signal_to_noise_check() reads CRITERIA["sn_quan_min"]
-# unconditionally (there is no profiled variant to call instead), and
-# qc_engine.calibration_check() -- the FALLBACK run_queue.py uses only when
-# no profile resolved at all -- reads CRITERIA["cal_r2_min"]. Overlaying
-# _profile_data_cache alone would leave those two consumers seeing the
-# un-overridden lab value for a project-linked batch: the exact "merged
-# half-way" inconsistency this feature's tests exist to rule out, one
-# consumer layer down. So the resolved values for these two keys are ALSO
-# written into CRITERIA here, from the same rows, no new resolution.
-#
-# Scope of this fix, and its limit: reload_criteria() is called with NO
-# method_id argument anywhere in this codebase, so it ALWAYS builds CRITERIA
-# from FDA_32PFAS's profile, regardless of the run's actual method -- a
-# pre-existing behaviour, not introduced here (records it).
-# Overlaying CRITERIA is therefore only applied when the resolved payload's
-# own method_id is "FDA_32PFAS", matching what CRITERIA already represents
-# today; a resolved EPA_537_1/EPA_1633A payload does not touch CRITERIA; it
-# already does not reflect the batch's real method regardless of any project
-# link, which is that pre-existing gap, not this one.
-_CRITERIA_METHOD_SCOPE = "FDA_32PFAS"
-
-_CRITERIA_KEYS_BY_OVERLAY_KEY = {
-    "cal_r2_min":  ("cal_r2_min",),
-    "sn_quan_min": ("sn_quan_min", "sn_min"),   # sn_min is the back-compat alias
-}
-
-
-def _apply_resolved_criteria(rows, method_id):
-    """Overlay the resolved cal_r2_min / sn_quan_min values (if any) onto
-    constants.CRITERIA -- see "The CRITERIA wrinkle" above for why this is
-    necessary at all and why it is scoped to method_id == FDA_32PFAS."""
-    if method_id != _CRITERIA_METHOD_SCOPE:
-        return 0
-    from .constants import CRITERIA
-    applied = 0
-    for row in rows:
-        key = row.get("key")
-        value = row.get("value")
-        if value is None or key not in _CRITERIA_KEYS_BY_OVERLAY_KEY:
-            continue
-        try:
-            value = float(value)
-        except (TypeError, ValueError):
-            continue
-        for criteria_key in _CRITERIA_KEYS_BY_OVERLAY_KEY[key]:
-            CRITERIA[criteria_key] = value
-        applied += 1
-    return applied
-
 
 def _set_path(data, path, value):
     cur = data
@@ -348,13 +297,9 @@ def _set_path(data, path, value):
 
 def _apply_resolved_row(data, row):
     """Inject one already-resolved criterion row into `data` (one method's
-    entry in _profile_data_cache). Returns True if applied, False if the
-    row's value is absent (nothing to overlay -- e.g. tier=baseline with no
-    seeded baseline) or its key is not one this worker maps anywhere
-    (forward-compatible: a criterion key ruleset.py registers that this
-    worker does not yet consume for anything is a no-op here, not an
-    error -- it simply is not applied, exactly as if the file never
-    mentioned it)."""
+    entry in _profile_data_cache). True if applied; False if the row has
+    no value or its key is one this worker does not map, which is a no-op,
+    not an error."""
     key = row.get("key")
     value = row.get("value")
     if value is None:
@@ -416,27 +361,21 @@ def _ops_are_well_formed(ops):
 
 
 def _row_is_well_formed(row):
-    """Structural check only -- NOT a resolution check. A row is well-formed
-    if it is a dict naming a criterion key; whether that key means anything
-    to THIS worker (or its value is None) is decided per-row in
-    _apply_resolved_row() and is not a validity question."""
+    """A dict naming a criterion key. Structural only: whether the key means
+    anything here is decided per row in _apply_resolved_row()."""
     return isinstance(row, dict) and isinstance(row.get("key"), str) and row.get("key")
 
 
 def _load_resolved_payload(batch_id, profiles_path):
     """The parsed, structurally-validated resolved-criteria payload for
     batch_id, or None for every case that must leave the global profile
-    untouched: no file (the default for any batch with no linked project),
-    an unreadable/corrupt file, or a file whose shape cannot be trusted.
+    untouched: no file (any batch with no linked project), an unreadable or
+    corrupt file, or a file whose shape cannot be trusted.
 
-    Deliberately all-or-nothing ('s partial-write shape, one
-    layer over): if the file's top-level shape is wrong, or ANY row in it is
-    not even structurally a criterion row, the WHOLE file is rejected and
-    logged once -- never applied row-by-row such that some criteria end up
-    overridden and others silently do not because of what amounts to a
-    corrupt record. A row that IS well-formed but names a key/value this
-    worker does not apply anywhere is a normal per-row no-op, not a reason
-    to reject the file (see _row_is_well_formed's docstring)."""
+    All or nothing: a wrong top-level shape or ANY malformed row rejects
+    the WHOLE file, logged once, so no corrupt record leaves some criteria
+    overridden and others not. A well-formed row with a key this worker
+    does not map is a per-row no-op."""
     if not batch_id:
         return None
     path = os.path.join(os.path.dirname(profiles_path), "resolved",
@@ -499,11 +438,8 @@ def _apply_resolved_overlay(batch_id, profiles_path):
     for row in payload["criteria"]:
         if _apply_resolved_row(data, row):
             applied += 1
-    applied_criteria = _apply_resolved_criteria(payload["criteria"], method_id)
-    logger.info(
-        "Applied %d resolved (project-aware) criteria for batch %s (%s); "
-        "%d also overlaid onto CRITERIA",
-        applied, batch_id, method_id, applied_criteria)
+    logger.info("Applied %d resolved (project-aware) criteria for batch %s (%s)",
+                applied, batch_id, method_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -593,6 +529,11 @@ class MethodProfile:
     def calibration_rule(self, analyte=""):
         raise NotImplementedError
 
+    def max_cal_dropped(self):
+        """The most calibrators of one analyte's curve the analyst may drop by
+        deleting a peak in a raw run (Calibration & CCV); None: no limit."""
+        return None
+
     def ccv_rule(self):
         raise NotImplementedError
 
@@ -610,20 +551,20 @@ class MethodProfile:
 
     def ccv_opens_run(self):
         """True when a CCV must come before the run's first counting
-        injection (EPA 537.1 §10.3). Calibration & CCV; off = as before."""
+ injection (EPA 537.1 §10.3). Calibration & CCV."""
         return (self._iv().get("ccv") or {}).get("opens_run") in (True, "yes")
 
     def ccv_counts_extracted_qc(self):
-        """True (as before) when extracted QC counts toward the "CCV every N"
-        interval; False when only field samples do (EPA 537.1 §10.3).
+        """True (the default) when extracted QC counts toward the "CCV every N"
+ interval; False when only field samples do (EPA 537.1 §10.3).
         Calibration & CCV."""
         return (self._iv().get("ccv") or {}).get("counts_extracted_qc") != "no"
 
     def lfsmd_rpd_from_concentrations(self):
-        """True when the LFSM/LFSMD RPD is of the two measured concentrations
-        (EPA 537.1 §9.3.7.3); otherwise of their recoveries, as before.
-        Recovery Tiers, LFSMD RPD."""
-        return self._profile_data().get("lfsmd_rpd_basis") == "concentration"
+        """Always True: the LFSM/LFSMD RPD is of the two measured
+        concentrations for every method (EPA 537.1 §9.3.7.3). Recovery
+        Tiers, LFSMD RPD."""
+        return True
 
     def surrogate_recovery_in_ccv(self):
         """True when the method's CCVs carry the surrogates and their recovery
@@ -644,7 +585,7 @@ class MethodProfile:
         """(min, max) % the labelled standards' recovery is judged by in a
         CCV when the method gives them a window of their own there
         (Calibration & CCV); None when neither end is set, so the sample
-        window applies as before. One end set without the other is refused,
+        window applies. One end set without the other is refused,
         never an open interval and never a fall back to the sample window."""
         ccv = self._iv().get("ccv") or {}
         lo, hi = ccv.get("surrogate_window_min"), ccv.get("surrogate_window_max")
@@ -655,8 +596,8 @@ class MethodProfile:
         if lo is None or hi is None:
             raise UnconfiguredCriterion(
                 "{0}: the CCV window for labelled standards has only one end set. "
-                "Set both (Method Profiles -> Calibration & CCV -> Surrogate recovery "
-                "min / max in CCVs), or clear both to judge CCVs with the sample "
+                "Set both on the method's QC criteria tab (CCV Recovery, Surrogate "
+                "recovery min and max in CCVs), or clear both to judge CCVs with the sample "
                 "window.".format(self.method_id))
         return lo, hi
 
@@ -673,13 +614,12 @@ class MethodProfile:
     def icv_same_as_ccv(self):
         """True when the method judges its ICV / QCS with the CCV's window
         (EPA 537.1 §9.3.10: "acceptance criteria for the QCS are identical to
-        the CCCs";). Calibration & CCV, ICV criteria."""
+        the CCCs"). Calibration & CCV, ICV criteria."""
         return (self._iv().get("icv") or {}).get("criteria") == "ccv"
 
     def icv_pct_dev_max(self):
         """The ICV's (EPA 537.1: QCS) allowed deviation from its expected
-        concentration, % (Calibration & CCV); None when not set. Read by
-        nothing until 2026-10-07: no check judged an ICV at all."""
+        concentration, % (Calibration & CCV); None when not set."""
         v = (self._iv().get("icv") or {}).get("pct_dev_max")
         try:
             return float(v) if v not in (None, "") else None
@@ -687,32 +627,49 @@ class MethodProfile:
             return None
 
     def _iv(self):
-        """Return instrument_verification block, with old-key fallback."""
+        """The instrument_verification block; a profile without one keeps
+        those keys at its top level."""
         p = self._profile_data()
         iv = p.get("instrument_verification")
         if iv is not None:
             return iv
-        # Backward compat: old profiles have flat keys at top level
         return p
 
     def qc_type_enabled(self, qc_code):
         """Is this extraction/matrix QC type switched on for this method?
 
-        `qc_acceptance[qc_code].enabled` is the lab's switch, set in the Method
-        Profile UI beside the limits it governs. This method exists so the
-        answer has ONE definition: `qc_acceptance_rule` below already applied
-        the same flag, and `run_queue` used to gate LFSM/LFSMD on a
-        `method_rule_toggles` key that appeared in no library, no defaults
-        table and no UI — so the switch a lab was given did nothing.
-
-        Absent defaults to True. A missing entry must not silently switch a
-        check off; if its criteria are unconfigured the check refuses to judge,
-        which is louder than skipping.
+        The ONE definition of the lab's switch, set in the Method Profile UI
+        beside the limits it governs. On unless its row's state
+        (qc_type_state) is Off. A missing entry is on: an unconfigured check
+        refuses to judge, which is louder than skipping.
         """
-        entry = (self._profile_data().get("qc_acceptance") or {}).get(qc_code)
-        if not isinstance(entry, dict):
-            return True
-        return bool(entry.get("enabled", True))
+        return self.qc_type_state(qc_code) != "off"
+
+    def qc_type_state(self, qc_code):
+        """The state of this QC type's row: enforced, evaluate or off. The
+        profile's `rule_states` under the type's row key (`qc_type.<CODE>`,
+        or `blank.<CODE>` for a blank, the type's stored spelling), else its
+        `enabled` flag (on = enforced, off = off); absent is enforced. A type
+        in Evaluate is judged and a failure files as advisory."""
+        data = self._profile_data()
+        states = data.get("rule_states")
+        if isinstance(states, dict):
+            for key in ("qc_type." + qc_code, "blank." + qc_code):
+                if states.get(key) in ("enforced", "evaluate", "off"):
+                    return states[key]
+        entry = (data.get("qc_acceptance") or {}).get(qc_code)
+        if isinstance(entry, dict) and not entry.get("enabled", True):
+            return "off"
+        return "enforced"
+
+    def low_level_state(self):
+        """The Low-level recoveries row's state: enforced, evaluate or off,
+        the profile's `rule_states["low_level_recovery"]`; absent is
+        enforced. It decides how a recovery judged against a low-level tier
+        is filed: Enforced holds, Evaluate is advisory, Off judges nothing."""
+        states = self._profile_data().get("rule_states")
+        state = states.get("low_level_recovery") if isinstance(states, dict) else None
+        return state if state in ("enforced", "evaluate", "off") else "enforced"
 
     def qc_acceptance_rule(self, qc_code, analyte="", matrix=""):
         """
@@ -739,11 +696,11 @@ class MethodProfile:
 
     def resolve_spike(self, qc_type, level_label, matrix=None):
         """(value, unit): the method's spike level for qc_type + level in the
-        matrix's reporting unit (2026-10-06: levels are entered in it),
-        or (None, unit) when not set. Never another matrix's level.
+        matrix's reporting unit, the unit levels are entered in, or
+        (None, unit) when not set. Never another matrix's level.
 
-        spike_levels may be in the old flat format {LFB:[...], LFSM:[...]}
-        (method-wide, stored in ppt) or per matrix {matrix: {LFB:[...]}}."""
+        spike_levels is flat {LFB:[...], LFSM:[...]} (method-wide, stored in
+        ppt) or per matrix {matrix: {LFB:[...]}}."""
         data = self._profile_data()
         spike_levels = data.get("spike_levels", {})
         unit = (data.get("unit_map") or {}).get(matrix or "", "") or ""
@@ -752,9 +709,7 @@ class MethodProfile:
         elif matrix and matrix in spike_levels:
             levels = spike_levels[matrix].get(qc_type, [])
         else:
-            # Never another matrix's level: it used to fall
-            # back to the first matrix listed, so a batch could be judged at a
-            # level set for a different matrix without anyone seeing it.
+            # never another matrix's level
             levels = []
         for entry in levels:
             if entry.get("label", "").strip().lower() == (level_label or "").strip().lower():
@@ -769,16 +724,9 @@ class MethodProfile:
 class UnconfiguredCriterion(Exception):
     """No acceptance criterion is configured for this combination.
 
-    Raised instead of substituting a plausible default. The resolver used to
-    end with an unconditional QCRule(65.0, 135.0) and carried ~59 inline
-    fallbacks of the form tier.get("recovery_min", 40.0), so a profile that was
-    silent produced a believable limit and nothing said so. A criterion that
-    nothing configured must not be quietly met -- that is the same failure as
-    the CCV window, inverted: not a wrong number displayed, but a wrong
-    criterion silently satisfied.
-
-    The trade is deliberate and was chosen explicitly: this hard-blocks a run
-    against a profile that is not fully populated. The message names what to
+    Raised instead of substituting a plausible default: a criterion nothing
+    configured must not be quietly met. It hard-blocks a run against a
+    profile that is not fully populated; the message names what to
     configure and where.
     """
 
@@ -787,15 +735,14 @@ class UnconfiguredCriterion(Exception):
 _TIER_STRUCTURAL_KEYS = frozenset([
     "name", "analyte_group", "matrix_scope", "description",
     "verify_against_method", "tier", "key_analytes", "no_std_analytes",
-    "tight_matrices", "low_level_x_rl", "citation", "fails_at_limit",
+    "tight_matrices", "matrices", "low_level_x_rl", "citation", "fails_at_limit",
 ])
 
 # ── Low-level tiers ───────────────────────────────────
 # A tier carrying low_level_x_rl = N applies only when the fortified
 # concentration is at or below N x the analyte's RL -- e.g. EPA 537.1 v2.0
 # §9.3.6.3: LFSM 70-130%, but 50-150% "within a factor of 2-times the MRL".
-# The ordinary tier is chosen exactly as before; a low-level tier replaces it
-# only when its condition holds. Without the concentration or the RL the
+# A low-level tier replaces the ordinary tier only when its condition holds. Without the concentration or the RL the
 # engine refuses: it never guesses which window a spike belongs to.
 LOW_LEVEL_KEY = "low_level_x_rl"
 
@@ -811,10 +758,6 @@ def _qc_tiers():
     here and for the method studies in the add-on."""
     from .addon import load
     return load("qc_tiers")
-
-
-def _ordinary_tiers(tiers):
-    return _qc_tiers().ordinary_tiers(tiers)
 
 
 def _low_level_tier(tiers, base, applies, conc, rl, where):
@@ -854,39 +797,27 @@ def _analyte_groups(analyte, profile_data):
 def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
     """Build a QCRule from a configured tier, or refuse.
 
-    A tier is configured when it carries AT LEAST ONE criterion. Which one
-    depends on the QC type and it is not this function's business to say:
-    a duplicate is judged by RPD and legitimately has no recovery window, so
-    demanding recovery limits everywhere refuses a correctly configured Dup
-    tier. What must never happen is a tier that specifies nothing at all
-    yielding a verdict anyway.
-
-    Downstream already skips a check whose criterion is None
-    (recovery_check_profiled returns early on recovery_min is None), so an
-    absent criterion means "this QC type is not judged that way", while an
-    empty tier now means "nobody configured this" and says so.
+    A tier is configured when it carries AT LEAST ONE criterion; which one
+    depends on the QC type (a duplicate has only an RPD, a blank only
+    max_conc_x_rl). A tier that specifies nothing never yields a verdict.
+    An absent criterion means "not judged that way": downstream skips a
+    check whose criterion is None.
     """
     low = tier.get("recovery_min")
     high = tier.get("recovery_max")
     rsd = tier.get("rsd_max")
     rpd = tier.get("rpd_max")
-    # "Configured" is the absence of nothing, not the presence of one of a
-    # list I happened to think of. Enumerating recovery/RSD/RPD refused every
-    # method blank, whose criterion is max_conc_x_rl -- a blank is judged
-    # against the reporting limit, not against a recovery window. Anything
-    # beyond the structural keys is a criterion.
+    # anything beyond the structural keys is a criterion
     criteria = set(tier) - _TIER_STRUCTURAL_KEYS
     if not criteria:
         raise UnconfiguredCriterion(
             "No acceptance criteria configured for {0} / {1} / {2} / {3}: "
             "tier {4!r} specifies no recovery window, RSD or RPD limit. "
-            "Set one in Method Profiles -> QC Types -> {3}, or disable that "
-            "QC type.".format(
+            "Set one in the {3} tiers on the method's QC criteria tab, or switch "
+            "that QC type off.".format(
                 method_id, analyte, matrix or "(no matrix)", qc_type,
                 tier.get("name") or tier.get("analyte_group") or "default"))
-    # A half-configured recovery window is a different failure: someone meant
-    # to set a limit and left one end blank, which would judge against an open
-    # interval.
+    # one end of a recovery window set alone would judge an open interval
     if (low is None) != (high is None):
         raise UnconfiguredCriterion(
             "Incomplete recovery window for {0} / {1} / {2} / {3}: "
@@ -913,27 +844,19 @@ def _name_list(value):
 
 
 def _ccv_rule(ccv, method_id):
-    """CCV limits from the profile, or refuse.
-
-    The CCV window is the original instance of this whole class of defect: the
-    editor saved 72-128% while every run was judged against a nested 70-130%,
-    and nothing said so. Substituting 70/130 when the profile is silent is the
-    same failure with the UI half removed.
-    """
+    """CCV limits from the profile, or refuse: no code window stands in for
+    a silent profile."""
     low, high = ccv.get("recovery_min"), ccv.get("recovery_max")
     if low is None or high is None:
         raise UnconfiguredCriterion(
-            "{0} has no CCV recovery window configured. Set it in Method "
-            "Profiles -> Calibration & CCV.".format(method_id))
+            "{0} has no CCV recovery window configured. Set it on the method's "
+            "QC criteria tab (CCV Recovery).".format(method_id))
     return CCVRule(
         recovery_min=float(low),
         recovery_max=float(high),
-        # Frequency and the low-level window are not verdicts on a result:
-        # frequency governs sequence layout, and an absent low-level window
-        # means the method sets no separate limit at the MRL.
-        # no code value stands in for the profile's: an unset frequency is
-        # None (the CCV-frequency check reports it), an unset low-level
-        # window means the method sets none
+        # not verdicts on a result: an unset frequency is None (the
+        # CCV-frequency check reports it); an unset low-level window means
+        # the method sets no separate limit at the MRL
         frequency=int(ccv["frequency"]) if ccv.get("frequency") not in (None, "", 0) else None,
         low_level_min=ccv.get("low_level_min"),
         low_level_max=ccv.get("low_level_max"),
@@ -941,14 +864,8 @@ def _ccv_rule(ccv, method_id):
 
 
 def _iv_section(profile_data, method_id, section, aliases=(), where=""):
-    """A configured instrument_verification section, or refuse.
-
-    Generalised from the confirmation-only version: calibration (r2_min,
-    per-point %dev), IS response (vs ICAL average, vs last CCV) and
-    confirmation all carried the same inline fallbacks, and all three decide a
-    verdict. r2_min in particular gates whether a calibration is acceptable at
-    all.
-    """
+    """A configured instrument_verification section (calibration, IS
+    response, confirmation), or refuse: each decides a verdict."""
     iv = profile_data.get("instrument_verification") or {}
     data = iv.get(section)
     for alias in aliases:
@@ -956,8 +873,8 @@ def _iv_section(profile_data, method_id, section, aliases=(), where=""):
             data = iv.get(alias)
     if not isinstance(data, dict) or not data:
         raise UnconfiguredCriterion(
-            "{0} has no instrument_verification.{1} section. Configure it in "
-            "Method Profiles{2}.".format(method_id, section, where))
+            "{0} has no instrument_verification.{1} section. Configure it on "
+            "the method's QC criteria tab{2}.".format(method_id, section, where))
     return data
 
 
@@ -966,7 +883,7 @@ def _required(section_data, key, method_id, section, where=""):
     if key not in section_data:
         raise UnconfiguredCriterion(
             "{0} has no '{1}' configured under instrument_verification.{2}. "
-            "Set it in Method Profiles{3}, or clear the field to record that "
+            "Set it on the method's QC criteria tab{3}, or clear the field to record that "
             "this method has no such criterion.".format(
                 method_id, key, section, where))
     return section_data[key]
@@ -975,36 +892,22 @@ def _required(section_data, key, method_id, section, where=""):
 def _confirmation(profile_data, method_id):
     """The configured chromatographic-confirmation section, or refuse.
 
-    Same silent-substitution shape as the recovery limits: `conf.get(
-    "ion_ratio_tol_pct", 30.0)` supplied a plausible window when the profile
-    said nothing, and an ion-ratio check against a window nobody chose passes
-    or fails on a number the lab never set.
-
-    A key PRESENT with value None is not the same as a key ABSENT. EPA 537.1
-    stores `ion_ratio_tol_pct: null` deliberately -- the method has no qual-ion
-    ratio criterion at all -- and the editor always writes every key, so an
-    absent key means the section was never configured. That is the same
-    distinction the Dup and MB tiers turned on: a criterion the method does not
-    use is configured, not missing.
+    A key PRESENT with value None is not a key ABSENT. EPA 537.1 stores
+    `ion_ratio_tol_pct: null`: the method has no qual-ion ratio criterion.
+    The editor writes every key, so an absent key means never configured.
     """
     return _iv_section(profile_data, method_id, "confirmation",
-                       where=" -> Calibration & CCV -> Chromatographic "
-                             "Confirmation")
-
-
-def _conf_value(conf, key, method_id):
-    return _required(conf, key, method_id, "confirmation",
-                     " -> Calibration & CCV")
+                       where=" (Ion Ratio, RT Deviation, S/N Minimum)")
 
 
 def _calibration(profile_data, method_id):
     return _iv_section(profile_data, method_id, "calibration",
-                       where=" -> Calibration & CCV")
+                       where=" (Calibration r\u00b2)")
 
 
 def _is_section(profile_data, method_id):
     return _iv_section(profile_data, method_id, "is_response", ("is",),
-                       where=" -> Calibration & CCV -> IS Response")
+                       where=" (IS Response)")
 
 
 def _engine_module():
@@ -1014,6 +917,15 @@ def _engine_module():
     return load("method_engine")
 
 
+# a matrix class's SUR limits holding this marker: not assessed in that class
+NOT_ASSESSED = "none"
+
+
+def _not_assessed(lim):
+    """Whether a class limit ({recovery_min, recovery_max}) is the marker."""
+    return isinstance(lim, dict) and NOT_ASSESSED in (lim.get("recovery_min"), lim.get("recovery_max"))
+
+
 def _limit_or(value, fallback):
     """A stored limit as float, or the fallback when it is unset (None)."""
     return fallback if value is None else float(value)
@@ -1021,7 +933,6 @@ def _limit_or(value, fallback):
 
 _SURROGATE_WINDOW_NOTE = "Surrogate recovery (method profile)"
 _CCV_SURROGATE_WINDOW_NOTE = "Surrogate recovery in CCVs (method profile)"
-_LABELLED_PREFIXES = ("M", "13C")
 
 
 class ConfiguredProfile(MethodProfile):
@@ -1044,12 +955,25 @@ class ConfiguredProfile(MethodProfile):
 
     # ── recovery / blank / duplicate QC ─────────────────────────
     def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
+        return self.qc_rules_with_level(analyte, matrix, qc_type, conc=conc, rl=rl)[0]
+
+    def low_level_tier_applies(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
+        """Whether qc_rules judges this recovery against a low-level tier
+        (the spike at or below N x RL), which the method's Low-level
+        recoveries row then files (low_level_state)."""
+        try:
+            return self.qc_rules_with_level(analyte, matrix, qc_type, conc=conc, rl=rl)[1]
+        except UnconfiguredCriterion:
+            return False
+
+    def qc_rules_with_level(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
+        """(qc_rules' rule, whether it is a low-level tier's)."""
         data = self._profile_data()
         eng = _engine_module().engine(data)
         if eng["eis_recovery_limits"] and qc_type in ("EIS", "SUR", "surrogate"):
-            return self._eis_rule(data, eng, analyte, matrix)
+            return self._eis_rule(data, eng, analyte, matrix), False
         if qc_type in ("SUR", "surrogate"):
-            return self._surrogate_rule(data, eng)
+            return self._surrogate_rule(data, eng), False
         mapped = eng["qc_type_aliases"].get(qc_type, qc_type)
         grouped = eng["grouped_recovery_tiers"]
         if grouped:
@@ -1062,13 +986,13 @@ class ConfiguredProfile(MethodProfile):
         chosen = _select_tier(data, mapped, analyte, matrix, conc, rl,
                               is_key, is_no_std, where)
         if chosen is None:
-            return None
+            return None, False
         tier, branch = chosen
         rule = _tier_rule(tier, self._tier_notes(eng, tier, branch), self.method_id,
                           analyte, matrix, mapped)
         if tier.get("verify_against_method"):
             rule = dataclasses.replace(rule, verify_against_method=True)
-        return rule
+        return rule, bool(tier.get(LOW_LEVEL_KEY))
 
     @staticmethod
     def _tier_notes(eng, tier, branch):
@@ -1089,8 +1013,9 @@ class ConfiguredProfile(MethodProfile):
         return tier.get("description", notes.get("tier", ""))
 
     def _surrogate_rule(self, data, eng):
-        """The profile's surrogate window (Calibration & CCV), else the window
-        the method text states (Engine), else a refusal."""
+        """The profile's surrogate window (Isotope standards: Surrogates),
+        else the window the method text states (the same tab), else a
+        refusal."""
         kw = {"is_guidance_only": True} if eng["surrogate_guidance_only"] else {}
         win = (data.get("instrument_verification") or {}).get("surrogate_window") or {}
         if win.get("recovery_min") is not None and win.get("recovery_max") is not None:
@@ -1099,9 +1024,10 @@ class ConfiguredProfile(MethodProfile):
         fallback = eng["surrogate_fallback"]
         if fallback is None:
             raise UnconfiguredCriterion(
-                "{0} has no surrogate recovery window. Set it in Method Profiles "
-                "-> Calibration & CCV (Surrogate recovery min / max), or the "
-                "method text's window in Method Profiles -> Engine.".format(self.method_id))
+                "{0} has no surrogate recovery window. Set it on the method's "
+                "Isotope standards tab (Surrogates: Surrogate recovery min and "
+                "max), or the surrogate window the method text states on the "
+                "same tab.".format(self.method_id))
         return QCRule(fallback["min"], fallback["max"], notes=fallback["citation"], **kw)
 
     def _eis_window(self, data, eng, analyte, matrix):
@@ -1114,8 +1040,8 @@ class ConfiguredProfile(MethodProfile):
             if not tiers:
                 raise UnconfiguredCriterion(
                     "{0} has no qc_acceptance.LFSM.tiers to base EIS recovery "
-                    "on. Configure it in Method Profiles -> QC Types -> "
-                    "LFSM.".format(self.method_id))
+                    "on. Set the LFSM tiers on the method's QC criteria "
+                    "tab.".format(self.method_id))
             # Refuse rather than substituting a window: the method's own LFSM
             # tier is the base, or nothing is
             base = _tier_rule(tiers[0], "", self.method_id, analyte, matrix, "EIS")
@@ -1130,35 +1056,52 @@ class ConfiguredProfile(MethodProfile):
             if win.get("recovery_min") is None or win.get("recovery_max") is None:
                 raise UnconfiguredCriterion(
                     "{0} / {1}: EIS recovery starts from the surrogate window, "
-                    "which is not set. Set it in Method Profiles -> Calibration "
-                    "& CCV (Surrogate recovery min / max).".format(self.method_id, analyte))
+                    "which is not set. Set it on the method's Isotope standards "
+                    "tab (Surrogates: Surrogate recovery min and max).".format(
+                        self.method_id, analyte))
             return float(win["recovery_min"]), float(win["recovery_max"])
         raise UnconfiguredCriterion(
             "{0}: isotope-dilution (EIS) limits are on, but no default EIS window "
-            "is chosen. Choose one in Method Profiles -> Engine.".format(self.method_id))
+            "is chosen. Choose one on the method's Engine tab.".format(self.method_id))
+
+    def _eis_class_limit(self, data, analyte, matrix):
+        """The SUR's limits for the matrix's class, as stored (or None)."""
+        mat_class = _engine_module().matrix_class(data, matrix) if matrix else None
+        if not mat_class:
+            return None
+        table = (data.get("eis_matrix_overrides") or {}).get(mat_class) or {}
+        return table.get(eis_criteria_name(self.method_id, analyte))
+
+    def sur_not_assessed(self, analyte, matrix=""):
+        """Whether the method marks this SUR's matrix class not assessed
+        (the class limits hold "none") while it judges SURs per class."""
+        data = self._profile_data()
+        if not _engine_module().engine(data)["eis_recovery_limits"]:
+            return False
+        return _not_assessed(self._eis_class_limit(data, analyte, matrix))
 
     def _eis_rule(self, data, eng, analyte, matrix):
-        """EIS / surrogate recovery per analyte x matrix class."""
-        default_lo, default_hi = self._eis_window(data, eng, analyte, matrix)
+        """EIS / surrogate recovery per analyte x matrix class; None where
+        the standard's class holds the marker "none" (not assessed there:
+        no window, never the aqueous one)."""
         eis_overrides = data.get("eis_overrides", {})
-        eis_matrix = data.get("eis_matrix_overrides", {})
         # `analyte` is the compound as the INSTRUMENT names it, which is the
         # compound the lab actually spiked. A published method may designate
         # the same position by its own labelled form, so the lookup joins
         # through the native (eis_criteria_name). The rule keeps `analyte`
         # unchanged, so a certificate names the compound the lab has.
         criteria_name = eis_criteria_name(self.method_id, analyte)
+        mat_override = self._eis_class_limit(data, analyte, matrix)
+        if _not_assessed(mat_override):
+            return None
+        default_lo, default_hi = self._eis_window(data, eng, analyte, matrix)
         override = eis_overrides.get(criteria_name, {})
         # A limit stored as null is UNSET: it falls back, never float(None).
         lo = _limit_or(override.get("recovery_min"), default_lo)
         hi = _limit_or(override.get("recovery_max"), default_hi)
-        if matrix:
-            mat_class = _engine_module().matrix_class(data, matrix)
-            if mat_class:
-                mat_override = (eis_matrix.get(mat_class) or {}).get(criteria_name)
-                if mat_override:
-                    lo = _limit_or(mat_override.get("recovery_min"), lo)
-                    hi = _limit_or(mat_override.get("recovery_max"), hi)
+        if mat_override:
+            lo = _limit_or(mat_override.get("recovery_min"), lo)
+            hi = _limit_or(mat_override.get("recovery_max"), hi)
         return QCRule(lo, hi, verify_against_method=eng["eis_verify_flag"],
                       notes=eng["rule_notes"].get("eis", ""))
 
@@ -1174,30 +1117,52 @@ class ConfiguredProfile(MethodProfile):
         data = self._profile_data()
         eng = _engine_module().engine(data)
         cal = _calibration(data, self.method_id)
-        where = " -> Calibration & CCV"
+        where = " (Calibration r\u00b2)"
         # r2_min: never configured (absent) is a gap, whatever the Engine
         # lists; cleared (None) means the method sets no r2 criterion, which
         # a method whose Engine requires one is refused rather than run
         r2 = _required(cal, "r2_min", self.method_id, "calibration", where)
         if r2 is None and "r2_min" in (eng["required_keys"].get("calibration") or ()):
             raise UnconfiguredCriterion(
-                "{0} requires an r2 minimum (Method Profiles -> Engine, calibration "
-                "criteria that must be set) and has none. Set it in Method "
-                "Profiles{1}.".format(self.method_id, where))
+                "{0} requires an r2 minimum (the method's Engine tab, calibration "
+                "criteria that must be set) and has none. Set it on the "
+                "method's QC criteria tab{1}.".format(self.method_id, where))
         point = self._criterion(eng, "calibration", cal, "point_pct_dev_max", where)
         low_point = self._criterion(eng, "calibration", cal, "low_point_pct_dev_max", where)
+        # Origin and Weighting (calibration_fit.py in the add-on); a profile
+        # without `origin` reads its force_origin switch
+        origin = cal.get("origin") if cal.get("origin") in ("exclude", "include", "force") else (
+            "force" if cal.get("force_origin") else "exclude")
+        weighting = cal.get("weighting") if cal.get("weighting") in ("none", "1/x", "1/x2") else "1/x"
         fit = "linear"
-        if (eng["labelled_compound_fit"] == "mean_response_factor"
-                and (analyte or "").startswith(_LABELLED_PREFIXES)):
-            fit = "mean_response_factor"
+        if eng["labelled_compound_fit"] == "mean_response_factor" and analyte:
+            from .analyte_alias import is_labelled
+            # the fit follows the library: without one this raises, never
+            # falls back to a linear fit
+            if is_labelled(analyte):
+                fit = "mean_response_factor"
         return CalibrationRule(
             r2_min=None if r2 is None else float(r2),
             point_pct_dev_max=point,
             low_point_pct_dev_max=low_point,
-            force_origin=bool(cal.get("force_origin", False)),
+            force_origin=origin == "force",
             default_fit=fit,
-            default_weighting="none" if fit != "linear" else "1/x",
+            # a mean-response-factor fit has no weighting; a linear one is
+            # weighted as the method profile says (the lab's 1/x by default)
+            default_weighting="none" if fit != "linear" else weighting,
+            origin=origin,
         )
+
+    def max_cal_dropped(self):
+        value = ((self._iv().get("calibration") or {}).get("max_cal_dropped"))
+        if _unset(value):
+            return None
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            raise UnconfiguredCriterion(
+                "{0}: Calibration has a most calibrators dropped of {1!r}, which is not a whole "
+                "number.".format(self.method_id, value))
 
     def ccv_rule(self):
         return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
@@ -1206,7 +1171,7 @@ class ConfiguredProfile(MethodProfile):
         data = self._profile_data()
         eng = _engine_module().engine(data)
         is_ = _is_section(data, self.method_id)
-        where = " -> Calibration & CCV -> IS Response"
+        where = " (IS Response)"
         get = lambda k: self._criterion(eng, "is_response", is_, k, where)  # noqa: E731
         return ISRule(
             vs_ical_avg_min=get("vs_ical_avg_min"),
@@ -1220,7 +1185,7 @@ class ConfiguredProfile(MethodProfile):
         data = self._profile_data()
         eng = _engine_module().engine(data)
         conf = _confirmation(data, self.method_id)
-        where = " -> Calibration & CCV"
+        where = " (Ion Ratio, RT Deviation, S/N Minimum)"
         get = lambda k: self._criterion(eng, "confirmation", conf, k, where)  # noqa: E731
         # evaluated in this order: the first missing criterion is the one named
         ion_ratio = get("ion_ratio_tol_pct")
@@ -1228,8 +1193,9 @@ class ConfiguredProfile(MethodProfile):
         rt_abs = get("rt_tol_abs_min")
         sn_quant = get("sn_quan_min")
         sn_confirm = get("sn_confirm_min")
-        # single_transition_analytes, confirm_pct_diff_max and the technique
-        # are the lab's settings, on the profile (Calibration & CCV)
+        # single_transition_analytes (keywords, as a list or as text),
+        # confirm_pct_diff_max and the
+        # technique are the lab's settings, on the profile (Calibration & CCV)
         return ConfirmationRule(
             ion_ratio_tol_pct=ion_ratio,
             rrt_tol_pct=rrt,
@@ -1243,19 +1209,9 @@ class ConfiguredProfile(MethodProfile):
         )
 
     def sample_factor(self, matrix):
-        # Matrix factors are keyed by the core SampleType title. Match the
-        # sample's matrix EXACTLY first; fall back to legacy substring matching
-        # for any old-format entries that predate the core-type tie.
-        m = (matrix or "").lower().strip()
-        factors = self._profile_data().get("matrix_factors", []) or []
-        for entry in factors:
-            if (entry.get("matrix", "") or "").lower().strip() == m:
-                return float(entry["factor"])
-        for entry in factors:
-            key = (entry.get("matrix", "") or "").lower().strip()
-            if key and key in m:
-                return float(entry["factor"])
-        return None
+        # keyed by the core SampleType title: exact first, then a substring
+        # (calibration_levels.matrix_factor, the add-on's one rule)
+        return _cal().matrix_factor(self._profile_data(), matrix)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1302,7 +1258,7 @@ def available_profiles():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Analyte / IS list helpers — replace constants.ANALYTES / INTERNAL_STANDARDS
+# Analyte / IS list helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_analyte_list(method_id: str) -> list:
@@ -1330,7 +1286,7 @@ def get_sample_correction(method_id: str) -> str:
 
 def get_blank_subtraction(method_id: str) -> bool:
     """Whether the method subtracts the batch's method blank from each result
-    (2026-10-08: a per-method switch; off by default)."""
+    (a per-method switch; off by default)."""
     data = _profile_data_cache.get(method_id, {}) or {}
     return bool(data.get("blank_subtraction"))
 
@@ -1338,7 +1294,7 @@ def get_blank_subtraction(method_id: str) -> bool:
 def get_spike_basis(method_id: str) -> str:
     """"before" when spike levels are entered before the per-sample amount
     adjustment (scaled by nominal / actual amount), else "" (as entered).
-    Sample correction tab; lab, 2026-10-10."""
+ Sample correction tab."""
     data = _profile_data_cache.get(method_id, {}) or {}
     return "before" if data.get("spike_basis") == "before" else ""
 
@@ -1391,27 +1347,20 @@ def get_matrix_factor(method_id: str, matrix: str) -> "float | None":
     concentration reported for the SAMPLE. It is per matrix because the
     sample-size-to-final-volume ratio is, and it is configured in the Method
     Profile rather than derived, because that ratio is the lab's SOP.
-
-    ``MethodProfile.sample_factor`` has resolved this correctly all along and
-    had no caller: the factor was configured, resolvable, and never applied.
     """
     try:
         profile = get_profile(method_id)
     except KeyError:
         return None
-    try:
-        return profile.sample_factor(matrix)
-    except Exception:
-        return None
+    return profile.sample_factor(matrix)
 
 
 def get_non_iso_set(method_id: str) -> frozenset:
     """Return the frozenset of analyte display names that have no labeled std.
 
-    Derived from the method's surrogate links, limited to its reported panel.
+    Derived from THIS method's surrogate links, never a global column,
+    limited to its reported panel.
     """
-    # Derived from THIS method's surrogate links (consolidation P4), not a
-    # global column: a link changed in one method moves the analyte there.
     from .analyte_alias import no_labelled_names_for
     try:
         data = get_profile(method_id)._profile_data()
@@ -1429,46 +1378,29 @@ def get_non_iso_set(method_id: str) -> frozenset:
     return frozenset(names & panel) if panel else frozenset(names)
 
 
-# Leading isotopic label on a labelled compound's name: "13C4-", "13C2,D4-",
-# "D3-". Used ONLY to reach the native a published method's EIS designation
-# refers to (see eis_criteria_name) -- never to decide that two labelled names
-# mean the same compound.
-_ISOTOPE_LABEL = re.compile(r"^(?:13C\d+|D\d+)(?:,\s*D\d+)?-")
-
-
 def get_is_list(method_id: str) -> list:
     """Display names of the labelled compounds this METHOD monitors.
 
-    DERIVED, not stored. This used to read a profile key `internal_standards`
-    that NOTHING has ever written -- no editor field, no seed, no migration --
-    and fall back to an inline FDA list. So it returned the 21 FDA names for
-    FDA_32PFAS and an EMPTY LIST for both EPA methods, which meant the IS
-    Response loop in run_queue iterated nothing and no surrogate or internal
-    standard was checked at all on EPA 537.1 or EPA 1633A.
-
-    The set is already recorded twice over, per method: `surrogate_map` names
-    the labelled compound that quantifies each native in the method's panel, and
-    the reference table marks which labelled compound is the injection standard.
-    Both are method-scoped by construction, so the list is their union:
+    DERIVED, not stored: the method's labelled_standards grid when set,
+    else the union of its surrogate_map values and the injection IS, both
+    method-scoped:
 
         {surrogate_map values} + {injection IS}   ->   display names
 
-    Keywords are converted to display names because that is what the instrument
-    exports and what `is_raw_check` matches rows on. Every name this returns
-    therefore exists as an AnalysisService -- internal_standards.csv creates
-    them from the same table -- which a list taken from a published method's own
-    designations would NOT (see eis_criteria_name).
+    Display names, because the instrument exports them and `is_raw_check`
+    matches rows on them; each exists as an AnalysisService (see
+    eis_criteria_name).
 
-    Refuses when the method names no labelled standard at all: an empty list
-    would check no surrogate or internal standard and say nothing.
+    Refuses when the method names no labelled standard: an empty list would
+    check no surrogate or internal standard and say nothing.
     """
     from .analyte_alias import injection_is_names, labelled_display_name
 
     data = _profile_data_cache.get(method_id, {})
     grid = data.get("labelled_standards")
     if isinstance(grid, dict) and grid:
-        # The method's own grid: every standard it
-        # USES. Map surrogates first (in map order), then the rest.
+        # the method's own grid: every standard it USES, map surrogates
+        # first (in map order), then the rest
         order = []
         for row in data.get("surrogate_map") or []:
             kw = (row.get("surrogate_is") or "").strip()
@@ -1486,10 +1418,9 @@ def get_is_list(method_id: str) -> list:
         if name not in seen:
             seen.add(name)
             names.append(name)
-    # The injection standard quantifies the surrogates rather than a native, so
-    # it appears in no surrogate_map row -- and its response is the one that
-    # must NOT be dilution-corrected, which is precisely why it has to be in the
-    # list rather than left out as "not a surrogate".
+    # the injection standard quantifies the surrogates, so it is in no
+    # surrogate_map row; it is listed because its response must NOT be
+    # dilution-corrected
     for name in sorted(injection_is_names()):
         if name not in seen:
             seen.add(name)
@@ -1497,82 +1428,34 @@ def get_is_list(method_id: str) -> list:
     if names:
         return names
     raise UnconfiguredCriterion(
-        "{0} names no labelled standard (surrogate or internal standard). Set "
-        "them in Method Profiles -> Labelled Standards / Surrogate Map.".format(
+        "{0} names no isotope standard (SUR or IS). Set "
+        "them on the method's Isotope standards tab.".format(
             method_id or "(no method)"))
 
 
 def eis_criteria_name(method_id: str, compound: str) -> str:
-    """The key under which `eis_overrides` holds `compound`'s recovery limits.
-
-    Needed because a published method designates its extracted internal
-    standards by ITS OWN spelling, and the lab's catalogue uses the spelling of
-    the standard it actually buys. EPA 1633A Table 6 lists `13C4-PFBA`; the only
-    thing that creates AnalysisServices (setupdata/internal_standards.csv)
-    creates `13C3-PFBA`. Ten of the twenty-four diverge that way, so a lookup on
-    the instrument's name found nothing for ten compounds and silently fell back
-    to the generic window.
-
-    The join is on the NATIVE the standard labels, never on the labelled name:
-
-        instrument name -> keyword -> native (INTERNAL_STANDARDS row[2])
-                        -> the Table 6 row whose designation labels that native
-
-    That deliberately embeds NO claim that `13C3-PFBA` and `13C4-PFBA` are the
-    same substance -- they are not, one carries three C-13 and the other four.
-    It claims only that whatever the lab spikes as PFBA's extracted internal
-    standard is judged against the method's limit FOR PFBA'S EIS, which is the
-    relationship Table 6 actually states. Whether the lab should be buying the
-    isotopologue EPA specifies is a purchasing question for the QA manager, and
-    the ten names are listed in for them to answer.
-
-    Returns `compound` unchanged when no pairing is needed or possible: a method
-    with no `eis_overrides` (FDA, 537.1) or a compound whose native has no
-    Table 6 row. Never raises, and never invents a limit.
-    """
-    from .analyte_alias import (keyword_for, labeled_analog_map,
-                                native_keyword_for)
-
-    overrides = _profile_data_cache.get(method_id, {}).get("eis_overrides")
-    if not overrides:
-        return compound
-    if isinstance(overrides, dict):
-        if compound in overrides:
-            return compound
-        designations = list(overrides.keys())
-    else:
-        designations = [(r.get("analyte") or "") for r in overrides]
-        if compound in designations:
-            return compound
-
-    analogs = labeled_analog_map()
-    native = analogs.get(keyword_for(compound) or compound)
-    if not native:
-        return compound
-
-    for designation in designations:
-        if not designation:
-            continue
-        # Strip the isotopic label ("13C4-", "13C2,D4-", "D3-") to reach the
-        # native the designation names, then normalise EPA's spelling of it.
-        stripped = _ISOTOPE_LABEL.sub("", designation)
-        if native_keyword_for(stripped) == native:
-            return designation
-    return compound
+    """The key under which `eis_overrides` holds `compound`'s recovery limits:
+    the compound's keyword. A published method designates its extracted
+    internal standards by isotopologue, and each designation is a labelled
+    compound of the library (13C4-PFBA is not 13C3-PFBA), so the row is the
+    compound's own; a published spelling of a compound the catalogue holds
+    under another name (13C8-PFOSA for 13C8-FOSA) reaches that compound's
+    row. A compound with no row is judged on the method's default window.
+    Returns `compound` unchanged when the library does not know it."""
+    from .analyte_alias import keyword_of
+    return keyword_of(compound) or compound
 
 
 def get_included_display_analytes(method_id: str, matrix: str) -> list:
     """Return display-name analyte list filtered by the Method × Matrix panel.
 
     Reads ``analyte_matrix_inclusion`` from the profile cache (keyword-keyed
-    dict exported from the ZODB store).  If the cache has no inclusion data
-    yet (profile JSON not loaded), falls back to the full analyte list so
-    the pipeline continues to work before first configuration.
+    dict exported from the ZODB store). With no inclusion data, the full
+    analyte list.
 
-    Display names that differ from their keyword are mapped back through the
-    compound library's native names.  Default: included (True) when a
-    keyword is not found in the inclusion dict (conservative — never silently
-    drop an analyte due to missing config data).
+    Display names map to keywords through the compound library's native
+    names. A keyword missing from the inclusion dict is included: missing
+    config never silently drops an analyte.
     """
     data = _profile_data_cache.get(method_id, {})
     inclusion = data.get("analyte_matrix_inclusion")
@@ -1596,33 +1479,21 @@ def get_isomer_summation(method_id: str) -> list:
 
     Each is ``{"linear", "branched", "branched_list", "reported", "enabled"}``:
     `reported` is the analyte KEYWORD the sum is imported under (the label a
-    page shows may differ --); `branched_list` holds every
-    branched peak, `branched` the first (for any reader still expecting one).
+    page shows may differ); `branched_list` holds every branched peak,
+    `branched` the first.
 
-    Read from the method's `isomers` (the Isomers tab); a profile not yet
-    migrated still carries the legacy `isomer_summation` pairs.
+    Read from the method's `isomers` (the Isomers tab).
     """
-    data = _profile_data_cache.get(method_id, {})
-    groups = data.get("isomers")
-    if isinstance(groups, dict):
-        out = []
-        for kw, e in groups.items():
-            if not isinstance(e, dict):
-                continue            # always summed: one analyte is reported
-            branched = [b for b in (e.get("branched") or []) if b]
-            if not (e.get("linear") or branched):
-                continue
-            out.append({"linear": e.get("linear") or "", "branched": branched[0] if branched else "",
-                        "branched_list": branched, "reported": kw, "enabled": True})
-        return out
-    pairs = data.get("isomer_summation", []) or []
+    groups = _profile_data_cache.get(method_id, {}).get("isomers") or {}
     out = []
-    for p in pairs:
-        if not p.get("enabled", True):
+    for kw, e in groups.items():
+        if not isinstance(e, dict):
+            continue            # always summed: one analyte is reported
+        branched = [b for b in (e.get("branched") or []) if b]
+        if not (e.get("linear") or branched):
             continue
-        p = dict(p)
-        p["branched_list"] = [p["branched"]] if p.get("branched") else []
-        out.append(p)
+        out.append({"linear": e.get("linear") or "", "branched": branched[0] if branched else "",
+                    "branched_list": branched, "reported": kw, "enabled": True})
     return out
 
 
@@ -1630,47 +1501,326 @@ def get_surrogate_map(method_id: str) -> dict:
     """Which labeled surrogate quantifies each native analyte, per METHOD.
 
     §3 makes this the method's own relation ("SURROGATE MAP native ->
-    quantifying IS ... QUANTIFICATION link"), and the profile has always stored
-    it. Nothing read it: the analysis took the relationship from the instrument
-    file's `linked_is` column instead, falling back to a global alias table
-    that is not method-scoped. So a lab editing the drag-and-drop surrogate map
-    changed nothing, and the method's notation never reached the analysis.
+    quantifying IS ... QUANTIFICATION link"); the analysis reads it here,
+    not from the instrument file's `linked_is` column.
 
-    Keyed by BOTH the display name and the keyword, because the profile stores
-    whichever spelling the editor was given and the instrument exports display
-    names -- the mismatch that silently N.D.'d six analytes earlier.
+    Keyed by BOTH the display name and the keyword: the profile stores
+    whichever spelling the editor was given and the instrument exports
+    display names.
     """
-    out = {}
     rows = _profile_data_cache.get(method_id, {}).get("surrogate_map", []) or []
+    return _by_every_name(((row.get("analyte") or "").strip(), (row.get("surrogate_is") or "").strip())
+                          for row in rows)
+
+
+def _by_every_name(pairs):
+    """{every spelling of the analyte: value} for (analyte, value) pairs: the
+    profile stores keywords while the instrument exports display names."""
     try:
-        from .analyte_alias import keyword_for, NAME_TO_KEYWORD
+        from .analyte_alias import keyword_for, expand
     except ImportError:
-        keyword_for, NAME_TO_KEYWORD = None, {}
-    # Both directions. The profile stores keywords ("8:2FTS") while the
-    # instrument exports display names ("8:2 FTS"); keying one way only left
-    # the spaced spellings unresolved -- the same gap that silently reported
-    # six analytes as N.D.
-    by_keyword = {}
-    for name, kw in (NAME_TO_KEYWORD or {}).items():
-        by_keyword.setdefault(kw, []).append(name)
-    for row in rows:
-        analyte = (row.get("analyte") or "").strip()
-        surrogate = (row.get("surrogate_is") or "").strip()
-        if not analyte or not surrogate:
+        keyword_for, expand = None, None
+    out = {}
+    for analyte, value in pairs:
+        if not analyte or value in (None, ""):
             continue
-        out[analyte] = surrogate
+        out[analyte] = value
         kw = keyword_for(analyte) if keyword_for else analyte
-        if kw:
-            out[kw] = surrogate
-        for alias in by_keyword.get(kw, ()):
-            out[alias] = surrogate
+        if not kw:
+            continue
+        names = expand(kw) if expand else [kw]
+        for name in names:
+            out[name] = value
     return out
+
+
+_INTEGRATION_LABELS = {"smooth_points": "smoothing", "baseline": "baseline", "area": "area",
+                       "min_sn": "smallest signal-to-noise reported", "mz_tolerance": "m/z tolerance",
+                       "sensitivity": "sensitivity", "shoulder_pct": "shoulder split",
+                       "qual_apex_tol": "qualifier apex tolerance", "fit_max_dev_pct": "largest fit deviation",
+                       "rt_anchor": "relative retention"}
+
+# the settings each engine needs, in the order a refusal names them; an
+# unset engine is classic
+_INTEGRATION_SETTINGS = {
+    "classic": ("smooth_points", "baseline", "area", "min_sn", "mz_tolerance"),
+    "adaptive": ("smooth_points", "area", "min_sn", "mz_tolerance", "sensitivity", "shoulder_pct",
+                 "qual_apex_tol")}
+# the settings a fitted area (gaussian, emg) needs besides, under either
+# engine: past the largest fit deviation it falls back to the trapezoid
+_FIT_SETTINGS = ("fit_max_dev_pct",)
+
+# the settings a block names whatever its engine: always in the revision
+_REVISION_KEYS = ("smooth_points", "baseline", "area", "min_sn")
+# in the revision only when set, so a method that sets none keeps its revision
+_REVISION_KEYS_WHEN_SET = ("engine", "mz_tolerance", "sensitivity", "shoulder_pct", "qual_apex_tol",
+                           "fit_max_dev_pct", "rt_anchor", "min_manual_change_pct", "min_manual_sn",
+                           "edge_points", "min_peak_points", "edge_sigma", "drop_valley_max_pct",
+                           "skim_ratio_pct", "search_slope", "search_amp_sn", "search_smooth_pct",
+                           "candidate_min_points", "candidate_min_fwhm_pct")
+# the limits on an analyst's manual change: not the engine's, a refusal of
+# the edit when it is made (raw_preview.edit_problem)
+_MANUAL_LIMITS = (("min_manual_change_pct", "a smallest manual change"),
+                  ("min_manual_sn", "a smallest S/N for a manual peak"))
+
+def _unset(value):
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _transition(value):
+    return (float(value[0]), float(value[1]))
+
+
+def _smoothing(value):
+    """"auto" (any case) or the whole number of points; ValueError otherwise."""
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        return "auto"
+    if isinstance(value, bool):
+        raise ValueError(value)
+    number = float(value)
+    if number != int(number):
+        raise ValueError(value)
+    return int(number)
+
+
+def _points(value):
+    """A whole number of points; ValueError otherwise."""
+    if isinstance(value, bool):
+        raise ValueError(value)
+    number = float(value)
+    if number != int(number):
+        raise ValueError(value)
+    return int(number)
+
+
+_COMPOUND_SETTINGS = (("smooth_points", _smoothing, "smoothing"), ("area", str, None),
+                      ("min_sn", float, "a smallest signal-to-noise"), ("sensitivity", float, "a sensitivity"),
+                      ("min_qual_sn", float, "a smallest confirmation signal-to-noise"),
+                      ("rt_anchor", str, None)) + tuple((key, float, what) for key, what in _MANUAL_LIMITS) + (
+    ("edge_points", _points, "edge points"), ("min_peak_points", _points, "a fewest points in a peak"),
+    ("edge_sigma", float, "edges past the tail"), ("drop_valley_max_pct", float, "a valley limit"),
+    ("skim_ratio_pct", float, "a tangent skim ratio"), ("search_amp_sn", float, "a peak search amplitude"),
+    ("candidate_min_points", _points, "a fewest points in a candidate"),
+    ("candidate_min_fwhm_pct", float, "a smallest candidate width"))
+
+
+def _compound_settings(keyword, row):
+    """The settings a compound sets for itself on its Integration row: only
+    those entered (a blank is the method's), smoothing as "auto" or a whole
+    number, the rest as numbers. A value that is no number is refused naming
+    the compound; a number out of range is refused where it is applied
+    (raw_run.settings_for)."""
+    out = {}
+    for key, cast, what in _COMPOUND_SETTINGS:
+        value = row.get(key)
+        if value is None or str(value).strip() == "":
+            continue
+        try:
+            out[key] = cast(str(value).strip()) if cast is str else cast(value)
+        except (TypeError, ValueError):
+            raise UnconfiguredCriterion(
+                "Integration: {0} has {1} {2!r}, which is not a number.".format(keyword, what, value))
+    return out
+
+
+def _method_settings(method_id, engine, intg):
+    """The engine's settings object from the method's Integration block; a
+    value the engine refuses is refused naming the method. The classic
+    engine's edge points are the block's, 6 when unset."""
+    from .raw_integrate import EDGE_POINTS, AdaptiveSettings, Settings, method_baseline
+    try:
+        edge_points = EDGE_POINTS if _unset(intg.get("edge_points")) else _points(intg["edge_points"])
+    except (TypeError, ValueError):
+        edge_points = intg.get("edge_points")
+    try:
+        smooth = _smoothing(intg["smooth_points"])
+    except (TypeError, ValueError):
+        smooth = None
+    fit = intg.get("fit_max_dev_pct")
+    try:
+        if engine == "classic":
+            if not isinstance(smooth, int):
+                raise ValueError("smoothing is an odd number of points, 5 or more; auto is Adaptive's")
+            return Settings(smooth_points=smooth, baseline=method_baseline(intg["baseline"]), area=intg["area"],
+                            min_sn=float(intg["min_sn"]), fit_max_dev_pct=None if _unset(fit) else float(fit),
+                            edge_points=edge_points)
+        if smooth is None or (smooth != "auto" and (smooth < 3 or smooth % 2 == 0)):
+            raise ValueError("smoothing is auto or an odd number of points, 3 or more")
+        anchor = intg.get("rt_anchor")
+        # unset relative retention is fixed
+        return AdaptiveSettings(smooth=smooth if smooth == "auto" else (smooth - 1) // 2, area=intg["area"],
+                                min_sn=float(intg["min_sn"]), sensitivity=float(intg["sensitivity"]),
+                                shoulder_pct=float(intg["shoulder_pct"]),
+                                qual_apex_tol=float(intg["qual_apex_tol"]),
+                                fit_max_dev_pct=None if _unset(fit) else float(fit),
+                                rt_anchor="fixed" if _unset(anchor) else anchor)
+    except (TypeError, ValueError) as exc:
+        raise UnconfiguredCriterion(
+            "{0} cannot be integrated from raw data: Integration {1}. Set it in the Integration "
+            "section of the method's Run & reporting tab.".format(method_id, exc))
+
+
+def get_integration(method_id: str) -> dict:
+    """The method's Integration tab, for a run imported from raw data:
+    {"engine": "classic" | "adaptive", "method": raw_integrate.Settings
+    (classic) or raw_integrate.AdaptiveSettings (adaptive), "analytes":
+    {keyword: {"quant": (q1, q3), "quals": [(q1, q3)], "rt", "window", "mode",
+    "partner", "expected_ion_ratio", "labelled", "panel": a native or isomer
+    peak of the method's panel, "settings": the compound's
+    own smooth_points, area, min_sn, sensitivity, min_qual_sn, rt_anchor,
+    min_manual_change_pct and min_manual_sn, those entered}}, "mode",
+    "revision", "mz_tolerance", "sn_confirm_min": the method's
+    confirmation-ion limit, a qualifier's floor where its compound sets none
+    (None when unset), "min_manual_change_pct", "min_manual_sn": the
+    method's limits on a manual change (raw_preview.manual_limits: the
+    change defaults to 5 %, an unset S/N is no limit), "review_rules": {the
+    ten settings for a dropped baseline and the candidates offered, as
+    raw_preview.review_limits reads them for the method: edge_points,
+    min_peak_points, edge_sigma, drop_valley_max_pct, skim_ratio_pct,
+    search_slope, search_amp_sn, search_smooth_pct, candidate_min_points and
+    candidate_min_fwhm_pct, each its default where unset; a compound's own,
+    entered, are in its "settings")}. Nothing is seeded
+    but the m/z tolerance and relative retention, unset meaning fixed: an unset setting of the engine, a fitted area
+    under either engine without its largest fit deviation, or an analyte or labelled standard of
+    the method with no transition, time and window, is refused, naming
+    every one. An analyte with isomers (the Isomers tab) is integrated as
+    its linear and branched peaks, each partnered with the other, a
+    branched peak summed; the analyte's own row is not used."""
+    from .raw_run import DEFAULT_MZ_TOLERANCE
+    data = _profile_data_cache.get(method_id, {}) or {}
+    intg = dict(data.get("integration") or {})
+    # an unset m/z tolerance reads the default
+    if _unset(intg.get("mz_tolerance")):
+        intg["mz_tolerance"] = DEFAULT_MZ_TOLERANCE
+    engine = intg.get("engine")
+    engine = "classic" if _unset(engine) else engine
+    if engine not in _INTEGRATION_SETTINGS:
+        raise UnconfiguredCriterion(
+            "{0} cannot be integrated from raw data: Integration names the engine {1!r}, which is "
+            "neither classic nor adaptive.".format(method_id, engine))
+    grid = data.get("labelled_standards") if isinstance(data.get("labelled_standards"), dict) else {}
+    rows = intg.get("analytes") or {}
+    needed_keys = list(_INTEGRATION_SETTINGS[engine])
+    if intg.get("area") in ("gaussian", "emg"):
+        needed_keys.extend(_FIT_SETTINGS)
+    unset = [_INTEGRATION_LABELS[key] for key in needed_keys if _unset(intg.get(key))]
+    # an analyte with isomers is integrated as its peaks, each its own
+    # analyte; its own row is not used
+    from .addon import load
+    iso_mod, iso = load("isomers"), data
+    panel = list(data.get("master_analyte_set") or [])
+    split = dict((kw, iso_mod.peaks_of(iso, kw)) for kw in panel if iso_mod.peaks_of(iso, kw))
+    on_panel = iso_mod.integration_names(iso, panel)
+    needed = on_panel + sorted(grid)
+    missing = [k for k in needed
+               if not all((rows.get(k) or {}).get(f) not in (None, "", []) for f in ("quant", "rt", "window"))]
+    if unset or missing:
+        parts = []
+        if unset:
+            parts.append("the settings " + ", ".join(unset))
+        if missing:
+            parts.append("a transition, retention time and window for " + ", ".join(missing))
+        unused = ["{0} is integrated as {1}: its own row is not used.".format(kw, " and ".join(split[kw]))
+                  for kw in sorted(split) if kw in rows and any(p in missing for p in split[kw])]
+        raise UnconfiguredCriterion(
+            "{0} cannot be integrated from raw data: Integration has no {1}. {2}Set them in "
+            "the Integration section of the method's Run & reporting tab.".format(
+                method_id, "; no ".join(parts), "".join(u + " " for u in unused)))
+    settings = _method_settings(method_id, engine, intg)
+    from .addon import load
+    try:
+        manual_change, manual_sn = load("raw_preview").manual_limits(
+            dict((key, intg.get(key)) for key, _what in _MANUAL_LIMITS), None)
+    except (TypeError, ValueError):
+        raise UnconfiguredCriterion(
+            "{0}: Integration has {1}, which is not a number.".format(
+                method_id, " or ".join("{0} {1!r}".format(what, intg.get(key)) for key, what in _MANUAL_LIMITS
+                                       if not _unset(intg.get(key)))))
+    partners, branched = iso_mod.partners(iso), iso_mod.branched_peaks(iso)
+    analytes = {}
+    for k, row in rows.items():
+        if not row.get("quant") or k in split:
+            continue
+        ratio = row.get("expected_ion_ratio")
+        analytes[k] = {"quant": _transition(row["quant"]),
+                       "quals": [_transition(q) for q in row.get("quals") or []],
+                       "rt": float(row["rt"]), "window": float(row["window"]),
+                       "mode": row.get("mode") or "single", "partner": row.get("partner") or None,
+                       "expected_ion_ratio": None if ratio in (None, "") else float(ratio),
+                       "labelled": k in grid, "panel": k in on_panel,
+                       "settings": _compound_settings(k, row)}
+        # an isomer peak's partner comes from the Isomers tab; a branched
+        # peak is the sum of the peaks in its window
+        if k in partners:
+            analytes[k]["partner"] = partners[k]
+        if k in branched:
+            analytes[k]["mode"] = "summed"
+    # the rules for a dropped baseline, the method's and each compound's own
+    review = load("raw_preview").review_limits
+    try:
+        review_rules = review(intg, None)
+    except (TypeError, ValueError) as exc:
+        raise UnconfiguredCriterion("{0}: Integration {1}.".format(method_id, exc))
+    for k in analytes:
+        try:
+            # the compound's own, as the review resolves them when an edit is made
+            analytes[k]["review"] = review(intg, k)
+        except (TypeError, ValueError) as exc:
+            raise UnconfiguredCriterion("{0}: Integration, {1}: {2}.".format(method_id, k, exc))
+    # the Adaptive engine fits no pair: a pair would be integrated as the
+    # nearest single peak, so it is refused, naming it
+    pairs = sorted(k for k in analytes if analytes[k]["mode"] == "pair")
+    if engine == "adaptive" and pairs:
+        raise UnconfiguredCriterion(
+            "{0} cannot be integrated from raw data: {1} {2} a co-eluting pair, which the Adaptive engine "
+            "does not fit. Make {3} a single peak, or choose Classic, in the Integration section of the "
+            "method's Run & reporting tab.".format(method_id, ", ".join(pairs),
+                                                    "is" if len(pairs) == 1 else "are",
+                                                    "it" if len(pairs) == 1 else "each"))
+    # the settings' fingerprint, named on every peak (not the results
+    # source: it changes no peak)
+    import hashlib
+    import json as _json
+    stored = data.get("integration") or {}
+    kept = dict((k, stored.get(k)) for k in _REVISION_KEYS)
+    kept.update((k, stored[k]) for k in _REVISION_KEYS_WHEN_SET if not _unset(stored.get(k)))
+    kept["analytes"] = rows
+    # the isomer peaks decide partners and the branched peak's mode: part of
+    # the fingerprint when the method has any
+    if split:
+        kept["isomer_peaks"] = split
+    confirm = (((data.get("instrument_verification") or {}).get("confirmation") or {})
+               .get("sn_confirm_min"))
+    confirm = None if _unset(confirm) else float(confirm)
+    # the qualifier floor changes the qualifier peaks: part of the fingerprint when set
+    if confirm is not None:
+        kept["sn_confirm_min"] = confirm
+    revision = hashlib.sha1(_json.dumps(kept, sort_keys=True).encode("utf-8")).hexdigest()[:8]
+    return {"engine": engine, "method": settings, "analytes": analytes, "mode": intg.get("mode") or "vendor",
+            "revision": revision, "mz_tolerance": float(intg["mz_tolerance"]), "sn_confirm_min": confirm,
+            "min_manual_change_pct": manual_change, "min_manual_sn": manual_sn, "review_rules": review_rules}
+
+
+def integration_mode(method_id: str) -> str:
+    """Where the method's results come from (Integration): "vendor" (the
+    default), "validation" or "lims"."""
+    intg = (_profile_data_cache.get(method_id, {}) or {}).get("integration") or {}
+    return intg.get("mode") if intg.get("mode") in ("vendor", "validation", "lims") else "vendor"
+
+
+def get_labelled_links(method_id: str) -> dict:
+    """{labelled standard: the standard it is linked to} from the method's
+    labelled-standards grid (a surrogate quantified on its injection standard)."""
+    grid = _profile_data_cache.get(method_id, {}).get("labelled_standards")
+    if not isinstance(grid, dict):
+        return {}
+    return dict((k, (v or {}).get("reference")) for k, v in grid.items() if (v or {}).get("reference"))
 
 
 def get_labelled_roles(method_id: str) -> dict:
     """{keyword: "surrogate" | "injection_is"} from the method's labelled-
-    standards grid, or {} for a profile without one --
-    callers then fall back to the global roles, as before the grid existed."""
+    standards grid, or {} for a profile without one; callers then use the
+    global roles."""
     grid = _profile_data_cache.get(method_id, {}).get("labelled_standards")
     if not isinstance(grid, dict):
         return {}
@@ -1693,63 +1843,41 @@ def get_surrogate_is_chain(method_id: str) -> dict:
     its LINK in the method's grid (MS Quan style: any used standard may
     reference any other). Under FDA every surrogate links to 13C4-PFOA.
 
-    Read from `labelled_standards`; a profile not yet migrated still carries
-    the legacy `surrogate_is_chain`."""
-    data = _profile_data_cache.get(method_id, {})
-    grid = data.get("labelled_standards")
-    if isinstance(grid, dict):
-        return dict((k, v["reference"]) for k, v in grid.items()
-                    if isinstance(v, dict) and v.get("reference"))
-    return dict(data.get("surrogate_is_chain", {}) or {})
+    Read from `labelled_standards`."""
+    grid = _profile_data_cache.get(method_id, {}).get("labelled_standards") or {}
+    return dict((k, v["reference"]) for k, v in grid.items()
+                if isinstance(v, dict) and v.get("reference"))
 
 
 def get_salt_factors(method_id: str) -> dict:
     """Per-analyte salt (counter-ion) correction, keyed by analyte.
 
     §3 lists SALT FACTOR as a core method relation: "per analyte x method
-    (decimal < 1, from CoA)". The Method Profile editor has always collected it,
-    complete with the reference-standard lot it came from -- and nothing applied
-    it. The string "salt" did not appear anywhere in this package. FDA_32PFAS
-    carries 0.9636 for PFOA against lot MXA-2453-A; every PFOA result issued so
-    far was 3.6% high.
+    (decimal < 1, from CoA)", entered with the reference-standard lot it
+    came from.
 
-    `salt_adjustment_factors` is the authoritative key -- it is what the editor
-    writes and where the data is. `extraction_corrections.salt_factors` is a
-    seeded empty list read only by the QC Rules pane, and
-    `qc_rules.salt_factors` was deprecated by D53; neither is consulted here.
+    `salt_adjustment_factors` is the key the editor writes;
+    `extraction_corrections.salt_factors` and `qc_rules.salt_factors` are
+    not consulted here.
     """
     rows = _profile_data_cache.get(
         method_id, {}).get("salt_adjustment_factors", []) or []
-    try:
-        from .analyte_alias import keyword_for, NAME_TO_KEYWORD
-    except ImportError:
-        keyword_for, NAME_TO_KEYWORD = None, {}
-    by_keyword = {}
-    for name, kw in (NAME_TO_KEYWORD or {}).items():
-        by_keyword.setdefault(kw, []).append(name)
-
-    out = {}
+    pairs = []
     for row in rows:
         analyte = (row.get("analyte") or "").strip()
         try:
             factor = float(row.get("factor"))
         except (TypeError, ValueError):
             continue
-        # 1.0 is "no correction"; storing it is how the editor records that a
-        # lot was linked without a numeric adjustment.
+        # 1.0 is "no correction": the editor stores it for a lot linked
+        # without a numeric adjustment
         if not analyte or factor == 1.0 or factor <= 0:
             continue
-        out[analyte] = factor
-        kw = keyword_for(analyte) if keyword_for else analyte
-        if kw:
-            out[kw] = factor
-        for alias in by_keyword.get(kw, ()):
-            out[alias] = factor
+        pairs.append((analyte, factor))
+    out = _by_every_name(pairs)
 
-    # An isomer pair is quantified from the same salt-form standard as the
-    # analyte it sums to, but the instrument reports it as lr-/br- rows. Naming
-    # only the reported analyte would leave both components uncorrected and the
-    # sum along with them.
+    # an isomer pair is quantified from the salt-form standard of the analyte
+    # it sums to, and reported as lr-/br- rows: each component takes its factor
     for pair in get_isomer_summation(method_id):
         factor = out.get(pair.get("reported"))
         if not factor:

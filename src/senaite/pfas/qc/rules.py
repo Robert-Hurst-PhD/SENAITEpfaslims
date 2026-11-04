@@ -12,7 +12,7 @@ method_profile_store.py under qc_acceptance — no fallbacks, no global defaults
 Rules are stored as JSON at DEFAULT_RULES_PATH (shared QC volume so both the
 Zope browser and the Python-3 pipeline can read/write).
 
-A Manager user edits rules via @@pfas-qc-rules.  The engine loads them at
+A Manager edits them on the method profile's tabs.  The engine loads them at
 run time so no code deploy is needed to tighten a window.
 """
 from __future__ import absolute_import, print_function, unicode_literals
@@ -20,6 +20,10 @@ from __future__ import absolute_import, print_function, unicode_literals
 import json
 import logging
 import os
+
+from senaite.pfas.qc_names import QC_NAMES
+
+from senaite.pfas.blank_history import BLANK_TYPES
 
 logger = logging.getLogger("senaite.pfas.qc.rules")
 
@@ -35,145 +39,210 @@ CHART_THRESHOLD = "threshold"       # flat threshold line only (blanks)
 # (configured_methods.choices); this module keeps no list of its own.
 
 # ── Instrument Verification rule library ─────────────────────────────────────
-# Only instrument-level rules live here.  Extraction/matrix QC acceptance
-# (LCS, LFB, LFSM, LFSMD, MB, LRB, Dup, MxB recovery/RPD/blank windows) are
-# defined per-method in the Method Profile (method_profile_store.py qc_acceptance).
-# A rule is an on/off switch. Its LIMITS are the method profile's own fields
-# (Calibration & CCV: R2, CCV window, S/N, ion ratio, RT, IS response) --
-# QC consolidation P2 removed the second copy that lived here as "params".
+# Only instrument-level rules live here (see the module docstring). A rule
+# has one state (STATES below). Its LIMITS are the method profile's
+# own fields (R2, CCV window, S/N, ion ratio, RT, IS response), never kept
+# here.
+# `scope` is what the rule's limits vary by (one of the SCOPE_ words, written
+# out: the library is read as a literal); `editor` is where the QC criteria
+# tab edits them: "drawer:<section id>:<group>" opens that group of the
+# declared section from the rule's row, None when they are kept on another
+# tab (the MDL on Analytes, the SUR limits on Isotope standards).
+SCOPE_METHOD = u"Method"
+SCOPE_WINDOWS = u"QC type \u00d7 analyte group \u00d7 matrix"
 RULE_LIBRARY = [
     {"key": "is_response",   "label": "IS Response", "params": [],
-     "note": u"Window: IS / Surrogate Response (Calibration & CCV tab)."},
-    {"key": "rrt_deviation", "label": "RRT / RT Deviation", "params": [],
-     "note": u"Tolerance: relative / absolute RT (Calibration & CCV tab)."},
+     "scope": u"Method", "editor": u"drawer:cal:IS / Surrogate Response",
+     "note": u"Window: IS / Surrogate Response (QC criteria tab)."},
+    # the IS response's second condition, its own switch: against the most
+    # recent CCV (judged inside the IS response check, when that is on)
+    {"key": "is_vs_ccv", "label": "IS response vs. the most recent CCV", "params": [],
+     "scope": u"Method", "editor": u"drawer:cal:IS / Surrogate Response",
+     "note": u"Window: Compared to the most recent CCV (QC criteria tab)."},
+    {"key": "rrt_deviation", "label": "RT Deviation", "params": [],
+     "scope": u"Method", "editor": u"drawer:cal:Chromatographic Confirmation & Signal Quality",
+     "note": u"Tolerance: relative / absolute RT (QC criteria tab)."},
     {"key": "ion_ratio",     "label": "Ion Ratio", "params": [],
-     "note": u"Ion Ratio Tolerance (Calibration & CCV tab); blank = not judged."},
+     "scope": u"Method", "editor": u"drawer:cal:Chromatographic Confirmation & Signal Quality",
+     "note": u"Ion Ratio Tolerance (QC criteria tab); blank = not judged."},
     {"key": "cal_r2",        "label": u"Calibration r²", "params": [],
-     "note": u"R² Minimum (Calibration & CCV tab)."},
+     "scope": u"Method", "editor": u"drawer:cal:Calibration",
+     "note": u"R² Minimum (QC criteria tab)."},
     {"key": "ccv_recovery",  "label": "CCV Recovery", "params": [],
-     "note": u"Recovery Min / Max (Calibration & CCV tab)."},
-    # N is the method profile's CCV frequency (Calibration & CCV) -- the value
-    # the Run Builder brackets with; the duplicate "CCV every N" parameter that
-    # stood here (10 everywhere, FDA's profile says 6) was retired 2026-10-01.
+     "scope": u"Method", "editor": u"drawer:cal:Continuing Calibration Verification (CCV)",
+     "note": u"Recovery Min / Max (QC criteria tab)."},
+    # N is the method profile's CCV frequency (Run Template), the value the
+    # Run Builder brackets with
     {"key": "ccv_frequency", "label": "CCV Frequency", "params": [],
-     "note": u"N is the method's CCV frequency (Calibration & CCV tab)."},
+     "scope": u"Method", "editor": u"drawer:run_rules:Continuing Calibration Verification (CCV)",
+     "note": u"N is the method's CCV frequency (QC criteria tab)."},
     {"key": "sn_min",        "label": "S/N Minimum", "params": [],
-     "note": u"S/N minima, quantitation and confirmation (Calibration & CCV tab)."},
-    # Flags a detected result below the analyte's MDL (Reporting Limits). The
-    # "min replicate count" parameter was dropped 2026-10-01: no MDL-study
-    # record exists for it to be checked against.
+     "scope": u"Method", "editor": u"drawer:cal:Chromatographic Confirmation & Signal Quality",
+     "note": u"S/N minima, quantitation and confirmation (QC criteria tab)."},
+    # flags a detected result below the analyte's MDL (Reporting Limits)
     {"key": "mdl_check",     "label": "MDL Check", "params": [],
-     "note": u"Flags detections below the MDL (Reporting Limits tab)."},
-    # Every injection's labelled-surrogate recovery (wired 2026-10-01; the
-    # check ran whatever this said before).
+     "scope": u"Method", "editor": None,
+     "note": u"Flags detections below the MDL (Analytes tab)."},
+    # every injection's labelled-surrogate recovery
     {"key": "surrogate_recovery", "label": "Surrogate Recovery", "params": [],
+     "scope": u"Standard \u00d7 matrix class", "editor": None,
      "note": u"Windows from the method text or the SUR limits."},
     # Whether the system PROMPTS for confirmation of a single-transition
-    # positive. The obligation is method text (FDA §10.2(4)) and is not in
-    # question; what is optional is this prompt, because a lab may confirm PFBA
-    # by a route that is not LC-HRMS -- a second column, different ionisation,
-    # an alternative transition -- and may be recording that elsewhere.
-    #
-    # WHICH analytes need confirming and WHICH technique is named live in the
-    # method profile's `confirmation` block, beside the other confirmation
-    # settings. This is the on/off switch only: one fact, one home.
+    # positive. The obligation is method text (FDA §10.2(4)); the prompt is
+    # optional because a lab may confirm by another route (a second column,
+    # another ionisation, another transition) and record it elsewhere.
+    # WHICH analytes and WHICH technique live in the method profile's
+    # `confirmation` block; this is the on/off switch only.
     {"key": "single_transition_confirm",
-     "label": "Single-Transition Confirmation", "params": [],
-     "note": u"Technique named under Chromatographic Confirmation (Calibration & CCV tab)."},
+     "label": "Qualifier ion check", "params": [],
+     "scope": u"Method", "editor": u"drawer:cal:Single-Transition Confirmation",
+     "note": u"A single-transition analyte's positive is confirmed by a second technique "
+             u"(QC criteria tab)."},
     # A result above the method's top calibration level (the profile's
     # levels, in the matrix's reporting unit) reads ALoQ and is reported from
     # the dilution, whatever the instrument wrote (on by default).
     {"key": "over_range", "label": "Above the Calibration Range", "params": [],
-     "note": u"Top level: the highest calibration level (Calibration & CCV tab)."},
+     "scope": u"Method", "editor": u"drawer:cal:Calibration",
+     "note": u"Top level: the highest calibration level (QC criteria tab)."},
 ]
 
-# ── Default toggle state per method ──────────────────────────────────────────
-# True = rule is evaluated; False = rule is skipped.
-DEFAULT_METHOD_RULE_TOGGLES = {
-    "FDA_32PFAS": {
-        "is_response": True, "rrt_deviation": True, "ion_ratio": True,
-        "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
-        "sn_min": False, "mdl_check": False,
-        # ON for FDA: §10.2(4) names PFBA/PFPeA and the lab can switch the
-        # prompt off if it confirms them another way.
-        "single_transition_confirm": True,
-        "surrogate_recovery": True,
-        "over_range": True,
-    },
-    "EPA_537_1": {
-        # no ion-ratio criterion in EPA 537.1
-        "is_response": True, "rrt_deviation": True, "ion_ratio": False,
-        "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
-        "sn_min": False, "mdl_check": True,
-        # Inert rather than off: 537.1 declares no single-transition analytes,
-        # so the check finds nothing to confirm. Left ON so that a lab which
-        # DOES declare one gets the prompt without also having to find a switch.
-        "single_transition_confirm": True,
-        "surrogate_recovery": True,
-        "over_range": True,
-    },
-    "EPA_1633A": {
-        "is_response": True, "rrt_deviation": True, "ion_ratio": True,
-        "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
-        "sn_min": True, "mdl_check": True,
-        "single_transition_confirm": True,
-        "surrogate_recovery": True,
-        "over_range": True,
-    },
-}
 
-# Extraction / matrix QC is switched by the METHOD PROFILE's QC Types flag
-# (qc_acceptance[CODE].enabled), beside its limits. The QC Rules grid shows
-# these as switches that write that same flag -- one fact, two places.
-# Never stored in method_rule_toggles.
-QC_TYPE_SWITCHES = [
-    ("LFSM", u"LFSM Recovery"), ("LFSMD", u"LFSMD RPD"),
-    ("MB", u"Method Blank"), ("LRB", u"Reagent Blank (LRB)"), ("MxB", u"Matrix Blank"),
-    ("LFB", u"LFB Recovery"), ("LCS", u"LCS Recovery"),
-]
-# Keys an earlier toggle grid stored that nothing reads; removed by
-# migrate_rule_store, as are the two retired parameters.
-RETIRED_TOGGLES = ("blank_contamination", "mb_blank", "lcs_recovery",
-                   "lfsm_recovery", "lfsmd_rpd")
-RETIRED_PARAMS = ("ccv_frequency_n", "mdl_n_min")
+# A rule is in one of three states: Enforced (a failure blocks), Evaluate
+# (it is judged and filed as advisory, blocking nothing) or Off.
+STATES = ("enforced", "evaluate", "off")
 
 
-def migrate_rule_store(rules):
-    """True if `rules` lost retired toggles / parameters (in place, idempotent)."""
-    changed = False
-    for toggles in (rules.get("method_rule_toggles") or {}).values():
-        for k in RETIRED_TOGGLES:
-            if k in toggles:
-                toggles.pop(k)
-                changed = True
-    for bucket in [rules.get("global") or {}] + list((rules.get("method_overrides") or {}).values()):
-        for k in RETIRED_PARAMS:
-            if k in bucket:
-                bucket.pop(k)
-                changed = True
-    return changed
+# A QC type's run row and a blank's row take the same three states, keyed
+# by the type's stored spelling (qc_acceptance's key: "Dup", "MxB"). Only the
+# lab's QC types (QC_NAMES) have a row; a blank is one of the blank kinds.
+QC_TYPE_PREFIX, BLANK_PREFIX = "qc_type.", "blank."
+
+
+def QC_TYPE_KEY(code):
+    return QC_TYPE_PREFIX + code
+
+
+def BLANK_KEY(code):
+    return BLANK_PREFIX + code
+
+
+def qc_row_key(code):
+    """The rule-state key of a QC type's or blank's row; None for a type
+    with no such row (an instrument check, the surrogates)."""
+    if code not in QC_NAMES:
+        return None
+    return BLANK_KEY(code) if code in BLANK_TYPES else QC_TYPE_KEY(code)
+
+
+def qc_row_code(key):
+    """The QC type a QC-type or blank row's key names; None for a rule."""
+    for prefix in (QC_TYPE_PREFIX, BLANK_PREFIX):
+        if key.startswith(prefix):
+            return key[len(prefix):]
+    return None
+
+
+def is_qc_row_key(key):
+    return qc_row_code(key) is not None
+
+
+# The Low-level recoveries row: whether a recovery judged against a
+# low-level tier is judged (Enforced), filed as advisory (Evaluate) or not
+# judged (Off). Extraction QC, owned by the method profile like a QC type's
+# row, so it is no instrument rule of RULE_LIBRARY.
+LOW_LEVEL_ROW = "low_level_recovery"
+
+
+def is_profile_row_key(key):
+    """A QC type's, a blank's or the Low-level recoveries row: a state the
+    method profile holds that is no rule switch."""
+    return key == LOW_LEVEL_ROW or is_qc_row_key(key)
+
+
+def set_row_state(profile, key, state):
+    """Store a row's state where it differs from the state the row reads
+    (rule_state), so an untouched tab writes nothing. True if stored."""
+    if state not in STATES or state == rule_state(profile, None, key):
+        return False
+    states = dict(profile.get("rule_states") or {})
+    states[key] = state
+    profile["rule_states"] = states
+    return True
+
+
+def qc_row_switched(profile, code, on):
+    """The state an on / off switch gives a QC type's row: Off when off;
+    when on, the state it holds, so a switch left on keeps Evaluate."""
+    if not on:
+        return "off"
+    key = qc_row_key(code)
+    held = rule_state(profile, None, key) if key else "enforced"
+    return "enforced" if held == "off" else held
+
+
+def set_qc_row_state(profile, code, state):
+    """Set a QC type's or blank's row: where the state differs from the one
+    the row reads (rule_state: a type the method does not hold reads
+    Enforced), it is stored, whether or not the method holds the type, and a
+    held type's `enabled` flag follows it (on unless Off), the flag being
+    what older readers read. A state the row already reads writes nothing,
+    so an untouched tab changes nothing; no `qc_acceptance` entry is ever
+    created here. A type with no row only has its flag set. Returns the
+    profile."""
+    key = qc_row_key(code)
+    entry = (profile.get("qc_acceptance") or {}).get(code)
+    if key is None:
+        if isinstance(entry, dict) and state in STATES:
+            entry["enabled"] = state != "off"
+        return profile
+    if set_row_state(profile, key, state) and isinstance(entry, dict):
+        entry["enabled"] = state != "off"
+    return profile
+
+
+def rule_state(profile, method_id, key):
+    """One rule's state for one method: the profile's `rule_states`, then its
+    `rule_toggles` (on = enforced); a rule the profile does not mention is
+    enforced, as the worker judges it. A QC type's or blank's row with no
+    state reads its type's `enabled` flag (absent = enforced). `method_id`
+    is kept for the callers; the state never depends on it."""
+    profile = profile or {}
+    state = (profile.get("rule_states") or {}).get(key)
+    if state in STATES:
+        return state
+    code = qc_row_code(key)
+    if code is not None:
+        entry = (profile.get("qc_acceptance") or {}).get(code)
+        if isinstance(entry, dict) and not entry.get("enabled", True):
+            return "off"
+        return "enforced"
+    toggles = profile.get("rule_toggles") or {}
+    if key in toggles:
+        return "enforced" if toggles[key] else "off"
+    return "enforced"
 
 
 def method_toggles(profile, method_id):
-    """{rule key: on} for one method: the profile's own `rule_toggles` over the
-    library default for any rule it has not set (a new rule starts at its
-    default). The one reader of rule switches (QC consolidation P2)."""
-    out = dict(DEFAULT_METHOD_RULE_TOGGLES.get(method_id, {}))
-    for r in RULE_LIBRARY:
-        out.setdefault(r["key"], True)
-    out.update((profile or {}).get("rule_toggles") or {})
-    return out
+    """{rule key: on} for one method: a rule is on in the state Enforced and
+    in the state Evaluate, off only when Off. The one reader of rule
+    switches. The QC-type and blank rows are not rule
+    switches: their on / off is their type's `enabled` flag."""
+    keys = set(r["key"] for r in RULE_LIBRARY)
+    keys.update((profile or {}).get("rule_toggles") or {})
+    keys.update((profile or {}).get("rule_states") or {})
+    return dict((k, rule_state(profile, method_id, k) != "off") for k in keys
+                if not is_profile_row_key(k))
 
 
-# qc_rules.json values that are QC CRITERIA, not chart presentation; they
-# live on the method profile now and are stripped from the file.
+# qc_rules.json values that are QC CRITERIA, not chart presentation: the
+# method profile owns them, and they are stripped from the file.
 CRITERIA_KEYS = ("pct_deviation_max", "pct_deviation_warn", "recovery_min",
                  "recovery_max", "recovery_warn_low", "recovery_warn_high",
                  "recovery_min_key_matrix", "recovery_max_key_matrix", "rpd_max")
 
 
 def strip_moved_sections(saved):
-    """Remove what moved to the method profiles from a qc_rules.json dict (in
+    """Remove what the method profiles own from a qc_rules.json dict (in
     place): rule toggles, method overrides, global defaults, and the criteria
     half of qc_types. True if anything was removed."""
     changed = False
@@ -190,10 +259,11 @@ def strip_moved_sections(saved):
 
 # ── Mapping: RULE_LIBRARY key → engine review-check name(s) ──────────────────
 # Used by the pipeline worker to gate auto_evaluate() blocks.
-# Empty list = rule is UI-only; the toggle affects whether the check appears in
-# the review queue but there is no automated engine flag-check for it yet.
+# An empty list: no review check of its own; the rule acts where its comment
+# says.
 LIBRARY_KEY_TO_ENGINE_CHECKS = {
     "is_response":   ["is_response"],
+    "is_vs_ccv":     [],   # gated inside the IS response check (qc_engine)
     "rrt_deviation": ["rt_deviation"],
     "ion_ratio":     ["ion_ratio"],
     "cal_r2":        ["r_squared"],
@@ -214,9 +284,7 @@ DEFAULT_RULES = {
     "updated_by": "",
     "updated_at": "",
 
-    # Instrument verification QC types only.
-    # LCS, LFB, LFSM, LFSMD, MB, MxB, LRB, Dup acceptance criteria live in
-    # method_profile_store.py qc_acceptance (per-method, tiered, no fallbacks).
+    # instrument verification QC types only (see the module docstring)
     "qc_types": {
         "CAL": {"label": "Calibration Standard", "chart_type": CHART_LJ},
         "ICV": {"label": "Initial Calibration Verification", "chart_type": CHART_LJ},
@@ -232,13 +300,6 @@ class QCRulesStore(object):
     def __init__(self, path=None):
         self.path = path or DEFAULT_RULES_PATH
 
-    def _ensure_dir(self):
-        d = os.path.dirname(self.path)
-        if d and not os.path.exists(d):
-            try:
-                os.makedirs(d)
-            except OSError:
-                pass
 
     def load(self):
         """Return merged rules dict (defaults overridden by file if present)."""
@@ -253,36 +314,40 @@ class QCRulesStore(object):
             rules["version"] = saved.get("version", rules["version"])
             rules["updated_by"] = saved.get("updated_by", "")
             rules["updated_at"] = saved.get("updated_at", "")
-            # Per-QC-type overrides (instrument types only: CAL, ICV, CCV)
-            # Control-chart presentation per QC type. Criteria, rule toggles,
-            # method overrides and global defaults are NOT loaded: they live on
-            # the method profile (QC consolidation P2).
+            # control-chart presentation per instrument QC type (CAL, ICV,
+            # CCV); criteria, rule toggles, method overrides and global
+            # defaults are NOT loaded: the method profile owns them
             if "qc_types" in saved:
                 for qtype, overrides in saved["qc_types"].items():
                     if qtype not in rules["qc_types"]:
                         rules["qc_types"][qtype] = {}
                     rules["qc_types"][qtype].update(
                         (k, v) for k, v in overrides.items() if k not in CRITERIA_KEYS)
-            # NOTE: salt_factors is intentionally NOT loaded here. Salt
-            # adjustment is a CORE per-method sample correction (lives in the
-            # method profile, applied to ALL samples), not a QC-engine concept.
-            # The legacy qc_rules.salt_factors block is deprecated/dead.
+            # salt_factors is NOT loaded: salt adjustment is a per-method
+            # sample correction on the method profile, applied to ALL
+            # samples, not a QC-engine concept
         except (ValueError, KeyError, IOError) as exc:
             logger.error("Could not load QC rules from %s: %s", self.path, exc)
         return rules
 
+    def _ensure_dir(self):
+        d = os.path.dirname(self.path)
+        if d and not os.path.exists(d):
+            try:
+                os.makedirs(d)
+            except OSError:
+                pass
+
     def save(self, rules, updated_by=""):
         """Persist rules dict to JSON."""
-        try:   # change history (R1)
-            from senaite.pfas import config_history
-            config_history.track(None, "qc_rules", "rules", self.load,
-                                 label=u"QC chart settings")
-        except Exception:
-            pass
+        # change history: track() itself decides whether a failure blocks the save
+        from senaite.pfas import config_history
+        config_history.track(None, "qc_rules", "rules", self.load,
+                             label=u"QC chart settings")
         import datetime
         self._ensure_dir()
-        # the file holds chart presentation only; what moved to the method
-        # profiles can never be written back (e.g. by reverting an old entry)
+        # the file holds chart presentation only; what the method profiles
+        # own is never written back (e.g. by reverting an old entry)
         strip_moved_sections(rules)
         rules["updated_by"] = updated_by
         rules["updated_at"] = datetime.datetime.utcnow().strftime(
@@ -327,3 +392,5 @@ def get_store(path=None):
 def get_rules(path=None):
     """Convenience: return merged rules dict."""
     return get_store(path).load()
+
+

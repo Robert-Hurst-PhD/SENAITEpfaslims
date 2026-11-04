@@ -9,8 +9,7 @@ Analysis Services (their PFAS tab; senaite.pfas.compound_library) and
 exported to the worker from them. The tables below are what the install and
 the one-time migration write onto those services
 (compound_library.seed_rows); a value changed in Setup is not changed here.
-The worker never reads this file; the few add-on pages that still label
-analytes from it are open work.
+The worker never reads this file.
 
 CAS numbers and full chemical names are populated where well-established;
 entries marked PLACEHOLDER need lab confirmation against your standard COAs.
@@ -22,10 +21,13 @@ Fields (NATIVE_ANALYTES tuple, 9 elements):
   [3] full_name      — IUPAC-ish full chemical name
   [4] klass          — PFCA | PFSA | FTS | FOSA | PFECA | Cl-PFAES | FTCA | other
   [5] chain          — perfluorocarbon chain length (approx, for sort order)
-  [6] surrogate_is   — the labeled IS keyword that quantifies this native (FDA §9-1)
+  [6] surrogate_is   — the labeled IS keyword that quantifies this native in the
+                       FDA method (its Table 9-1; the FTS natives take the
+                       deuterated standards there, EPA 1633A seeds its own
+                       Table 6 pairs with the carbon-13 ones)
   [7] no_labeled     — reference only, NOT read: whether an analyte has its own
                        labelled standard is derived per method from its surrogate
-                       links (labelled_coverage; consolidation P4). Kept so the
+                       links (labelled_coverage). Kept so the
                        row layout does not shift; tests pin that the derivation
                        agrees with it on the shipped profiles.
   [8] is_key_analyte — True for the four regulatory priority analytes and their
@@ -59,7 +61,7 @@ NATIVE_ANALYTES = [
     ("PFNS",   "PFNS",   "68259-12-1", "Perfluorononanesulfonic acid",                    "PFSA",    9,  "",                 True,  False),
     ("PFDS",   "PFDS",   "335-77-3",   "Perfluorodecanesulfonic acid",                    "PFSA",    10, "",                 True,  False),
     ("PFDoS",  "PFDoS",  "79780-39-5", "Perfluorododecanesulfonic acid",                  "PFSA",    12, "",                 True,  False),
-    ("PFTrDS", "PFTrDS", "PLACEHOLDER","Perfluorotridecanesulfonic acid",                 "PFSA",    13, "",                 True,  False),
+    ("PFTrDS", "PFTrDS", "791563-89-8","Perfluorotridecanesulfonic acid",                 "PFSA",    13, "",                 True,  False),
     ("PFUnDS", "PFUnDS", "749786-16-1","Perfluoroundecanesulfonic acid",                  "PFSA",    11, "",                 True,  False),
     ("4:2FTS", "4:2 FTS","757124-72-4","1H,1H,2H,2H-perfluorohexane sulfonic acid",       "FTS",     6,  "13C2-D4-4:2FTS",        False, False),
     ("6:2FTS", "6:2FTS", "27619-97-2", "1H,1H,2H,2H-perfluorooctane sulfonic acid",       "FTS",     8,  "13C2-D4-6:2FTS",        False, False),
@@ -112,6 +114,9 @@ INTERNAL_STANDARDS = [
     ("13C2-PFHxA",  "13C2-PFHxA",         "PFHxA",  "surrogate"),
     ("13C3-HFPO-DA",   "13C3-GenX (HFPO-DA)","GenX",   "surrogate"),
     ("13C8-FOSA",   "13C8-FOSA",          "FOSA",   "surrogate"),
+    # the deuterated FTS standards (two carbon-13 and four deuterium atoms):
+    # compounds of their own, not the supplier's M2 codes, which name the
+    # carbon-13-only standards below
     ("13C2-D4-4:2FTS","13C2,D4-4:2FTS",     "4:2FTS", "surrogate"),
     ("13C2-D4-6:2FTS","13C2,D4-6:2FTS",     "6:2FTS", "surrogate"),
     ("13C2-D4-8:2FTS","13C2,D4-8:2FTS",     "8:2FTS", "surrogate"),
@@ -123,6 +128,23 @@ INTERNAL_STANDARDS = [
     ("D5-NEtFOSAA", "D5-NEtFOSAA", "NEtFOSAA", "surrogate"),
     ("D7-NMeFOSE",  "D7-NMeFOSE",  "NMeFOSE",  "surrogate"),
     ("D9-NEtFOSE",  "D9-NEtFOSE",  "NEtFOSE",  "surrogate"),
+    # ── EPA 1633A's extracted internal standards (EPA 820-R-24-007, Table 6)
+    # the FDA catalogue above does not carry: a designation names an
+    # isotopologue, and 13C4-PFBA is not 13C3-PFBA. 13C8-PFOSA is Table 6's
+    # spelling of 13C8-FOSA (LABELLED_NAME_SYNONYMS).
+    ("13C4-PFBA",   "13C4-PFBA",   "PFBA",   "surrogate"),
+    ("13C5-PFPeA",  "13C5-PFPeA",  "PFPeA",  "surrogate"),
+    ("13C9-PFNA",   "13C9-PFNA",   "PFNA",   "surrogate"),
+    ("13C6-PFDA",   "13C6-PFDA",   "PFDA",   "surrogate"),
+    ("13C7-PFUnA",  "13C7-PFUnA",  "PFUDA",  "surrogate"),
+    ("13C2-4:2FTS", "13C2-4:2FTS", "4:2FTS", "surrogate"),
+    ("13C2-6:2FTS", "13C2-6:2FTS", "6:2FTS", "surrogate"),
+    ("13C2-8:2FTS", "13C2-8:2FTS", "8:2FTS", "surrogate"),
+    # the lab's fourth carbon-13 FTS standard, like the three above
+    ("13C2-10:2FTS", "13C2-10:2FTS", "10:2FTS", "surrogate"),
+    # EPA 1633A's non-extracted internal standard
+    # (EPA 820-R-24-007, Table 1 "NIS Compounds"; no CAS assigned)
+    ("18O2-PFHxS", "18O2-PFHxS", "PFHxS", "injection_is"),
 ]
 
 # ── Methods (each a SENAITE Method object) ───────────────────────────────────
@@ -199,15 +221,7 @@ PRESERVATIONS = [
 ]
 
 # Calibration ladders live on each method profile (Calibration & CCV;
-# senaite.pfas.calibration_levels) -- not here (QC consolidation P1).
-
-
-def native_count():
-    return len(NATIVE_ANALYTES)
-
-
-def is_count():
-    return len(INTERNAL_STANDARDS)
+# senaite.pfas.calibration_levels), not here.
 
 
 # ── Derived sets from NATIVE_ANALYTES ────────────────────────────────────────
@@ -215,11 +229,6 @@ def is_count():
 def get_key_analyte_keywords():
     """Frozenset of SENAITE keywords for key analytes (FDA Table 10-1 Tier 1)."""
     return frozenset(row[0] for row in NATIVE_ANALYTES if row[8])
-
-
-def get_key_analyte_names():
-    """Frozenset of display names for key analytes."""
-    return frozenset(row[1] for row in NATIVE_ANALYTES if row[8])
 
 
 def get_cas_by_keyword(dashed=True):
@@ -255,12 +264,9 @@ def derive_surrogate_map(analyte_keywords):
     ordered by the given panel so two methods sharing an analyte agree.
 
     Which labelled compound quantifies a native is a property of the ANALYTE,
-    not of the method, and it is already recorded once in `NATIVE_ANALYTES`.
-    The FDA and 1633A profiles carried hand-maintained copies of it; both were
-    verified byte-identical to this derivation before it was introduced, and
-    EPA 537.1 carried an EMPTY list -- so `qc_qualification.analytes_for_failure`
-    had no map to reverse and named the labelled compound on the certificate
-    instead of the natives the client actually reads.
+    not of the method, recorded once in `NATIVE_ANALYTES`. Every method needs
+    the map: `qc_qualification.analytes_for_failure` reverses it to name the
+    natives on the certificate, not the labelled compound.
 
     A lab may still override the map in the Method Profile editor; this is the
     default it starts from, not a value imposed at read time.
@@ -268,21 +274,6 @@ def derive_surrogate_map(analyte_keywords):
     mapping = get_surrogate_map_by_keyword()
     return [{"analyte": kw, "surrogate_is": mapping[kw]}
             for kw in (analyte_keywords or []) if mapping.get(kw)]
-
-
-def get_surrogate_map_by_name():
-    """Dict of {native_display_name: surrogate_is_keyword} for analytes with a matched IS."""
-    return {row[1]: row[6] for row in NATIVE_ANALYTES if row[6]}
-
-
-def get_surrogates():
-    """List of [keyword, name] for labeled IS with role='surrogate'."""
-    return [[row[0], row[1]] for row in INTERNAL_STANDARDS if row[3] == "surrogate"]
-
-
-def get_injection_is_list():
-    """List of [keyword, name] for IS with role='injection_is' (e.g. 13C4-PFOA)."""
-    return [[row[0], row[1]] for row in INTERNAL_STANDARDS if row[3] == "injection_is"]
 
 
 def get_labeled_analog_map():
@@ -305,14 +296,8 @@ def get_labeled_analog_map():
 #   PFOSA    "perfluorooctanesulfonamide" with the PF- prefix spelled out; this
 #            table keys it FOSA (CAS 754-91-6)
 #
-# WHY THIS EXISTS. EPA 1633A Table 6 designates its extracted internal standards
-# by the labelled form of the native (13C3-HFPO-DA, 13C7-PFUnA, 13C8-PFOSA), so
-# joining a Table 6 row to the analyte it belongs to needs the native's
-# published spelling. Verified complete, not guessed: of 1633A's 24 Table 6
-# designations, 21 resolve to a native by stripping the isotopic label alone,
-# and the 3 that do not are exactly these -- which are exactly the 3 natives the
-# method's own surrogate map leaves otherwise uncovered. Complementary sets,
-# 24/24, so the join is total.
+# Read wherever a published method's spelling of a native must reach the
+# analyte it names (method studies, an export's rows, a project ruleset).
 NATIVE_NAME_SYNONYMS = {
     "HFPO-DA": "GenX",
     "PFUnA": "PFUDA",
@@ -321,19 +306,25 @@ NATIVE_NAME_SYNONYMS = {
     # display names some exports use (method studies join on these)
     "PFTA": "PFTeDA",
     # EPA 537.1's name for 4,8-dioxa-3H-perfluorononanoic acid, keyed DONA
-    # here (an export naming it ADONA was never matched)
+    # here (an export may name it ADONA)
     "ADONA": "DONA",
     "N-EtFOSAA": "NEtFOSAA",
     "N-MeFOSAA": "NMeFOSAA",
 }
 
 
+# Published-method spellings of a LABELLED standard the catalogue holds under
+# another name: the same isotopologue, so an alias, never a second compound.
+LABELLED_NAME_SYNONYMS = {
+    "13C8-PFOSA": "13C8-FOSA",       # EPA 1633A Table 6
+}
+
+
 def native_keyword_for(published_name):
     """A native analyte's keyword from whatever a published method calls it.
 
-    Returns the name unchanged when it is already a keyword or is unknown --
-    the caller then fails to join and says so, which is the same outcome as
-    before but for a genuinely unrecognised analyte rather than a synonym.
+    Returns the name unchanged when it is already a keyword or is unknown:
+    the caller then fails to join and says so.
     """
     if not published_name:
         return published_name
@@ -351,10 +342,9 @@ def native_keyword_for(published_name):
 def _build_compound_name_to_keyword():
     """Display name -> keyword, for natives AND labelled compounds.
 
-    Walking only NATIVE_ANALYTES left the labelled compounds with no alias at
-    all, so nothing could tell that the profile's "13C8-PFOA" and the instrument's
-    "13C8-PFOA" are the same surrogate. Both spellings have been sitting in
-    INTERNAL_STANDARDS as (keyword, name, ...) the whole time.
+    Both tables are walked, so a profile's keyword and an instrument's name
+    for one labelled compound (INTERNAL_STANDARDS (keyword, name, ...))
+    resolve to the same surrogate.
     """
     mapping = {}
     for row in list(NATIVE_ANALYTES) + list(INTERNAL_STANDARDS):
@@ -364,16 +354,14 @@ def _build_compound_name_to_keyword():
     return mapping
 
 
-# Linear-PEAK names that resolve to the reported analyte. PFOS and PFHxS were
-# displayed as "lr-PFOS"/"lr-PFHxS" until 2026-10-01: a summed
-# result is reported as the plain analyte, and "lr-" names only the linear
-# peak, which instruments export under that name. Kept so every name the
-# matching accepted before still resolves to the same keyword.
+# Linear-PEAK names that resolve to the reported analyte: a summed result is
+# reported as the plain analyte, and "lr-" names only the linear peak, which
+# instruments export under that name.
 LINEAR_PEAK_ALIASES = {"lr-PFHxS": "PFHxS", "lr-PFOS": "PFOS"}
 
-# A labelled standard's keyword is its label; the
-# supplier codes it replaced still resolve, so runs, exports and history made
-# before the rename name the same compound.
+# A labelled standard's keyword is its label; a supplier code still
+# resolves, so runs, exports and history naming the code name the same
+# compound.
 LABELLED_KEYWORD_RENAMES = {
     "M3PFBA": "13C3-PFBA", "M3PFPeA": "13C3-PFPeA", "M5PFHxA": "13C5-PFHxA",
     "M4PFHpA": "13C4-PFHpA", "M8PFOA": "13C8-PFOA", "M4PFOA": "13C4-PFOA",
@@ -381,16 +369,18 @@ LABELLED_KEYWORD_RENAMES = {
     "MPFDoA": "13C2-PFDoA", "M2PFTeDA": "13C2-PFTeDA", "M2PFHxDA": "13C2-PFHxDA",
     "M3PFBS": "13C3-PFBS", "M3PFHxS": "13C3-PFHxS", "M8PFOS": "13C8-PFOS",
     "M3HFPO": "13C3-HFPO-DA", "M8FOSA": "13C8-FOSA",
-    "M2-4:2FTS": "13C2-D4-4:2FTS", "M2-6:2FTS": "13C2-D4-6:2FTS",
-    "M2-8:2FTS": "13C2-D4-8:2FTS", "M2-10:2FTS": "13C2-D4-10:2FTS",
+    # M2 is two carbon-13 atoms and nothing else: the deuterated 13C2,D4
+    # standards are other compounds
+    "M2-4:2FTS": "13C2-4:2FTS", "M2-6:2FTS": "13C2-6:2FTS",
+    "M2-8:2FTS": "13C2-8:2FTS", "M2-10:2FTS": "13C2-10:2FTS",
     "MD3NMeFOSA": "D3-NMeFOSA", "MD5NEtFOSA": "D5-NEtFOSA",
     "MD3NMeFOSAA": "D3-NMeFOSAA", "MD5NEtFOSAA": "D5-NEtFOSAA",
     "MD7NMeFOSE": "D7-NMeFOSE", "MD9NEtFOSE": "D9-NEtFOSE",
 }
 
+
 # Instrument spellings of labelled standards seen in the lab's processing
-# method export that differ from the library's names. A
-# lab-editable compound-name alias table does not exist yet.
+# method export that differ from the library's names.
 INSTRUMENT_NAME_ALIASES = {
     "13C3 GenX (HFPO-DA)": "13C3-HFPO-DA",
     "D5-N-EtFOSAA": "D5-NEtFOSAA",
@@ -399,6 +389,7 @@ INSTRUMENT_NAME_ALIASES = {
 COMPOUND_NAME_TO_KEYWORD = _build_compound_name_to_keyword()
 COMPOUND_NAME_TO_KEYWORD.update(LINEAR_PEAK_ALIASES)
 COMPOUND_NAME_TO_KEYWORD.update(LABELLED_KEYWORD_RENAMES)
+COMPOUND_NAME_TO_KEYWORD.update(LABELLED_NAME_SYNONYMS)
 COMPOUND_NAME_TO_KEYWORD.update(INSTRUMENT_NAME_ALIASES)
 
 
@@ -407,57 +398,3 @@ COMPOUND_NAME_TO_KEYWORD.update(INSTRUMENT_NAME_ALIASES)
 # automatic accessor methods (getPfas_role is never created).  Use these
 # helpers wherever pfas_role must be read or written on a service object.
 
-def get_pfas_role(svc_obj):
-    """Return pfas_role value from an AnalysisService, or '' if not set."""
-    try:
-        field = svc_obj.Schema().get("pfas_role")
-        if field is not None:
-            return field.get(svc_obj) or ""
-    except Exception:
-        pass
-    return svc_obj.__dict__.get("pfas_role", "")
-
-
-def set_pfas_role(svc_obj, role):
-    """Set pfas_role on an AnalysisService via the schema field."""
-    try:
-        field = svc_obj.Schema().get("pfas_role")
-        if field is not None:
-            field.set(svc_obj, role)
-            return True
-    except Exception:
-        pass
-    try:
-        svc_obj.__dict__["pfas_role"] = role
-        return True
-    except Exception:
-        return False
-
-
-def get_method_is_services(method_id, portal=None):
-    """
-    Return list of (keyword, title, role) for all IS/surrogate services
-    associated with the given method_id.
-
-    Derives membership by looking at which native analytes in NATIVE_ANALYTES
-    have the given method in their Method association, then collecting their
-    surrogate_is keywords plus the injection IS.
-
-    If portal is supplied, cross-checks against actual SENAITE AnalysisService
-    objects to confirm they exist.  Otherwise returns from NATIVE_ANALYTES only.
-    """
-    # Collect surrogate keywords used by this method's native analytes
-    used_surrogates = set()
-    for row in NATIVE_ANALYTES:
-        if row[6]:  # has surrogate_is
-            used_surrogates.add(row[6])
-
-    # Build IS list: used surrogates + injection_is
-    injection_is = {row[0] for row in INTERNAL_STANDARDS if row[3] == "injection_is"}
-    wanted = used_surrogates | injection_is
-
-    result = []
-    for row in INTERNAL_STANDARDS:
-        if row[0] in wanted:
-            result.append({"keyword": row[0], "title": row[1], "role": row[3]})
-    return result

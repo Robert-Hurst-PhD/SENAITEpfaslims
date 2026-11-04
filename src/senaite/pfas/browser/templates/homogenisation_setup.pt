@@ -16,53 +16,64 @@
     <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
     <div class="alert alert-error" tal:repeat="e view/errors|nothing" tal:content="e">error</div>
 
-    <p class="form-note">Methods, and each matrix's default. <tal:h define="hid string:homogenisation"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p class="form-note">Methods, and each matrix's default. <tal:h define="hid string:homogenisation"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
     <form method="post" tal:attributes="action string:${purl}/@@pfas-homogenisation-setup"
           tal:define="methods view/methods; starter view/starter">
       <fieldset class="pfas-ro" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
-      <div class="section-group-hdr">Methods</div>
-      <div class="cf-coll-wrap">
-        <table class="pfas-table pfas-table-form cf-coll">
-          <thead><tr><th>Method</th><th>Homogeniser unit recorded</th><th>In use</th></tr></thead>
-          <tbody>
-            <tr><td>Not homogenised</td><td></td><td>&#10003;</td></tr>
-            <tr tal:repeat="m methods">
-              <td><input type="hidden" tal:attributes="name string:m__${repeat/m/index}__id; value m/id" />
-                  <input type="text" tal:attributes="name string:m__${repeat/m/index}__title; value m/title" /></td>
-              <td><input type="checkbox" value="on"
-                         tal:attributes="name string:m__${repeat/m/index}__unit_required;
-                                         checked python:'checked' if m.get('unit_required') else None" /></td>
-              <td><input type="checkbox" value="on"
-                         tal:attributes="name string:m__${repeat/m/index}__active;
-                                         checked python:'checked' if m.get('active', True) else None" /></td>
+      <nav class="pfas-seg pfas-seg-strip is-spaced" data-tabs="data-tabs" data-hash="data-hash" role="tablist" aria-label="Homogenisation sections">
+        <button type="button" class="pfas-seg-item" role="tab" data-pane="hg-methods" aria-selected="true">Methods</button>
+        <button type="button" class="pfas-seg-item" role="tab" data-pane="hg-matrix" aria-selected="false">By matrix</button>
+      </nav>
+      <div class="pfas-pane is-active" id="hg-methods">
+      <div class="pfas-rows" data-rows="data-rows">
+        <table class="pfas-table pfas-table-form pfas-table-fit is-roomy" data-col-resize="homogenisation-setup-1">
+          <thead><tr><th class="is-name">Method</th><th class="is-center">Homogeniser unit recorded</th><th class="is-center">In use</th><th class="is-slim"></th></tr></thead>
+          <tbody data-row-list="data-row-list">
+            <tr class="is-builtin">
+              <td><input type="text" class="is-center-text" value="Not homogenised" disabled="disabled" aria-label="Method" /></td>
+              <td class="is-center"><label class="pfas-switch"><input type="checkbox" disabled="disabled" aria-label="Homogeniser unit recorded, Not homogenised" /><span class="pfas-switch-track"></span></label></td>
+              <td class="is-center"><label class="pfas-switch"><input type="checkbox" checked="checked" disabled="disabled" aria-label="In use, Not homogenised" /><span class="pfas-switch-track"></span></label></td>
+              <td class="is-slim"></td>
             </tr>
-            <tr tal:repeat="t starter">
-              <td><input type="text" tal:attributes="name python:'m__%d__title' % (len(methods) + repeat['t'].index); placeholder t" /></td>
-              <td><input type="checkbox" value="on" checked="checked"
-                         tal:attributes="name python:'m__%d__unit_required' % (len(methods) + repeat['t'].index)" /></td>
-              <td></td>
+            <tr data-row="data-row" tal:repeat="m methods">
+              <td><input type="hidden" tal:attributes="name string:m__${repeat/m/index}__id; value m/id" />
+                  <input type="text" class="is-center-text" tal:attributes="name string:m__${repeat/m/index}__title; value m/title; aria-label string:Method ${repeat/m/number}" /></td>
+              <td class="is-center"><label class="pfas-switch"><input type="checkbox" value="on"
+                         tal:attributes="name string:m__${repeat/m/index}__unit_required; checked python:'checked' if m.get('unit_required') else None; aria-label string:Homogeniser unit recorded, ${m/title}" /><span class="pfas-switch-track"></span></label></td>
+              <td class="is-center"><label class="pfas-switch"><input type="checkbox" value="on"
+                         tal:attributes="name string:m__${repeat/m/index}__active; checked python:'checked' if m.get('active', True) else None; aria-label string:In use, ${m/title}" /><span class="pfas-switch-track"></span></label></td>
+              <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove"
+                      tal:attributes="aria-label string:Remove ${m/title}">&#215;</button></td>
+            </tr>
+            <tr data-row="data-row" tal:repeat="t starter">
+              <td><input type="text" class="is-center-text" tal:attributes="name python:'m__%d__title' % (len(methods) + repeat['t'].index); placeholder t; aria-label string:New method" /></td>
+              <td class="is-center"><label class="pfas-switch"><input type="checkbox" value="on"
+                         tal:attributes="name python:'m__%d__unit_required' % (len(methods) + repeat['t'].index); checked string:checked; aria-label string:Homogeniser unit recorded, new method" /><span class="pfas-switch-track"></span></label></td>
+              <td class="is-center"></td>
+              <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove">&#215;</button></td>
             </tr>
           </tbody>
         </table>
-        <template class="cf-row-template">
-          <tr>
-            <td><input type="text" name="m__NEW__title" /></td>
-            <td><input type="checkbox" name="m__NEW__unit_required" value="on" checked="checked" /></td>
-            <td></td>
+        <template data-row-template="data-row-template">
+          <tr data-row="data-row">
+            <td><input type="text" class="is-center-text" name="m____i____title" aria-label="New method" /></td>
+            <td class="is-center"><label class="pfas-switch"><input type="checkbox" name="m____i____unit_required" value="on" checked="checked" aria-label="Homogeniser unit recorded, new method" /><span class="pfas-switch-track"></span></label></td>
+            <td class="is-center"></td>
+            <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove">&#215;</button></td>
           </tr>
         </template>
-        <button type="button" class="btn-sm btn-secondary cf-add-row" tal:condition="view/can_configure"
-                tal:attributes="data-next python:len(methods) + len(starter)">+ Add method</button>
+        <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add" tal:condition="view/can_configure">+ Add method</button>
+      </div>
       </div>
 
-      <div class="section-group-hdr">Default per matrix</div>
-      <table class="pfas-table pfas-table-form">
-        <thead><tr><th>Matrix</th><th>Default</th></tr></thead>
+      <div class="pfas-pane" id="hg-matrix">
+      <table class="pfas-table pfas-table-form pfas-table-fit" data-col-resize="homogenisation-setup-2">
+        <thead><tr><th class="is-center">Matrix</th><th>Starts at</th></tr></thead>
         <tbody>
           <tr tal:repeat="x view/matrices">
-            <td tal:content="x/title">Eggs</td>
-            <td><select tal:attributes="name string:default__${x/uid}">
+            <td class="is-center" tal:content="x/title">Eggs</td>
+            <td><select tal:attributes="name string:default__${x/uid}; aria-label string:Starts at, ${x/title}">
                   <option tal:repeat="c x/choices"
                           tal:attributes="value python:c[0]; selected python:'selected' if c[0] == x['current'] else None"
                           tal:content="python:c[1]">IKA mill</option>
@@ -70,8 +81,9 @@
           </tr>
         </tbody>
       </table>
+      </div>
       </fieldset>
-      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+      <button class="btn btn-primary pfas-mt-md" type="submit" tal:condition="view/can_configure">Save</button>
     </form>
 
   </div>

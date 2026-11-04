@@ -18,7 +18,7 @@
 
     <!-- the list -->
     <tal:list tal:condition="not:t">
-      <table class="pfas-table" tal:condition="view/templates">
+      <table class="pfas-table" data-col-resize="study-designer-1" tal:condition="view/templates">
         <thead><tr><th>Template</th><th>Method</th><th>Matrix</th><th>Elements</th><th></th></tr></thead>
         <tbody>
           <tr tal:repeat="x view/templates">
@@ -99,14 +99,14 @@
               <input type="text" tal:attributes="name string:${p}levels; value python:view.levels_text(el)" /></label>
             <label>Replicates per source and level
               <input type="number" min="1" step="1" tal:attributes="name string:${p}replicates; value python:view.fmt(el.get('replicates'))" /></label>
-            <label class="field-check"><input type="checkbox" value="on"
-                   tal:attributes="name string:${p}recovery_on; checked python:'checked' if s['recovery']['on'] else None" />
+            <label class="pfas-switch field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}recovery_on; checked python:'checked' if s['recovery']['on'] else None" /><span class="pfas-switch-track"></span>
               Mean recovery per level</label>
-            <label class="field-check"><input type="checkbox" value="on"
-                   tal:attributes="name string:${p}rsd_within_on; checked python:'checked' if s['rsd_within']['on'] else None" />
+            <label class="pfas-switch field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}rsd_within_on; checked python:'checked' if s['rsd_within']['on'] else None" /><span class="pfas-switch-track"></span>
               RSD within each source</label>
-            <label class="field-check"><input type="checkbox" value="on"
-                   tal:attributes="name string:${p}rsd_between_on; checked python:'checked' if s['rsd_between']['on'] else None" />
+            <label class="pfas-switch field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}rsd_between_on; checked python:'checked' if s['rsd_between']['on'] else None" /><span class="pfas-switch-track"></span>
               RSD between sources, per level</label>
             <label>RSD between sources of
               <select tal:attributes="name string:${p}rsd_between_basis">
@@ -119,7 +119,7 @@
             <label>Spiked replicates
               <select tal:attributes="name string:${p}spike_role">
                 <option value="">Choose</option>
-                <option tal:repeat="r python:view.qc_types(t.get('method'))" tal:content="r"
+                <option tal:repeat="r python:view.spike_roles(t.get('method'))" tal:content="r"
                         tal:attributes="value r; selected python:'selected' if r == el.get('spike_role') else None">LFB</option>
               </select></label>
             <label>Blanks
@@ -141,8 +141,8 @@
             <label>Unit <input type="text" tal:attributes="name string:${p}unit; value el/unit" /></label>
             <label>Lowest <input type="number" step="any" tal:attributes="name string:${p}min; value python:view.fmt(el.get('min'))" /></label>
             <label>Highest <input type="number" step="any" tal:attributes="name string:${p}max; value python:view.fmt(el.get('max'))" /></label>
-            <label class="field-check"><input type="checkbox" value="on"
-                   tal:attributes="name string:${p}upload; checked python:'checked' if el.get('upload') else None" />
+            <label class="pfas-switch field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}upload; checked python:'checked' if el.get('upload') else None" /><span class="pfas-switch-track"></span>
               Evidence file required</label>
           </tal:y>
         </div>

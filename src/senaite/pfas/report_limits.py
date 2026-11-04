@@ -2,9 +2,8 @@
 """Reporting limits (RL) and method detection limits (MDL) per method x matrix
 x analyte, and the reporting unit, as the certificate and EDD read them.
 
-Decided 2026-09-30: RL/MDL are configured in the METHOD PROFILE,
-per analyte x matrix -- once, like every other criterion -- not carried per
-result. Stored on the profile as
+RL/MDL are configured in the method profile, per analyte x matrix -- once,
+like every other criterion -- not carried per result. Stored on the profile as
 
     reporting_limits = {matrix title: {analyte keyword: {"rl": float, "mdl": float}}}
 
@@ -24,16 +23,14 @@ def limits_for(profile, matrix, keyword):
     """{"rl", "mdl", "unit", "rl_source"} for one analyte in one matrix.
 
     RL = a typed value when there is one ("override"), else the method's
-    lowest calibrator in the matrix's unit ("calibration";); None where neither exists. MDLs are assessed: typed only."""
+    lowest calibrator in the matrix's unit ("calibration"); None where
+    neither exists. MDLs are assessed: typed only."""
     profile = profile or {}
     entry = ((profile.get("reporting_limits") or {}).get(matrix) or {}).get(keyword) or {}
     unit = (profile.get("unit_map") or {}).get(matrix) or None
     rl, source = entry.get("rl"), u"override"
     if rl is None:
-        try:
-            from senaite.pfas import calibration_levels as _cl
-        except Exception:          # tests: loaded without the package
-            import calibration_levels as _cl
+        from senaite.pfas import calibration_levels as _cl
         rl = _cl.derived_rl(profile, matrix, keyword)
         source = u"calibration" if rl is not None else None
     return {"rl": rl, "mdl": entry.get("mdl"), "unit": unit, "rl_source": source}
@@ -41,9 +38,9 @@ def limits_for(profile, matrix, keyword):
 
 def scaled_rl(rl, fold):
     """A diluted analyte's reporting limit: RL x the dilution's total fold
-    (: 2 ppt diluted 2-fold reports an RL of 4).
-    Independent of how results are put on the sample basis. No fold, or a
-    fold of 1 or less, leaves the RL as it is."""
+    (2 ppt diluted 2-fold reports an RL of 4), however results are put on
+    the sample basis. No fold, or a fold of 1 or less, leaves the RL as it
+    is."""
     try:
         f = float(fold)
     except (TypeError, ValueError):

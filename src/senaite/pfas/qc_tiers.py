@@ -14,17 +14,24 @@ limits are therefore the method's, chosen exactly as a run's are.
     study_limits(...)   a study's recovery window and spread limit, or the
                         problem that leaves them unset
 
+    tier_matrices(profile, tier)   the matrices a tier applies in: every
+                        matrix the method supports, or the tier's own list
+    in_scope(profile, tier, matrix)  does the tier apply in `matrix` (its
+                        own list and those matrices' aliases)
+
 A tier: {"analyte_group": "all" | "key" | "linked" | "no_std" (missing =
-"all"), "matrix_scope": "all" | "tight", "low_level_x_rl": N (applies at
-or below N x RL), criteria...}. Selection: a "no labelled standard" tier
-for such an analyte; a key-analyte tier in a tight matrix (the profile's
-tight_matrices and their aliases); else the first ordinary "linked" / "all"
-tier. A low-level tier of the same group and scope replaces it when the
-spiked concentration is at or below N x RL. Pure; Python 2.7 and 3.
+"all"), "matrix_scope": "all" | "listed", "matrices": [matrix titles] (a
+"listed" tier's own list), "low_level_x_rl": N (applies at or below N x
+RL), criteria...}. Selection: a "no labelled standard" tier for such an
+analyte; a key-analyte tier listing the matrix; else the first ordinary
+"linked" / "all" tier. A low-level tier of the same group whose matrices
+include the matrix replaces it when the spiked concentration is at or below
+N x RL. Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
 LOW_LEVEL_KEY = "low_level_x_rl"
+ALL = "all"
 
 
 class Unconfigured(ValueError):
@@ -45,24 +52,65 @@ def low_level_tier(tiers, base, applies, conc, rl, where):
                               ("the analyte's RL for this matrix", rl)) if not v]
     if missing:
         raise Unconfigured(
-            "{0}: a low-level tier (applies at <= N x RL) is configured, so the "
-            "window depends on the spike level, but {1} is not set. Enter it "
-            "(Method Profiles -> Recovery Tiers spike levels / Reporting "
-            "Limits) -- the engine does not guess.".format(where, " and ".join(missing)))
+            "{0}: a low-level tier is configured, so the window depends on the "
+            "spike level, but {1} is not set. Set the spike level on the "
+            "method's QC criteria tab and the reporting limit on its Analytes "
+            "tab; the engine does not guess.".format(where, " and ".join(missing)))
     for t in sorted(cond, key=lambda t: float(t[LOW_LEVEL_KEY])):
         if float(conc) <= float(t[LOW_LEVEL_KEY]) * float(rl):
             return t
     return base
 
 
-def is_tight_matrix(profile_data, matrix):
+def is_listed(tier):
+    """Does `tier` apply in matrices it lists (any scope but all)?"""
+    return ((tier or {}).get("matrix_scope") or ALL) != ALL
+
+
+def key_tier_lists(profile_data, matrix, qc_type=None):
+    """Does an ordinary key-analyte tier (of `qc_type`, else of any QC type)
+    list `matrix` -- its own list or an alias of a listed matrix?"""
+    qca = (profile_data or {}).get("qc_acceptance") or {}
+    entries = [qca.get(qc_type)] if qc_type else list(qca.values())
+    for entry in entries:
+        for t in (entry.get("tiers") or []) if isinstance(entry, dict) else []:
+            if (isinstance(t, dict) and t.get("analyte_group") == "key" and not t.get(LOW_LEVEL_KEY)
+                    and is_listed(t) and in_scope(profile_data, t, matrix)):
+                return True
+    return False
+
+
+def _own_list(profile_data, tier):
+    """A listed tier's own matrices. A profile not yet migrated (an export
+    written before each tier listed its own: scope "tight", no list) still
+    names them in its one top-level Tier 1 list, which is read for such a
+    tier alone -- never a looser window for want of the migration."""
+    if "matrices" not in tier and tier.get("matrix_scope") == "tight":
+        return list((profile_data or {}).get("tight_matrices") or [])
+    return list(tier.get("matrices") or [])
+
+
+def tier_matrices(profile_data, tier):
+    """The matrices `tier` applies in: every matrix the method supports for
+    a tier of all matrices, else the tier's own list."""
+    if not is_listed(tier):
+        return list((profile_data or {}).get("supported_matrices") or [])
+    return _own_list(profile_data, tier)
+
+
+def in_scope(profile_data, tier, matrix):
+    """Does `tier` apply in `matrix`? A tier of all matrices applies in any;
+    a listed tier where its own list, or an alias of a listed matrix, names
+    it."""
+    if not is_listed(tier):
+        return True
     aliases = (profile_data or {}).get("matrix_aliases") or {}
-    tight = set()
-    for title in (profile_data or {}).get("tight_matrices") or []:
-        tight.add(title.lower().strip())
+    named = set()
+    for title in _own_list(profile_data, tier):
+        named.add(title.lower().strip())
         for alias in aliases.get(title) or []:
-            tight.add(alias.lower().strip())
-    return (matrix or "").lower().strip() in tight
+            named.add(alias.lower().strip())
+    return (matrix or "").lower().strip() in named
 
 
 def _qa_entry(profile_data, qc_type):
@@ -80,24 +128,23 @@ def base_tier(profile_data, qc_type, matrix, is_key=False, is_no_std=False, wher
     where = where or "{0} / {1}".format(matrix or "(no matrix)", qc_type)
     if not all_tiers:
         raise Unconfigured(
-            "{0}: no tiers are configured. Set them in Method Profiles -> QC "
-            "Types -> {1}, or disable that QC type.".format(where, qc_type))
+            "{0}: no tiers are configured. Set the {1} tiers on the method's QC "
+            "criteria tab, or switch that QC type off.".format(where, qc_type))
     tiers = ordinary_tiers(all_tiers) or all_tiers
-    tight = is_tight_matrix(profile_data, matrix)
     for tier in tiers:
         ag = tier.get("analyte_group", "all")
-        ms = tier.get("matrix_scope", "all")
         if ag == "no_std" and is_no_std:
             return tier, "no_std"
-        if ag == "key" and ms == "tight" and is_key and tight:
+        # a key-analyte tier applies where its own list names the matrix
+        if ag == "key" and is_listed(tier) and is_key and in_scope(profile_data, tier, matrix):
             return tier, "key_tight"
     for tier in tiers:
         if tier.get("analyte_group", "all") in ("linked", "all"):
             return tier, "default"
     raise Unconfigured(
         "No tier matches {0}: the configured tiers cover neither this analyte "
-        "group nor a default. Add a tier with analyte_group 'all' in Method "
-        "Profiles -> QC Types -> {1}.".format(where, qc_type))
+        "group nor a default. Add a {1} tier for all analytes on the method's "
+        "QC criteria tab.".format(where, qc_type))
 
 
 def low_level_candidates(profile_data, qc_type, base, matrix):
@@ -105,11 +152,10 @@ def low_level_candidates(profile_data, qc_type, base, matrix):
     entry = _qa_entry(profile_data, qc_type)
     if entry is None or base is None:
         return []
-    tight = is_tight_matrix(profile_data, matrix)
     group = base.get("analyte_group", "all")
     out = [t for t in entry.get("tiers") or [] if t.get(LOW_LEVEL_KEY) and
            t.get("analyte_group", "all") in ("all", group) and
-           (t.get("matrix_scope", "all") != "tight" or tight)]
+           in_scope(profile_data, t, matrix)]
     return sorted(out, key=lambda t: float(t[LOW_LEVEL_KEY]))
 
 

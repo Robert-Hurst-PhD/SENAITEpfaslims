@@ -28,7 +28,7 @@
     <tal:p condition="python:view.project() is not None">
     <p class="pane-intro">
       Where <strong tal:content="view/project_title">Project</strong>&#8217;s batches differ from the method;
-      only the differences are stored. <tal:h define="hid string:project-specs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+      only the differences are stored. <tal:h define="hid string:project-specs"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
     </p>
 
     <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
@@ -55,7 +55,7 @@
     <div class="alert alert-info" tal:repeat="n view/needs" tal:content="n">PFXX needs an RL</div>
 
     <div class="section-group-hdr">Looser than the method</div>
-    <table class="factor-table cf-table" tal:condition="view/departures">
+    <table class="factor-table cf-table" data-col-resize="project-specs-cf-table" tal:condition="view/departures">
       <thead><tr><th>Value</th><th>Method</th><th>Project</th><th>Where</th><th>Published method</th></tr></thead>
       <tbody>
         <tr tal:repeat="d view/departures">
