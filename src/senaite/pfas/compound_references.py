@@ -5,6 +5,8 @@ from __future__ import absolute_import, unicode_literals
 
 import sqlite3
 
+from senaite.pfas import composite_standards as _cmp
+
 # profile keys that hold keyword references, and how
 _LISTS = ("master_analyte_set", "project_extra_analytes", "key_analytes")
 # nested keyword lists: (path, how it is named)
@@ -59,6 +61,10 @@ def references(profiles, keyword):
             elif key == "isomers" and any(keyword == (v or {}).get("linear") or keyword in ((v or {}).get("branched") or [])
                                           for v in table.values()):
                 out.append((mid, key + ".peaks"))
+        # a member of a composite standard: deleting it would leave the
+        # composite averaging a compound that no longer exists
+        if any(keyword in members for members in _cmp.members_map(p).values()):
+            out.append((mid, _cmp.KEY))
         intg = (p.get("integration") or {}).get("analytes") or {}
         if keyword in intg:
             out.append((mid, "integration.analytes"))

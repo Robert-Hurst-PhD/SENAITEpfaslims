@@ -77,7 +77,20 @@ def _facility_defaults():
         return db.get_facility_defaults(None)
 
 
-class PFASFacilityDashboardView(ViewHelpers, BrowserView):
+class SignedIn(object):
+    """A log's operator is the signed-in person, shown on its form and
+    stored with the entry; what the form posts in that box is not read
+    while somebody is signed in."""
+
+    def signed_in(self):
+        """Who is recording: the signed-in person's name."""
+        return print_doc.current_user_label(self.context)
+
+    def operator(self):
+        return self.signed_in() or self.request.form.get("operator", "").strip()
+
+
+class PFASFacilityDashboardView(SignedIn, ViewHelpers, BrowserView):
     """Daily checklist — one status row per unit."""
     _template = ViewPageTemplateFile("templates/facility_dashboard.pt")
 
@@ -90,11 +103,6 @@ class PFASFacilityDashboardView(ViewHelpers, BrowserView):
 
     def today(self):
         return lab_time.today().isoformat()
-
-    def signed_in(self):
-        """Who is recording: the signed-in person's name."""
-        from senaite.pfas import print_doc
-        return print_doc.current_user_label(self.context)
 
 
     def status_label(self, s):
@@ -118,16 +126,30 @@ class PFASFacilityDashboardView(ViewHelpers, BrowserView):
         }.get(s, "")
 
     def unit_icon(self, ut):
+        """The kind's own picture: the navigation's drawing of its page
+        (page_groups.ICONS), the same one the panel shows."""
         return {
-            "refrigerator":       "fas fa-temperature-low",
-            "freezer":            "fas fa-snowflake",
-            "water_bath":         "fas fa-hot-tub",
-            "balance_analytical": "fas fa-balance-scale",
-            "balance_prep":       "fas fa-balance-scale-right",
-            "eyewash":            "fas fa-eye",
-            "water_system":       "fas fa-tint",
-            "room_sensor":        "fas fa-thermometer-half",
-        }.get(ut, "fas fa-circle")
+            "refrigerator":       "ico-temperature",
+            "freezer":            "ico-temperature",
+            "water_bath":         "ico-temperature",
+            "balance_analytical": "ico-balance",
+            "balance_prep":       "ico-balance",
+            "eyewash":            "ico-eyewash",
+            "water_system":       "ico-water",
+            "room_sensor":        "ico-temperature",
+        }.get(ut, "ico-instruments")
+
+    def status_icon(self, s):
+        """A unit's state as a mark (icons.py): nothing when fine, the
+        hourglass while a check is owed today, the warning triangle when due
+        or overdue, the failure diamond when out of range."""
+        return {
+            "out_of_range": "fail",
+            "overdue":      "warn",
+            "due":          "warn",
+            "pending":      "waiting",
+            "no_data":      "waiting",
+        }.get(s)
 
 
 # Which POST actions are lab configuration. The daily bench logs in
@@ -412,18 +434,23 @@ class PFASTemperatureLogView(ViewHelpers, BrowserView):
         """A new monitored unit is a core Instrument whose type is of that kind."""
         return _portal(self.context).absolute_url() + "/bika_setup/bika_instruments/createObject?type_name=Instrument"
 
-    def _storage_ranges(self, entries):
-        """The ranges for what the unit holds, per method (Storage and holding)."""
-        from senaite.pfas import method_profile_sections as mps
+    def _judgement(self, unit):
+        """What the unit is judged against: the narrowest of its own range and
+        the storage range of each matrix it holds, per method
+        (matrix_temperature.unit_judgement)."""
+        from senaite.pfas import matrix_temperature as mt
         from senaite.pfas.method_profile_store import raw_profile
+        from senaite.pfas import homogenisation as hg
         portal = _portal(self.context)
-        return mps.kept_ranges(entries, lambda mid: raw_profile(portal, mid))
+        if not hasattr(self, "_homogenised"):
+            self._homogenised = hg.homogenised_titles()
+        return mt.unit_judgement(unit, lambda mid: raw_profile(portal, mid), self._homogenised)
 
     def monitor_cards(self):
         """Each unit of the kind: its sensor, last reading, current value
-        judged against the tightest of its own range and the storage ranges
-        of the methods whose samples it stores, and its readings for the
-        chart."""
+        judged against the narrowest of its own range and the storage ranges
+        of the matrices it holds, per method (why: "Narrowest of Tissue,
+        Solid"), and its readings for the chart."""
         out = []
         for u in db.list_units():
             if u["unit_type"] != self.monitor_kind():
@@ -432,20 +459,17 @@ class PFASTemperatureLogView(ViewHelpers, BrowserView):
                 mids = json.loads(u.get("profiles_json") or "[]") or []
             except (TypeError, ValueError):
                 mids = []
-            storage = self._storage_ranges(mids)
-            lo, hi = db.effective_range(_ff(u.get("temp_min")), _ff(u.get("temp_max")),
-                                        [(r[1], r[2]) for r in storage])
+            got = self._judgement(u)
+            storage, lo, hi = got["rows"], got["lo"], got["hi"]
             last = db.latest_reading(u["id"])
             value = None
             if last:
                 value = last.get("corrected") if last.get("corrected") is not None else last.get("temperature")
             ok = None
             conflict = u""
-            if db.range_conflict(lo, hi):
+            if got["conflict"]:
                 # no reading can meet ranges that do not overlap: say so, judge nothing
-                conflict = u"It holds items whose ranges do not overlap: %s. Change what it holds." % u"; ".join(
-                    u"%s %s to %s \u00b0C" % (r[0], u"%g" % r[1] if r[1] is not None else u"?",
-                                               u"%g" % r[2] if r[2] is not None else u"?") for r in storage)
+                conflict = u"It holds items whose ranges do not overlap: %s. Change what it holds." % got["clash"]
             elif value is not None and (lo is not None or hi is not None):
                 ok = (lo is None or value >= lo) and (hi is None or value <= hi)
             readings = db.get_temperature_readings(u["id"], days=self.monitor_days())
@@ -453,7 +477,7 @@ class PFASTemperatureLogView(ViewHelpers, BrowserView):
                         "last_ts": _last_ts((last or {}).get("ts")),
                         "value": value, "humidity": (last or {}).get("humidity"), "ok": ok,
                         "lo": lo, "hi": hi, "profiles": [r[0] for r in storage] or mids,
-                        "conflict": conflict,
+                        "conflict": conflict, "why": got["why"],
                         "readings_json": _safe_json([{"ts": r.get("ts"), "t": (r.get("corrected") if r.get("corrected") is not None else r.get("temperature")),
                                                       "h": r.get("humidity")} for r in _lab_readings(readings)]),
                         "url": "%s/@@pfas-temperature-log?unit_id=%s" % (_portal(self.context).absolute_url(), u["id"])})
@@ -584,7 +608,7 @@ class PFASBalanceLogView(ViewHelpers, BrowserView):
         return rows
 
 
-class PFASWaterLogView(ViewHelpers, BrowserView):
+class PFASWaterLogView(SignedIn, ViewHelpers, BrowserView):
     """Type 1 water QC log."""
     _template = ViewPageTemplateFile("templates/facility_water.pt")
 
@@ -603,7 +627,7 @@ class PFASWaterLogView(ViewHelpers, BrowserView):
             reading = _ff(f.get("conductivity"))
             db.save_water_qc(
                 unit_id=unit_id,
-                operator=f.get("operator", ""),
+                operator=self.operator(),
                 conductivity=db.conductivity_us(reading, unit),
                 toc=_ff(f.get("toc")),
                 log_date=f.get("log_date") or None,
@@ -658,7 +682,7 @@ class PFASWaterLogView(ViewHelpers, BrowserView):
         return u"Limit \u2264 %g \u00b5S/cm" % mx
 
 
-class PFASWasteLogView(ViewHelpers, BrowserView):
+class PFASWasteLogView(SignedIn, ViewHelpers, BrowserView):
     """SAA waste container log."""
     _template = ViewPageTemplateFile("templates/facility_waste.pt")
     error = None
@@ -673,7 +697,7 @@ class PFASWasteLogView(ViewHelpers, BrowserView):
                 return self._template()
             db.save_waste_log(
                 unit_id=f.get("unit_id", ""),
-                operator=f.get("operator", ""),
+                operator=self.operator(),
                 condition=f.get("condition", "acceptable"),
                 log_date=f.get("log_date") or None,
                 log_time=f.get("log_time") or None,
@@ -698,7 +722,7 @@ class PFASWasteLogView(ViewHelpers, BrowserView):
         return db.list_waste_logs(limit=60)
 
 
-class PFASEyeWashLogView(ViewHelpers, BrowserView):
+class PFASEyeWashLogView(SignedIn, ViewHelpers, BrowserView):
     """Eye wash station verification log."""
     _template = ViewPageTemplateFile("templates/facility_eyewash.pt")
     error = None
@@ -715,10 +739,9 @@ class PFASEyeWashLogView(ViewHelpers, BrowserView):
             if _ff(f.get("temperature")) is None:
                 self.error = u"Record the flush water temperature."
                 return self._template()
-            from senaite.pfas import print_doc
             db.save_eyewash_log(
                 unit_id=unit_id,
-                operator=print_doc.current_user_label(self.context) or f.get("operator", ""),
+                operator=self.operator(),
                 working=f.get("working") == "yes",
                 temperature=_ff(f.get("temperature")),
                 log_date=f.get("log_date") or None,
@@ -732,16 +755,11 @@ class PFASEyeWashLogView(ViewHelpers, BrowserView):
             return ""
         return self._template()
 
-    def signed_in(self):
-        """Who is recording: the signed-in person's name."""
-        from senaite.pfas import print_doc
-        return print_doc.current_user_label(self.context)
-
     def eyewash_units(self):
         return [u for u in db.list_units() if u["unit_type"] == "eyewash"]
 
     def required_range(self):
-        """The lab-wide flush temperature range, as the button beside the
+        """The lab-wide flush temperature range, as the line under the
         value reads it ("Required 15-25 \u00b0C")."""
         d = _facility_defaults()
         return u"Required %s\u2013%s \u00b0C" % (u"%g" % d["eyewash_temp_min"], u"%g" % d["eyewash_temp_max"])
@@ -786,22 +804,27 @@ class PFASWeightSetsView(GateMixin, BrowserView):
             return ""
         return self._template()
 
+    CAL_FIELDS = ("cal_lab", "cal_lab_accreditation", "cal_cert_number", "cal_date", "cal_due_date")
+
     def _save(self):
         f = self.request.form
-        db.save_weight_set({
+        required = bool(f.get("calibration_required"))
+        saved = db.get_weight_set(f.get("id")) or {}
+        data = {
             "id":                    f.get("id") or None,
             "set_id":                f.get("set_id", "").strip(),
             "description":           f.get("description", "").strip(),
             "weight_class":          f.get("weight_class", "").strip(),
             "serial_number":         f.get("serial_number", "").strip(),
-            "cal_lab":               f.get("cal_lab", "").strip(),
-            "cal_lab_accreditation": f.get("cal_lab_accreditation", "").strip(),
-            "cal_cert_number":       f.get("cal_cert_number", "").strip(),
-            "cal_date":              f.get("cal_date", "").strip(),
-            "cal_due_date":          f.get("cal_due_date", "").strip(),
+            "calibration_required":  1 if required else 0,
             "active":                1 if f.get("active", "1") else 0,
             "notes":                 f.get("notes", "").strip(),
-        })
+        }
+        for name in self.CAL_FIELDS:
+            # the calibration fields do not post while the switch is off: a
+            # set already recorded keeps its certificate for when it is on again
+            data[name] = f.get(name, "").strip() if required else (saved.get(name) or u"")
+        db.save_weight_set(data)
 
     def _delete(self):
         wid = self.request.form.get("id", "")
@@ -816,6 +839,11 @@ class PFASWeightSetsView(GateMixin, BrowserView):
         out = []
         for ws in db.list_weight_sets(active_only=False):
             probs = []
+            ws["needs_calibration"] = db.calibration_required(ws)
+            if not ws["needs_calibration"]:
+                ws["problems"] = probs
+                out.append(ws)
+                continue
             if not ws.get("cal_cert_number") or not ws.get("cal_lab"):
                 probs.append(u"no external calibration certificate recorded")
             due = ws.get("cal_due_date") or ""
@@ -834,7 +862,7 @@ class PFASWeightSetsView(GateMixin, BrowserView):
         return _portal(self.context).absolute_url()
 
 
-class PFASPipetteCalibrationView(ViewHelpers, BrowserView):
+class PFASPipetteCalibrationView(SignedIn, ViewHelpers, BrowserView):
     """Pipette calibration — quarterly in house, or external.
 
     An INTERNAL check is a measurement this laboratory made, so it carries its own
@@ -875,7 +903,7 @@ class PFASPipetteCalibrationView(ViewHelpers, BrowserView):
             return u"Choose the balance used and the calibration date."
         ok, _note = db.balance_verified_on(bal, day)
         if not ok:
-            return u"The balance was not verified on %s: verify it first, then record the calibration." % day
+            return u"The balance was not checked on %s: check it first, then record the calibration." % day
         return None
 
     def balance_checks_json(self):
@@ -887,11 +915,6 @@ class PFASPipetteCalibrationView(ViewHelpers, BrowserView):
             out[b["id"]] = {"passed": sorted(set(r["verified_date"] for r in rows if r.get("passed"))),
                             "failed": sorted(set(r["verified_date"] for r in rows if not r.get("passed")))}
         return _safe_json(out)
-
-    def signed_in(self):
-        """Who is recording: the signed-in person's name."""
-        from senaite.pfas import print_doc
-        return print_doc.current_user_label(self.context)
 
     def measurement_rows(self):
         """The posted measurements table: [{"volume", "weighings": [5]}]."""

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """A prepared lot's record: the recipe revision it was made
-by (pinned: a later revision does not change the lot), the log it is on,
-made and expires (and why), its parentage as a tree down to the purchased
+by (pinned: a later revision does not change the lot), the preparation
+record it is on, made and expires (and why), its parentage as a tree down to the purchased
 material, the recipe's steps, its concentrations -- calculated from its
 recipe or, on a lot made before recipes, typed -- and the lots made in the
 same sitting.
 
+    recorded_on(entry)                  -> "PDS-A r2 · PDS-A-261105-01"
     tree_rows(rec, nodes, recipe_label) -> [{"depth", "lot", "name", "note", "problem"}]
     expiry_note(rec, shelf_days)        -> why it expires when it does
     steps(rev, who)                     -> [(n, instruction, who)]
@@ -39,6 +40,16 @@ def _note(node, recipe_label):
     if node.get("has_certificate_values"):
         return u"purchased · Certificate values"
     return u"purchased"
+
+
+def recorded_on(entry):
+    """The preparation record a lot is on: its recipe code and revision and
+    the record's id; blank for a lot made before records."""
+    entry = entry or {}
+    pin = entry.get("recipe") or {}
+    if not entry.get("id") or not pin.get("code"):
+        return u""
+    return u"%s r%s \u00b7 %s" % (pin["code"], pin.get("revision"), entry["id"])
 
 
 def tree_rows(rec, nodes, recipe_label):
@@ -104,9 +115,12 @@ def label_rows(entry, lots_by_uid):
         r = lots_by_uid.get(uid)
         if not r:
             continue
-        out.append({"name": r.get("title") or u"", "lot": r.get("lot_number") or u"",
-                    "exp": r.get("effective_expiry") or r.get("expiry_date") or u"",
-                    "date": r.get("prepared_date") or u"", "analyst": r.get("prepared_by") or u"",
-                    "vol": r.get("volume_prepared") or u"",
-                    "storage": r.get("storage_conditions") or r.get("storage_location") or u""})
+        from senaite.pfas import lot_extension
+        row = {"name": r.get("title") or u"", "lot": r.get("lot_number") or u"",
+               "exp": r.get("effective_expiry") or r.get("expiry_date") or u"",
+               "date": r.get("prepared_date") or u"", "analyst": r.get("prepared_by") or u"",
+               "vol": r.get("volume_prepared") or u"",
+               "storage": r.get("storage_conditions") or r.get("storage_location") or u""}
+        row.update(lot_extension.label_values(r.get("extensions")))
+        out.append(row)
     return out

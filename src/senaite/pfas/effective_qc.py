@@ -13,7 +13,10 @@ analyte's own override), "class:<name>" (a matrix class's override),
 "project" or "default" (the published method's value, or none). Instrument
 limits and labelled-standard windows are resolved by resolved_criteria_store
 (the run's own resolution); acceptance tiers are chosen by qc_tiers (the
-run's own selection); nothing is resolved a second way here. Each href opens
+run's own selection); a method with one surrogate window for every standard
+reads it from method_engine.surrogate_window (the worker's own reader), and
+a row of it says "guidance" where the Engine reports a miss without failing
+it; nothing is resolved a second way here. Each href opens
 the editor tab that owns the value. Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
@@ -23,12 +26,15 @@ try:
 except ImportError:        # Py3
     from urllib.parse import quote
 
+from senaite.pfas import labelled_standards, method_engine
 from senaite.pfas import qc_tiers, resolved_criteria_store as rcs
 from senaite.pfas import profile_grids as pg
 
 EDITOR = "@@pfas-method-profile-edit"
 TAB_QC = "pane-qc"
 TAB_STANDARDS = "pane-standards"
+# each editor tab a row opens, by the name its own tab strip gives it
+TAB_WORDS = {TAB_QC: "QC criteria", TAB_STANDARDS: "Isotope standards"}
 EN = "–"
 
 # the run-wide checks: key -> (label, unit, always listed)
@@ -42,11 +48,13 @@ _RUN_CHECKS = (
 )
 _GROUPS = (
     ("default", "All analytes", False, False),
-    ("key_tight", "Key analytes", True, False),
+    ("key_tight", "Regulated analytes", True, False),
     ("no_std", "Analytes with no isotope standard", False, True),
 )
 _SET_BY_WORDS = {"method": "Method", "analyte": "Analyte override", "project": "Project",
-                 "default": "Published default"}
+                 "cell": "This cell",
+                 "default": "Published default",
+                 "method_default": method_engine.METHOD_DEFAULT_WORDS}
 
 
 def _num(v):
@@ -69,7 +77,7 @@ def set_by_words(set_by):
 def is_override(set_by):
     """True when something more specific than the method or its published
     default set the limit."""
-    return set_by not in ("method", "default")
+    return set_by not in ("method", "default", "method_default")
 
 
 def _window(value, unit="%"):
@@ -97,8 +105,12 @@ def _limits(value, unit):
     return "{0}{1}".format(_num(value), unit)
 
 
-def _row(check, analyte, limits, set_by, href):
-    return {"check": check, "analyte": analyte, "limits": limits, "set_by": set_by, "href": href}
+GUIDANCE_WORDS = method_engine.GUIDANCE_WORDS
+
+
+def _row(check, analyte, limits, set_by, href, guidance=False):
+    return {"check": check, "analyte": analyte, "limits": limits, "set_by": set_by, "href": href,
+            "guidance": guidance}
 
 
 def _run_rows(profile, matrix, method_id):
@@ -135,6 +147,22 @@ def _tier_checks(qc_type, tier):
     return out
 
 
+def blank_limit_words(profile, qc_type, matrix):
+    """A blank's limit for `matrix` as this page states it ("up to 1 x RL"):
+    the tier qc_tiers chooses for all analytes, or None when the method sets
+    the blank type no limit (or switches it off)."""
+    try:
+        chosen = qc_tiers.base_tier(profile or {}, qc_type, matrix)
+    except qc_tiers.Unconfigured:
+        return None
+    if chosen is None:
+        return None
+    for check, limits in _tier_checks(qc_type, chosen[0]):
+        if check == "{0} blank limit".format(qc_type):
+            return limits
+    return None
+
+
 def _tier_rows(profile, matrix, method_id):
     href = _href(method_id, TAB_QC)
     out = []
@@ -161,8 +189,48 @@ def _tier_rows(profile, matrix, method_id):
     return out
 
 
+def _cell_rows(profile, matrix, method_id):
+    """A row per setting on one analyte's cell in `matrix` (its title or an
+    earlier name): its window, or "Not judged" where it is off; set by the
+    cell itself."""
+    from senaite.pfas import method_profile_sections as mps
+    href = _href(method_id, TAB_QC)
+    out = []
+    for r in mps.read_cells(profile):
+        if (matrix or "").lower().strip() not in qc_tiers.matrix_names(profile, r["matrix"]):
+            continue
+        if r["off"]:
+            out.append(_row("{0} check".format(r["qc_type"]), r["analyte"], "Not judged", "cell", href))
+        elif r["qc_type"] in mps.RPD_QC_TYPES:
+            out.append(_row("{0} spread".format(r["qc_type"]), r["analyte"],
+                            "up to {0}%".format(_num(r["rpd_max"])), "cell", href))
+        else:
+            out.append(_row("{0} recovery".format(r["qc_type"]), r["analyte"],
+                            _window({"min": r["recovery_min"], "max": r["recovery_max"]}), "cell", href))
+    return out
+
+
+def _one_window_rows(profile, href):
+    """A row per surrogate of a method whose Engine judges every standard on
+    one window: the profile's own ("method") or the method text's
+    ("default"), marked guidance where a miss is reported, not failed. A
+    method with no window set says so on each row."""
+    window = method_engine.surrogate_window(profile)
+    set_by = "method_default"      # the same words wherever the window is held
+    if window is None:
+        limits, guidance = "Not set", False
+    else:
+        limits = _limits({"min": window["min"], "max": window["max"]}, "%")
+        guidance = "surrogate_recovery" in method_engine.guidance_only_rules(profile)
+    grid = labelled_standards.grid(profile)
+    return [_row("SUR recovery", kw, limits, set_by, href, guidance)
+            for kw in sorted(grid) if grid[kw].get("role") == "surrogate"]
+
+
 def _sur_rows(profile, matrix, method_id):
     href = _href(method_id, TAB_STANDARDS)
+    if not method_engine.engine(profile)["eis_recovery_limits"]:
+        return _one_window_rows(profile, href)
     found = dict((r["analyte"], r) for r in rcs.build_resolved_rows(method_id, matrix, profile=profile)
                  if r["key"] == "eis_recovery" and r["analyte"])
     mclass = rcs.ruleset.method_baselines.matrix_class(matrix, profile) if matrix else "aqueous"
@@ -177,7 +245,7 @@ def effective_rows(profile, matrix):
     profile = profile or {}
     method_id = profile.get("method_id") or ""
     return (_run_rows(profile, matrix, method_id) + _tier_rows(profile, matrix, method_id) +
-            _sur_rows(profile, matrix, method_id))
+            _cell_rows(profile, matrix, method_id) + _sur_rows(profile, matrix, method_id))
 
 
 def effective_sheet(profile, matrix, only_overrides=False):
@@ -191,7 +259,10 @@ def effective_sheet(profile, matrix, only_overrides=False):
         words = set_by_words(r["set_by"])
         rows.append(pg.Row("r{0}".format(len(rows)), r["check"], {
             "analyte": pg.Cell(r["analyte"], state="readonly"),
-            "limits": pg.Cell(r["limits"], state="readonly"),
-            "set_by": pg.Cell(words, state="readonly", links=[(words, r["href"])]),
+            "limits": pg.Cell(r["limits"], state="readonly",
+                              flags=((GUIDANCE_WORDS, "tag"),) if r["guidance"] else ()),
+            # the source once, as text; the button names the tab it opens
+            "set_by": pg.Cell(words, state="readonly",
+                              links=[(TAB_WORDS.get(r["href"].rsplit("#", 1)[-1], words), r["href"])]),
         }, selectable=False))
     return pg.Sheet("effective-qc", columns, rows, selection=False, picker=False)

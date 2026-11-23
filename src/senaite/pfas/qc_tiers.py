@@ -5,10 +5,13 @@ studies (method studies, Study Designer). A study's recovery and RSD / RPD
 limits are therefore the method's, chosen exactly as a run's are.
 
     select_tier(profile_data, qc_type, analyte, matrix, conc=None, rl=None,
-                is_key=False, is_no_std=False, where="")
-        -> (tier dict, branch) or None (the QC type is off); raises
-           Unconfigured when nothing applies or a needed value is missing.
-           branch: "no_std" | "key_tight" | "default"
+                is_key=False, is_no_std=False, where="", keyword=None)
+        -> (tier dict, branch) or None (the QC type is off, or off on this
+           analyte's cell in this matrix); raises Unconfigured when nothing
+           applies or a needed value is missing.
+           branch: "no_std" | "key_tight" | "default" | "cell"
+    cell_setting(profile_data, qc_type, keyword, matrix)
+                        the setting stored on one analyte in one matrix, or None
     spread_limit(tier)  the tier's RSD / RPD limit (one limit: rsd_max, else
                         rpd_max)
     study_limits(...)   a study's recovery window and spread limit, or the
@@ -18,6 +21,14 @@ limits are therefore the method's, chosen exactly as a run's are.
                         matrix the method supports, or the tier's own list
     in_scope(profile, tier, matrix)  does the tier apply in `matrix` (its
                         own list and those matrices' aliases)
+
+A cell setting, qc_acceptance[qc_type]["cells"]: [{"analyte": keyword,
+"matrix": matrix title, and either "recovery_min" and "recovery_max" (a
+recovery type), "rpd_max" (an RPD type) or "off": true}]. It is what one
+analyte gets in one matrix outside the analyte groups: its window replaces
+the ordinary tier there (a low-level tier still replaces it at a low
+spike), and "off" leaves that analyte unjudged there for that QC type at
+every spike level.
 
 A tier: {"analyte_group": "all" | "key" | "linked" | "no_std" (missing =
 "all"), "matrix_scope": "all" | "listed", "matrices": [matrix titles] (a
@@ -159,9 +170,63 @@ def low_level_candidates(profile_data, qc_type, base, matrix):
     return sorted(out, key=lambda t: float(t[LOW_LEVEL_KEY]))
 
 
+CELLS_KEY = "cells"
+CELL_ENDS = ("recovery_min", "recovery_max", "rpd_max")
+# a tier's keys that cite a published table: a cell's window is the lab's own;
+# and the tier's flag (its code, place and note): a cell is not the tier
+_CITED = ("verify_against_method", "citation", "description", LOW_LEVEL_KEY, "flag")
+
+
+def matrix_names(profile_data, title):
+    """A matrix's title and its earlier names (aliases), compared as typed
+    without case or outer spaces."""
+    aliases = (profile_data or {}).get("matrix_aliases") or {}
+    return set(n.lower().strip() for n in [title or ""] + list(aliases.get(title) or []))
+
+
+def cell_setting(profile_data, qc_type, keyword, matrix):
+    """The setting stored on analyte `keyword` in `matrix` for `qc_type`
+    (its matrix by title or an alias of it), or None."""
+    entry = ((profile_data or {}).get("qc_acceptance") or {}).get(qc_type)
+    if not isinstance(entry, dict) or not keyword:
+        return None
+    want = (matrix or "").lower().strip()
+    for c in entry.get(CELLS_KEY) or []:
+        if isinstance(c, dict) and c.get("analyte") == keyword and want in matrix_names(profile_data, c.get("matrix")):
+            return c
+    return None
+
+
+def cell_tier(base, cell):
+    """The tier one analyte gets in one matrix from its cell setting: the
+    ordinary tier's other criteria (an RSD limit), with the cell's window."""
+    tier = dict((k, v) for k, v in (base or {}).items() if k not in _CITED)
+    for k in CELL_ENDS:
+        if k in cell:
+            tier[k] = cell[k]
+    tier.update(name="{0} in {1}".format(cell.get("analyte"), cell.get("matrix")), cell=True,
+                description="Set on {0} in {1}".format(cell.get("analyte"), cell.get("matrix")))
+    return tier
+
+
 def select_tier(profile_data, qc_type, analyte, matrix, conc=None, rl=None,
-                is_key=False, is_no_std=False, where=""):
+                is_key=False, is_no_std=False, where="", keyword=None):
+    """`keyword`: the analyte's keyword where `analyte` is another spelling
+    (an instrument's name), for its cell setting."""
     where = where or "{0} / {1} / {2}".format(analyte, matrix or "(no matrix)", qc_type)
+    if _qa_entry(profile_data, qc_type) is None:
+        return None
+    cell = cell_setting(profile_data, qc_type, keyword or analyte, matrix)
+    if cell is not None and cell.get("off"):
+        return None                       # not judged for this analyte in this matrix
+    if cell is not None:
+        try:
+            chosen = base_tier(profile_data, qc_type, matrix, is_key, is_no_std, where)
+        except Unconfigured:
+            chosen = None                 # the cell's window stands alone
+        base = chosen[0] if chosen else None
+        lows = low_level_candidates(profile_data, qc_type, base, matrix) if base else []
+        return low_level_tier(lows, cell_tier(base, cell), lambda _t: True, conc, rl, where), "cell"
     chosen = base_tier(profile_data, qc_type, matrix, is_key, is_no_std, where)
     if chosen is None:
         return None
@@ -191,7 +256,8 @@ def study_limits(profile_data, qc_type, analyte, matrix, conc=None, rl=None,
         return {"problem": "{0}".format(e)}
     if chosen is None:
         return {"problem": "{0}: the method profile does not judge {1} (that QC "
-                           "type is off or absent).".format(where, qc_type)}
+                           "type is off or absent, or off for this analyte in this "
+                           "matrix).".format(where, qc_type)}
     tier = chosen[0]
     return {"recovery_min": _f(tier.get("recovery_min")),
             "recovery_max": _f(tier.get("recovery_max")),

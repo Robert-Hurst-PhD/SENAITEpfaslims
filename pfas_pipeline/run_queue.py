@@ -23,6 +23,7 @@ from typing import Optional
 import re
 
 from . import dilution_routes
+from .addon import load as _load_addon
 from .importer import classify_injection
 from .models import Batch, QCFlag, LFSMResult, LFSMDResult, reported_conc
 
@@ -52,6 +53,7 @@ from .qc_engine import (
     is_raw_check, qual_quan_check, calibration_check_profiled,
     ccv_check_profiled, icv_check_profiled, rrt_check_profiled, signal_to_noise_check, qualifier_deleted_check,
     recovery_check_profiled, rpd_check_profiled, raw_no_reading, no_reading_issue,
+    RSD_MIN_SPIKES, rsd_check_profiled, rsd_pct,
 )
 from .method_profiles import (
     UnconfiguredCriterion,
@@ -91,7 +93,7 @@ CHECK_PROMPTS: dict[str, str] = {
     "is_response":         "Verify internal standard responses within ±50% of batch average",
     "rt_deviation":        "Verify retention times within ±0.10 min of average",
     "ion_ratio":           "Verify qual/quan ion ratios within ±30% of expected",
-    "blank_contamination": "Verify the blank against the method's limit (QC Types: at most N x RL)",
+    "blank_contamination": "Verify the blank against the method's limit (QC Types: \u2264 N x RL)",
     "lod_check":           "Apply <LOD qualifier where blank ≥ sample",
     "bloq_check":          "Apply BLoQ qualifier for results below LOQ",
     "recovery":            "Verify LFB / LCS recovery against the method's tiers",
@@ -171,8 +173,9 @@ def _summed_row(rows, analyte, sums=None):
 def _load_rule_toggles(method_id: str, rules_path: str = None) -> dict:
     """{rule_library_key: bool or state} for method_id: the method profile's
     `rule_toggles` with its `rule_states` (enforced / evaluate / off) over
-    them. `rules_path` is accepted for old callers and ignored. An absent key
-    is treated as enforced by _rule_state."""
+    them, and every library rule's state over its limit boxes over both.
+    `rules_path` is accepted for old callers and ignored. An absent key is
+    treated as enforced by _rule_state."""
     if not method_id:
         return {}
     from .method_profiles import _profile_data_cache, get_profile
@@ -183,7 +186,26 @@ def _load_rule_toggles(method_id: str, rules_path: str = None) -> dict:
     data = _profile_data_cache.get(mid) or {}
     out = dict(data.get("rule_toggles") or {})
     out.update(data.get("rule_states") or {})
+    # a rule's state is read over its limit boxes (limit_states): a rule
+    # whose boxes are all Off is not run
+    from .addon import load
+    out.update(load("limit_states").rule_states(data))
     return out
+
+
+def _dilution_choice(method_id):
+    """The method's dilution_recovery under the linked response ratio
+    ("fold", "measured", "parent", or "" unset); None when the ratio is off
+    (a dilution's surrogate is then judged only where it was added back)."""
+    from .method_profiles import get_linked_response_ratio, get_dilution_recovery
+    if not method_id or get_linked_response_ratio(method_id) != "on":
+        return None
+    return get_dilution_recovery(method_id)
+
+
+def _field_dilution(name, dilutions):
+    from .pipeline import field_dilution
+    return field_dilution(name, dilutions)
 
 
 def _takes_surrogate_recovery(injection_name: str,
@@ -261,19 +283,16 @@ def _qc_type_state(profile, qc_type: str) -> str:
 
 
 def _low_level_gate(profile, flag, window):
-    """A recovery judged against a low-level tier (window["low_level"]),
-    filed by the method's Low-level recoveries row: (flag, advisory,
-    judged). Off: not judged -- no flag, and the window says so; Evaluate:
-    a failure is advisory; Enforced, or a recovery judged against an
-    ordinary tier, passes as it is."""
-    if not (window or {}).get("low_level"):
-        return flag, False, True
-    try:
-        state = profile.low_level_state() if profile is not None else "enforced"
-    except AttributeError:                       # a profile predating the row
-        state = "enforced"
+    """A recovery filed by the state of the tier that judged it
+    (window["state"], limit_states.tier_state; a low-level tier's state
+    takes the Low-level recoveries row's): (flag, advisory, judged). Off:
+    not judged -- no flag, and the window says so; Evaluate: a failure is
+    advisory; Enforced passes as it is."""
+    from .qc_engine import TIER_OFF_BASIS
+    state = (window or {}).get("state") or "enforced"
     if state == "off":
-        window.update(lo=None, hi=None, basis="not judged: Low-level recoveries is Off")
+        if window is not None:
+            window.update(lo=None, hi=None, basis=TIER_OFF_BASIS)
         return None, False, False
     return flag, state == "evaluate", True
 
@@ -450,7 +469,7 @@ class RunQueue:
 
         def _advisory(*keys):
             """True when the rules behind a flag are all in the state
-            Evaluate (a rule that is off files nothing)."""
+            Evaluate over their boxes (a rule that is off files nothing)."""
             states = [_rule_state(toggles, k) for k in keys]
             states = [st for st in states if st != "off"]
             return bool(states) and all(st == "evaluate" for st in states)
@@ -539,8 +558,44 @@ class RunQueue:
                 _record_gap(qc_type, "", exc)
                 return []
 
-        # 1. IS Raw (is_response rule)
-        if _rule_enabled(toggles, "is_response"):
+        # The method profile drives every check below through the profiled
+        # variants, never the flat CRITERIA table. A method with no exported
+        # profile is refused.
+        try:
+            profile = _get_method_profile(self.method_id)
+        except KeyError as exc:
+            raise RuntimeError("%s The run's QC is not judged without it." % (
+                exc.args[0] if exc.args else exc))
+
+        # Every limit box carries its own state (limit_states). A box judged
+        # with no limit is filed here once: Enforced holds release as an
+        # unconfigured criterion; Evaluate lets the run go on, filed as an
+        # advisory "no limit set"; Off is not judged.
+        if not hasattr(self.batch, "advisory_gaps"):
+            self.batch.advisory_gaps = []
+        _pdata = getattr(profile, "_profile_data", lambda: {})()
+        _limits = _load_addon("limit_states")
+        # the ICV's own deviation is owed only by a run that holds an ICV
+        _has_icv = any(classify_injection(r.injection_name, dilutions) == "ICV" for r in all_rows)
+        for _box, _state in _limits.empty_boxes(_pdata):
+            if _box["key"] == "icv" and not _has_icv:
+                continue
+            _gap = UnconfiguredCriterion("{0}: {1}".format(self.method_id, _limits.no_limit_words(_box)))
+            _type = _limits.GAP_TYPES.get(_box["key"], _box["label"])
+            if _state == "enforced":
+                _record_gap(_type, "", _gap)
+            else:
+                self.batch.advisory_gaps.append({"qc_type": _limits.ADVISORY_GAP_TYPE, "analyte": "",
+                                                 "method_id": self.method_id or "", "reason": str(_gap)})
+
+        def _box(key):
+            return profile.limit_state(key)
+
+        def _judged(key):
+            return profile.limit_judged(key)
+
+        # 1. IS Raw (is_response rule: its two windows, each its own box)
+        if _judged("is_response") or _judged("is_vs_ccv"):
             for is_cmp in _monitored("IS Response"):
                 # unfiltered: dilutions ARE checked for IS consistency
                 for res in _guard_is(all_rows, is_cmp, dilutions, _method):
@@ -550,34 +605,25 @@ class RunQueue:
                     # Summary's IS row and its gate need the passes too.
                     self.batch.is_results.append(res)
 
-        # The method profile drives the per-analyte checks below through the
-        # profiled variants, never the flat CRITERIA table. EPA 537.1 §9.3.4
-        # requires the IS to hold against BOTH the ICAL average and the last
-        # CCV. A method with no exported profile is refused.
-        try:
-            profile = _get_method_profile(self.method_id)
-        except KeyError as exc:
-            raise RuntimeError("%s The run's QC is not judged without it." % (
-                exc.args[0] if exc.args else exc))
-
-        # 2. RT Deviation (rrt_deviation rule)
-        rt_enabled  = _rule_enabled(toggles, "rrt_deviation")
+        # 2. RT Deviation (rrt_deviation rule): either tolerance's box
+        rt_enabled  = _judged("rrt_deviation.relative") or _judged("rrt_deviation.absolute")
         # 3. Qual-Quan (ion_ratio rule)
-        iq_enabled  = _rule_enabled(toggles, "ion_ratio")
+        iq_enabled  = _judged("ion_ratio")
         # 4. Calibration (cal_r2 OR ccv_recovery — run if either is on)
         cal_enabled  = _rule_enabled(toggles, "cal_r2") or _rule_enabled(toggles, "ccv_recovery")
-        # r2 itself only under its own switch (the point deviations run either way)
-        r2_enabled   = _rule_enabled(toggles, "cal_r2")
-        # 5. Signal-to-Noise (sn_min rule)
-        sn_enabled   = _rule_enabled(toggles, "sn_min")
+        # r2 itself only under its own box (the point deviations by theirs)
+        r2_enabled   = _judged("cal_r2")
+        # 5. Signal-to-Noise (sn_min rule): the quantifier's and the
+        # confirmation ion's boxes
+        sn_enabled   = _judged("sn_min.quan") or _judged("sn_min.confirm")
         # the method's own quantifier and confirmation-ion S/N limits: the
-        # S/N check judges samples on them, the calibration check holds the
-        # lowest calibrator of a raw run's curve to them. An unresolvable limit
-        # is a gap only when an enabled S/N check, or the calibration check of
-        # a run with raw rows, needs it.
-        raw_rows = any((getattr(r, "derived_from", "") or "").startswith("raw:") for r in rows)
+        # S/N check judges samples on them, and the calibration check holds
+        # the lowest calibrator of a raw run's curve to them. Both are the
+        # requirement of a method that judges S/N: with its S/N rule Off
+        # neither runs, whatever limits it holds, and no limit is owed.
+        # An empty limit was filed above, once; a box that is Off reads None.
         sn_limits = {}
-        if sn_enabled or (cal_enabled and raw_rows):
+        if sn_enabled:
             try:
                 _conf = profile.confirmation_rule()
                 sn_limits = {"quan_min": _conf.sn_min_quant, "confirm_min": _conf.sn_min_confirm}
@@ -585,22 +631,12 @@ class RunQueue:
                 _record_gap("Signal-to-Noise", "", exc)
         if sn_enabled and not sn_limits:
             sn_enabled = False              # the gap is filed: not judged
-        for ion, key in (("quantitation", "quan_min"), ("confirmation", "confirm_min")):
-            if sn_enabled and sn_limits.get(key) is None:
-                _record_gap("Signal-to-Noise", "", UnconfiguredCriterion(
-                    "{0} sets no S/N minimum for the {1} ion. Set it on the method's QC "
-                    "criteria tab (S/N Minimum), or switch the rule off.".format(self.method_id, ion)))
         ion_tol = None
         if iq_enabled:
             try:
                 ion_tol = profile.confirmation_rule().ion_ratio_tol_pct
             except UnconfiguredCriterion as exc:
                 _record_gap("Ion Ratio", "", exc)
-            else:
-                if ion_tol is None:
-                    _record_gap("Ion Ratio", "", UnconfiguredCriterion(
-                        "{0} sets no ion-ratio tolerance. Set it on the method's QC criteria "
-                        "tab (Ion Ratio), or switch the rule off.".format(self.method_id)))
             iq_enabled = ion_tol is not None
         _calibration_check = functools.partial(calibration_check_profiled,
                                                sn_quan_min=sn_limits.get("quan_min"),
@@ -613,6 +649,7 @@ class RunQueue:
         lfsmd_enabled = _qc_type_enabled(profile, "LFSMD")
         # a QC type in the state Evaluate is judged, and what it files is
         # advisory: Data Review shows it and nothing is held on it
+        # (each tier's own state then files its failures: _low_level_gate)
         lfsm_advisory = _qc_type_state(profile, "LFSM") == "evaluate"
         lfsmd_advisory = _qc_type_state(profile, "LFSMD") == "evaluate"
         if lfsmd_enabled and not lfsm_enabled:
@@ -630,53 +667,54 @@ class RunQueue:
             if rt_enabled:
                 for res in _guard("RT", analyte, rrt_check_profiled, profile, rows, analyte):
                     if res.flag:
-                        res.flag.advisory = _advisory("rrt_deviation")
+                        # advisory as the box of the tolerance used (rrt_check_profiled)
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.rt_results.append(res)
             if iq_enabled:
                 for res in qual_quan_check(rows, analyte, ion_tol):
                     if res.flag:
-                        res.flag.advisory = _advisory("ion_ratio")
+                        res.flag.advisory = _box("ion_ratio") == "evaluate"
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.qual_quan_results.append(res)
             if cal_enabled:
                 for res in _guard("Calibration", analyte, _calibration_check,
                                   profile, rows, analyte, r2_enabled):
                     if res.flag:
-                        res.flag.advisory = _advisory("cal_r2", "ccv_recovery")
+                        # advisory as the boxes that failed (calibration_check_profiled)
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.cal_results.append(res)
                 # CCV recovery is a criterion separate from calibration
                 # linearity, with its own check.
-                if profile and _rule_enabled(toggles, "ccv_recovery"):
-                    ccv_advisory = _advisory("ccv_recovery")
-                    judged_before = len(self.batch.ccv_results)
+                # each CCV and ICV is filed by the box whose window judged
+                # it (ccv_check_profiled, icv_check_profiled)
+                if profile and _judged("ccv_recovery"):
                     for flag in _guard("CCV", analyte, ccv_check_profiled,
                                        profile, rows, analyte, _matrix,
                                        self.batch.ccv_results):
-                        flag.advisory = ccv_advisory
                         flags_by_injection.setdefault(
                             flag.injection_name, []).append(flag)
-                    # the ICV (QCS) verifies the curve: same switch, the
-                    # method's own ICV deviation
+                # the ICV (QCS) verifies the curve: its own box, or the CCV's
+                # window where the method judges it so
+                icv_box = "ccv_recovery" if profile.icv_same_as_ccv() else "icv"
+                if profile and _judged(icv_box):
                     for flag in _guard("ICV", analyte, icv_check_profiled,
                                        profile, rows, analyte, _matrix,
                                        self.batch.ccv_results):
-                        flag.advisory = ccv_advisory
                         flags_by_injection.setdefault(
                             flag.injection_name, []).append(flag)
-                    for verdict in self.batch.ccv_results[judged_before:]:
-                        verdict["advisory"] = ccv_advisory
             if sn_enabled:
                 for flag in signal_to_noise_check(rows, analyte, sn_limits["quan_min"],
                                                   sn_limits["confirm_min"]):
-                    flag.advisory = _advisory("sn_min")
+                    # J is the quantifier's box, N.C. the confirmation ion's
+                    flag.advisory = _box("sn_min.quan" if flag.issue == "(J)" else "sn_min.confirm") == "evaluate"
                     flags_by_injection.setdefault(flag.injection_name, []).append(flag)
             # a qualifier the analyst deleted confirms nothing: N.C. whatever
-            # the S/N rule's switch or state, never advisory
-            for flag in qualifier_deleted_check(rows, analyte):
+            # the S/N rule's switch or state, never advisory, on a dilution
+            # too, filed under the sample it was diluted from
+            for flag in qualifier_deleted_check(all_rows, analyte):
                 flag.advisory = False
-                flags_by_injection.setdefault(flag.injection_name, []).append(flag)
+                flags_by_injection.setdefault(
+                    dilution_routes.file_under(flag.injection_name, dilutions), []).append(flag)
 
         # 5b. Surrogate / extracted-internal-standard recovery. The
         # instrument reports each labelled compound's % recovery in column 30
@@ -685,7 +723,6 @@ class RunQueue:
         # Sec2024.10.1(5), EPA 537.1 Sec9.3.5 70-130%, EPA 1633A per-analyte x
         # matrix-class from Tables 6/8).
         eis_evaluated = set()
-        eis_advisory = set()
         # the Rule Toggles switch
         if profile is not None and _rule_enabled(toggles, "surrogate_recovery"):
             # the METHOD's injection standards (its labelled-standards grid)
@@ -715,7 +752,7 @@ class RunQueue:
                             continue
                         value = float(row.pct_recovery_is)
                         entry = {"injection_name": row.injection_name, "compound": compound,
-                                 "value": value, "judged": profile.judged_pct(value, _matrix),
+                                 "value": value, "judged": profile.judged_recovery(value, _matrix),
                                  "window_min": None, "window_max": None,
                                  "guidance": False, "status": status,
                                  "std_role": "surrogate"}
@@ -724,7 +761,13 @@ class RunQueue:
                 try:
                     rule = profile.qc_rules(compound, _matrix, "SUR")
                 except UnconfiguredCriterion as exc:
-                    _record_gap("Surrogate Recovery", compound, exc)
+                    # no window: Enforced holds release, Evaluate advises
+                    if _box("surrogate_recovery") == "evaluate":
+                        self.batch.advisory_gaps.append({"qc_type": _limits.ADVISORY_GAP_TYPE,
+                                                         "analyte": compound,
+                                                         "method_id": self.method_id or "", "reason": str(exc)})
+                    else:
+                        _record_gap("Surrogate Recovery", compound, exc)
                     _verdicts()
                     continue
                 if rule is None or rule.recovery_min is None:
@@ -739,6 +782,9 @@ class RunQueue:
                     except UnconfiguredCriterion as exc:
                         _record_gap("Surrogate Recovery", compound, exc)
                         ccv_rule = None
+                # the CCV's own window is its own box (Surrogate recovery in
+                # CCVs): in Evaluate its failure is advisory
+                ccv_own = ccv_rule is not None and ccv_rule is not rule
                 # `rows`, not `all_rows`: dilutions are excluded for the same
                 # reason RT, ion-ratio and calibration exclude them. is_raw_check
                 # above is the deliberate exception, and it corrects for the
@@ -748,64 +794,98 @@ class RunQueue:
                 # the method's window, its low end the method's lowest EIS
                 # recovery in a diluted extract when set.
                 _dil_settings = dilution_routes.settings_of(getattr(profile, "_profile_data", lambda: {})())
-                _respiked = [r for r in all_rows
-                             if classify_injection(r.injection_name, dilutions) == "Dilution"
-                             and dilution_routes.surrogate_added(dilutions.get(r.injection_name))]
+                # Under the linked response ratio the method's one choice
+                # (dilution_recovery) says how a diluted field sample's
+                # recovery is taken: its own times its fold, its own as
+                # measured, or its parent's (judged on the parent already);
+                # unset, none is judged (pipeline.dilution_recovery_flags
+                # flags the dilution). Extracted QC is never diluted.
+                _linked_dil = _dilution_choice(_method)
+                if _linked_dil is None:
+                    _respiked = [r for r in all_rows
+                                 if classify_injection(r.injection_name, dilutions) == "Dilution"
+                                 and dilution_routes.surrogate_added(dilutions.get(r.injection_name))]
+                else:
+                    _respiked = [r for r in all_rows if _linked_dil in ("fold", "measured")
+                                 and classify_injection(r.injection_name, dilutions) == "Dilution"
+                                 and _field_dilution(r.injection_name, dilutions)]
                 for row in rows + _respiked:
                     if (row.compound_name or "").strip() != compound:
                         continue
                     if row.pct_recovery_is is None:
                         continue
                     diluted = row in _respiked
+                    pct = float(row.pct_recovery_is)
+                    fold = None
+                    if diluted and _linked_dil == "fold":
+                        try:
+                            fold = float((dilutions.get(row.injection_name) or {}).get("factor"))
+                        except (TypeError, ValueError):
+                            fold = None
+                        if not fold or fold <= 0:
+                            continue             # no fold recorded: nothing to correct it with
+                        pct = pct * fold
                     in_ccv = sur_in_ccv and classify_injection(row.injection_name, dilutions) == "CCV"
                     if not (diluted or _takes_surrogate_recovery(row.injection_name, dilutions) or in_ccv):
                         continue
-                    row_rule = (dilution_routes.dilution_rule(rule, _dil_settings) if diluted
-                                else ccv_rule if in_ccv else rule)
+                    # the box that judges this row: Off, it is not judged.
+                    # A CCV's labelled standards are judged by Surrogate
+                    # recovery in CCVs: Off, none of them is judged; empty,
+                    # the sample window judges them in the sample box's state.
+                    if in_ccv and _box("surrogate_ccv") == "off":
+                        continue
+                    box = "surrogate_ccv" if (in_ccv and ccv_own) else "surrogate_recovery"
+                    if _box(box) == "off":
+                        continue
+                    floor_state = _box("dilution_eis_floor") if diluted else "off"
+                    row_rule = (dilution_routes.dilution_rule(rule, _dil_settings, floor_state != "off")
+                                if diluted else ccv_rule if in_ccv else rule)
                     if row_rule is None:
                         continue                     # its gap is filed above
+                    evaluate = _box(box) == "evaluate"
                     raw_flag = recovery_check_profiled(
                         profile, compound, _matrix, "SUR",
-                        float(row.pct_recovery_is), row.injection_name, rule=row_rule)
-                    # the check's own verdict, for the certificate
-                    self.batch.surrogate_results.append({
+                        pct, row.injection_name, rule=row_rule)
+                    # the check's own verdict, for the certificate, with
+                    # whether its box was Evaluate (lab only: the
+                    # certificate prints no verdict for it)
+                    self.batch.surrogate_results.append(dict({
                         "injection_name": row.injection_name, "compound": compound,
-                        "value": float(row.pct_recovery_is),
+                        "value": pct,
                         "window_min": row_rule.recovery_min, "window_max": row_rule.recovery_max,
-                        "judged": profile.judged_pct(float(row.pct_recovery_is), _matrix),
-                        "guidance": bool(row_rule.is_guidance_only),
+                        "judged": profile.judged_recovery(pct, _matrix),
+                        "guidance": evaluate,
                         "status": "within" if raw_flag is None else "outside",
-                        "std_role": "surrogate"})
+                        "std_role": "surrogate"},
+                        **({"dilution": _linked_dil, "measured": float(row.pct_recovery_is),
+                            "fold": fold} if diluted and _linked_dil else {})))
                     # a dilution's result is filed on the sample it was diluted
                     # from (it has no checks of its own); its own pass decides
                     # nothing about that sample
                     file_as = dilution_routes.file_under(row.injection_name, dilutions) if diluted \
                         else row.injection_name
                     if raw_flag is None:
+                        # the lowest EIS recovery in a diluted extract in the
+                        # state Evaluate: a result between the floor and the
+                        # window's own low end passes, filed as an advisory
+                        # for the lab (no check kind: the check still passes)
+                        band = (floor_state == "evaluate" and rule.recovery_min is not None
+                                and profile.judged_recovery(pct, _matrix) < rule.recovery_min)
+                        if band:
+                            flags_by_injection.setdefault(file_as, []).append(QCFlag(
+                                source="{0} surrogate recovery in a diluted extract".format(_method),
+                                analyte=compound, injection_name=row.injection_name,
+                                value="{0}%".format(profile.recovery_text(profile.judged_recovery(pct, _matrix))),
+                                issue="(REC) {0}% below the method's window {1:g}\u2013{2:g}%, above the lowest "
+                                      "EIS recovery in a diluted extract {3:g}%".format(
+                                          profile.recovery_text(profile.judged_recovery(pct, _matrix)),
+                                          rule.recovery_min, rule.recovery_max, row_rule.recovery_min),
+                                advisory=True))
                         if not diluted:
                             eis_evaluated.add(row.injection_name)
                         continue
-                    if row_rule.is_guidance_only:
-                        # FDA §2024.10.1(5) makes surrogate recovery ADVISORY.
-                        # It is recorded so the QC log and the reviewer see it,
-                        # and carries NO check_kind, so it cannot AUTO_FAIL a
-                        # release gate — a criterion the method calls guidance
-                        # must not block a batch. The check is left PENDING
-                        # rather than passed: a human should read an advisory
-                        # exceedance, and AUTO_PASS beside a flag would say the
-                        # opposite.
-                        flags_by_injection.setdefault(
-                            file_as, []).append(QCFlag(
-                                source="{0} surrogate recovery "
-                                       "(guidance)".format(_method),
-                                analyte=raw_flag.analyte,
-                                injection_name=raw_flag.injection_name,
-                                value=raw_flag.value,
-                                issue=raw_flag.issue,
-                                advisory=_advisory("surrogate_recovery"),
-                            ))
-                        eis_advisory.add(file_as)
-                        continue
+                    # a failure fails the check; in Evaluate it is advisory
+                    # (Data Review shows it, it holds nothing, prints nothing)
                     eis_evaluated.add(file_as)
                     flags_by_injection.setdefault(
                         file_as, []).append(QCFlag(
@@ -815,7 +895,7 @@ class RunQueue:
                             injection_name=raw_flag.injection_name,
                             value=raw_flag.value,
                             issue=raw_flag.issue,
-                            advisory=_advisory("surrogate_recovery"),
+                            advisory=evaluate,
                         ))
 
         # 6. LFSM recovery + LFSMD RPD (per-analyte tiered limits from method profile)
@@ -837,6 +917,8 @@ class RunQueue:
             conc_lookup = {}
             for row in rows:
                 conc_lookup.setdefault(row.injection_name, []).append(row)
+            from .pipeline import _has_sample_basis, _is_native, _isomer_parts
+            _parts = _isomer_parts(self.method_id)
 
             # Unique LFSM injection names (not duplicates), from the
             # extraction's spike record.
@@ -886,8 +968,13 @@ class RunQueue:
                     # the aliquot mass and final extract volume, a modelling
                     # decision, so the check reports that it could NOT be
                     # evaluated rather than assert a false failure.
+                    # the unit of the spike's native analytes on the sample
+                    # basis: an isotope standard's or surrogate's row stays
+                    # in the extract's unit and never sets it
                     result_units = ""
                     for row in conc_lookup.get(lfsm_inj, []):
+                        if not (_is_native(row, _parts) and _has_sample_basis(row)):
+                            continue
                         unit = (getattr(row, "conc_units", "") or "").strip()
                         if unit and unit.lower() != "nan":
                             result_units = unit
@@ -925,7 +1012,7 @@ class RunQueue:
                             recovery_pct = (fortified - unfort) / spike_val * 100.0
                         lfsm_win = {}
 
-                        if profile.judged_pct(recovery_pct, matrix) < 0:
+                        if profile.judged_recovery(recovery_pct, matrix) < 0:
                             # Physically impossible: the fortified sample
                             # measured LESS than the unfortified one. Reporting
                             # it as "outside 65-135%" sends a reviewer to look
@@ -946,7 +1033,7 @@ class RunQueue:
                                 raw_flag = recovery_check_profiled(
                                     profile, analyte, matrix, "LFSM",
                                     recovery_pct, lfsm_inj, conc=spike_val,
-                                    rl=profile.reporting_limits(analyte, matrix)[0],
+                                    rl=profile.reporting_limits(analyte, matrix, getattr(self.batch, "acid_basis", None))[0],
                                     window=lfsm_win)
                             except UnconfiguredCriterion as exc:
                                 _record_gap("LFSM", analyte, exc)
@@ -995,6 +1082,21 @@ class RunQueue:
                     else:
                         lfsm_evaluated.add(lfsm_inj)
 
+            # Three or more LFSMs at one spike level: their precision is the
+            # RSD of the recoveries of the spikes at that level, the LFSMDs'
+            # with the LFSMs', judged against the method's LFSMD RPD limit
+            # after the duplicates are read (below); their duplicates' RPD
+            # is not judged
+            rsd_levels = {}
+            rsd_dups = {}                        # (level, analyte) -> [(LFSMD, its result)]
+            if lfsmd_enabled and profile is not None:
+                by_level = {}
+                for inj in lfsm_inj_names:
+                    level = (spikes.get(inj) or {}).get("level") or ""
+                    if level and lfsm_results_by_inj.get(inj):
+                        by_level.setdefault(level, []).append(inj)
+                rsd_levels = dict((lv, injs) for lv, injs in by_level.items() if len(injs) >= RSD_MIN_SPIKES)
+
             # LFSMD RPD evaluation (requires matching LFSM result)
             if lfsmd_enabled and profile is not None:
                 # Pair the duplicate with its LFSM through the extraction
@@ -1011,14 +1113,20 @@ class RunQueue:
                     if (entry.get("qc_type") or classify_injection(name, dilutions)) != "LFSMD":
                         continue
                     # the LFSM it duplicates, as recorded; older records
-                    # pair by the shared parent
+                    # pair by the shared parent, only where one LFSM has it:
+                    # with several, the pair is never guessed
                     if entry.get("lfsm") in lfsm_inj_names:
                         lfsm_inj = entry["lfsm"]
                     else:
-                        for candidate in lfsm_inj_names:
-                            if (spikes.get(candidate) or {}).get("parent") == entry.get("parent"):
-                                lfsm_inj = candidate
-                                break
+                        same = [c for c in lfsm_inj_names
+                                if (spikes.get(c) or {}).get("parent") == entry.get("parent")]
+                        if len(same) > 1:
+                            _record_gap("LFSMD", "", UnconfiguredCriterion(
+                                "{0}: the LFSM it duplicates is not recorded, and {1} LFSMs share its "
+                                "parent {2} ({3}): record its LFSM on the extraction batch".format(
+                                    name, len(same), entry.get("parent") or "?", ", ".join(same))))
+                            continue
+                        lfsm_inj = same[0] if same else None
                     if lfsm_inj is None:
                         logger.info("No recorded LFSM pairs with %s — "
                                     "RPD stays pending", name)
@@ -1066,7 +1174,7 @@ class RunQueue:
                             raw_rec = recovery_check_profiled(
                                 profile, analyte, matrix, "LFSM", rec_dup, name,
                                 conc=lfsm_res.spike_value_ppt,
-                                rl=profile.reporting_limits(analyte, matrix)[0],
+                                rl=profile.reporting_limits(analyte, matrix, getattr(self.batch, "acid_basis", None))[0],
                                 window=rec_win)
                             rec_judged = True
                         except UnconfiguredCriterion as exc:
@@ -1093,7 +1201,19 @@ class RunQueue:
                         a_c, b_c = lfsm_res.fortified_conc, fortified_dup
                         # a raw side with no reading has no concentration to
                         # compare: the RPD is not judged, and its gap says so
-                        rpd_judged = not (missing_dup or (lfsm_inj, analyte) in lfsm_no_reading)
+                        # its level judged by the spikes' RSD: no RPD of its own;
+                        # its recovery joins the RSD set (a reading on both
+                        # sides), and the RSD's failure is its precision check's
+                        by_rsd = (lfsm_entry.get("level") or "") in rsd_levels
+                        if by_rsd and not missing_dup and (lfsm_inj, analyte) not in lfsm_no_reading:
+                            rsd_dups.setdefault((lfsm_entry.get("level") or "", analyte), []).append(
+                                (name, LFSMResult(analyte=analyte, lfsm_injection=name,
+                                                  parent_injection=lfsm_res.parent_injection,
+                                                  spike_value_ppt=lfsm_res.spike_value_ppt,
+                                                  fortified_conc=fortified_dup,
+                                                  unfortified_conc=lfsm_res.unfortified_conc,
+                                                  recovery_pct=rec_dup)))
+                        rpd_judged = not (by_rsd or missing_dup or (lfsm_inj, analyte) in lfsm_no_reading)
                         raw_flag, rpd_pct = None, None
                         if rpd_judged:
                             mean_c = (a_c + b_c) / 2.0
@@ -1102,12 +1222,12 @@ class RunQueue:
                                 raw_flag = rpd_check_profiled(
                                     profile, analyte, matrix, "LFSMD", rpd_pct, name,
                                     conc=lfsm_res.spike_value_ppt,
-                                    rl=profile.reporting_limits(analyte, matrix)[0],
+                                    rl=profile.reporting_limits(analyte, matrix, getattr(self.batch, "acid_basis", None))[0],
                                     window=rpd_win)
                             except UnconfiguredCriterion as exc:
                                 _record_gap("LFSMD", analyte, exc)
                                 continue
-                        else:
+                        elif not by_rsd:
                             unevaluated_lfsmd[name] = "no reading"
                             a_c = None if (lfsm_inj, analyte) in lfsm_no_reading else a_c
                             b_c = None if missing_dup else b_c
@@ -1120,7 +1240,7 @@ class RunQueue:
                                 injection_name=raw_flag.injection_name,
                                 value=raw_flag.value,
                                 issue=raw_flag.issue,
-                                advisory=lfsmd_advisory,
+                                advisory=lfsmd_advisory or raw_flag.advisory,
                             )
                             flags_by_injection.setdefault(name, []).append(flag)
 
@@ -1143,6 +1263,45 @@ class RunQueue:
 
                     if name not in unevaluated_lfsmd:
                         lfsmd_evaluated.add(name)
+
+            for level, injs in sorted(rsd_levels.items()):
+                for analyte in _analytes:
+                    if analyte in _components:
+                        continue
+                    got = [(inj, lfsm_results_by_inj[inj].get(analyte)) for inj in injs]
+                    got = [(inj, res) for inj, res in got
+                           if res is not None and (inj, analyte) not in lfsm_no_reading]
+                    if len(got) < RSD_MIN_SPIKES:
+                        continue
+                    # the duplicates at the level count with their spikes
+                    got += rsd_dups.get((level, analyte), [])
+                    rsd = rsd_pct([res.recovery_pct for _inj, res in got])
+                    if rsd is None:
+                        continue
+                    win = {}
+                    try:
+                        raw_flag = rsd_check_profiled(
+                            profile, analyte, matrix, "LFSM", "LFSMD", rsd, level,
+                            conc=got[0][1].spike_value_ppt,
+                            rl=profile.reporting_limits(analyte, matrix, getattr(self.batch, "acid_basis", None))[0], window=win)
+                    except UnconfiguredCriterion as exc:
+                        _record_gap("LFSMD", analyte, exc)
+                        continue
+                    if not win:
+                        continue                  # no RPD limit: precision not judged
+                    flag = None
+                    if raw_flag is not None:
+                        # the QC log names each spike the RSD judged, a duplicate too
+                        for inj, _res in got:
+                            flag = QCFlag(source="LFSM & LFSMD", check_kind=KIND_LFSMD,
+                                          analyte=raw_flag.analyte, injection_name=inj,
+                                          value=raw_flag.value, issue=raw_flag.issue,
+                                          advisory=lfsmd_advisory or raw_flag.advisory)
+                            flags_by_injection.setdefault(inj, []).append(flag)
+                    self.batch.lfsm_rsd_results.append({
+                        "analyte": analyte, "level": level, "injections": [inj for inj, _r in got],
+                        "parents": [res.parent_injection or "" for _i, res in got],
+                        "rsd_pct": rsd, "flag": flag, "window": win})
 
         # ── Checks behind the rule switches (every switch changes something)
         blank_evaluated, lcs_evaluated = set(), set()
@@ -1266,7 +1425,7 @@ class RunQueue:
                             # export) the method's RL taken back to the extract
                             # basis by the matrix factor it was raised by
                             from .method_profiles import get_matrix_factor, get_sample_correction
-                            prl = profile.reporting_limits(analyte, _bmatrix)[0]
+                            prl = profile.reporting_limits(analyte, _bmatrix, getattr(self.batch, "acid_basis", None))[0]
                             factor = get_matrix_factor(self.method_id, _bmatrix) \
                                 if get_sample_correction(self.method_id) != "instrument" else 1.0
                             rl = prl / factor if prl and factor else None
@@ -1284,10 +1443,10 @@ class RunQueue:
                             "covers": _covers(inj, analyte, row), "value": reported_conc(row)}
                         judged = True
                         if flag is not None:
-                            flag.advisory = blank_advisory
+                            flag.advisory = blank_advisory or rule.state == "evaluate"
                             flags_by_injection.setdefault(inj, []).append(flag)
                         continue
-                    rl, _mdl, rl_unit = profile.reporting_limits(analyte, _bmatrix)
+                    rl, _mdl, rl_unit = profile.reporting_limits(analyte, _bmatrix, getattr(self.batch, "acid_basis", None))
                     if rl is None:
                         _record_gap(role, analyte, UnconfiguredCriterion(
                             "{0} / {1} / {2}: the blank limit is {3:g} x RL but no RL is "
@@ -1313,7 +1472,7 @@ class RunQueue:
                         "value": profile.judged_conc(reported_conc(row), _bmatrix)}
                     judged = True
                     if flag is not None:
-                        flag.advisory = blank_advisory
+                        flag.advisory = blank_advisory or rule.state == "evaluate"
                         flags_by_injection.setdefault(inj, []).append(flag)
                 if judged:
                     blank_evaluated.add(inj)
@@ -1371,7 +1530,7 @@ class RunQueue:
                     try:
                         flag = recovery_check_profiled(
                             profile, analyte, _bmatrix, qc, conc / spike * 100.0, inj,
-                            conc=spike, rl=profile.reporting_limits(analyte, _bmatrix)[0],
+                            conc=spike, rl=profile.reporting_limits(analyte, _bmatrix, getattr(self.batch, "acid_basis", None))[0],
                             window=win)
                     except UnconfiguredCriterion as exc:
                         _record_gap(qc, analyte, exc)
@@ -1403,13 +1562,11 @@ class RunQueue:
 
         # 9. CCV FREQUENCY: bracketing every N counting injections, N = the
         # method's CCV frequency (what the Run Builder uses). Switch: ccv_frequency.
-        if profile is not None and _rule_enabled(toggles, "ccv_frequency"):
+        # its box: Off is not judged; empty, it was filed above (Enforced
+        # holds, Evaluate advises)
+        if profile is not None and _rule_enabled(toggles, "ccv_frequency") and _box("ccv_frequency") != "off":
             n = profile.ccv_frequency() if hasattr(profile, "ccv_frequency") else None
-            if not n:
-                _record_gap("CCV frequency", "", UnconfiguredCriterion(
-                    "{0}: no CCV frequency set (the method's QC criteria tab, CCV Frequency).".format(
-                        self.method_id)))
-            else:
+            if n:
                 opens = bool(getattr(profile, "ccv_opens_run", lambda: False)())
                 counts_qc = bool(getattr(profile, "ccv_counts_extracted_qc", lambda: True)())
                 frbs = set(getattr(self.batch, "field_blanks", None) or [])
@@ -1418,7 +1575,7 @@ class RunQueue:
                         [(i, "FRB" if i in frbs else "FD" if i in fds else classify_injection(i, dilutions))
                          for i in order],
                         n, opens, counts_qc):
-                    flag.advisory = _advisory("ccv_frequency")
+                    flag.advisory = _box("ccv_frequency") == "evaluate"
                     flags_by_injection.setdefault(flag.injection_name, []).append(flag)
 
         # 9a. THE RUN CLOCK: a CCV, sample or spiked QC the instrument stamps
@@ -1436,7 +1593,7 @@ class RunQueue:
                                                      start.strftime("%Y-%m-%d %H:%M"))))
 
         # 10. MDL: a reported detection below the analyte's MDL. Switch: mdl_check.
-        if profile is not None and _rule_enabled(toggles, "mdl_check"):
+        if profile is not None and _rule_enabled(toggles, "mdl_check") and _box("mdl_check") != "off":
             for inj in order:
                 if classify_injection(inj, dilutions) not in ("Sample", "MB", "LFSM", "LFSMD"):
                     continue
@@ -1448,7 +1605,7 @@ class RunQueue:
                     conc = profile.judged_conc(reported_conc(row), _bmatrix) if row is not None else None
                     if conc is None or conc <= 0:
                         continue
-                    _rl, mdl, unit = profile.reporting_limits(analyte, _bmatrix)
+                    _rl, mdl, unit = profile.reporting_limits(analyte, _bmatrix, getattr(self.batch, "acid_basis", None))
                     if mdl is None:
                         _record_gap("MDL", analyte, UnconfiguredCriterion(
                             "{0} / {1}: no MDL set (the method's Analytes "
@@ -1461,7 +1618,7 @@ class RunQueue:
                         continue
                     flag = mdl_check(analyte, inj, conc, mdl, unit)
                     if flag is not None:
-                        flag.advisory = _advisory("mdl_check")
+                        flag.advisory = _box("mdl_check") == "evaluate"
                         flags_by_injection.setdefault(inj, []).append(flag)
 
         # 11. SAMPLE DUPLICATE RPD (switched by the method's Dup QC type). Pair by the extraction record, else the name
@@ -1488,7 +1645,7 @@ class RunQueue:
                     r1, r2 = _row(parent, analyte), _row(inj, analyte)
                     if r1 is None or r2 is None:
                         continue
-                    rl, _mdl, rl_unit = profile.reporting_limits(analyte, _bmatrix)
+                    rl, _mdl, rl_unit = profile.reporting_limits(analyte, _bmatrix, getattr(self.batch, "acid_basis", None))
                     if rl is None:
                         _record_gap("Dup", analyte, UnconfiguredCriterion(
                             "{0} / {1}: duplicate RPD is judged at or above the RL, and no RL "
@@ -1519,15 +1676,17 @@ class RunQueue:
                         if raw is not None:
                             flag = QCFlag(source="Sample duplicate", check_kind=KIND_DUP,
                                           analyte=raw.analyte, injection_name=inj,
-                                          value=raw.value, issue=raw.issue + " (parent %s)" % parent)
-                        judged = True
+                                          value=raw.value, issue=raw.issue + " (parent %s)" % parent,
+                                          advisory=raw.advisory)
+                        # its tier Off: not judged
+                        judged = win.get("state") != "off"
                     elif d1 != d2:
                         flag = dup_one_detected_flag(analyte, inj, parent, j1, j2, rl, rl_unit)
                         win = {"lo": None, "hi": None,
                                "basis": "Dup: detected in both or in neither (at the RL)"}
                         judged = True
                     if flag is not None:
-                        flag.advisory = dup_advisory
+                        flag.advisory = dup_advisory or flag.advisory
                         flags_by_injection.setdefault(inj, []).append(flag)
                     # written to the QC results so Data Review's gate sees it.
                     # Both below the RL: they agree, the RPD is not calculated.
@@ -1535,7 +1694,7 @@ class RunQueue:
                         "analyte": analyte, "injection_name": inj, "parent": parent,
                         "rpd": rpd if (d1 and d2) else None,
                         "passed": flag is None,
-                        "advisory": flag is not None and dup_advisory,
+                        "advisory": flag is not None and flag.advisory,
                         "lo": win.get("lo"), "hi": win.get("hi"), "basis": win.get("basis", ""),
                         "issue": (flag.issue if flag is not None else
                                   "" if (d1 or d2) else "both below the RL: RPD not calculated")})
@@ -1608,18 +1767,12 @@ class RunQueue:
                     if chk.injection_name in dup_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                 elif chk.check_name == "surrogate_recovery":
-                    # Advisory wins over evaluated: one compound can be in
-                    # range on an injection while another exceeds a
-                    # guidance-only window, and the exceedance is the thing a
-                    # reviewer has to see.
-                    if chk.injection_name in eis_advisory:
-                        pass          # advisory exceedance — stays PENDING
-                    # Otherwise the LFSM rule: AUTO_PASS only where the check
+                    # The LFSM rule: AUTO_PASS only where the check
                     # actually ran. An injection whose export carried no %
                     # recovery column, or whose method could not resolve a
                     # window, stays PENDING so a reviewer sees it -- a silent
                     # pass would be indistinguishable from a good result.
-                    elif chk.injection_name in eis_evaluated:
+                    if chk.injection_name in eis_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                 else:
                     chk.status = CheckStatus.AUTO_PASS

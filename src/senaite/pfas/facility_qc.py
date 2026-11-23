@@ -225,6 +225,8 @@ CREATE TABLE IF NOT EXISTS weight_sets (
     cal_date           TEXT,              -- ISO 8601
     cal_due_date       TEXT,              -- ISO 8601
     nist_traceable     INTEGER DEFAULT 1,
+    -- 0: the set is used without an external calibration (a recorded choice)
+    calibration_required INTEGER DEFAULT 1,
     active        INTEGER DEFAULT 1,
     notes         TEXT,
     created_at    TEXT NOT NULL
@@ -345,6 +347,9 @@ def _connect():
 # idempotently, without losing the rows already collected.
 _ADDED_COLUMNS = [
     ("balance_verifications", "weight_set_id", "TEXT"),
+    # a weight set used without an external calibration, as a recorded choice;
+    # a set recorded before the choice existed still requires one
+    ("weight_sets", "calibration_required", "INTEGER DEFAULT 1"),
     # the thermometer correction applied to a reading; the raw
     # probe value stays in `temperature`
     ("temperature_readings", "correction", "REAL"),
@@ -907,16 +912,25 @@ def _refresh_study_status(conn, study_id):
 
 # ── Weight sets (calibrated by an external metrology laboratory) ─────────────
 
+def calibration_required(weight_set):
+    """Whether a weight set owes an external calibration: it does unless the
+    laboratory switched that off for the set (a row with no value requires it)."""
+    return (weight_set or {}).get("calibration_required") not in (0, "0", False)
+
+
 def save_weight_set(data):
-    """Upsert a reference weight set. `data["id"]` absent/None creates one."""
+    """Upsert a reference weight set. `data["id"]` absent/None creates one.
+    A set saved without `calibration_required` requires its calibration."""
     from senaite.pfas import config_history
-    config_history.track(None, 'weight_set', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_weight_set((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Weight set %s" % ((data or {}).get("name") or ""))
     ensure_schema()
     now = _now()
     wid = data.get("id") or uuid.uuid4().hex
+    config_history.track(None, 'weight_set', wid, lambda: get_weight_set(wid),
+                         label=u"Weight set %s" % (data.get("set_id") or u""))
     cols = ("set_id", "description", "weight_class", "serial_number", "cal_lab",
             "cal_lab_accreditation", "cal_cert_number", "cal_date",
-            "cal_due_date", "nist_traceable", "active", "notes")
+            "cal_due_date", "nist_traceable", "calibration_required", "active", "notes")
+    data = dict(data, calibration_required=1 if calibration_required(data) else 0)
     vals = [data.get(c) for c in cols]
     with _connect() as conn:
         exists = conn.execute("SELECT 1 FROM weight_sets WHERE id=?",
@@ -1052,10 +1066,10 @@ def balance_verified_on(unit_id, verified_date):
     record AND passed. A failed verification is not a verified balance."""
     ver = get_balance_verification_for_date(unit_id, verified_date)
     if not ver:
-        return False, u"NOT verified today"
+        return False, u"NOT checked today"
     if not ver.get("passed"):
-        return False, u"verification FAILED today"
-    return True, u"verified today"
+        return False, u"check FAILED today"
+    return True, u"checked today"
 
 
 def unit_by_serial(serial):
@@ -1123,6 +1137,17 @@ def last_check_date(unit_id, kind):
 CALIBRATED_UNIT_TYPES = ("balance_analytical", "balance_prep", "pipette")
 
 
+def uncalibrated_weight_sets(unit_id, as_of):
+    """The identifiers of the weight sets behind a unit's calibration on a
+    date whose calibration is not required: what a batch record must say."""
+    out = []
+    for r in equipment_provenance(unit_id, as_of).get("records") or []:
+        d = r.get("data") or {}
+        if r.get("type") == "weight_set" and not calibration_required(d) and d.get("set_id") not in out:
+            out.append(d.get("set_id"))
+    return out
+
+
 def equipment_provenance(unit_id, as_of):
     """The calibration chain for one piece of equipment, as of a date.
 
@@ -1141,7 +1166,7 @@ def equipment_provenance(unit_id, as_of):
     out = {"unit": unit, "kind": (unit or {}).get("unit_type") or u"",
            "records": [], "problems": [], "warnings": []}
     if unit is None:
-        out["warnings"].append(u"equipment is not registered in Facility QC")
+        out["warnings"].append(u"equipment is not registered under Equipment")
         return out
 
     name = unit.get("name") or unit.get("id")
@@ -1155,6 +1180,13 @@ def equipment_provenance(unit_id, as_of):
                 u"traced to a calibrated standard" % (name, why))
             return
         out["records"].append({"type": "weight_set", "data": ws})
+        if not calibration_required(ws):
+            # the laboratory's recorded choice: no certificate is demanded, and
+            # the record says the set was not calibrated
+            out["warnings"].append(
+                u"weight set %s is not calibrated: its calibration is not required"
+                % ws.get("set_id"))
+            return
         if not ws.get("cal_cert_number") or not ws.get("cal_lab"):
             out["problems"].append(
                 u"weight set %s has no external calibration certificate — a "
@@ -1180,13 +1212,13 @@ def equipment_provenance(unit_id, as_of):
         ver = get_balance_verification_for_date(unit_id, as_of)
         if not ver:
             out["problems"].append(
-                u"%s has no balance verification for %s, the day it was used"
+                u"%s has no balance check for %s, the day it was used"
                 % (name, as_of))
         else:
             out["records"].append({"type": "balance_verification", "data": ver})
             if not ver.get("passed"):
                 out["problems"].append(
-                    u"the balance verification for %s on %s FAILED"
+                    u"the balance check for %s on %s FAILED"
                     % (name, as_of))
             _weight_set_chain(ver.get("weight_set_id"), u"verification")
     elif ut == "pipette":

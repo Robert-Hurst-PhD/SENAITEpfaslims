@@ -50,6 +50,8 @@ class QCRule:
     verify_against_method: bool = False        # 1633A per-analyte tables
     max_conc_x_rl:    Optional[float] = None   # blanks: at most N x RL
     fails_at_limit:   bool = False             # blanks: a result AT the limit fails
+    # the tier's own state (limit_states): enforced, evaluate or off
+    state:            str = "enforced"
 
 
 @dataclass(frozen=True)
@@ -220,6 +222,9 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
                     "configured", method_id, profiles_path)
     for method_id in exported:
         data = all_profiles[method_id]
+        # an export written before the rules held their flags: the Engine's
+        # notes read from the rules that carry them (rule_flags.migrate)
+        _rule_flags().migrate(data)
         # eis_overrides: the store's list [{analyte, recovery_min,
         # recovery_max}] becomes {keyword: {...}} for the lookup, every name
         # keyed by the compound it spells (_eis_keyed); the matrix classes
@@ -454,9 +459,11 @@ class MethodProfile:
     def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
         raise NotImplementedError
 
-    def reporting_limits(self, analyte, matrix):
+    def reporting_limits(self, analyte, matrix, acid_basis=None):
         """(rl, mdl, unit) for the analyte in `matrix`, in the matrix's
-        reporting unit as configured; None for what is not set."""
+        reporting unit as configured; None for what is not set. `acid_basis`:
+        the run's analytes calibrated from standards stated as the acid,
+        whose default RL takes no salt factor."""
         from .analyte_alias import keyword_for
         data = self._profile_data()
         kw = keyword_for(analyte) or analyte
@@ -465,14 +472,16 @@ class MethodProfile:
         num = lambda v: None if v is None else float(v)       # noqa: E731
         # the Reporting Limits entry, else the lowest calibrator -- the
         # add-on's own rule, loaded from its file
-        return _cal().reporting_limit(data, matrix, kw), num(entry.get("mdl")), unit
+        return _cal().reporting_limit_for_run(data, matrix, kw, acid_basis), num(entry.get("mdl")), unit
 
     # ── the judged value ────────────────────────────────────────
     # every result and QC check judges the ROUNDED value, the
     # value the report states. The rule and significant figures are the
     # method x matrix Reporting format (exported from the ISSUED reporting-
-    # template revision); QC percentages are judged as whole percents.
-    # rounding.py and report_format.py are the add-on's own files.
+    # template revision); QC percentages are judged as whole percents, a
+    # recovery at the method's decimal places for recoveries (its Engine
+    # setting, read from this profile). rounding.py, report_format.py and
+    # method_engine.py are the add-on's own files.
 
     def rounding(self, matrix=""):
         """(rule, significant figures) for this method x matrix."""
@@ -490,18 +499,39 @@ class MethodProfile:
         return (fmt.get("coa_rounding") or load("rounding").DEFAULT_RULE), n
 
     def judged_rule(self, matrix=""):
-        """What a run records it was judged with: "epa;3;pct0"."""
+        """What a run records it was judged with: "epa;3;pct0", the last
+        part the places recoveries are judged at."""
         from .addon import load
         rule, n = self.rounding(matrix)
-        return load("rounding").judged_rule(rule, n)
+        return load("rounding").judged_rule(rule, n, self.recovery_places())
+
+    def recovery_places(self):
+        """The decimal places a recovery is judged and printed at: the
+        Engine's recovery_decimals in this profile (method_engine), whole
+        percent when unset."""
+        from .addon import load
+        return load("method_engine").recovery_decimals(self._profile_data())
 
     def judged_pct(self, value, matrix=""):
-        """A QC percentage as judged: a whole percent by the rule (None stays
-        None)."""
+        """A QC percentage that is not a recovery (an RPD, an IS response)
+        as judged: a whole percent by the rule (None stays None)."""
         from .addon import load
         if value is None:
             return None
         return load("rounding").judged_pct(value, self.rounding(matrix)[0])
+
+    def judged_recovery(self, value, matrix=""):
+        """A recovery (a spike, a surrogate, a CCV or ICV) as judged: at the
+        method's decimal places for recoveries by the rule, so 69.6 at one
+        place is judged as 69.6, not 70 (None stays None)."""
+        from .addon import load
+        if value is None:
+            return None
+        return load("rounding").judged_pct(value, self.rounding(matrix)[0], self.recovery_places())
+
+    def recovery_text(self, judged):
+        """A judged recovery as an issue text prints it: "69.6"."""
+        return "{0:.{1}f}".format(judged, self.recovery_places())
 
     def judged_conc(self, value, matrix=""):
         """A measured concentration as judged: the reported significant
@@ -533,6 +563,19 @@ class MethodProfile:
         """The most calibrators of one analyte's curve the analyst may drop by
         deleting a peak in a raw run (Calibration & CCV); None: no limit."""
         return None
+
+    def limit_state(self, key):
+        """A limit box's state (limit_states.box_state): enforced, evaluate
+        or off."""
+        return _limits_module().box_state(self._profile_data(), key)
+
+    def limit_judged(self, key):
+        """Whether box `key` is judged: not Off, applying to the method and
+        holding a limit."""
+        ls = _limits_module()
+        data, box = self._profile_data(), ls.BOX[key]
+        return (ls.box_state(data, key) != "off" and ls.applies(data, box)
+                and not ls.is_empty(data, box))
 
     def ccv_rule(self):
         raise NotImplementedError
@@ -576,7 +619,7 @@ class MethodProfile:
         (Blank limits: an enabled type with a tier carrying x RL). A row the
         grid cleared keeps its tier without a limit: that is no row."""
         entry = (self._profile_data().get("qc_acceptance") or {}).get(qc_type)
-        if not isinstance(entry, dict) or not entry.get("enabled", True):
+        if not isinstance(entry, dict) or self.qc_type_state(qc_type) == "off":
             return False
         return any(isinstance(t, dict) and t.get("max_conc_x_rl") not in (None, "")
                    for t in entry.get("tiers") or [])
@@ -588,6 +631,8 @@ class MethodProfile:
         window applies. One end set without the other is refused,
         never an open interval and never a fall back to the sample window."""
         ccv = self._iv().get("ccv") or {}
+        if self.limit_state("surrogate_ccv") == "off":
+            return None                  # its own window is not judged: the sample window applies
         lo, hi = ccv.get("surrogate_window_min"), ccv.get("surrogate_window_max")
         lo = None if lo in (None, "") else float(lo)
         hi = None if hi in (None, "") else float(hi)
@@ -621,6 +666,8 @@ class MethodProfile:
         """The ICV's (EPA 537.1: QCS) allowed deviation from its expected
         concentration, % (Calibration & CCV); None when not set."""
         v = (self._iv().get("icv") or {}).get("pct_dev_max")
+        if self.limit_state("icv") == "off":
+            return None
         try:
             return float(v) if v not in (None, "") else None
         except (TypeError, ValueError):
@@ -652,24 +699,26 @@ class MethodProfile:
         `enabled` flag (on = enforced, off = off); absent is enforced. A type
         in Evaluate is judged and a failure files as advisory."""
         data = self._profile_data()
-        states = data.get("rule_states")
-        if isinstance(states, dict):
-            for key in ("qc_type." + qc_code, "blank." + qc_code):
-                if states.get(key) in ("enforced", "evaluate", "off"):
-                    return states[key]
-        entry = (data.get("qc_acceptance") or {}).get(qc_code)
-        if isinstance(entry, dict) and not entry.get("enabled", True):
-            return "off"
-        return "enforced"
+        ls = _limits_module()
+        if not isinstance((data.get("qc_acceptance") or {}).get(qc_code), dict):
+            # a type the method does not hold reads its row as stored, else
+            # Enforced: an unconfigured check refuses to judge, which is
+            # louder than skipping
+            key = ls._rules().qc_row_key(qc_code)
+            return ls._legacy(data, key) if key else "enforced"
+        return ls.qc_type_state(data, qc_code)
 
     def low_level_state(self):
         """The Low-level recoveries row's state: enforced, evaluate or off,
         the profile's `rule_states["low_level_recovery"]`; absent is
         enforced. It decides how a recovery judged against a low-level tier
         is filed: Enforced holds, Evaluate is advisory, Off judges nothing."""
-        states = self._profile_data().get("rule_states")
-        state = states.get("low_level_recovery") if isinstance(states, dict) else None
-        return state if state in ("enforced", "evaluate", "off") else "enforced"
+        data = self._profile_data()
+        ls = _limits_module()
+        lows = [ls.tier_state(data, code, t)
+                for code, entry in sorted((data.get("qc_acceptance") or {}).items()) if isinstance(entry, dict)
+                for t in entry.get("tiers") or [] if isinstance(t, dict) and t.get(LOW_LEVEL_KEY)]
+        return ls.either(lows) if lows else "enforced"
 
     def qc_acceptance_rule(self, qc_code, analyte="", matrix=""):
         """
@@ -678,7 +727,7 @@ class MethodProfile:
         """
         qa = self._profile_data().get("qc_acceptance", {})
         entry = qa.get(qc_code)
-        if entry is None or not entry.get("enabled", True):
+        if entry is None or self.qc_type_state(qc_code) == "off":
             return None
         tiers = entry.get("tiers", [])
         if not tiers:
@@ -736,6 +785,10 @@ _TIER_STRUCTURAL_KEYS = frozenset([
     "name", "analyte_group", "matrix_scope", "description",
     "verify_against_method", "tier", "key_analytes", "no_std_analytes",
     "tight_matrices", "matrices", "low_level_x_rl", "citation", "fails_at_limit",
+    # the tier's flag (rule_flags): its code, place and note, never a criterion
+    "flag",
+    # the tier's own state (limit_states), never a criterion
+    "state",
 ])
 
 # ── Low-level tiers ───────────────────────────────────
@@ -751,6 +804,12 @@ def _cal():
     addon) -- the RL rule lives once."""
     from .addon import load
     return load("calibration_levels")
+
+
+def _rule_flags():
+    """senaite.pfas.rule_flags: each rule's flag, read as the add-on reads it."""
+    from .addon import load
+    return load("rule_flags")
 
 
 def _qc_tiers():
@@ -772,10 +831,17 @@ def _low_level_tier(tiers, base, applies, conc, rl, where):
 
 def _select_tier(profile_data, qc_type, analyte, matrix, conc, rl,
                  is_key, is_no_std, where):
+    """The tier a run judges `analyte` (as the instrument names it) by; a
+    setting on one analyte's cell is found by the analyte's keyword."""
+    from .analyte_alias import keyword_for
+    try:
+        keyword = keyword_for(analyte) or analyte
+    except Exception:                       # noqa: BLE001  (no library: a run refuses at its start)
+        keyword = analyte
     qt = _qc_tiers()
     try:
         return qt.select_tier(profile_data, qc_type, analyte, matrix, conc, rl,
-                              is_key, is_no_std, where)
+                              is_key, is_no_std, where, keyword=keyword)
     except qt.Unconfigured as e:
         raise UnconfiguredCriterion(str(e))
 
@@ -836,6 +902,13 @@ def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
     )
 
 
+def _with_tier_state(rule, profile_data, qc_type, tier):
+    """The rule with its tier's own state (limit_states.tier_state)."""
+    if rule is None:
+        return rule
+    return dataclasses.replace(rule, state=_limits_module().tier_state(profile_data, qc_type, tier))
+
+
 def _name_list(value):
     """A list setting typed as text ("PFBA, PFPeA") or stored as a list."""
     if isinstance(value, (list, tuple)):
@@ -878,17 +951,6 @@ def _iv_section(profile_data, method_id, section, aliases=(), where=""):
     return data
 
 
-def _required(section_data, key, method_id, section, where=""):
-    """One criterion. Absent refuses; an explicit None means not applicable."""
-    if key not in section_data:
-        raise UnconfiguredCriterion(
-            "{0} has no '{1}' configured under instrument_verification.{2}. "
-            "Set it on the method's QC criteria tab{3}, or clear the field to record that "
-            "this method has no such criterion.".format(
-                method_id, key, section, where))
-    return section_data[key]
-
-
 def _confirmation(profile_data, method_id):
     """The configured chromatographic-confirmation section, or refuse.
 
@@ -917,6 +979,20 @@ def _engine_module():
     return load("method_engine")
 
 
+def _limits_module():
+    """senaite.pfas.limit_states: each limit box's state, read the same way
+    here and in the add-on."""
+    from .addon import load
+    return load("limit_states")
+
+
+def _calibration_fit_module():
+    """senaite.pfas.calibration_fit: the method's curve fit, read the same
+    way here, on QC criteria and on the curve card."""
+    from .addon import load
+    return load("calibration_fit")
+
+
 # a matrix class's SUR limits holding this marker: not assessed in that class
 NOT_ASSESSED = "none"
 
@@ -932,6 +1008,9 @@ def _limit_or(value, fallback):
 
 
 _SURROGATE_WINDOW_NOTE = "Surrogate recovery (method profile)"
+# the window the method text states: its source is on the Help page, never
+# stored beside the window
+_METHOD_TEXT_WINDOW_NOTE = "Surrogate recovery (method text)"
 _CCV_SURROGATE_WINDOW_NOTE = "Surrogate recovery in CCVs (method profile)"
 
 
@@ -988,18 +1067,27 @@ class ConfiguredProfile(MethodProfile):
         if chosen is None:
             return None, False
         tier, branch = chosen
-        rule = _tier_rule(tier, self._tier_notes(eng, tier, branch), self.method_id,
-                          analyte, matrix, mapped)
+        rule = _tier_rule(tier, self._tier_notes(eng, tier, branch, _rule_flags().type_note(data, mapped)),
+                          self.method_id, analyte, matrix, mapped)
+        rule = _with_tier_state(rule, data, mapped, tier)
         if tier.get("verify_against_method"):
             rule = dataclasses.replace(rule, verify_against_method=True)
         return rule, bool(tier.get(LOW_LEVEL_KEY))
 
     @staticmethod
-    def _tier_notes(eng, tier, branch):
-        """The note a tier's rule carries: the Engine's note for the tier's
-        branch when it sets one (grouped tiers), else the tier's own
-        description, else the Engine's general tier note."""
+    def _tier_notes(eng, tier, branch, type_note=""):
+        """The note a tier's rule carries: the note on the tier's own flag
+        (it stands in for a grouped tier's missing description), else the
+        Engine's note for the tier's branch (a profile not yet migrated),
+        else the tier's own description, else the general tier note (the
+        Engine's, or its QC type's own row's: `type_note`). A low-level
+        tier: its description, else the Low-level recoveries note with its
+        N."""
         notes = eng["rule_notes"]
+        own = ((tier.get("flag") or {}).get("note") or "").strip() \
+            if isinstance(tier.get("flag"), dict) else ""
+        if own and not tier.get(LOW_LEVEL_KEY):
+            return own
         if tier.get(LOW_LEVEL_KEY):
             if "tier_low_level" in notes:
                 text = notes["tier_low_level"]
@@ -1010,25 +1098,21 @@ class ConfiguredProfile(MethodProfile):
                 return tier.get("description") or text
         elif "tier_" + branch in notes:
             return notes["tier_" + branch]
-        return tier.get("description", notes.get("tier", ""))
+        return tier.get("description", notes.get("tier", "") or type_note or "")
 
     def _surrogate_rule(self, data, eng):
-        """The profile's surrogate window (Isotope standards: Surrogates),
-        else the window the method text states (the same tab), else a
+        """The method's one surrogate window (method_engine.surrogate_window:
+        the profile's own, else the window the method text states), else a
         refusal."""
-        kw = {"is_guidance_only": True} if eng["surrogate_guidance_only"] else {}
-        win = (data.get("instrument_verification") or {}).get("surrogate_window") or {}
-        if win.get("recovery_min") is not None and win.get("recovery_max") is not None:
-            return QCRule(float(win["recovery_min"]), float(win["recovery_max"]),
-                          notes=_SURROGATE_WINDOW_NOTE, **kw)
-        fallback = eng["surrogate_fallback"]
-        if fallback is None:
+        kw = {"is_guidance_only": True} if self.limit_state("surrogate_recovery") == "evaluate" else {}
+        win = _engine_module().surrogate_window(data)
+        if win is None:
             raise UnconfiguredCriterion(
                 "{0} has no surrogate recovery window. Set it on the method's "
-                "Isotope standards tab (Surrogates: Surrogate recovery min and "
-                "max), or the surrogate window the method text states on the "
-                "same tab.".format(self.method_id))
-        return QCRule(fallback["min"], fallback["max"], notes=fallback["citation"], **kw)
+                "Isotope standards tab (Recovery limits, on any surrogate's "
+                "row).".format(self.method_id))
+        notes = _SURROGATE_WINDOW_NOTE if win["source"] == "profile" else _METHOD_TEXT_WINDOW_NOTE
+        return QCRule(win["min"], win["max"], notes=notes, **kw)
 
     def _eis_window(self, data, eng, analyte, matrix):
         """(low, high) every extracted standard starts from, before its own
@@ -1103,14 +1187,17 @@ class ConfiguredProfile(MethodProfile):
             lo = _limit_or(mat_override.get("recovery_min"), lo)
             hi = _limit_or(mat_override.get("recovery_max"), hi)
         return QCRule(lo, hi, verify_against_method=eng["eis_verify_flag"],
-                      notes=eng["rule_notes"].get("eis", ""))
+                      notes=eng["rule_notes"].get("eis", ""),
+                      is_guidance_only=self.limit_state("surrogate_recovery") == "evaluate")
 
     # ── instrument criteria ─────────────────────────────────────
     def _criterion(self, eng, rule, section, key, where):
-        """One instrument criterion: refused when the Engine requires it and
-        it is absent, else as stored (absent = None)."""
-        if key in (eng["required_keys"].get(rule) or ()):
-            return _required(section, key, self.method_id, rule, where)
+        """One instrument criterion as stored (absent = None); None while its
+        box is Off. An empty box is filed once by the run queue
+        (limit_states.empty_boxes): Enforced refuses, Evaluate advises."""
+        box = _limits_module().box_for_field(rule, key)
+        if box is not None and self.limit_state(box) == "off":
+            return None
         return section.get(key)
 
     def calibration_rule(self, analyte=""):
@@ -1118,15 +1205,9 @@ class ConfiguredProfile(MethodProfile):
         eng = _engine_module().engine(data)
         cal = _calibration(data, self.method_id)
         where = " (Calibration r\u00b2)"
-        # r2_min: never configured (absent) is a gap, whatever the Engine
-        # lists; cleared (None) means the method sets no r2 criterion, which
-        # a method whose Engine requires one is refused rather than run
-        r2 = _required(cal, "r2_min", self.method_id, "calibration", where)
-        if r2 is None and "r2_min" in (eng["required_keys"].get("calibration") or ()):
-            raise UnconfiguredCriterion(
-                "{0} requires an r2 minimum (the method's Engine tab, calibration "
-                "criteria that must be set) and has none. Set it on the "
-                "method's QC criteria tab{1}.".format(self.method_id, where))
+        # r2_min: its box decides; empty, the run queue files it once
+        # (Enforced refuses, Evaluate advises)
+        r2 = self._criterion(eng, "calibration", cal, "r2_min", where)
         point = self._criterion(eng, "calibration", cal, "point_pct_dev_max", where)
         low_point = self._criterion(eng, "calibration", cal, "low_point_pct_dev_max", where)
         # Origin and Weighting (calibration_fit.py in the add-on); a profile
@@ -1134,11 +1215,13 @@ class ConfiguredProfile(MethodProfile):
         origin = cal.get("origin") if cal.get("origin") in ("exclude", "include", "force") else (
             "force" if cal.get("force_origin") else "exclude")
         weighting = cal.get("weighting") if cal.get("weighting") in ("none", "1/x", "1/x2") else "1/x"
-        fit = "linear"
+        # the fit: a labelled compound on its mean response factor where the
+        # Engine says so, else the method's curve fit, else linear
+        fit = _calibration_fit_module().fit(cal)
         if eng["labelled_compound_fit"] == "mean_response_factor" and analyte:
             from .analyte_alias import is_labelled
             # the fit follows the library: without one this raises, never
-            # falls back to a linear fit
+            # falls back to the method's fit
             if is_labelled(analyte):
                 fit = "mean_response_factor"
         return CalibrationRule(
@@ -1147,15 +1230,16 @@ class ConfiguredProfile(MethodProfile):
             low_point_pct_dev_max=low_point,
             force_origin=origin == "force",
             default_fit=fit,
-            # a mean-response-factor fit has no weighting; a linear one is
-            # weighted as the method profile says (the lab's 1/x by default)
-            default_weighting="none" if fit != "linear" else weighting,
+            # a mean-response-factor fit has no weighting; a linear or
+            # quadratic one is weighted as the method profile says (the
+            # lab's 1/x by default)
+            default_weighting="none" if fit == "mean_response_factor" else weighting,
             origin=origin,
         )
 
     def max_cal_dropped(self):
         value = ((self._iv().get("calibration") or {}).get("max_cal_dropped"))
-        if _unset(value):
+        if _unset(value) or self.limit_state("cal_dropped") == "off":
             return None
         try:
             return int(float(value))
@@ -1165,7 +1249,12 @@ class ConfiguredProfile(MethodProfile):
                 "number.".format(self.method_id, value))
 
     def ccv_rule(self):
-        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
+        ccv = self._iv().get("ccv", {})
+        if self.limit_state("ccv_low_level") == "off":
+            # the low-level window is not judged: the Recovery window judges
+            # those CCVs, as it does where the method sets none
+            ccv = dict(ccv, low_level_min=None, low_level_max=None)
+        return _ccv_rule(ccv, self.method_id)
 
     def is_rule(self):
         data = self._profile_data()
@@ -1282,6 +1371,44 @@ def get_sample_correction(method_id: str) -> str:
     data = _profile_data_cache.get(method_id, {}) or {}
     mode = (data.get("sample_correction") or "").strip()
     return mode if mode in ("instrument", "lims") else ""
+
+
+LINKED_RESPONSE_RATIOS = ("off", "on")
+
+
+def get_linked_response_ratio(method_id: str) -> str:
+    """Whether an analyte quantified on a surrogate is read on the response
+    ratio linked to the surrogate's own internal standard (its Linked to):
+    "on", RR = A x C_sur / RR_sur with RR_sur = A_sur x C_IS / A_IS; "off"
+    (the default), RR = A x C_sur / A_sur. Missing, blank or anything else
+    reads "off"; a profile still holding the earlier key surrogate_amount
+    reads its "measured" as "on"."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    value = data.get("linked_response_ratio")
+    value = value.strip() if isinstance(value, str) else ""
+    if value in LINKED_RESPONSE_RATIOS:
+        return value
+    old = data.get("surrogate_amount")
+    if not value and isinstance(old, str) and old.strip() == "measured":
+        return "on"
+    return "off"
+
+
+DILUTION_RECOVERIES = ("fold", "measured", "parent")
+
+
+def get_dilution_recovery(method_id: str) -> str:
+    """How a diluted field sample's surrogate recovery is judged under the
+    linked response ratio, one choice for every analyte of the method:
+    "fold" (the dilution's own, corrected for its fold: C_found x DF /
+    C_spiked), "measured" (the dilution's own as measured: C_found /
+    C_spiked) or "parent" (the parent sample's, for a dilution the surrogate
+    was added back to). "" when not set: nothing is preset; the dilution's
+    recovery is then not judged and its results are flagged."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    value = data.get("dilution_recovery")
+    value = value.strip() if isinstance(value, str) else ""
+    return value if value in DILUTION_RECOVERIES else ""
 
 
 def get_blank_subtraction(method_id: str) -> bool:
@@ -1410,14 +1537,14 @@ def get_is_list(method_id: str) -> list:
         return [labelled_display_name(k) for k in order]
     rows = data.get("surrogate_map") or []
     names, seen = [], set()
+    cmp = _composites_module()
     for row in rows:
-        kw = (row.get("surrogate_is") or "").strip()
-        if not kw:
-            continue
-        name = labelled_display_name(kw)
-        if name not in seen:
-            seen.add(name)
-            names.append(name)
+        # a composite is no compound: its members are the standards checked
+        for kw in cmp.members(data, (row.get("surrogate_is") or "").strip()):
+            name = labelled_display_name(kw)
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
     # the injection standard quantifies the surrogates, so it is in no
     # surrogate_map row; it is listed because its response must NOT be
     # dilution-corrected
@@ -1511,6 +1638,31 @@ def get_surrogate_map(method_id: str) -> dict:
     rows = _profile_data_cache.get(method_id, {}).get("surrogate_map", []) or []
     return _by_every_name(((row.get("analyte") or "").strip(), (row.get("surrogate_is") or "").strip())
                           for row in rows)
+
+
+def _composites_module():
+    """The add-on's composite_standards (one rule for both processes)."""
+    from .addon import load
+    return load("composite_standards")
+
+
+def get_composites(method_id: str) -> dict:
+    """{composite id: [member keywords]} for the method's composite
+    standards: an analyte whose surrogate map names one is quantified on
+    the mean of its members' areas (composite_standards)."""
+    return _composites_module().members_map(_profile_data_cache.get(method_id, {}) or {})
+
+
+def quantifying_members(method_id: str, value: str) -> list:
+    """The standards a surrogate-map value stands for: a composite's
+    members, else [value]; [] for nothing."""
+    return _composites_module().members(_profile_data_cache.get(method_id, {}) or {}, value)
+
+
+def composite_name(method_id: str, value: str) -> str:
+    """A composite's name built from its members ("Mean of A and B"); a
+    plain standard's own name."""
+    return _composites_module().name(_profile_data_cache.get(method_id, {}) or {}, value)
 
 
 def _by_every_name(pairs):
@@ -1685,7 +1837,11 @@ def get_integration(method_id: str) -> dict:
     the method with no transition, time and window, is refused, naming
     every one. An analyte with isomers (the Isomers tab) is integrated as
     its linear and branched peaks, each partnered with the other, a
-    branched peak summed; the analyte's own row is not used."""
+    branched peak summed; the analyte's own row is not used. Each
+    compound's "window" is the one rule's (the add-on's rt_window): its
+    time plus or minus the method's Retention time tolerance, in % or min,
+    else, while that is unset, the window stored with its row, which is
+    then required; the tolerance is in the fingerprint only when set."""
     from .raw_run import DEFAULT_MZ_TOLERANCE
     data = _profile_data_cache.get(method_id, {}) or {}
     intg = dict(data.get("integration") or {})
@@ -1700,6 +1856,18 @@ def get_integration(method_id: str) -> dict:
             "neither classic nor adaptive.".format(method_id, engine))
     grid = data.get("labelled_standards") if isinstance(data.get("labelled_standards"), dict) else {}
     rows = intg.get("analytes") or {}
+    # the method's one retention-time tolerance (rt_window): set, it gives
+    # every compound's window; unset, each transition's stored window stands
+    from .addon import load
+    rtw = load("rt_window")
+    try:
+        tol = rtw.tolerance(intg)
+    except (TypeError, ValueError):
+        raise UnconfiguredCriterion(
+            "{0} cannot be integrated from raw data: Integration has the Retention time tolerance {1!r} {2!r}, "
+            "which is not a number above 0 in % or min. Set it in the Integration section of the method's "
+            "Run & reporting tab.".format(method_id, intg.get(rtw.TOL_KEY), intg.get(rtw.UNIT_KEY)))
+    row_fields = ("quant", "rt") if tol is not None else ("quant", "rt", "window")
     needed_keys = list(_INTEGRATION_SETTINGS[engine])
     if intg.get("area") in ("gaussian", "emg"):
         needed_keys.extend(_FIT_SETTINGS)
@@ -1713,13 +1881,14 @@ def get_integration(method_id: str) -> dict:
     on_panel = iso_mod.integration_names(iso, panel)
     needed = on_panel + sorted(grid)
     missing = [k for k in needed
-               if not all((rows.get(k) or {}).get(f) not in (None, "", []) for f in ("quant", "rt", "window"))]
+               if not all((rows.get(k) or {}).get(f) not in (None, "", []) for f in row_fields)]
     if unset or missing:
         parts = []
         if unset:
             parts.append("the settings " + ", ".join(unset))
         if missing:
-            parts.append("a transition, retention time and window for " + ", ".join(missing))
+            parts.append(("a transition and retention time for " if tol is not None else
+                          "a transition, retention time and window for ") + ", ".join(missing))
         unused = ["{0} is integrated as {1}: its own row is not used.".format(kw, " and ".join(split[kw]))
                   for kw in sorted(split) if kw in rows and any(p in missing for p in split[kw])]
         raise UnconfiguredCriterion(
@@ -1727,7 +1896,6 @@ def get_integration(method_id: str) -> dict:
             "the Integration section of the method's Run & reporting tab.".format(
                 method_id, "; no ".join(parts), "".join(u + " " for u in unused)))
     settings = _method_settings(method_id, engine, intg)
-    from .addon import load
     try:
         manual_change, manual_sn = load("raw_preview").manual_limits(
             dict((key, intg.get(key)) for key, _what in _MANUAL_LIMITS), None)
@@ -1744,7 +1912,7 @@ def get_integration(method_id: str) -> dict:
         ratio = row.get("expected_ion_ratio")
         analytes[k] = {"quant": _transition(row["quant"]),
                        "quals": [_transition(q) for q in row.get("quals") or []],
-                       "rt": float(row["rt"]), "window": float(row["window"]),
+                       "rt": float(row["rt"]), "window": rtw.half_width(row["rt"], row.get("window"), tol)[0],
                        "mode": row.get("mode") or "single", "partner": row.get("partner") or None,
                        "expected_ion_ratio": None if ratio in (None, "") else float(ratio),
                        "labelled": k in grid, "panel": k in on_panel,
@@ -1785,6 +1953,9 @@ def get_integration(method_id: str) -> dict:
     kept = dict((k, stored.get(k)) for k in _REVISION_KEYS)
     kept.update((k, stored[k]) for k in _REVISION_KEYS_WHEN_SET if not _unset(stored.get(k)))
     kept["analytes"] = rows
+    # the tolerance, as it reads, only when set: an unset method keeps its revision
+    if tol is not None:
+        kept["rt_window"] = list(tol)
     # the isomer peaks decide partners and the branched peak's mode: part of
     # the fingerprint when the method has any
     if split:
@@ -1885,6 +2056,29 @@ def get_salt_factors(method_id: str) -> dict:
         for name in [pair.get("linear")] + list(pair.get("branched_list") or []):
             if name:
                 out[name] = factor
+    return out
+
+
+def get_labelled_salt_factors(method_id: str) -> dict:
+    """{labelled standard: its salt (counter-ion) factor}: each labelled
+    standard of the method's grid whose row in `salt_adjustment_factors`
+    (the list an analyte's factor is kept in, keyed the same way) holds a
+    factor that changes something. It turns the standard's stated amounts,
+    its level in the calibrators and the amount spiked, to the acid form
+    (raw_run.load_raw_run); unset reads 1.0, so nothing changes."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    grid = data.get("labelled_standards") if isinstance(data.get("labelled_standards"), dict) else {}
+    out = {}
+    for row in data.get("salt_adjustment_factors") or []:
+        if not isinstance(row, dict):
+            continue
+        name = (row.get("analyte") or "").strip()
+        try:
+            factor = float(row.get("factor"))
+        except (TypeError, ValueError):
+            continue
+        if name in grid and factor > 0 and factor != 1.0:
+            out[name] = factor
     return out
 
 

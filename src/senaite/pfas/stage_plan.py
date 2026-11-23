@@ -55,6 +55,25 @@ def revision_of(session):
     return plan.get("revision"), plan.get("fingerprint") or u""
 
 
+# what a record says of its method revision when it pins no number
+NOT_ISSUED = u"Not issued"
+NOT_RECORDED = u"Not recorded"
+
+
+def revision_words(session):
+    """The method revision a record names, in words: the number it was
+    started under; "Not issued" when the method's settings had no issued
+    revision in force at the start (none issued yet, or changed since the
+    last one); "Not recorded" for a session that kept no plan when it
+    started. Never a number the record does not hold."""
+    plan = (session or {}).get(PLAN) or {}
+    if plan.get("revision") is not None:
+        return u"%s" % plan["revision"]
+    if has_plan(session) and not plan.get("backfilled"):
+        return NOT_ISSUED
+    return NOT_RECORDED
+
+
 def ensure(session, profile, method_id, revision=None, fingerprint=u"", taken_at=u""):
     """Give a session without a plan one from the profile now; True when one
     was added. A session that has a plan keeps it."""

@@ -552,12 +552,15 @@ def raw_open(state, no_effect=None):
     return [r for r in state.get("raw_changes") or [] if not r.get("dropped") and raw_key(r) not in no_effect]
 
 
-def _sign_right(role, sign_as, name, act):
+def _sign_right(role, sign_as, name, act, signature=None):
     """ValueError when People & Roles gives the person (`name`) no sign right for
-    `role`; `sign_as` None is not checked."""
+    `role`, or when they have no signature on file (`signature` False), as
+    the instrument report's records ask; None is not checked."""
     if sign_as is not None and SIGN_RIGHT[role] not in sign_as:
         raise ValueError("%s has no %s sign right in People & Roles, so does not %s manual changes"
                          % (name, SIGN_RIGHT[role], act))
+    if signature is not None and not signature:
+        raise ValueError("%s has no signature on file, so does not %s manual changes" % (name, act))
 
 
 def record_raw_edit(state, injection, analyte, transition, kind, before, after, who, when,
@@ -631,14 +634,15 @@ def set_raw_reason(state, rec_id, reason_id, reason, detail, who, when):
     return changes
 
 
-def initial_raw(state, initials, who, when, name="", no_effect=None, sign_as=None):
+def initial_raw(state, initials, who, when, name="", no_effect=None, sign_as=None, signature=None):
     """The analyst initials every open change at once; refused while any of
     them lacks a reason, or when People & Roles gives the analyst no preparer
-    sign right. Those already initialled as they stand are kept."""
+    sign right or no signature on file. Those already initialled as they
+    stand are kept."""
     initials = ("%s" % (initials or "")).strip()
     if not initials:
         raise ValueError("type your initials")
-    _sign_right("analyst", sign_as, name or who, "initial")
+    _sign_right("analyst", sign_as, name or who, "initial", signature)
     recs = raw_open(state, no_effect)
     if not recs:
         raise ValueError("no manual changes to initial")
@@ -676,15 +680,15 @@ def raw_editors(state, rec):
     return who
 
 
-def countersign_raw(state, who, when, name="", no_effect=None, sign_as=None):
+def countersign_raw(state, who, when, name="", no_effect=None, sign_as=None, signature=None):
     """The verifier countersigns every open change at once: each needs its
     reason and the analyst's initials, the verifier needs the reviewer sign
-    right in People & Roles, and is never the person who initialled a change nor
+    right in People & Roles and a signature on file, and is never the person who initialled a change nor
     anyone who edited its peak since its last undo. A change already
     countersigned as it stands is kept."""
     recs = raw_open(state, no_effect)
     if recs:
-        _sign_right("reviewer", sign_as, name or who, "countersign")
+        _sign_right("reviewer", sign_as, name or who, "countersign", signature)
     need = [raw_label(r) for r in recs if not r.get("reason") or not raw_signed(r, "analyst")]
     if need:
         raise ValueError("the manual changes need a reason and the analyst's initials first: %s"
@@ -789,20 +793,45 @@ def raw_summary(rec):
     return "%s → %s" % (peak_text(rec.get("before")), peak_text(rec.get("after")))
 
 
-def captured(state, detected):
+def _stale_capture(state, imported_at):
+    """Whether the kept mark predates the run's latest import."""
+    mark = state.get("migrated_captured") or {}
+    return bool(mark and imported_at and (mark.get("at") or "") < imported_at)
+
+
+def captured(state, detected, imported_at=""):
     """Whether the run's manual integrations were captured: as the export
     says, or as kept on the state (migrated_captured) when its records
-    moved to raw changes."""
-    return bool(detected or state.get("migrated_captured"))
+    moved to raw changes. The kept mark no longer counts once the run is
+    imported again after it (`imported_at`): the confirmation is asked
+    again."""
+    if detected:
+        return True
+    return bool(state.get("migrated_captured")) and not _stale_capture(state, imported_at)
+
+
+def clear_stale_capture(state, imported_at, who, when, released=False):
+    """Drop the kept mark when the run was imported again after it, saying
+    so in the history; True when dropped. A released worksheet (`released`:
+    verified or published) keeps its mark: its release stands as it was."""
+    if released or not _stale_capture(state, imported_at):
+        return False
+    mark = state.pop("migrated_captured")
+    _log(state, who, when, "", "captured mark cleared: the run was imported again",
+         {"migrated_captured": [mark, None], "imported": [None, imported_at]})
+    return True
 
 
 def vendor_detections(rows):
     """([{"injection", "analyte", "qc_type"}] flagged manual, captured) from
     rows (injection, analyte, qc_type, flag, derived_from). A row the LIMS
     integrated from raw data (derived_from "raw:...") is not the export's:
-    its manual changes are the Raw Data tab's."""
+    its manual changes are the Raw Data tab's. A run whose every reported
+    row the LIMS integrated is captured: nothing in it is the export's to
+    flag."""
+    raw = [r for r in rows if ("%s" % (r[4] or "")).startswith("raw:")]
     rows = [r for r in rows if not ("%s" % (r[4] or "")).startswith("raw:")]
-    captured = any(r[3] is not None for r in rows)
+    captured = any(r[3] is not None for r in rows) or bool(raw and not rows)
     flagged, seen = [], set()
     for inj, an, qc, flag, _derived in rows:
         if flag and (inj, an) not in seen:

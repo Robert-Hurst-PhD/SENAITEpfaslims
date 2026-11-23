@@ -4,10 +4,14 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Balance Verification Log</title>
+  <title metal:fill-slot="title">Balance Check Log</title>
 </head>
 <body>
-<tal:t metal:fill-slot="header-title">Balance Verification Log</tal:t>
+<tal:t metal:fill-slot="header-title">Balance Check Log</tal:t>
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:condition="view/unit" tal:define="sb_form string:balForm; sb_label string:Save Check"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     unit     view/unit;
@@ -39,7 +43,7 @@
   <tal:has-unit tal:condition="unit">
     <!-- Entry form -->
     <div class="pfas-card">
-      <h3>New Verification — <tal:n tal:replace="unit/name"/></h3>
+      <h3>New Check — <tal:n tal:replace="unit/name"/></h3>
       <form method="POST" id="balForm"
             tal:attributes="action string:${purl}/@@pfas-balance-log">
         <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
@@ -104,23 +108,18 @@
         </tbody>
         </table>
 
-        <div class="pfas-mt-md">
-          <button type="submit" class="btn btn-primary">
-            Save Verification
-          </button>
-        </div>
       </form>
     </div>
 
     <!-- History: the 10 most recent, newest first -->
     <details class="pfas-card">
-      <summary><strong>Verification history</strong> <span class="pfas-muted">the 10 most recent</span></summary>
+      <summary><strong>Check history</strong> <span class="pfas-muted">the 10 most recent</span></summary>
       <div class="pfas-between">
         <span></span>
         <button type="button" class="btn-sm btn-secondary" onclick="window.print()">Print history</button>
       </div>
       <tal:no-hist tal:condition="python:not view.history()">
-        <p class="pfas-note-sm">No verifications recorded yet.</p>
+        <p class="pfas-note-sm">No checks recorded yet.</p>
       </tal:no-hist>
       <tal:each tal:repeat="v view/history" tal:condition="python:bool(view.history())">
         <div class="pfas-entry">
@@ -138,7 +137,7 @@
               <strong tal:content="v/weight_set_label">WS-001</strong>
             </tal:with>
             <span tal:condition="not:v/weight_set_label" class="pfas-hint is-bad">
-              No reference weight set recorded &mdash; this verification traces to
+              No reference weight set recorded &mdash; this check traces to
               nothing and blocks release for any work it supports.
             </span>
           </div>
@@ -194,9 +193,7 @@ function calcDev(input, idx) {
   var passCell = document.getElementById('pass_'+idx);
   devCell.textContent = (dev >= 0 ? '+' : '') + dev.toFixed(6) + ' g';
   devCell.className = 'pfas-dev ' + (pass ? 'is-pass' : 'is-fail');
-  passCell.innerHTML = pass
-    ? '<span class="badge badge-ok pfas-mark" role="img" title="Pass" aria-label="Pass">\u2713</span>'
-    : '<span class="badge badge-fail pfas-mark" role="img" title="Fail" aria-label="Fail">\u2717</span>';
+  passCell.innerHTML = window.PFAS.components.icon.tip(pass ? 'pass' : 'fail', pass ? 'Pass' : 'Fail');
 }
 //]]>
 </script>

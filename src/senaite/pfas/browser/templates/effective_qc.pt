@@ -7,7 +7,7 @@
   <title metal:fill-slot="title">Effective QC</title>
   <metal:fill fill-slot="header-title">Effective QC</metal:fill>
 
-  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="python:view.method_name(view.method_id())">FDA 32-PFAS in Food</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary btn-back" tal:attributes="href view/editor_url">Method profile</a>
   </tal:r>
@@ -18,17 +18,15 @@
 
     <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${view/portal_url}/@@pfas-effective-qc">
-      <div class="pfas-field"><label for="eq-method">Method</label>
-        <select name="method" id="eq-method" class="pfas-select">
-          <option tal:repeat="mid view/method_ids" tal:content="mid"
-                  tal:attributes="value mid; selected python:'selected' if mid == view.method_id() else None">FDA</option>
-        </select></div>
-      <div class="pfas-field"><label for="eq-matrix">Matrix</label>
+      <div class="pfas-form-field" tal:define="mc_choices python:[{'value': m, 'label': view.method_name(m)} for m in view.method_ids()];
+                                               mc_value view/method_id; mc_label string:Method; mc_id string:eq-method; mc_name string:method"><span>Method</span>
+        <metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></div>
+      <div class="pfas-form-field"><label for="eq-matrix">Matrix</label>
         <select name="matrix" id="eq-matrix" class="pfas-select">
           <option tal:repeat="m view/matrices" tal:content="m"
                   tal:attributes="value m; selected python:'selected' if m == view.matrix() else None">Groundwater</option>
         </select></div>
-      <div class="pfas-field"><label>Show</label>
+      <div class="pfas-form-field"><label>Show</label>
         <nav class="pfas-seg" aria-label="Show">
           <a class="pfas-seg-item" tal:repeat="f view/filter_links"
              tal:attributes="href f/url; aria-selected python:'true' if f['on'] else 'false'"

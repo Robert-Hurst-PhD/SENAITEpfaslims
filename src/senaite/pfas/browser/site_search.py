@@ -91,8 +91,6 @@ class PFASSiteSearchView(ViewHelpers, BrowserView):
             items += self._settings()
         if "limits" in on:
             items += self._limits(portal)
-        if "logbooks" in on:
-            items += self._logbooks(portal)
         from senaite.pfas import help_dictionary
         items += ss.help_entries(help_dictionary.ENTRIES, self.portal_url() + "/@@pfas-help")
         return items
@@ -196,16 +194,3 @@ class PFASSiteSearchView(ViewHelpers, BrowserView):
         store = rg.get_store(portal)
         return ss.limit_entries(store.get("limits") or [], store.get("programs") or {},
                                 self.portal_url() + "/@@pfas-regulatory-limits")
-
-    def _logbooks(self, portal):
-        from senaite.pfas.browser import prep_logbooks as pl
-        out = []
-        for d in pl._list(portal):
-            if d.get("status") == pl.STATUS_ARCHIVED:
-                continue
-            out.append({"group": "logbooks",
-                        "title": u"%s %s" % (d.get("logbook_code") or u"", d.get("title") or u""),
-                        "subtitle": u"Revision %s · %s" % (d.get("revision"), d.get("status")),
-                        "url": self.portal_url() + "/@@pfas-prep-logbooks",
-                        "keywords": [d.get("logbook_slug") or u""]})
-        return out

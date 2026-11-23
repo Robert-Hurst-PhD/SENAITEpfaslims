@@ -76,13 +76,15 @@ body:not(.pfas-app) .progress { background-color: var(--surface-2); }
 /* The rail and panel (pfas_sidebar.pt) on core pages: core's own #sidebar
    rules (a light ground with !important, "#sidebar a" colours, padding and
    block display on "#sidebar ul li a", a hover colour) outrank the
-   navigation tree's classes, and core's "transition: all" would animate the
-   fold and the opening. The frame, the tree's own values and no motion. */
+   navigation tiles' classes, and core's "transition: all" would animate the
+   fold and the opening. The frame, the tiles' own values and no motion. */
 body:not(.pfas-app) #sidebar.pfas-nav { background: var(--frame) !important; transition: none; }
-body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-nav-row {
-  display: flex; padding: 0 var(--sp-2); color: var(--on-frame-muted); text-decoration: none; }
-body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-nav-row:hover,
-body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-nav-row[aria-current="page"] { color: var(--on-frame); }
+/* core fixes #sidebar at 200 px with hidden overflow: the rail and the panel take the width the panel holds */
+body:not(.pfas-app) #sidebar.pfas-nav { min-width: 0; max-width: none; overflow: visible; }
+body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-navtile {
+  display: flex; flex-direction: column; padding: 9px 3px 6px; color: var(--on-frame-muted); text-decoration: none; }
+body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-navtile:hover,
+body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-navtile[aria-current="page"] { color: var(--on-frame); }
 /* icons core draws as black SVG images (the Samples filter's assigned / late) */
 html[data-theme="dark"] body:not(.pfas-app) .ajax-contents-table .filterbar img { filter: invert(.85); }
 
@@ -196,6 +198,16 @@ body:not(.pfas-app) table.contentstable .form-control,
 body:not(.pfas-app) table.contentstable select,
 body:not(.pfas-app) table.contentstable .custom-select { height: var(--ctl-h-sm); padding: 0 6px; font-size: var(--fs-sm); }
 body:not(.pfas-app) table.contentstable td .btn-sm { height: var(--ctl-h-sm); }
+/* a record opens by the button holding its number, as on the PFAS lists: the
+   Sample ID link core draws in its listing takes the small secondary button's
+   look, over the state colours core gives a row's links */
+body:not(.pfas-app) table.contentstable td.contentcell.getId a[href]:not(:has(img)) {
+  display: inline-flex; align-items: center; height: var(--ctl-h-sm); padding: 0 10px; box-sizing: border-box;
+  font-size: var(--fs-sm); font-weight: var(--fw-strong); line-height: 1; white-space: nowrap;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  color: var(--text) !important; text-decoration: none;
+}
+body:not(.pfas-app) table.contentstable td.contentcell.getId a[href]:not(:has(img)):hover { background: var(--surface-2); }
 /* core gives a rowspan cell (the worksheet's position column) its own white, with !important */
 body:not(.pfas-app) table.contentstable td[rowspan],
 body:not(.pfas-app) table.contentstable td.contentcell.Pos { background-color: var(--surface) !important; }
@@ -375,22 +387,14 @@ dl.portalMessage.info {
    jumped whenever you crossed between them. */
 body:not(.pfas-app) > div.mb-2 { margin-bottom: 0 !important; }  /* Bootstrap utilities are !important */
 
-/* ── Breadcrumb: the same line as PFAS pages' .pfas-crumb —
-   core drew it in a grey box at a larger size. ────────────────────────── */
+/* ── Breadcrumb: core drew it in a grey box at a larger size. The line
+   and its segments are pfas-topbar.css's, the same as PFAS pages'. ───────── */
 body:not(.pfas-app) ol.breadcrumb {
   background: none;
   padding: 0;
   margin: var(--sp-3) 0 var(--sp-3);   /* the PFAS sub-bar's line (y = 73) */
   font-family: var(--font-subtitle);
-  font-size: var(--fs-sm);
-  color: var(--s-secondary);
 }
-body:not(.pfas-app) .breadcrumb-item + .breadcrumb-item::before {
-  content: "\203A";
-  color: var(--s-border);
-}
-body:not(.pfas-app) .breadcrumb-item a { color: var(--s-primary-dk); }
-body:not(.pfas-app) .breadcrumb-item.active a { color: var(--s-body) !important; font-weight: 600; }
 
 
 /* ── One typeface on core pages too (pfas-tokens.css --font-sans): Samples,
@@ -517,10 +521,30 @@ form[name="worksheet-add-form"] .bootstrap-select { width: auto !important; }
 form[name="worksheet-add-form"] .bootstrap-select.form-control { height: auto; padding: 0; border: 0; background: none; box-shadow: none; }
 form[name="worksheet-add-form"] input[name="Add"] {
   height: var(--ctl-h); border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+/* no Template choice: a worksheet's samples are chosen by method and matrix on
+   its samples page, where core's create opens */
+form[name="worksheet-add-form"] .input-group-append:has(select[name="template"]),
+form[name="worksheet-add-form"] .bootstrap-select.template { display: none; }
 
+/* a core listing's toolbar row (search, filters, column menu) sits inside the
+   listing's own box: Bootstrap's -15px row margins would push it 15px past
+   that box and make the page scroll sideways, so the row takes none and its
+   outer columns take no outer padding (the toolbar stays flush with the table) */
+body:not(.pfas-app) .listing-container > .row { margin-left: 0; margin-right: 0; }
+body:not(.pfas-app) .listing-container > .row > [class*="col"]:first-child { padding-left: 0; }
+body:not(.pfas-app) .listing-container > .row > [class*="col"]:last-child { padding-right: 0; }
+/* the listing's description bar sits in the same scrolling content box and
+   takes the same rule, or it pushes the page 15px wider */
+body:not(.pfas-app) #viewlet-listing-table-description > .row { margin-left: 0; margin-right: 0; }
 /* Core listings: the column menu lives in the filter row (pfas-components.js);
    core's own link above the table is hidden once the button is in place. */
 body .listing-container.pfas-cols-moved .table-responsive > a.pull-right[aria-label="Configure table columns"] { display: none; }
+/* a core list's search box under its visible label (pfas-components.js
+   labelListSearch adds it at the end of core's group; it is drawn first,
+   joined to the box) */
+body:not(.pfas-app) .input-group > .pfas-list-search-label { order: -1; margin: 0; }
+body:not(.pfas-app) .input-group > .pfas-list-search-label > .input-group-text { border-right: 0; border-radius: var(--radius) 0 0 var(--radius); }
+body:not(.pfas-app) .input-group:has(> .pfas-list-search-label) > .form-control { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
 /* a smaller screen (below 1280 px wide): a core listing's rows take the
    stepped-down body size, as PFAS pages do (pfas-tokens.css) */

@@ -20,10 +20,13 @@ CORE_OWNED = {"sample_collection_date": "DateSampled"}
 
 
 def samples_of(context):
-    """Samples of a Batch (its own) or a Worksheet (its analyses')."""
+    """Samples of a Batch (its own) or a Worksheet (its analyses'): a
+    reference analysis has no sample and is skipped; a duplicate gives the
+    sample it duplicates."""
     out, seen = [], set()
     if getattr(context, "portal_type", "") == "Worksheet":
-        cands = [an.getRequest() for an in context.getAnalyses() or []]
+        cands = [an.getRequest() for an in context.getAnalyses() or [] if hasattr(an, "getRequest")]
+        cands = [s for s in cands if getattr(s, "portal_type", None) == "AnalysisRequest"]
     else:
         cands = list(context.getAnalysisRequests() or [])
     for s in cands:

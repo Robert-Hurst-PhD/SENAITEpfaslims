@@ -76,11 +76,6 @@
     .pfas-tabs-wrap {
       flex: 0 0 auto;
     }
-    /* one line under the Logbooks title saying how its pages relate */
-    .lb-flow { margin: 0; padding: var(--sp-2) 20px; font-size: var(--fs-sm);
-               color: var(--s-secondary); background: var(--s-bg);
-               border-bottom: 1px solid var(--s-border); }
-
     /* A tab strip inside the content (not the header strip) sits on the frame
        edge and keeps its distance from the panel below. */
 
@@ -126,7 +121,6 @@
     .ps-statement textarea { width: 100%; font-size: var(--fs-sm); }
 
     .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
-    /* .field-row label (uppercase field captions) also matches a chip */
     .cf-chips .cf-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
                border: 1px solid var(--s-border); border-radius: 14px; background: var(--s-bg);
                font-size: var(--fs-sm); cursor: pointer;
@@ -180,11 +174,10 @@
     .pfas-crumb { display: flex; align-items: center; gap: var(--sp-2);
                   font-size: var(--fs-sm); color: var(--s-secondary);
                   margin: 0 0 var(--sp-3); min-height: 16px; }
-    .pfas-crumb-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+    .pfas-crumb-list { display: flex; flex-wrap: wrap; align-items: center;
                        list-style: none; margin: 0; padding: 0; }
     .pfas-crumb-item { display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
-    .pfas-crumb-sep, .pfas-crumb-item + .pfas-crumb-item::before { color: var(--s-border); }
-    .pfas-crumb-item + .pfas-crumb-item::before { content: "\203A"; }
+    .pfas-crumb-sep { color: var(--s-border); }
     .pfas-crumb-here { color: var(--s-body); font-weight: 600; }
     @media print { .pfas-crumb { display: none; } }
 
@@ -257,29 +250,22 @@
     details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); }
     .pfas-card-head { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); cursor: default; }
     summary::-webkit-details-marker { display: none; }
-    summary::before { content: "\25B6"; font-size: var(--fs-xs); transition: transform .15s; color: var(--s-secondary); }
-    details[open] summary::before { transform: rotate(90deg); }
+    /* the disclosure chevron, drawn by two borders (never a text character) */
+    summary::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 4px 1px 0;
+                      border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+                      transform: rotate(-45deg); transition: transform var(--t-fast) var(--ease); color: var(--s-secondary); }
+    details[open] summary::before { transform: rotate(45deg); }
     .section-body, .pfas-card-body { padding: 16px; }
 
-    /* ── Field layout (.field-grid itself: with the settings forms below) ── */
+    /* ── Field layout: the form grid is .pfas-form-row (pfas-components.css) ── */
     /* a heading between the parts of one page: space above sets it apart
        from what ends, a small gap ties it to what follows */
     .section-group-hdr { font-family: var(--font-heading); font-weight: var(--fw-heading);
                          font-size: var(--fs-md); color: var(--s-body);
                          margin: var(--sp-5) 0 var(--sp-2); }
     .section-group-hdr:first-child { margin-top: 0; }
-    /* a field across the whole grid; a checkbox reads as one line, not a
-       caption over a box; a form's buttons sit in their own row under it */
-    .field-grid .field-wide { grid-column: 1 / -1; }
-    .field-grid label.field-check { flex-direction: row; align-items: center; gap: var(--sp-2);
-                                    font-weight: 400; }
-    .field-grid input[type=checkbox], .field-grid input[type=radio] { width: auto; }
+    /* a form's buttons sit in their own row under it */
     .form-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-3) 0 var(--sp-4); }
-    /* a group of choices in a grid: its caption reads like a field label */
-    .field-grid fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-    .field-grid legend { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body);
-                         padding: 0; margin-bottom: 4px; }
-    .field-grid .cf-chips .cf-chip { flex-direction: row; }
     /* one element of a designed study (Study Designer) */
     fieldset.study-element { border: 1px solid var(--s-border); border-radius: 6px;
                              padding: var(--sp-3) var(--sp-4); margin: var(--sp-3) 0; }
@@ -291,32 +277,6 @@
     details.row-form > summary { display: inline-flex; list-style: none; cursor: pointer; }
     details.row-form > summary::-webkit-details-marker { display: none; }
     details.row-form[open] > summary { margin-bottom: var(--sp-3); }
-    .field-row { display: flex; flex-direction: column; }
-    .field-row label {
-      font-size: var(--fs-sm);
-      color: var(--s-body);
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-    .field-row input[type=number],
-    .field-row input[type=text],
-    .field-row input[type=date],
-    .field-row select,
-    .field-row textarea {
-      padding: 7px 9px;
-      border: 1px solid var(--s-input-border);
-      border-radius: 4px;
-      font-size: var(--fs-base);
-      background: var(--surface);
-      color: var(--s-input-text);
-      width: 100%;
-    }
-    .field-row input:focus, .field-row select:focus, .field-row textarea:focus {
-      outline: none;
-      border-color: var(--s-primary);
-      box-shadow: 0 0 0 3px var(--s-focus-ring);
-    }
-    .field-row .hint { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 3px; }
 
     /* ── Consistent text-field baseline (define once, §7) ─────────────────────
        Every text/number/date/email input, <select> and <textarea> in the
@@ -362,7 +322,6 @@
       border-color: var(--s-primary, #0d6efd);
       box-shadow: 0 0 0 3px var(--s-focus-ring, rgba(13,110,253,.15));
     }
-    .field-row-wide { grid-column: 1 / -1; }
 
     /* ── Checkboxes ──────────────────────────────────────────────────────── */
     .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
@@ -417,7 +376,7 @@
     .row-more-menu .btn-sm { width: 100%; text-align: left; justify-content: flex-start; }
     /* A row's actions: one round "+" in a slim unlabelled cell at the row
        end, shown on row hover and keyboard focus (always on a touch screen);
-       the row's one obvious action is the row itself (tr[data-href]) */
+       the row opens by the button holding its number, in its first cell */
     .row-plus-cell { width: 52px; padding-left: 4px; padding-right: 4px; text-align: center; }
     .row-plus-cell details.row-more { display: inline-block; }
     details.row-more > summary.row-plus { width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center;
@@ -431,17 +390,14 @@
                                     border-top: 1px solid var(--line); }
     .row-more-menu .mp-issue-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
     @media (hover: hover) {
-      tr .row-plus { opacity: 0; transition: opacity .12s; }
+      tr .row-plus { opacity: 0; transition: opacity var(--t-quick); }
       tr:hover .row-plus, tr:focus-within .row-plus, details.row-more[open] > .row-plus { opacity: 1; }
     }
-    tr[data-href] { cursor: pointer; }
     .pfas-attn { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 6px;
                  border-radius: 50%; background: var(--s-warn-lt); color: var(--s-warn-text); font-size: var(--fs-xs);
                  font-weight: var(--fw-heading); vertical-align: middle; cursor: help; }
     .pfas-attn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    td.row-go, th.row-go { width: 28px; color: var(--text-muted); text-align: center; font-size: var(--fs-lg); }
-    tr[data-href]:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
-    tr[data-href]:hover td.row-go { color: var(--accent-text); }
+    .pfas-attn-why { display: block; margin-top: 2px; color: var(--s-warn-text); font-size: var(--fs-xs); }   /* what needs doing, in words */
     .pfas-table tr:last-child td { border-bottom: none; }
     .pfas-table tbody tr:hover td { background: var(--s-primary-lt); }
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -466,7 +422,7 @@
       background: var(--surface); color: var(--text); font-size: var(--fs-base); font-weight: var(--fw-body); }
   .pick-list-text { flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pick-list-caret { font-size: var(--fs-xs); color: var(--text-muted); }
-  .pfas-filterbar .pfas-seg { height: var(--ctl-h); box-sizing: border-box; align-items: center; }
+  .pfas-filterbar .pfas-seg { min-height: var(--ctl-h); box-sizing: border-box; align-items: center; }
   .pick-list-items { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px;
                      max-height: 320px; overflow-y: auto; background: var(--s-bg); border: 1px solid var(--s-border);
                      border-radius: 6px; padding: var(--sp-2); display: grid; gap: 2px;
@@ -497,19 +453,12 @@
   .qv-notes li { margin: 2px 0; }
   .qv-group { margin: var(--sp-4) 0 var(--sp-5); }
   .qv-group-title { font-size: var(--fs-lg); margin: 0 0 var(--sp-2); }
-  /* a settings form laid out as a grid of labelled fields (EDD export) */
-  .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                gap: var(--sp-3) var(--sp-4); margin: 0 0 var(--sp-3); }
-  .field-grid label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);
-                      font-weight: 600; color: var(--s-body); }
-  .field-grid label:not(:has(input, select, textarea)) { display: block; }   /* a caption: its "*" and unit stay on the line */
-  .field-grid .field-hint { font-weight: 400; font-size: var(--fs-xs); color: var(--s-secondary); }
-  .field-grid input, .field-grid select, .field-grid textarea { width: 100%; }
   .mono-area { font-family: var(--font-mono); font-size: var(--fs-xs); width: 100%; }
   /* a form's action under its table never touches it */
   .pfas-table + .btn-sm, .pfas-table + button, .pfas-table + .btn { margin-top: var(--sp-3); }
   /* Reporting template page */
   .rt-line { margin: 6px 0; }
+  .bench-h + .rt-line { margin-top: var(--sp-3); }   /* a line under a heading has room above it */
   .rt-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
   .rt-note { flex: 1 1 320px; }
   .rt-form .bench-alerts { flex: 1 0 100%; }
@@ -543,12 +492,15 @@
   .bench-state { font-weight: 600; }
   .bench-in_progress { color: var(--s-primary-dk); }
   .bench-finished { color: var(--s-success-text); }
+  .bench-empty { color: var(--s-warn-text); }   /* a worksheet with no sample: a flag, amber */
   .bench-alerts { list-style: none; margin: 0; padding: 0; }
   .bench-alerts li { padding: 6px 10px; border-left: 4px solid var(--s-border); margin: 0 0 4px;
   background: var(--s-bg-alt); font-size: var(--fs-sm); }
   .bench-alerts li.bench-bad { border-left-color: var(--s-danger); }
   .bench-alerts li.bench-warn { border-left-color: var(--s-warning); }
   .bench-alerts li.bench-ok { border-left-color: var(--s-success); }
+  /* the notice's kind as a mark at its start (icons.py), so the edge colour is never the only sign */
+  .bench-alerts li > .pfas-alert-mark { display: inline-flex; vertical-align: -0.3em; margin-right: var(--sp-2); }
     .pfas-ws-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -566,8 +518,10 @@
       text-decoration: none;
       color: var(--s-body);
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
-      transition: box-shadow .15s, border-color .15s;
+      transition: transform var(--t-fast) var(--ease);   /* it lifts; its shadow and border change at once */
     }
+    @media (hover: hover) { .pfas-ws-card:hover { transform: translateY(-2px); } }
+    .pfas-ws-card:active { transform: translateY(-1px); transition-duration: var(--t-quick); }
     .pfas-ws-card:hover {
       box-shadow: 0 4px 12px rgba(0,0,0,.12);
       border-color: var(--s-primary);
@@ -760,8 +714,10 @@
          other): a table of four or more columns is given room to scroll */
       .pfas-content-area table:not(.no-mobile-scroll):has(tr > :nth-child(4)) { min-width: 40em; }
       .pfas-content-area table:not(.no-mobile-scroll):has(tr > :nth-child(7)) { min-width: 56em; }
-      /* desktop column percentages would undo it */
-      .pfas-content-area table:not(.no-mobile-scroll) col { width: auto; }
+      /* desktop column percentages would undo it; a table whose colgroup gives
+         each column its width in pixels (has-set-widths) keeps them on a
+         phone and scrolls in its own box */
+      .pfas-content-area table:not(.no-mobile-scroll):not(.has-set-widths) col { width: auto; }
       /* a fixed-column table keeps its full width and scrolls in its box: the
          rules above squeezed it to the screen and its text ran together */
       .pfas-content-area table.pfas-table.pfas-table-fixed:not(.no-mobile-scroll):not(.x-fixed) { min-width: 1100px; }
@@ -781,9 +737,6 @@
         white-space: normal; max-width: 180px;
       }
       .hide-mobile { display: none !important; }
-
-      /* Field grids → single column */
-      .field-grid { grid-template-columns: 1fr !important; }
 
       /* Reduce body padding */
       .page-body, .page-body-narrow { padding: 10px 10px; }

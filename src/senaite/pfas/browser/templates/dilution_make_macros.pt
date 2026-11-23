@@ -1,0 +1,64 @@
+<metal:m define-macro="make-dialog">
+  <!-- The Make dialog of a dilution or re-injection Data Review asked for
+       (dilution_make.py), shared by Run Builder's step 4 and the guided
+       extraction's Dilutions stage. The caller defines r (the request, as
+       dilution_make.listed gives it), opts (dilution_make.options), make_url,
+       make_action and make_hidden ([(name, value)] the page posts back). -->
+        <div class="pfas-modal" tal:condition="python:r['status'] == 'open'" tal:attributes="id string:make-${r/id}">
+          <div class="pfas-modal-box is-wide" role="dialog" aria-modal="true">
+            <h2>Make <tal:a tal:replace="r/asked">Dilution 1:10</tal:a> of <tal:i tal:replace="r/injection">X</tal:i></h2>
+            <form method="post" tal:attributes="action make_url" tal:define="rid r/id">
+              <input type="hidden" name="action" tal:attributes="value make_action" />
+              <input type="hidden" tal:repeat="h make_hidden" tal:attributes="name python:h[0]; value python:h[1]" />
+              <input type="hidden" name="request" tal:attributes="value rid" />
+              <!-- the dilution's vial, one settings block; the internal
+                   standard and the surrogate each under its own heading -->
+              <tal:dil condition="python:r.get('kind') == 'dilution'">
+              <div class="cf-settings">
+                <div class="cf-label"><label tal:attributes="for string:extract_ul.${rid}">Extract taken (&micro;L)</label></div>
+                <div class="cf-control">
+                  <input type="number" step="any" min="0" class="no-stepper" required="required"
+                         tal:attributes="name string:extract_ul.${rid}; id string:extract_ul.${rid}" /></div>
+                <div class="cf-label"><label tal:attributes="for string:final_ul.${rid}">Final volume (&micro;L)</label></div>
+                <div class="cf-control">
+                  <input type="number" step="any" min="0" class="no-stepper" required="required"
+                         tal:attributes="name string:final_ul.${rid}; id string:final_ul.${rid}" /></div>
+                <div class="cf-label"><label tal:attributes="for string:diluent_lot.${rid}">Diluent</label></div>
+                <div class="cf-control">
+                  <select required="required" tal:attributes="name string:diluent_lot.${rid}; id string:diluent_lot.${rid}">
+                    <option value="">Choose</option>
+                    <option tal:repeat="l opts/diluent" tal:attributes="value python:l[0]" tal:content="python:l[1]">Methanol &#183; LOT-1</option>
+                  </select></div>
+              </div>
+              <tal:std repeat="std python:(('is', 'Internal standard'), ('sur', 'Surrogate'))">
+              <div class="section-group-hdr" tal:content="python:std[1]"
+                   tal:attributes="id python:'%s_head.%s' % (std[0], rid)">Internal standard</div>
+              <!-- the heading names the group: a screen reader reads it with each box -->
+              <div class="cf-settings" role="group" tal:attributes="aria-labelledby python:'%s_head.%s' % (std[0], rid)">
+                <div class="cf-label"><label tal:attributes="for python:'%s_handling.%s' % (std[0], rid)">Handling</label></div>
+                <div class="cf-control">
+                  <select required="required" tal:attributes="name python:'%s_handling.%s' % (std[0], rid); id python:'%s_handling.%s' % (std[0], rid)">
+                    <option value="">Choose</option>
+                    <option tal:repeat="h opts/handlings" tal:attributes="value python:h[0]" tal:content="python:h[1]">Not added</option>
+                  </select></div>
+                <div class="cf-label"><label tal:attributes="for python:'%s_lot.%s' % (std[0], rid)">Lot</label></div>
+                <div class="cf-control">
+                  <select tal:attributes="name python:'%s_lot.%s' % (std[0], rid); id python:'%s_lot.%s' % (std[0], rid)">
+                    <option value="">Prepared standard</option>
+                    <option tal:repeat="l opts/standards" tal:attributes="value python:l[0]" tal:content="python:l[1]">IS mix &#183; PS-1</option>
+                  </select></div>
+                <div class="cf-label"><label tal:attributes="for python:'%s_ul.%s' % (std[0], rid)">Volume (&micro;L)</label></div>
+                <div class="cf-control">
+                  <input type="number" step="any" min="0" class="no-stepper"
+                         tal:attributes="name python:'%s_ul.%s' % (std[0], rid); id python:'%s_ul.%s' % (std[0], rid)" /></div>
+              </div>
+              </tal:std>
+              </tal:dil>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Make</button>
+                <button class="btn btn-secondary" type="button" data-modal-close="data-modal-close">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+</metal:m>

@@ -9,8 +9,12 @@
  *   - .btn-help[data-help-entry]: opens that Help entry in .pfas-help-panel beside the page
  *     (not modal); Close or Escape in the panel hides it and focuses the button again
  *   - .pfas-tree[data-view]: "path" hides rows marked is-off-path
+ *   - .pfas-hier (PFAS.components.hier): a node shows its card; .pfas-band bars; a view
+ *     switch ([data-view-switch]); a card's tiles open its windows (PFAS.components.tiles)
  *   - .pfas-tree.pfas-nav-tree: the navigation tree (ARIA tree, keys, row menu, pfas:pin event)
  *   - form[data-autosubmit]: a filter bar that submits when any field changes
+ *   - [data-unsaved-for]: the pinned bar's line says when the form it names holds
+ *     a change not saved yet
  *   - .pfas-num: [-] value [+] around every number input in the content area (not
  *     read-only, .no-stepper, [data-stepper=off], or in a table cell); hold repeats
  *   - .pfas-range: [data-range] around a min / max pair of number inputs, drawn as a
@@ -27,6 +31,9 @@
  *     cell's list, Columns, a row's expand button and the row drawer on the grid
  *     profile_grids.py draws;
  *     events pfas:sheet-select and pfas:sheet-bulk
+ *   - an equation (PFAS.equation draws, PFAS.components.equation wires): [data-equation]
+ *     drawn over the server's plain text; [data-equation-open] opens its read-only window
+ *     of options side by side, the one in use marked, every term defined
  *   - .pfas-menu (PFAS.components.menu): a context menu or an Actions button's list, one at
  *     a time over everything, with groups, disabled entries saying why, submenus and keys
  * All of these ENHANCE markup that already exists: the real named input stays in the
@@ -197,6 +204,229 @@
   if (typeof module !== "undefined" && module.exports) { module.exports = numeric; }
 })(typeof window !== "undefined" ? window : {});
 
+/* ── The equation (PFAS.equation) ────────────────────────────────────────
+   One drawing of an equation, as a method prints it, wherever one is shown:
+   the value drawer, a column's card, the method profile's settings and the
+   calibration card. A division ("÷", or "/" standing between spaces) is
+   a stacked fraction, its numerator over a bar over its denominator; an
+   operand in brackets gives its brackets to the bar; a fraction may hold a
+   fraction. Each term's symbol is coloured where it stands as a whole word
+   (a term keeps its colour wherever it appears; after six the colours start
+   again), and "_{x}" is a subscript. Text after the closing "× 100"
+   (", of the two concentrations", "(the duplicate ...)") is a note under
+   the equation. Three sizes: display (framed, centred: a window, the
+   drawer), card (framed, smaller: a column's card) and inline (no frame,
+   left aligned: a card's own line, a setting's box). A window holds one or
+   more options side by side, the one in use marked, then every term with
+   what it means and where its value comes from. Pure strings, no DOM:
+   the page part (drawing [data-equation], opening [data-equation-open])
+   is PFAS.components.equation. */
+(function (g) {
+  "use strict";
+  var SERIES = 6;
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function colour(i) { return "var(--series-" + ((i % SERIES) + 1) + ")"; }
+
+  var WORD = /[A-Za-z0-9À-ɏ̀-ͯͰ-Ͽ₀-ₜ_]/;
+  function lex(text, terms) {
+    var syms = terms.map(function (t, i) { return { s: t.symbol, i: i }; })
+      .filter(function (x) { return x.s; })
+      .sort(function (a, b) { return b.s.length - a.s.length; });
+    var out = [], word = "", i = 0;
+    function flush() { if (word) { out.push({ k: "atom", text: word }); word = ""; } }
+    function whole(at, len) {
+      var a = text.charAt(at - 1), b = text.charAt(at + len);
+      return !(a && WORD.test(a) && WORD.test(text.charAt(at))) &&
+             !(b && WORD.test(b) && WORD.test(text.charAt(at + len - 1)));
+    }
+    while (i < text.length) {
+      var hit = null;
+      for (var n = 0; n < syms.length && !hit; n++) {
+        if (text.substr(i, syms[n].s.length) === syms[n].s && whole(i, syms[n].s.length)) { hit = syms[n]; }
+      }
+      var c = text.charAt(i);
+      if (hit) {
+        flush();
+        out.push({ k: "term", text: hit.s, i: hit.i });
+        i += hit.s.length;
+        continue;
+      }
+      if (/\s/.test(c)) {
+        flush();
+        if (!out.length || out[out.length - 1].k !== "sp") { out.push({ k: "sp" }); }
+      } else if (c === "(" || c === ")" || c === "|") {
+        flush();
+        out.push({ k: "punct", text: c });
+      } else if (c === "÷" || (c === "/" && /\s/.test(text.charAt(i - 1)) && /\s/.test(text.charAt(i + 1)))) {
+        flush();
+        out.push({ k: "div" });
+      } else {
+        word += c;
+      }
+      i += 1;
+    }
+    flush();
+    return out;
+  }
+  function trimmed(nodes) {
+    var a = 0, b = nodes.length;
+    while (a < b && nodes[a].k === "sp") { a++; }
+    while (b > a && nodes[b - 1].k === "sp") { b--; }
+    return nodes.slice(a, b);
+  }
+  function operand(node) {
+    return node.k === "group" && node.open === "(" && !node.unclosed ? trimmed(node.nodes) : [node];
+  }
+  function fold(nodes) {
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].k !== "div") { continue; }
+      var p = i - 1, n = i + 1;
+      while (p >= 0 && nodes[p].k === "sp") { p--; }
+      while (n < nodes.length && nodes[n].k === "sp") { n++; }
+      if (p < 0 || n >= nodes.length || nodes[p].k === "div" || nodes[n].k === "div") { continue; }
+      nodes.splice(p, n - p + 1, { k: "frac", num: operand(nodes[p]), den: operand(nodes[n]) });
+      i = p;
+    }
+    return nodes;
+  }
+  function parse(toks, pos, stop) {
+    var nodes = [];
+    while (pos < toks.length) {
+      var t = toks[pos];
+      if (stop && t.k === "punct" && t.text === stop) { return { nodes: fold(nodes), pos: pos + 1, closed: true }; }
+      if (t.k === "punct" && (t.text === "(" || t.text === "|")) {
+        var close = t.text === "(" ? ")" : "|", inner = parse(toks, pos + 1, close);
+        nodes.push({ k: "group", open: t.text, close: close, nodes: inner.nodes, unclosed: !inner.closed });
+        pos = inner.pos;
+        continue;
+      }
+      nodes.push(t);
+      pos += 1;
+    }
+    return { nodes: fold(nodes), pos: pos, closed: false };
+  }
+  function sub(text) { return esc(text).replace(/_\{([^}]*)\}/g, "<sub>$1</sub>"); }
+  function draw(nodes) {
+    return nodes.map(function (x) {
+      if (x.k === "sp") { return " "; }
+      if (x.k === "div") { return "÷"; }
+      if (x.k === "term") {
+        return '<span class="pv-term" data-term="' + x.i + '" style="color:' + colour(x.i) + '">' + sub(x.text) + "</span>";
+      }
+      if (x.k === "group") { return esc(x.open) + draw(x.nodes) + (x.unclosed ? "" : esc(x.close)); }
+      if (x.k === "frac") {
+        return '<span class="pv-frac"><span class="pv-num">' + draw(x.num) + '</span><span class="pv-den">' +
+          draw(x.den) + "</span></span>";
+      }
+      return sub(x.text);
+    }).join("");
+  }
+  function split(formula) {
+    var m = /^(.*×\s*\d+)(?:,\s*(.+)|\s+\((.+)\))$/.exec(formula || "");
+    return m ? { eq: m[1], note: m[2] || m[3] } : { eq: formula || "", note: "" };
+  }
+  /* the equation's own markup, no frame */
+  function html(formula, terms) {
+    return draw(trimmed(parse(lex(split(formula).eq, terms || []), 0, null).nodes));
+  }
+  /* one equation, framed: the display size, or "card" */
+  function block(formula, terms, size) {
+    var note = split(formula).note;
+    return '<div class="pv-formula' + (size ? " is-" + size : "") + '">' + html(formula, terms) +
+      (note ? '<div class="pv-formula-note">' + esc(note) + "</div>" : "") + "</div>";
+  }
+  function list(formulas) { return [].concat(formulas || []).filter(function (f) { return f; }); }
+  /* the inline size's content: one line per equation, a middle dot between */
+  function lines(formulas, terms) {
+    return list(formulas).map(function (f) { return '<span class="pv-formula-line">' + html(f, terms) + "</span>"; }).join("");
+  }
+  function inline(formulas, terms) { return '<div class="pv-formula is-inline">' + lines(formulas, terms) + "</div>"; }
+  /* under an inline equation whose terms are values: what each value is,
+     in its colour, then where they come from ("from this fit") */
+  function key(terms, tail) {
+    return '<span class="pv-formula-key">' + (terms || []).map(function (t, i) {
+      return '<span data-term="' + i + '"><span class="pv-dot" style="background:' + colour(i) + '"></span> ' + esc(t.label) + "</span>";
+    }).join(" ") + (tail ? " " + esc(tail) : "") + "</span>";
+  }
+  /* every term: its colour, symbol, what it means, its value (a column only
+     when one is known), where the value comes from, and the options it is
+     used in (a column only when a window holds more than one option) */
+  function termsTable(terms) {
+    terms = terms || [];
+    var hasValue = terms.some(function (t) { return t.value != null && t.value !== ""; });
+    var hasIn = terms.some(function (t) { return t["in"] && t["in"].length; });
+    var h = '<table class="pfas-table pv-terms" data-col-resize="pv-terms"><thead><tr><th></th><th>Term</th><th>Means</th>' +
+      (hasValue ? '<th class="num">Value</th>' : "") + "<th>Source</th>" + (hasIn ? "<th>Used in</th>" : "") +
+      "</tr></thead><tbody>";
+    terms.forEach(function (t, i) {
+      h += '<tr data-term="' + i + '"><td><span class="pv-dot" style="background:' + colour(i) + '"></span></td>' +
+        '<td class="pv-sym" style="color:' + colour(i) + '">' + sub(t.symbol) + "</td><td>" + esc(t.label) + "</td>" +
+        (hasValue ? '<td class="num">' + esc(t.value == null ? "" : t.value) + (t.unit ? " " + esc(t.unit) : "") + "</td>" : "") +
+        "<td>" + esc(t.source) + "</td>" +
+        (hasIn ? '<td class="pv-in">' + esc([].concat(t["in"] || []).join(", ")) + "</td>" : "") + "</tr>";
+    });
+    return h + "</tbody></table>";
+  }
+  /* A window's body. spec: {chain: [[label, value]], options: [{value,
+     label, note, formulas, isDefault}], terms, steps: [{head, note,
+     formulas, alt: {lead, formulas}, terms}], foot}; `inUse` the value of
+     the option in use, marked with a solid border and In use. */
+  function windowHtml(spec, inUse) {
+    spec = spec || {};
+    var terms = spec.terms || [], h = "";
+    if (spec.chain && spec.chain.length) {
+      h += '<p class="pv-chain">' + spec.chain.map(function (c) {
+        return '<span><span class="pv-chain-l">' + esc(c[0]) + "</span> <b>" + esc(c[1]) + "</b></span>";
+      }).join('<span class="pv-chain-l"> · </span>') + "</p>";
+    }
+    var opts = spec.options || [];
+    if (opts.length) {
+      h += '<div class="pv-options">' + opts.map(function (o) {
+        var used = inUse != null && String(o.value) === String(inUse);
+        return '<section class="pv-option' + (used ? " is-used" : "") + '" data-option="' + esc(o.value) + '"' +
+          (used ? ' aria-current="true"' : "") + '><div class="pv-option-head"><span class="pv-option-name">' + esc(o.label) + "</span>" +
+          (o.isDefault ? '<span class="pfas-tag">Default</span>' : "") +
+          (used ? '<span class="pfas-tag is-used">In use</span>' : "") + "</div>" +
+          (o.note ? '<p class="pv-option-note">' + esc(o.note) + "</p>" : "") +
+          list(o.formulas).map(function (f) { return block(f, terms); }).join("") + "</section>";
+      }).join("") + "</div>";
+    }
+    if (terms.length) { h += termsTable(terms); }
+    (spec.steps || []).forEach(function (s) {
+      var st = s.terms || [];
+      h += '<h3 class="pv-h">' + esc(s.head) + "</h3>" + (s.note ? '<p class="pv-rule">' + esc(s.note) + "</p>" : "") +
+        list(s.formulas).map(function (f) { return block(f, st); }).join("") +
+        (s.alt ? '<div class="pv-alt"><span>' + esc(s.alt.lead) + "</span> " + inline(s.alt.formulas, st) + "</div>" : "") +
+        (st.length ? termsTable(st) : "");
+    });
+    if (spec.foot) { h += '<p class="pv-rule">' + esc(spec.foot) + "</p>"; }
+    return h;
+  }
+  /* hover a term anywhere in root and it lights everywhere in root */
+  function hover(root) {
+    if (!root || root.__pvHover) { return; }
+    root.__pvHover = true;
+    root.addEventListener("mouseover", function (e) {
+      var el = e.target.closest && e.target.closest("[data-term]");
+      if (!el) { return; }
+      var i = el.getAttribute("data-term");
+      var all = root.querySelectorAll("[data-term]");
+      for (var k = 0; k < all.length; k++) { all[k].classList.toggle("pv-hot", all[k].getAttribute("data-term") === i); }
+    });
+    root.addEventListener("mouseout", function (e) {
+      if (e.target.closest && e.target.closest("[data-term]")) {
+        var all = root.querySelectorAll(".pv-hot");
+        for (var k = 0; k < all.length; k++) { all[k].classList.remove("pv-hot"); }
+      }
+    });
+  }
+  var equation = { esc: esc, colour: colour, split: split, html: html, block: block, lines: lines, inline: inline,
+                   key: key, terms: termsTable, window: windowHtml, hover: hover };
+  g.PFAS = g.PFAS || {};
+  g.PFAS.equation = equation;
+  if (typeof module !== "undefined" && module.exports) { module.exports.equation = equation; }
+})(typeof window !== "undefined" ? window : {});
+
 (function () {
   "use strict";
   if (typeof document === "undefined") { return; }   /* node: the helpers above only */
@@ -218,22 +448,24 @@
     var on = seg.querySelector('[aria-selected="true"], [aria-pressed="true"], .is-on');
     var pill = seg.querySelector(".pfas-seg-pill");
     if (!on || !pill) { return; }
-    /* the first placing is where the page opens: drawn there, not slid in
-       from the strip's start (every page with a strip slid on load) */
-    var first = !pill.__pfasPlaced;
-    if (first) { pill.style.transition = "none"; }
-    pill.style.left = on.offsetLeft + "px";
-    pill.style.width = on.offsetWidth + "px";
-    pill.style.top = on.offsetTop + "px";            /* a wrapped strip: the row the tab is on */
-    pill.style.height = on.offsetHeight + "px";
-    if (first) {
-      pill.__pfasPlaced = true;
-      void pill.offsetWidth;                         /* the place is taken before the slide returns */
-      pill.style.transition = "";
-    }
-    if (seg.classList.contains("pfas-seg-strip")) {
-      seg.classList.toggle("is-wrapped", seg.offsetHeight > on.offsetHeight + 12);
-    }
+    /* it moves by transform alone: its new size is taken at once, drawn at
+       its old place and width (translateX, scaleX), then slides to the new,
+       so nothing is laid out again while it moves; the first placing (where
+       the page opens) and a wrapped strip's other row are drawn there, not
+       slid in */
+    var x = on.offsetLeft, y = on.offsetTop, w = on.offsetWidth || 1, prev = pill.__pfasAt;
+    function at(px, sx) { return "translate(" + px + "px, " + y + "px) scaleX(" + sx + ")"; }
+    pill.style.left = "0px";
+    pill.style.top = "0px";
+    pill.style.width = w + "px";
+    pill.style.height = on.offsetHeight + "px";      /* a wrapped strip: the row the tab is on */
+    pill.style.transition = "none";
+    pill.style.transform = prev && prev.y === y ? at(prev.x, prev.w / w) : at(x, 1);
+    pill.__pfasAt = { x: x, y: y, w: w };
+    void pill.offsetWidth;                           /* the old place is drawn before the slide */
+    pill.style.transition = "";
+    pill.style.transform = at(x, 1);
+    seg.classList.toggle("is-wrapped", seg.offsetHeight > on.offsetHeight + 12);
   }
   /* A tab strip wider than its box wraps onto a second row, so no tab is ever
      out of sight (a smaller screen cut tabs off at the edge); the pill
@@ -274,6 +506,12 @@
     if (attr === "aria-selected") { item.setAttribute("tabindex", "0"); }
     return items;
   }
+  /* a pane whose shown view is cards: the cards rise, so the pane does not */
+  function drawnCard(pane) {
+    var cards = pane.querySelectorAll(".pfas-hier-card:not([hidden])");
+    for (var i = 0; i < cards.length; i++) { if (!cards[i].parentNode.closest("[hidden]")) { return true; } }
+    return false;
+  }
   function activate(seg, item) {
     var items = press(seg, item);
     placePill(seg);
@@ -287,8 +525,14 @@
       var panes = root.querySelectorAll(".pfas-pane");
       for (var p = 0; p < panes.length; p++) {
         if (mine[panes[p].id]) {
+          var was = panes[p].classList.contains("is-active");
           panes[p].classList.toggle("is-active", panes[p].id === pane);
-          if (panes[p].id === pane) { placeAll(panes[p]); }   /* a strip in a pane hidden until now */
+          if (panes[p].id === pane) {
+            placeAll(panes[p]);   /* a strip in a pane hidden until now */
+            /* a tab the person chose rises (a deep link's, on load, is
+               drawn); a pane of cards leaves the rise to its cards */
+            if (!was && seg.__pfasReady && !drawnCard(panes[p])) { arrive(panes[p], "is-arriving"); }
+          }
         }
       }
       if (seg.hasAttribute("data-hash")) { try { history.replaceState(null, "", "#" + pane); } catch (e) {} }
@@ -306,9 +550,90 @@
       field.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
+  /* segments drawn for one field (a list card's copy of a table row's
+     state) show what the field holds, whichever of them wrote it */
+  function syncFieldSegs(field) {
+    if (!field || !field.id) { return; }
+    var segs = doc.querySelectorAll(".pfas-seg[data-field]");
+    for (var i = 0; i < segs.length; i++) {
+      if (segs[i].getAttribute("data-input") !== field.id) { continue; }
+      var items = segs[i].querySelectorAll(".pfas-seg-item");
+      for (var k = 0; k < items.length; k++) {
+        if (items[k].getAttribute("data-value") === field.value) {
+          if (items[k].getAttribute("aria-pressed") !== "true") { press(segs[i], items[k]); placePill(segs[i]); }
+          break;
+        }
+      }
+    }
+  }
+  /* A nameless switch drawn for a form's box (a list card's copy,
+     input[data-switch-for] naming the box, data-switch-form its form; the
+     copy itself names no form, so it is never posted nor counted): ticking
+     it ticks the box, which says so (input, change); the box ticked
+     anywhere else ticks every copy of it. */
+  function switchBox(copy) {
+    var name = copy.getAttribute("data-switch-for"), form = copy.getAttribute("data-switch-form");
+    var all = doc.getElementsByName(name);
+    for (var i = 0; i < all.length; i++) {
+      if (all[i] !== copy && (!form || all[i].getAttribute("form") === form)) { return all[i]; }
+    }
+    return null;
+  }
+  /* A switch drawn for a choice field of two values (input[data-switch-input]
+     naming the field's id, data-switch-on and data-switch-off the values it
+     posts; the switch itself names no form): switched, it writes the
+     field's value, which says so (input, change); the field written
+     anywhere else moves every such switch of it. */
+  function valueSwitches(id) {
+    return Array.prototype.filter.call(doc.querySelectorAll("input[data-switch-input]"), function (n) {
+      return n.getAttribute("data-switch-input") === id;
+    });
+  }
+  function syncValueSwitch(sw, field) {
+    var on = field.value === sw.getAttribute("data-switch-on");
+    if (sw.checked !== on) { sw.checked = on; switchWord(sw); }
+  }
+  doc.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t || !t.getAttribute) { return; }
+    if (t.type === "checkbox" && t.hasAttribute("data-switch-input")) {
+      var field = doc.getElementById(t.getAttribute("data-switch-input"));
+      var v = t.getAttribute(t.checked ? "data-switch-on" : "data-switch-off") || "";
+      if (field && field.value !== v) {
+        field.value = v;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return;
+    }
+    if (t.id && t.type !== "checkbox") { valueSwitches(t.id).forEach(function (sw) { syncValueSwitch(sw, t); }); }
+  });
+  doc.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t || !t.getAttribute || t.type !== "checkbox") { return; }
+    if (t.hasAttribute("data-switch-input")) { return; }
+    if (t.hasAttribute("data-switch-for")) {
+      var box = switchBox(t);
+      if (box && box.checked !== t.checked) {
+        box.checked = t.checked;
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+        box.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return;
+    }
+    if (!t.name) { return; }
+    var copies = doc.querySelectorAll("input[data-switch-for]");
+    for (var i = 0; i < copies.length; i++) {
+      if (copies[i].getAttribute("data-switch-for") === t.name && switchBox(copies[i]) === t) { copies[i].checked = t.checked; }
+    }
+  });
   function initSeg(seg) {
     if (seg.__pfas) { return; }
     seg.__pfas = true;
+    if (seg.hasAttribute("data-field") && !doc.__pfasFieldSegs) {
+      doc.__pfasFieldSegs = true;
+      doc.addEventListener("change", function (e) { syncFieldSegs(e.target); });
+    }
     if (!seg.querySelector(".pfas-seg-pill")) {
       var pill = doc.createElement("span"); pill.className = "pfas-seg-pill"; seg.insertBefore(pill, seg.firstChild);
     }
@@ -330,8 +655,13 @@
       var want = seg.querySelector('.pfas-seg-item[data-pane="' + location.hash.slice(1) + '"]');
       if (want) { activate(seg, want); }
     }
+    seg.__pfasReady = true;
     placePill(seg);
     initStripCue(seg);
+    /* a segment built hidden (a drawer's) is measured when it first shows */
+    if (window.ResizeObserver && !seg.classList.contains("pfas-seg-strip")) {
+      try { new window.ResizeObserver(function () { placePill(seg); }).observe(seg); } catch (e) {}
+    }
     seg.addEventListener("click", function (e) {
       var item = e.target.closest(".pfas-seg-item");
       if (!item || item.tagName === "A") { return; }   /* a link: the server renders the state */
@@ -354,7 +684,7 @@
     });
     seg.addEventListener("keydown", function (e) {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") { return; }
-      var items = Array.prototype.slice.call(seg.querySelectorAll(".pfas-seg-item"));
+      var items = Array.prototype.slice.call(seg.querySelectorAll(".pfas-seg-item")).filter(function (x) { return !x.disabled; });
       var i = items.indexOf(doc.activeElement);
       if (i < 0) { return; }
       var next = items[(i + (e.key === "ArrowRight" ? 1 : items.length - 1)) % items.length];
@@ -379,6 +709,264 @@
     doc.addEventListener("keydown", function (e) { if (e.key === "Escape") { set(false); } });
   }
 
+  /* Something that leaves (a menu, a popover, the help panel, an old
+     placard) is closed at once in every way that counts; then it plays its
+     leaving animation (class cls) and only then does done remove or hide
+     it. With no animation to play (reduced motion zeroes the tokens; a
+     browser without getAnimations) done runs at once, so whatever reads the
+     page straight after a close finds it closed. While it leaves it takes
+     no pointer and is hidden from assistive technology; stay() cancels it. */
+  function leave(node, cls, done) {
+    stay(node, cls);
+    var anims = [];
+    if (node.getAnimations && node.isConnected !== false) {
+      node.classList.add(cls);
+      anims = node.getAnimations().filter(function (a) {
+        var t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+        return a.animationName && t && t.endTime > 0;
+      });
+    }
+    if (!anims.length) { done(); node.classList.remove(cls); return; }
+    var token = {};
+    node.__pfasLeave = token;
+    if (!node.hasAttribute("aria-hidden")) { node.setAttribute("aria-hidden", "true"); node.__pfasLeaveAria = true; }
+    function end() {
+      if (node.__pfasLeave !== token) { return; }
+      stay(node, cls);
+      done();
+    }
+    anims[0].finished.then(end, end);
+  }
+  function stay(node, cls) {
+    node.__pfasLeave = null;
+    if (node.__pfasLeaveAria) { node.removeAttribute("aria-hidden"); node.__pfasLeaveAria = false; }
+    if (node.classList) { node.classList.remove(cls); }
+  }
+  /* something arriving plays its arriving animation (class cls) again from
+     the start; the class goes once it has played */
+  function arrive(node, cls) {
+    if (!node.getAnimations || !node.getClientRects().length) { return; }   /* not drawn: nothing to see */
+    node.classList.remove(cls);
+    void node.offsetWidth;                  /* a style read: the animation starts again */
+    node.classList.add(cls);
+    if (node.__pfasArrive) { return; }
+    node.__pfasArrive = true;
+    node.addEventListener("animationend", function (e) { if (e.target === node) { node.classList.remove(cls); } });
+  }
+
+  /* ── Motion across the app: rows, tabs, notices, refusals, loops ──────────
+     Each movement runs on the motion tokens, moves only transform and
+     opacity, and is at once with reduced motion (the tokens read 0, so
+     arrive() and leave() find nothing to play). */
+  function reduced() { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
+  /* A core list (table.contentstable) fills after the page is drawn. Its
+     first fill: the first STAGGER rows rise one after the other, --t-step
+     apart, and the rest come with the last of them, up to FILL_MAX (a row
+     further down is below the window and comes at once). Every later change
+     of its rows (a sort, a filter, a state, a page): its body fades in once,
+     with no stagger. The same rows again (a tick, a redraw): nothing. */
+  var STAGGER = 12, FILL_MAX = 40;
+  function rowKeys(tbody) {
+    var keys = [];
+    for (var i = 0; i < tbody.childNodes.length; i++) {
+      var tr = tbody.childNodes[i];
+      if (tr.nodeType === 1 && tr.localName === "tr") { keys.push(tr.getAttribute("uid") || tr.getAttribute("id") || String(i)); }
+    }
+    return keys.join("|");
+  }
+  function settleList(tbody) {
+    var keys = rowKeys(tbody), was = tbody.__pfasRows;
+    tbody.__pfasRows = keys;
+    if (!keys || keys === was) { return null; }
+    if (!tbody.__pfasFilled) {
+      tbody.__pfasFilled = true;
+      var rows = tbody.querySelectorAll("tr");
+      for (var i = 0; i < rows.length && i < FILL_MAX; i++) {
+        rows[i].style.setProperty("--pfas-i", String(Math.min(i, STAGGER - 1)));
+        rows[i].classList.add("is-filling");
+        if (!rows[i].__pfasFill) {
+          rows[i].__pfasFill = true;
+          rows[i].addEventListener("animationend", function (e) { if (e.target === this) { this.classList.remove("is-filling"); } });
+        }
+      }
+      return "fill";
+    }
+    arrive(tbody, "is-refreshing");
+    return "refresh";
+  }
+  /* a link tab (a.pfas-seg-item: the server draws the page) changes page:
+     between two loads of the one page the browser may play a view
+     transition (pfas-components.css): the pill glides from the old tab to
+     the new, the tabs' words cross-fade, the panel under the strip rises,
+     the rest changes at once. Only a link tab's own click asks for it; every
+     other page change, and reduced motion, skips it at both ends. */
+  var VT_KEY = "pfas_vt_tab", vtNamed = [];
+  function sameUrl(a, b) {
+    try {
+      var x = new URL(a, location.href), y = new URL(b, location.href);
+      return x.origin === y.origin && x.pathname === y.pathname && x.search === y.search;
+    } catch (e) { return false; }
+  }
+  function nameTabs(url) {
+    unnameTabs();
+    var segs = doc.querySelectorAll(".pfas-seg");
+    for (var i = 0; i < segs.length; i++) {
+      var items = segs[i].querySelectorAll("a.pfas-seg-item"), hit = false;
+      for (var k = 0; k < items.length; k++) { if (sameUrl(items[k].getAttribute("href"), url)) { hit = true; } }
+      if (!hit) { continue; }
+      /* the new page is named before its own init has run: its strip is
+         drawn now, the pill at its tab, so the pill has an end to glide to */
+      initSeg(segs[i]);
+      var pill = segs[i].querySelector(".pfas-seg-pill"), panel = segs[i].nextElementSibling;
+      while (panel && (/^(script|style|template)$/.test(panel.localName) || panel.offsetParent === null)) { panel = panel.nextElementSibling; }
+      var name = function (n, v, cls) {
+        n.style.viewTransitionName = v;
+        if (cls) { n.style.viewTransitionClass = cls; }
+        vtNamed.push(n);
+      };
+      if (pill) { name(pill, "pfas-tab-pill"); }
+      for (var j = 0; j < items.length; j++) { name(items[j], "pfas-tab-" + j, "pfas-tab-item"); }
+      if (panel) { name(panel, "pfas-tab-panel"); }
+      return vtNamed.length;
+    }
+    return 0;
+  }
+  function unnameTabs() {
+    vtNamed.forEach(function (n) { n.style.viewTransitionName = ""; n.style.viewTransitionClass = ""; });
+    vtNamed = [];
+  }
+  function vtGet() { try { return window.sessionStorage.getItem(VT_KEY); } catch (e) { return null; } }
+  function vtSet(v) { try { if (v) { window.sessionStorage.setItem(VT_KEY, v); } else { window.sessionStorage.removeItem(VT_KEY); } } catch (e) {} }
+  doc.addEventListener("click", function (e) {
+    var a = e.target && e.target.closest ? e.target.closest("a.pfas-seg-item[href]") : null;
+    if (!a || e.defaultPrevented || e.button > 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) { return; }
+    try {
+      var u = new URL(a.getAttribute("href"), location.href);
+      if (u.origin === location.origin && u.pathname === location.pathname) { vtSet(u.pathname + u.search); }
+    } catch (err) {}
+  });
+  window.addEventListener("pageswap", function (e) {
+    if (!e.viewTransition) { return; }
+    var to = e.activation && e.activation.entry ? e.activation.entry.url : "", want = vtGet();
+    if (reduced() || !want || !to || !sameUrl(to, want) || !nameTabs(to)) { e.viewTransition.skipTransition(); }
+  });
+  window.addEventListener("pagereveal", function (e) {
+    var want = vtGet();
+    vtSet(null);
+    if (!e.viewTransition) { return; }
+    if (reduced() || !want || !sameUrl(location.href, want) || !nameTabs(location.href)) { e.viewTransition.skipTransition(); return; }
+    e.viewTransition.finished.then(unnameTabs, unnameTabs);
+  });
+  /* the page a link tab opens holds its first paint until its content is
+     parsed (the help panel follows the content area), so the strip and its
+     panel are there to be named; any other page paints as soon as it can */
+  (function () {
+    var want = vtGet();
+    if (doc.body || !doc.head || !want || !sameUrl(location.href, want) || reduced()) { return; }
+    var l = doc.createElement("link");
+    l.setAttribute("rel", "expect");
+    l.setAttribute("href", "#pfas-help-panel");
+    l.setAttribute("blocking", "render");
+    doc.head.appendChild(l);
+  })();
+  /* A notice that appears after the person did something (a banner shown,
+     a message added) rises in as a card does; one the page draws as it
+     loads, or one shown while nobody acted, is simply there. */
+  var NOTICE = ".pfas-banner, .alert, .portalMessage", acted = 0;
+  function noticeReady() { return Date.now() - acted < 1500; }
+  function noticed(n) {
+    if (n && n.nodeType === 1 && n.matches && n.matches(NOTICE) && !n.hidden && noticeReady()) { arrive(n, "is-arriving"); }
+  }
+  /* A refused value: a soft ring shows once around the field (in and out,
+     opacity only, laid over the page so nothing moves), and its hint fades
+     in. Never a shake; never while typing (the hint fades only when its
+     words change). */
+  function ring(field) {
+    if (!field || !field.getBoundingClientRect || reduced()) { return null; }
+    var r = field.getBoundingClientRect();
+    if (!r.width && !r.height) { return null; }
+    var n = doc.createElement("div");
+    n.className = "pfas-ring";
+    n.setAttribute("aria-hidden", "true");
+    n.style.left = (r.left - 4) + "px"; n.style.top = (r.top - 4) + "px";
+    n.style.width = (r.width + 8) + "px"; n.style.height = (r.height + 8) + "px";
+    doc.body.appendChild(n);
+    var anims = n.getAnimations ? n.getAnimations().filter(function (a) {
+      var t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+      return t && t.endTime > 0;
+    }) : [];
+    function gone() { if (n.parentNode) { n.parentNode.removeChild(n); } }
+    if (!anims.length) { gone(); return null; }
+    anims[0].finished.then(gone, gone);
+    return n;
+  }
+  function hint(node, words) {
+    var box = node && node.parentNode;
+    if (!box || box.__pfasHint === words) { return; }
+    box.__pfasHint = words;
+    arrive(node, "pfas-hint-in");
+  }
+  function refused(field) {
+    if (!field || field.__pfasRung && Date.now() - field.__pfasRung < 1000) { return; }
+    field.__pfasRung = Date.now();
+    ring(field);
+    var ids = (field.getAttribute("aria-describedby") || "").split(/\s+/);
+    for (var i = 0; i < ids.length; i++) {
+      var h = ids[i] ? doc.getElementById(ids[i]) : null;
+      if (h && !h.hidden) { hint(h, h.textContent); }
+    }
+  }
+  /* A lab step's GIF loops for ever: with reduced motion it shows one still
+     frame (drawn once onto a canvas: the lab's own uploads too). */
+  function stillGif(img) {
+    if (!img || img.__pfasStill || !reduced()) { return; }
+    var src = img.currentSrc || img.src || "";
+    if (!/\.gif(\?|&|#|$)/i.test(src) || !img.complete || !img.naturalWidth) { return; }
+    try {
+      var c = doc.createElement("canvas");
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext("2d").drawImage(img, 0, 0);
+      img.__pfasStill = true;
+      img.src = c.toDataURL("image/png");
+    } catch (e) { /* a picture from elsewhere cannot be read: it stays */ }
+  }
+  function watchMotion() {
+    if (doc.__pfasMotion) { return; }
+    doc.__pfasMotion = true;
+    ["pointerdown", "change", "submit"].forEach(function (t) { doc.addEventListener(t, function () { acted = Date.now(); }, true); });
+    doc.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { acted = Date.now(); } }, true);
+    /* a field the browser refuses on a submit */
+    doc.addEventListener("invalid", function (e) { refused(e.target); }, true);
+    doc.addEventListener("load", function (e) { if (e.target && e.target.localName === "img") { stillGif(e.target); } }, true);
+    var imgs = doc.querySelectorAll("img");
+    for (var g = 0; g < imgs.length; g++) { stillGif(imgs[g]); }
+    if (!window.MutationObserver || !doc.body) { return; }
+    var tables = doc.querySelectorAll("table.contentstable > tbody");
+    for (var t = 0; t < tables.length; t++) { settleList(tables[t]); }
+    /* in the observer's own turn, before the page is painted, so a row
+       never shows before it rises */
+    new window.MutationObserver(function (ms) {
+      var lists = [];
+      ms.forEach(function (m) {
+        var n = m.target;
+        if (m.type === "attributes") {
+          if (m.attributeName === "aria-invalid") { if (n.getAttribute("aria-invalid") === "true") { refused(n); } }
+          else { noticed(n); }
+          return;
+        }
+        if (n.localName === "tbody" && n.parentNode && n.parentNode.classList && n.parentNode.classList.contains("contentstable")) {
+          if (lists.indexOf(n) < 0) { lists.push(n); }
+          return;
+        }
+        Array.prototype.forEach.call(m.addedNodes || [], function (a) {
+          noticed(a);
+          if (a.nodeType === 1 && a.localName === "table" && a.classList.contains("contentstable") && a.tBodies && a.tBodies[0]) { lists.push(a.tBodies[0]); }
+        });
+      });
+      lists.forEach(settleList);
+    }).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-invalid"] });
+  }
+
   /* a control that listens outside itself (a picker on its form field, a
      slider's release on the window) stops when its content is replaced: the
      drawer calls this on its old body before drawing the next */
@@ -398,6 +986,19 @@
       d.querySelector(".pfas-drawer-close").addEventListener("click", drawer.close);
       s.addEventListener("click", drawer.close);
       doc.addEventListener("keydown", function (e) { if (e.key === "Escape") { drawer.close(); } });
+      d.addEventListener("keydown", function (e) { fieldEnter(d, e); });
+      /* a box a window's script adds once it is open (a row, a redrawn
+         block) is the house field too */
+      if (window.MutationObserver) {
+        new window.MutationObserver(function (ms) {
+          ms.forEach(function (m) {
+            Array.prototype.forEach.call(m.addedNodes || [], function (n) {
+              if (n.nodeType !== 1) { return; }
+              houseFields(n.matches && n.matches("input, select, textarea") ? n.parentNode : n);
+            });
+          });
+        }).observe(d.querySelector(".pfas-drawer-body"), { childList: true, subtree: true });
+      }
       drawer.el = d;
       return d;
     },
@@ -426,16 +1027,112 @@
       d.className = "pfas-drawer" + (opts.cls ? " " + opts.cls : "");
       /* a table written into it widens as one on the page does */
       initTables(body);
+      /* every box in it is the house field */
+      houseFields(body);
+      if (d.getAttribute("data-open") !== "true") { windowFrom(d, opts.opener); }
       d.setAttribute("data-open", "true");
       (opts.focus || d.querySelector(".pfas-drawer-close")).focus();
+      tileOpened(d, opts.opener);
     },
     close: function () {
-      if (drawer.el) { drawer.el.setAttribute("data-open", "false"); }
+      if (drawer.el) {
+        drawer.el.setAttribute("data-open", "false");
+        /* it closes by a plain fade, back in the centre */
+        styleVar(drawer.el, "--pfas-win-origin", null);
+        styleVar(drawer.el, "--pfas-win-from", null);
+      }
       var opener = drawer.opener;
       drawer.opener = null;
       if (opener && opener.focus) { try { opener.focus(); } catch (e) { /* gone from the page */ } }
     }
   };
+
+  /* Where a window opens from. A window grows from the tile that opened it:
+     its transform origin is the tile's centre, and it starts at the tile's
+     size (a scale of .25 to .98), settling centred. A tile's click presses a
+     hidden trigger, so the pending tile click names the tile; otherwise what
+     opened it; a node with no box (hidden, or none) gives the centre and .98.
+     The closed starting point is set with its transition held, then read
+     once, so the very first window of a page moves too: the browser has
+     drawn the closed window before it opens. */
+  function styleVar(el, k, v) {
+    if (v !== null) { el.style.setProperty(k, v); } else if (el.style.removeProperty) { el.style.removeProperty(k); } else { el.style.setProperty(k, ""); }
+  }
+  function windowFrom(d, opener) {
+    var p = tilePending, from = opener || doc.activeElement;
+    if (p && p.tile && Date.now() - p.at <= 1500 && (!opener || (opener.closest && opener.closest(".pfas-hier-acts")))) { from = p.tile; }
+    var r = from && from !== doc.body && from.getBoundingClientRect && !d.contains(from) ? from.getBoundingClientRect() : null;
+    var W = d.offsetWidth, H = d.offsetHeight, root = doc.documentElement;
+    d.style.transition = "none";
+    if (r && r.width && r.height && W && H) {
+      var ox = r.left + r.width / 2 - ((root.clientWidth || W) - W) / 2;
+      var oy = r.top + r.height / 2 - ((root.clientHeight || H) - H) / 2;
+      var s = Math.max(0.25, Math.min(0.98, Math.max(r.width / W, r.height / H)));
+      styleVar(d, "--pfas-win-origin", Math.round(ox) + "px " + Math.round(oy) + "px");
+      styleVar(d, "--pfas-win-from", s.toFixed(3));
+    } else {
+      styleVar(d, "--pfas-win-origin", null);
+      styleVar(d, "--pfas-win-from", null);
+    }
+    void d.offsetWidth;                     /* the style read: the closed window is drawn */
+    d.style.transition = "";
+  }
+
+  /* ── An equation on the page (PFAS.equation draws it) ─────────────────
+     [data-equation]='{"formulas": [...], "terms": [{"symbol", ...}]}': the
+     inline size, drawn over the plain text the server wrote (what the page
+     reads without the script). [data-equation-open]='{"title", "input",
+     "options", "terms", "steps", "foot"}': the whole box opens the window,
+     as a table row opens its record, the option in use read from the
+     posted input it names at that moment; a control in the box (the
+     switch, a button) acts as itself and opens nothing. Read only: the
+     window changes no setting. */
+  var EQ_SKIP = "a[href], button, input, select, textarea, label, summary, .pfas-seg, [contenteditable], .pfas-menu";
+  function drawEquations(root) {
+    var E = window.PFAS.equation, all = (root || doc).querySelectorAll("[data-equation]");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i], spec;
+      if (el.getAttribute("data-equation-drawn")) { continue; }
+      try { spec = JSON.parse(el.getAttribute("data-equation")); } catch (e) { continue; }
+      el.innerHTML = E.lines(spec.formulas, spec.terms || []);
+      el.setAttribute("data-equation-drawn", "true");
+    }
+  }
+  function openEquation(el) {
+    var E = window.PFAS.equation, spec;
+    try { spec = JSON.parse(el.getAttribute("data-equation-open")); } catch (e) { return false; }
+    var input = spec.input ? doc.getElementById(spec.input) : null;
+    drawer.open(spec.title || "", E.window(spec, input ? input.value : spec.inUse), { cls: "is-dialog", opener: el });
+    E.hover(drawer.el.querySelector(".pfas-drawer-body"));
+    return true;
+  }
+  function equationBox(t) {
+    var box = t && t.closest ? t.closest("[data-equation-open]") : null;
+    if (!box) { return null; }
+    var skip = t.closest(EQ_SKIP);
+    return skip && box.contains(skip) && skip !== box ? null : box;
+  }
+  function initEquations(root) {
+    drawEquations(root);
+    var boxes = (root || doc).querySelectorAll("[data-equation-open]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i].hasAttribute("tabindex")) { boxes[i].setAttribute("tabindex", "0"); }
+      boxes[i].setAttribute("aria-haspopup", "dialog");
+    }
+    if (doc.__pfasEquations) { return; }
+    doc.__pfasEquations = true;
+    doc.addEventListener("click", function (e) {
+      var box = equationBox(e.target);
+      if (!box || e.defaultPrevented || e.button) { return; }
+      openEquation(box);
+    });
+    doc.addEventListener("keydown", function (e) {
+      if ((e.key !== "Enter" && e.key !== " ") || !e.target || !e.target.hasAttribute ||
+          !e.target.hasAttribute("data-equation-open")) { return; }
+      e.preventDefault();
+      openEquation(e.target);
+    });
+  }
 
   function initTree(tree) {
     if (tree.__pfas) { return; }
@@ -451,68 +1148,35 @@
     }
   }
 
-  /* ── Navigation tree (.pfas-tree.pfas-nav-tree) ───────────────────────────
-     The ARIA navigation tree the section panel draws, where the treeitem is
-     the row link: ul[role=tree] of li[role=none] rows, each holding
-     a.pfas-nav-row[role=treeitem], button.pfas-nav-twist (only with children),
-     button.pfas-nav-more (the row menu) and its children's ul[role=group].
-     The treeitem carries aria-expanded and aria-owns (its group's id) when it
-     has children, aria-current="page" when it is the current page, data-path
-     and data-pinned. A closed row's children are hidden by CSS from
-     aria-expanded. The current row's branch opens on load.
-     Focus lives on the treeitems only, one tab stop among them (the focused,
-     else current, else first); the twist and the menu button are the mouse's.
-     The arrows walk the visible rows (Right opens, then goes to the first
-     child; Left closes, then goes to the parent), Home and End go to the
-     first and last, Enter is the link's own, a key with Alt, Ctrl or Meta is
-     the browser's. Shift+F10 or the menu key opens the row menu, as its
-     button does: Pin or Unpin and Open in a new tab, one menu at a time;
-     Escape, a press outside or Tab out closes it, and the focus goes back to
-     the treeitem unless it went elsewhere. A row drawn without the menu
-     button has no row menu: those keys are then the browser's. Pin only
-     flips data-pinned and says so in a bubbling pfas:pin event {path,
-     pinned} on the treeitem: whoever keeps the pins saves them. A wired
-     tree whose rows are drawn again takes its one tab stop back from
-     resetNavTree. */
+  /* ── Navigation tiles (.pfas-nav-tiles, the section panel) ────────────────
+     The section panel's groups: ul.pfas-nav-tiles of li, each holding
+     a.pfas-navtile[href][data-path][data-pinned="true|false"] (aria-current="page"
+     on the current page; an icon and a span.pfas-navtile-label, the link's
+     accessible name) and button.pfas-nav-more (the row menu). A plain list of
+     links: Tab walks them in reading order, Enter follows the link, and the
+     button stays out of the Tab order, as the mouse's. Shift+F10 or the menu
+     key on a tile opens its row menu, as its button does: Pin or Unpin and
+     Open in a new tab, one menu at a time, fixed to the window beside the tile
+     (--menu-x, --menu-y); Escape, a press outside or Tab out closes it, and
+     the focus goes back to the tile unless it went elsewhere. A tile drawn
+     without the button has no row menu: those keys are then the browser's.
+     Pin only flips data-pinned and says so in a bubbling pfas:pin event
+     {path, pinned} on the tile: whoever keeps the pins saves them. */
   var navMenu = null;   /* the one open row menu: { box, button, item } */
-  function navItems(tree) { return tree.querySelectorAll("[role=treeitem]"); }
   function navOwn(li, test) {
     var kids = li ? li.children : [];
     for (var i = 0; i < kids.length; i++) { if (test(kids[i])) { return kids[i]; } }
     return null;
   }
-  function navItemIn(li) { return navOwn(li, function (n) { return n.getAttribute("role") === "treeitem"; }); }
-  function navBtn(item, cls) { return navOwn(item.parentNode, function (n) { return n.classList.contains(cls); }); }
-  function navGroup(item) { return navOwn(item.parentNode, function (n) { return n.getAttribute("role") === "group"; }); }
-  function navParent(item) {
-    var group = item.parentNode && item.parentNode.parentNode;
-    return group && group.getAttribute && group.getAttribute("role") === "group" ? navItemIn(group.parentNode) : null;
+  function navBtn(item, cls) {
+    var b = navOwn(item.parentNode, function (n) { return n.classList.contains(cls); });
+    /* on a phone the row menu's button is not drawn: nor is its menu (keys included) */
+    if (b && window.getComputedStyle && window.getComputedStyle(b).display === "none") { return null; }
+    return b;
   }
-  function navShown(item) {
-    for (var p = navParent(item); p; p = navParent(p)) { if (p.getAttribute("aria-expanded") !== "true") { return false; } }
-    return true;
-  }
-  function navVisible(tree) { return Array.prototype.filter.call(navItems(tree), navShown); }
-  /* the one tab stop: this treeitem; every other treeitem and every row button out of the Tab order */
-  function navStop(tree, item) {
-    Array.prototype.forEach.call(navItems(tree), function (it) { it.setAttribute("tabindex", it === item ? "0" : "-1"); });
-    var bs = tree.querySelectorAll(".pfas-nav-twist, .pfas-nav-more");
+  function navStop(tree) {
+    var bs = tree.querySelectorAll(".pfas-nav-more");
     for (var i = 0; i < bs.length; i++) { bs[i].setAttribute("tabindex", "-1"); }
-  }
-  function navFocus(tree, item) {
-    if (!item) { return; }
-    navStop(tree, item);
-    item.focus();
-  }
-  function navSet(tree, item, open) {
-    if (!navGroup(item)) { return; }
-    item.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) { return; }
-    /* a row closed over the focus takes the focus, over the tab stop the stop:
-       neither is ever left on a hidden row */
-    var group = navGroup(item), stop = tree.querySelector('[role=treeitem][tabindex="0"]');
-    if (group.contains(doc.activeElement)) { navFocus(tree, item); }
-    else if (stop && group.contains(stop)) { navStop(tree, item); }
   }
   function navCloseMenu(refocus) {
     if (!navMenu) { return; }
@@ -522,9 +1186,15 @@
     if (m.button) { m.button.setAttribute("aria-expanded", "false"); }
     if (refocus) { m.item.focus(); }
   }
+  function navPlace(box, item) {
+    var r = item.getBoundingClientRect(), w = window.innerWidth || 0, h = window.innerHeight || 0;
+    var x = Math.max(4, Math.min(r.left, w - 176)), y = r.bottom + 2;
+    if (h && y + 88 > h) { y = Math.max(4, r.top - 88); }
+    box.style.setProperty("--menu-x", Math.round(x) + "px");
+    box.style.setProperty("--menu-y", Math.round(y) + "px");
+  }
   function navOpenMenu(tree, item) {
     navCloseMenu(false);
-    navStop(tree, item);
     var button = navBtn(item, "pfas-nav-more");
     var box = doc.createElement("div");
     box.className = "pfas-nav-menu";
@@ -561,6 +1231,7 @@
       var to = e.relatedTarget;
       if (navMenu && navMenu.box === box && to && !box.contains(to) && !(button && button.contains(to))) { navCloseMenu(false); }
     });
+    navPlace(box, item);
     item.parentNode.insertBefore(box, button ? button.nextSibling : item.nextSibling);
     if (button) { button.setAttribute("aria-expanded", "true"); }
     navMenu = { box: box, button: button, item: item };
@@ -578,71 +1249,48 @@
       if (navMenu && e.key === "Escape") { e.preventDefault(); navCloseMenu(true); }
     });
   }
-  function navKey(tree, e) {
-    var item = e.target;
-    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-      if (navBtn(item, "pfas-nav-more")) { e.preventDefault(); navOpenMenu(tree, item); }
-      return;
-    }
-    if (e.altKey || e.ctrlKey || e.metaKey) { return; }   /* Alt+Left is Back: the browser's */
-    var rows = navVisible(tree), i = rows.indexOf(item), group = navGroup(item);
-    var isOpen = item.getAttribute("aria-expanded") === "true";
-    switch (e.key) {
-      case "ArrowDown": navFocus(tree, rows[Math.min(i + 1, rows.length - 1)]); break;
-      case "ArrowUp": navFocus(tree, rows[Math.max(i - 1, 0)]); break;
-      case "Home": navFocus(tree, rows[0]); break;
-      case "End": navFocus(tree, rows[rows.length - 1]); break;
-      case "ArrowRight":
-        if (group && !isOpen) { navSet(tree, item, true); } else if (group && rows[i + 1] && navParent(rows[i + 1]) === item) { navFocus(tree, rows[i + 1]); }
-        break;
-      case "ArrowLeft":
-        if (group && isOpen) { navSet(tree, item, false); } else if (navParent(item)) { navFocus(tree, navParent(item)); }
-        break;
-      default: return;   /* Enter follows the link; every other key is the page's */
-    }
-    e.preventDefault();
-  }
-  function isNavItem(n) { return !!(n && n.getAttribute && n.getAttribute("role") === "treeitem" && n.classList.contains("pfas-nav-row")); }
-  function wireNavTree(tree) {
+  function isNavTile(n) { return !!(n && n.classList && n.classList.contains("pfas-navtile") && n.tagName === "A"); }
+  function wireNavTiles(tree) {
     if (tree.__pfasNav) { return; }
     tree.__pfasNav = true;
     watchNavMenu();
-    var cur = tree.querySelector('[role=treeitem][aria-current="page"]');
-    for (var p = cur && navParent(cur); p; p = navParent(p)) { navSet(tree, p, true); }
-    navStop(tree, cur || navItems(tree)[0]);
+    navStop(tree);
     tree.addEventListener("click", function (e) {
       var t = e.target && e.target.closest ? e.target : null;
       if (!t || t.closest(".pfas-nav-menu")) { return; }
-      var twist = t.closest(".pfas-nav-twist"), btn = t.closest(".pfas-nav-more");
-      var item = (twist || btn) ? navItemIn(t.closest("li")) : null;
+      var btn = t.closest(".pfas-nav-more");
+      var item = btn ? navOwn(t.closest("li"), isNavTile) : null;
       if (!item) { return; }
-      if (twist) { navSet(tree, item, item.getAttribute("aria-expanded") !== "true"); }
-      else if (navMenu && navMenu.button === btn) { navCloseMenu(true); }
+      if (navMenu && navMenu.button === btn) { navCloseMenu(true); }
       else { navOpenMenu(tree, item); }
     });
-    tree.addEventListener("keydown", function (e) { if (isNavItem(e.target)) { navKey(tree, e); } });
-    /* the menu key's contextmenu (no pointer) on a treeitem is the row menu's, not the site
+    tree.addEventListener("keydown", function (e) {
+      if (!isNavTile(e.target)) { return; }
+      if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && navBtn(e.target, "pfas-nav-more")) {
+        e.preventDefault();
+        navOpenMenu(tree, e.target);
+      }
+    });
+    /* the menu key's contextmenu (no pointer) on a tile is the row menu's, not the site
        menu's, as is any contextmenu in the open row menu (the key's event lands where the
        row menu has just put the focus) */
     tree.addEventListener("contextmenu", function (e) {
       if (e.target && e.target.closest && e.target.closest(".pfas-nav-menu")) { e.preventDefault(); return; }
-      if (!isNavItem(e.target) || e.clientX || e.clientY || !navBtn(e.target, "pfas-nav-more")) { return; }
+      if (!isNavTile(e.target) || e.clientX || e.clientY || !navBtn(e.target, "pfas-nav-more")) { return; }
       e.preventDefault();
       if (!navMenu || navMenu.item !== e.target) { navOpenMenu(tree, e.target); }
     });
-    /* a treeitem reached by Tab or a click is the tab stop from then on */
-    tree.addEventListener("focusin", function (e) { if (isNavItem(e.target)) { navStop(tree, e.target); } });
   }
-  /* a wired tree whose rows were drawn again: one tab stop again, on `item`, else the first row */
-  function resetNavTree(tree, item) {
-    if (tree) { navStop(tree, item || navItems(tree)[0]); }
+  /* a wired list whose tiles were drawn again: the buttons out of the Tab order again */
+  function resetNavTiles(tree) {
+    if (tree) { navStop(tree); }
   }
-  /* root: one .pfas-nav-tree, or a node (the document by default) whose trees are wired */
-  function initNavTree(root) {
+  /* root: one .pfas-nav-tiles, or a node (the document by default) whose lists are wired */
+  function initNavTiles(root) {
     root = root || doc;
-    if (root.classList && root.classList.contains("pfas-nav-tree")) { wireNavTree(root); return; }
-    var trees = root.querySelectorAll(".pfas-nav-tree");
-    for (var i = 0; i < trees.length; i++) { wireNavTree(trees[i]); }
+    if (root.classList && root.classList.contains("pfas-nav-tiles")) { wireNavTiles(root); return; }
+    var lists = root.querySelectorAll(".pfas-nav-tiles");
+    for (var i = 0; i < lists.length; i++) { wireNavTiles(lists[i]); }
   }
 
   /* Every table on a PFAS page scrolls sideways inside its own box: a table
@@ -681,7 +1329,7 @@
     new MutationObserver(function () {
       if (pending) { return; }
       pending = true;
-      window.setTimeout(function () { pending = false; wrapTables(); enhance(); initTables(); }, 50);
+      window.setTimeout(function () { pending = false; wrapTables(); enhance(); initTables(); initTiles(area); }, 50);
     }).observe(area, { childList: true, subtree: true });
   }
 
@@ -1059,7 +1707,10 @@
       word = lab.nextElementSibling;
     }
     if (!word) { return; }
-    function draw() { var t = input.checked ? "On" : "Off"; if (word.textContent !== t) { word.textContent = t; } }
+    function draw() {
+      var t = input.checked ? (input.getAttribute("data-word-on") || "On") : (input.getAttribute("data-word-off") || "Off");
+      if (word.textContent !== t) { word.textContent = t; }
+    }
     if (!input.__pfasWord) { input.__pfasWord = true; input.addEventListener("change", draw); }
     draw();
   }
@@ -1177,15 +1828,51 @@
      not count it as a change to the form that happens to wrap it. */
   function detach(ctl) { ctl.setAttribute("form", "pfas-no-form"); return ctl; }
   function squash(t) { return String(t || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
-  /* The words that name an input: its aria-label, else its <label>, else its name. */
-  function labelText(input) {
-    var t = input.getAttribute("aria-label");
-    if (!t && input.labels && input.labels.length) {
-      var c = input.labels[0].cloneNode(true), junk = c.querySelectorAll(".pfas-num, .pfas-chips, .pfas-range-track, input, select, textarea, button, .hint");
-      for (var i = 0; i < junk.length; i++) { if (junk[i].parentNode) { junk[i].parentNode.removeChild(junk[i]); } }
-      t = c.textContent;
+  /* The words of a caption, without the controls and hints drawn inside it. */
+  function captionWords(node) {
+    var c = node.cloneNode(true), junk = c.querySelectorAll(".pfas-num, .pfas-chips, .pfas-range-track, input, select, textarea, button, .hint, .pfas-hint");
+    for (var i = 0; i < junk.length; i++) { if (junk[i].parentNode) { junk[i].parentNode.removeChild(junk[i]); } }
+    return squash(c.textContent);
+  }
+  /* The caption a person reads beside an input that no <label> is tied to:
+     the label of the field that holds it (a label or .pfas-label written
+     before it, without a for), else the heading of its table column. */
+  var FIELD_BOX = ".pfas-form-field, .cf-field";
+  function captionNear(input) {
+    var field = input.closest(FIELD_BOX);
+    if (field) {
+      var kids = field.children;
+      for (var i = 0; i < kids.length; i++) {
+        var k = kids[i];
+        if (k === input || k.contains(input)) { break; }
+        if ((k.tagName === "LABEL" && !k.getAttribute("for")) || k.classList.contains("pfas-label")) {
+          var t = captionWords(k);
+          if (t) { return t; }
+        }
+      }
     }
-    if (!t) { t = input.getAttribute("name") || "value"; }
+    var td = input.closest("td"), table = td && td.closest("table");
+    if (!table) { return ""; }
+    var at = 0;
+    for (var c = td.previousElementSibling; c; c = c.previousElementSibling) { at += Number(c.getAttribute("colspan") || 1) || 1; }
+    var heads = leafHeadings(table);
+    for (var h = 0; h < heads.length; h++) {
+      if (heads[h].__pfasCol === at) { return captionWords(heads[h]); }
+    }
+    return "";
+  }
+  /* The words that name an input: its aria-label, else what aria-labelledby
+     names, else its <label>, else the caption beside it, else `fallback`
+     (its name when none is given). */
+  function labelText(input, fallback) {
+    var t = input.getAttribute("aria-label");
+    var by = !t && input.getAttribute("aria-labelledby");
+    if (by) {
+      t = by.split(/\s+/).map(function (id) { var n = doc.getElementById(id); return n ? captionWords(n) : ""; }).join(" ");
+    }
+    if (!squash(t) && input.labels && input.labels.length) { t = captionWords(input.labels[0]); }
+    if (!squash(t)) { t = captionNear(input); }
+    if (!squash(t)) { t = fallback || input.getAttribute("name") || "value"; }
     return squash(t).replace(/\s*\*$/, "");
   }
 
@@ -1291,6 +1978,69 @@
   function initNums(root) {
     var all = root.querySelectorAll("input[type=number]");
     for (var i = 0; i < all.length; i++) { if (numEligible(all[i])) { makeNum(all[i]); } }
+  }
+
+  /* ── Window fields: every box a window holds is the house field ──────────
+     A text box is .pfas-input, a choice .pfas-select, free text
+     .pfas-textarea, a number the stepper (whatever its step: in a window a
+     number is always edited as one), a read-only or table-cell number a
+     plain .pfas-input. A house component's own box (chips, picker, date,
+     segment, switch, slider) is its own. A box with data-unit shows the
+     unit as its suffix. The drawer runs this on every window it opens;
+     running it twice changes nothing. */
+  var FIELD_SKIP_TYPES = /^(hidden|checkbox|radio|file|range|button|submit|reset|image|color)$/;
+  var FIELD_OWN = ".pfas-chips, .pfas-picker, .pfas-date, .pfas-seg, .pfas-switch, .pfas-range-track";
+  var FIELD_HOUSE = /(^|\s)(pfas-input|pfas-select|pfas-textarea|pfas-chips-text|pfas-picker-in|pfas-date-text)(\s|$)/;
+  function fieldStepper(inp) {
+    if (inp.readOnly || inp.disabled || inp.hidden || inp.__pfasNum) { return false; }
+    if (inp.classList.contains("no-stepper") || inp.getAttribute("data-stepper") === "off") { return false; }
+    return !inp.closest("td, th, [data-range], .pfas-num, .pfas-range");
+  }
+  function fieldUnit(n) {
+    var unit = n.getAttribute("data-unit");
+    var box = n.closest(".pfas-num") || n;
+    if (!unit || (box.parentNode && box.parentNode.classList.contains("pfas-field-u"))) { return; }
+    var wrap = el("span", "pfas-field-u"), u = el("span", "pfas-field-unit", unit);
+    u.setAttribute("aria-hidden", "true");
+    box.parentNode.insertBefore(wrap, box);
+    wrap.appendChild(box);
+    wrap.appendChild(u);
+  }
+  function houseFields(root) {
+    if (!root || !root.querySelectorAll) { return root; }
+    var all = root.querySelectorAll("input, select, textarea");
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i], tag = n.tagName;
+      if (tag === "INPUT" && FIELD_SKIP_TYPES.test(n.type || "text")) { continue; }
+      if (n.classList.contains("pfas-sr-hide") || n.closest(FIELD_OWN) || FIELD_HOUSE.test(n.className)) { continue; }
+      if (tag === "SELECT") { n.classList.add("pfas-select"); }
+      else if (tag === "TEXTAREA") { n.classList.add("pfas-textarea"); }
+      else if (n.type === "number") {
+        if (n.closest(".pfas-num")) { /* a stepper or a range end already */ }
+        else if (fieldStepper(n)) { makeNum(n); }
+        else { n.classList.add("pfas-input"); n.classList.add("is-num"); }
+      } else { n.classList.add("pfas-input"); }
+      fieldUnit(n);
+    }
+    return root;
+  }
+  /* Enter in a box of a window's fields (a field, an Add row, a settings
+     block) presses the window's primary button (Done, Add, Set cells),
+     unless the box keeps Enter for itself; a window drawn otherwise (a
+     record's card, a page's own form) keeps its own keys */
+  var FIELD_ENTER_IN = ".pfas-sheet-field, .pfas-pop-row, .cf-settings";
+  var FIELD_ENTER_OWN = ".pfas-chips, .pfas-picker, .pfas-date, .pfas-chips-text, .pfas-picker-in, .pfas-date-text";
+  function fieldEnter(d, e) {
+    var t = e.target;
+    if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) { return; }
+    if (!t || t.tagName !== "INPUT" || FIELD_SKIP_TYPES.test(t.type || "text") || t.closest(FIELD_ENTER_OWN) ||
+        !t.closest(FIELD_ENTER_IN)) { return; }
+    var body = d.querySelector(".pfas-drawer-body"), foot = d.querySelector(".pfas-drawer-foot");
+    if (!body || !body.contains(t) || !foot || foot.hidden) { return; }
+    var go = foot.querySelector(".btn-primary");
+    if (!go || go.disabled) { return; }
+    e.preventDefault();
+    go.click();
   }
 
   /* ── .pfas-range: [lo] ──●━━━●── [hi] over two existing number inputs ─────────
@@ -1473,7 +2223,21 @@
     td.classList.add("pfas-cell");
     hideInput(inp);
     var btn = el("button", "pfas-cell-btn"); btn.type = "button"; btn.setAttribute("aria-haspopup", "dialog");
-    td.appendChild(btn);
+    /* a cell that is a limit box keeps its placard, the mark pinned over its corner */
+    var plac = null;
+    for (var pc = td.firstChild; pc; pc = pc.nextSibling) {
+      if (pc.nodeType === 1 && pc.classList.contains("pfas-placard")) { plac = pc; break; }
+    }
+    if (plac && plac.classList.contains("is-mark")) {
+      /* a standards grid cell's mark is pinned to the value's own box, so it
+         belongs to that box and not to the cell's edge beside the next one */
+      var anchor = el("span", "pfas-cell-anchor");
+      td.insertBefore(anchor, plac);
+      anchor.appendChild(btn);
+      anchor.appendChild(plac);
+    } else {
+      td.insertBefore(btn, plac);
+    }
     model.btn = btn;
     var ownTitle = td.getAttribute("title");        /* the cell's own hover, given back when none is cleared */
     function refresh() {
@@ -1536,8 +2300,20 @@
       i.addEventListener("input", refresh); i.addEventListener("change", refresh); watchValue(i, refresh);
     });
     if (model.none) { model.none.addEventListener("change", refresh); }
+    if (inp.getAttribute("data-shared")) { inp.addEventListener("change", function () { shareValue(inp); }); }
     btn.addEventListener("click", function () { openCell(td); });
     refresh();
+  }
+  /* A value every row of a column shows (input[data-shared], naming the one
+     hidden field that posts it; the row's own input posts nothing): an edit on
+     one row is drawn on every row and written to that field. */
+  function shareValue(inp) {
+    var name = inp.getAttribute("data-shared");
+    byAttr(doc.querySelectorAll("input[data-shared]"), "data-shared", name).forEach(function (o) {
+      if (o !== inp && o.value !== inp.value) { o.value = inp.value; }
+    });
+    var field = byAttr(doc.querySelectorAll("input[type=hidden]"), "name", name)[0];
+    if (field && field.value !== inp.value) { field.value = inp.value; fire(field, ["change"]); }
   }
   function initCells(root) {
     var all = root.querySelectorAll("td input[type=number]");
@@ -1572,6 +2348,8 @@
       copies = [[p.lo, cl], [p.hi, ch]];
       first = p.end === "lo" ? cl : ch;
       initRange(w);
+      /* what the cell says of itself (a window every row shares) */
+      if (td.getAttribute("data-note")) { body.appendChild(el("p", "pfas-hint", td.getAttribute("data-note"))); }
       /* None: the class is not assessed; its window gives way */
       if (c.none) {
         var lab = el("label", "pfas-cell-none");
@@ -1579,7 +2357,8 @@
         noneBox.type = "checkbox";
         noneBox.checked = c.none.checked;
         lab.appendChild(noneBox);
-        lab.appendChild(el("span", "", "None: recovery is not assessed for " + (td.getAttribute("data-none") || "")));
+        lab.appendChild(el("span", "", td.getAttribute("data-none-text") ||
+                                       ("None: recovery is not assessed for " + (td.getAttribute("data-none") || ""))));
         body.appendChild(lab);
         var syncNone = function () { cl.disabled = noneBox.checked; ch.disabled = noneBox.checked; };
         noneBox.addEventListener("change", syncNone);
@@ -1601,6 +2380,11 @@
         var syncOne = function () { if (noneBox.checked) { cp.value = ""; } cp.disabled = noneBox.checked; };
         noneBox.addEventListener("change", syncOne);
         syncOne();
+      }
+      /* a cell with a calculator (data-calc): the page's script adds it to the
+         editor and writes its result into the editor's copy; Done keeps it */
+      if (td.getAttribute("data-calc")) {
+        td.dispatchEvent(new CustomEvent("pfas:cell-calc", { bubbles: true, detail: { body: body, input: cp } }));
       }
     }
     function commit() {
@@ -1766,9 +2550,9 @@
      the browser's own picker. The native input stays in the form, named and
      valued as before, so what the page posts is unchanged. */
   var DATE_FORMS = {
-    "date": { ph: "YYYY-MM-DD", re: /^\d{4}-\d{2}-\d{2}$/ },
-    "datetime-local": { ph: "YYYY-MM-DD HH:MM", re: /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/ },
-    "time": { ph: "HH:MM", re: /^\d{2}:\d{2}(:\d{2})?$/ }
+    "date": { ph: "YYYY-MM-DD", say: "Date", re: /^\d{4}-\d{2}-\d{2}$/ },
+    "datetime-local": { ph: "YYYY-MM-DD HH:MM", say: "Date and time", re: /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/ },
+    "time": { ph: "HH:MM", say: "Time", re: /^\d{2}:\d{2}(:\d{2})?$/ }
   };
   function initDate(inp) {
     var f = DATE_FORMS[inp.type];
@@ -1778,13 +2562,15 @@
     var text = detach(el("input", "pfas-input pfas-date-text is-" + inp.type));
     text.type = "text"; text.inputMode = "numeric"; text.autocomplete = "off";
     text.placeholder = f.ph;
-    text.setAttribute("aria-label", labelText(inp) + " (" + f.ph + ")");
+    /* the box is named by the label a person reads, never by the field's
+       name in the form */
+    text.setAttribute("aria-label", labelText(inp, f.say) + " (" + f.ph + ")");
     if (inp.title) { text.title = inp.title; }
     text.disabled = inp.disabled; text.readOnly = inp.readOnly;
     if (inp.required) { text.required = true; inp.required = false; }
     var btn = el("button", "pfas-date-btn");
     btn.type = "button"; btn.tabIndex = -1; btn.setAttribute("aria-label", "Open the calendar");
-    btn.innerHTML = '<i class="fas ' + (inp.type === "time" ? "fa-clock" : "fa-calendar-alt") + '" aria-hidden="true"></i>';
+    btn.innerHTML = icon(inp.type === "time" ? "time" : "date", { hidden: true }) || (inp.type === "time" ? "Time" : "Date");
     btn.disabled = inp.disabled || inp.readOnly;
     inp.parentNode.insertBefore(wrap, inp);
     wrap.appendChild(text); wrap.appendChild(btn); wrap.appendChild(inp);
@@ -1813,7 +2599,7 @@
      wrapped in .pfas-unit, which is never uppercased. */
   var UNIT_PART = /\([^()]{1,24}\)/g;
   function initUnits(root) {
-    var heads = root.querySelectorAll("th, .field-row > label, .pfas-field > label, .stat-label, .cf-label");
+    var heads = root.querySelectorAll("th, .pfas-form-field > label, .pfas-form-field > span:not([class]), .stat-label, .cf-label");
     for (var i = 0; i < heads.length; i++) {
       var h = heads[i];
       if (h.__pfasUnit) { continue; }
@@ -1880,7 +2666,7 @@
     if (many !== null) { return (" " + many + " ").indexOf(" " + v + " ") !== -1 && v !== ""; }
     return v === (r.getAttribute("data-show-value") || "");
   }
-  /* A logbook or Lab workflow question (logbook_field_macros.pt) carries its
+  /* A stage or Lab workflow question (record_macros.pt) carries its
      condition as JSON, {"field", "op", "value"}, as logbook_schema.condition_met
      reads it: a hidden question hides what depends on it, and its inputs are
      disabled, so they are neither required nor posted. One whose controlling
@@ -1943,11 +2729,12 @@
   function lockMark(r, locked) {
     var reason = r.getAttribute("data-lock-reason");
     if (!reason) { return; }
-    var mark = r.querySelector(".fa-lock");
+    var mark = r.querySelector(".pfas-lock-mark");
     if (locked && !mark) {
-      mark = doc.createElement("i");
-      mark.className = "fas fa-lock";
+      mark = doc.createElement("span");
+      mark.className = "pfas-lock-mark";
       mark.setAttribute("aria-hidden", "true");
+      mark.innerHTML = icon("lock", { hidden: true });
       r.appendChild(mark);
     } else if (!locked && mark) {
       mark.parentNode.removeChild(mark);
@@ -1972,13 +2759,27 @@
       for (var j = 0; j < ins.length; j++) { ins[j].disabled = !on; }
     }
   }
+  /* What a rule set Off no longer judges (a QC type's tiers and windows):
+     greyed while data-mute-if's field holds one of data-mute-values, unless
+     data-mute-unless's field holds one of data-mute-unless-values, and
+     still open to read and edit, never disabled. */
+  function applyMuteIf(root) {
+    var rows = (root || doc).querySelectorAll("[data-mute-if]");
+    for (var i = 0; i < rows.length; i++) {
+      /* data-mute-blank: a field left blank holds a state inherited as Off */
+      var blank = rows[i].hasAttribute("data-mute-blank") && showIfValue(rows[i].getAttribute("data-mute-if")) === "";
+      rows[i].classList.toggle("is-muted", (blank || enabledBy(rows[i], "data-mute-if", "data-mute-values")) &&
+                               !enabledBy(rows[i], "data-mute-unless", "data-mute-unless-values"));
+    }
+  }
   function initShowIf(root) {
-    if (!root.querySelector("[data-show-if], [data-enable-if]")) { return; }
+    if (!root.querySelector("[data-show-if], [data-enable-if], [data-mute-if]")) { return; }
     applyShowIf(doc);
     applyEnableIf(doc);
+    applyMuteIf(doc);
     if (doc.__pfasShowIf) { return; }
     doc.__pfasShowIf = true;
-    doc.addEventListener("change", function () { applyShowIf(doc); applyEnableIf(doc); });
+    doc.addEventListener("change", function () { applyShowIf(doc); applyEnableIf(doc); applyMuteIf(doc); });
     doc.addEventListener("input", function () { applyShowIf(doc); });
   }
   function initDates(root) {
@@ -2114,6 +2915,7 @@
     initShowIf(scope);
     initTokens(scope);
     initSheets(scope);
+    initEquations(scope);
   }
 
   /* Rows a form adds and removes (check weights, measurements): [data-rows]
@@ -2166,7 +2968,7 @@
         b.__pfasModal = true;
         b.addEventListener("click", function (e) {
           var m = doc.getElementById(b.getAttribute("data-modal-open"));
-          if (m) { e.preventDefault(); m.classList.add("open"); }
+          if (m) { e.preventDefault(); openModal(m); }
         });
       })(opens[i]);
     }
@@ -2212,7 +3014,7 @@
         btn.type = "button";
         btn.setAttribute("aria-label", link.getAttribute("aria-label"));
         btn.title = link.getAttribute("aria-label");
-        btn.appendChild(el("i", "fas fa-ellipsis-h"));
+        btn.innerHTML = icon("more", { hidden: true }) || "\u22ef";
         btn.addEventListener("click", function (e) {
           e.preventDefault();
           var b = e.currentTarget.closest(".listing-container"), l = b && b.querySelector(COLS);
@@ -2221,6 +3023,21 @@
       }
       if (bar.lastElementChild !== btn) { bar.appendChild(btn); }
       box.classList.add("pfas-cols-moved");
+    }
+  }
+  /* Core listings: the search box has a visible label, tied to it. React
+     owns the group, so the label is added at its end (the overlay's CSS
+     draws it first) and the box keeps core's own markup. */
+  function labelListSearch() {
+    var boxes = doc.querySelectorAll(".listing-container .top-toolbar .input-group");
+    for (var i = 0; i < boxes.length; i++) {
+      var group = boxes[i], box = group.querySelector('input[type="text"], input[type="search"]');
+      if (!box || group.closest(".pfas-content-area") || group.querySelector(".pfas-list-search-label")) { continue; }
+      if (!box.id) { box.id = "pfas-list-search-" + (++idSeq); }
+      var lab = el("label", "input-group-prepend pfas-list-search-label");
+      lab.htmlFor = box.id;
+      lab.appendChild(el("span", "input-group-text", "Search"));
+      group.appendChild(lab);
     }
   }
   function watchListings() {
@@ -2232,9 +3049,70 @@
     new MutationObserver(function () {
       if (pending) { return; }
       pending = true;
-      window.setTimeout(function () { pending = false; placeColumnButtons(); }, 50);
+      window.setTimeout(function () { pending = false; placeColumnButtons(); labelListSearch(); stateCells(root); coreImages(root); }, 50);
     }).observe(root, { childList: true, subtree: true });
     placeColumnButtons();
+    labelListSearch();
+    stateCells(root);
+    coreImages(root);
+  }
+  /* core's listing draws a sample's flags as coloured images beside its ID:
+     Late as the failure diamond, all analyses on a worksheet as the
+     navigation's worksheet picture, each with the image's own words as its
+     name and tooltip (icons.py). The image stays in the page, hidden, so the
+     listing keeps what it drew; a cell already drawn is left alone. */
+  var CORE_IMG = { "late.svg": ["fail", null], "worksheet.svg": [null, "ico-worksheets"] };
+  function coreImages(root) {
+    var imgs = (root || doc).querySelectorAll("td img[src]"), i, im, file, kind, words, tip, wrap;
+    for (i = 0; i < imgs.length; i++) {
+      im = imgs[i];
+      if (im.getAttribute("data-pfas-drawn")) { continue; }
+      file = (im.getAttribute("src") || "").split("?")[0].split("/").pop();
+      kind = CORE_IMG[file];
+      if (!kind) { continue; }
+      words = im.getAttribute("title") || im.getAttribute("alt") || "";
+      if (kind[0]) {
+        tip = tipIcon(kind[0], words);
+        if (tip.indexOf("<") !== 0) { continue; }
+      } else {
+        tip = '<span class="pfas-tip" tabindex="0" role="img" aria-label="' + esc(words) + '" data-pfas-tip="' + esc(words) +
+              '"><svg class="pfas-ico" aria-hidden="true"><use href="#' + kind[1] + '"></use></svg></span>';
+      }
+      wrap = doc.createElement("span"); wrap.innerHTML = tip;
+      im.setAttribute("data-pfas-drawn", "1");
+      im.className = (im.className ? im.className + " " : "") + "pfas-core-img";
+      im.parentNode.insertBefore(wrap.firstChild, im);
+    }
+  }
+  /* a sample's state in core's listing (its State column) as the stage's
+     picture alone (icons.py, the same five stages as Worksheet status), its
+     word as the picture's name and tooltip; a state that is no stage
+     (cancelled, invalid, stored...) keeps its word. The listing redraws its
+     rows, so this runs again after each redraw and skips a cell it drew. */
+  var STATE_STAGE = { "Received": ["received", "done"], "To be verified": ["verify", "current"],
+                      "Verified": ["verify", "done"], "Published": ["issued", "done"],
+                      "Due": ["received", "pending"], "Sample due": ["received", "pending"],
+                      "Registered": ["received", "pending"], "To be sampled": ["received", "pending"],
+                      "Scheduled sampling": ["received", "pending"], "To be preserved": ["received", "pending"] };
+  var STEP_STATE = { done: "done", current: "now", pending: "next" };
+  function stateCells(root) {
+    var cells = (root || doc).querySelectorAll("td.state_title"), i, td, word, st, tip, holder, words;
+    for (i = 0; i < cells.length; i++) {
+      td = cells[i];
+      words = td.querySelector(".pfas-state-word");
+      word = (words ? words.textContent : td.textContent || "").replace(/^\s+|\s+$/g, "");
+      st = STATE_STAGE[word];
+      if (!st) { continue; }
+      tip = td.querySelector(".pfas-tip");
+      if (tip && tip.getAttribute("data-pfas-tip") === word) { continue; }
+      holder = td.querySelector("span span") || td.querySelector("span") || td;
+      tip = tipIcon(st[0], word, { state: STEP_STATE[st[1]] });
+      if (tip.indexOf("<") !== 0) { continue; }   /* no drawings on the page: the word stays */
+      if (holder !== td) { holder.className = (holder.className ? holder.className + " " : "") + "pfas-state-word"; }
+      var old = td.querySelector(".pfas-tip"); if (old) { old.parentNode.removeChild(old); }
+      var wrap = doc.createElement("span"); wrap.innerHTML = tip;
+      td.insertBefore(wrap.firstChild, td.firstChild);
+    }
   }
 
   /* .pfas-multi: a list of checkboxes drawn as one-line multi-select. The
@@ -2295,7 +3173,9 @@
      The chosen values are JSON in ONE hidden field named data-name (the
      picker's own, else the form control of that name: a collection row's),
      the field the server reads: a field posted once per value would reach
-     the save as its first value only. Picking writes that field and fires a
+     the save as its first value only. A picker with no data-name keeps its
+     list in its own nameless hidden field: a choice in a dialog that posts
+     nothing. Picking writes that field and fires a
      bubbling input and change on it (the footer counts it as its row or
      setting, a preview redraws); a value written into it from elsewhere is
      drawn on its change. data-options is JSON [[value, label], ...];
@@ -2347,7 +3227,9 @@
       }
       now.forEach(function (v) {
         var tok = doc.createElement("button"); tok.type = "button"; tok.className = "pfas-tok";
-        tok.textContent = label(v) + " ✕";
+        tok.textContent = label(v) + " ";
+        var tx = doc.createElement("span"); tx.className = "pfas-tok-x"; tx.setAttribute("aria-hidden", "true");
+        tx.innerHTML = icon("close", { hidden: true }); tok.appendChild(tx);
         tok.setAttribute("aria-label", "Remove " + label(v));
         tok.addEventListener("click", function () { write(chosen().filter(function (x) { return x !== v; })); });
         sel.appendChild(tok);
@@ -2403,11 +3285,11 @@
         var key = control(prefix + row + "__" + a("data-key")), show = control(prefix + row + "__" + a("data-show"));
         var name = key ? String(key.value || "") : "";
         var item = null;
-        Array.prototype.forEach.call(host.querySelectorAll(".field-row"), function (r) {
+        Array.prototype.forEach.call(host.querySelectorAll(".pfas-form-field"), function (r) {
           if (r.getAttribute("data-for") === n) { item = r; }
         });
         if (!item) {
-          item = doc.createElement("div"); item.className = "field-row field-row-wide"; item.setAttribute("data-for", n);
+          item = doc.createElement("div"); item.className = "pfas-form-field is-full"; item.setAttribute("data-for", n);
           var lab = doc.createElement("div"); lab.className = "cf-label"; item.appendChild(lab);
           var pk = doc.createElement("div"); pk.className = "pfas-picker"; pk.setAttribute("data-name", n);
           pk.setAttribute("data-options", a("data-options")); pk.setAttribute("data-noun", a("data-noun"));
@@ -2421,7 +3303,7 @@
         initPicker(picker);
         if (picker.__pfasRender) { picker.__pfasRender(); }
       });
-      Array.prototype.forEach.call(host.querySelectorAll(".field-row"), function (r) {
+      Array.prototype.forEach.call(host.querySelectorAll(".pfas-form-field"), function (r) {
         if (!seen[r.getAttribute("data-for")]) { r.parentNode.removeChild(r); }
       });
     }
@@ -2459,7 +3341,8 @@
     if (!sheetPop) { return; }
     var p = sheetPop;
     sheetPop = null;
-    p.pop.hidden = true;
+    /* it fades out as it came, then hides */
+    leave(p.pop, "is-leaving", function () { p.pop.hidden = true; });
     p.btn.setAttribute("aria-expanded", "false");
     if (p.close) { p.close(keep !== false); }
   }
@@ -2474,7 +3357,9 @@
     var same = sheetPop && sheetPop.pop === pop;
     closeSheetPop();
     if (same || !pop) { return; }
+    houseFields(pop);
     placeSheetPop(btn, pop);
+    stay(pop, "is-leaving");
     pop.hidden = false;
     btn.setAttribute("aria-expanded", "true");
     sheetPop = { btn: btn, pop: pop, close: close || null };
@@ -2543,7 +3428,12 @@
     row.classList.toggle("is-folded", !open);
     var t = row.querySelector(".pfas-group-toggle");
     if (t) { t.setAttribute("aria-expanded", open ? "true" : "false"); }
-    groupMembers(box, key).forEach(function (tr) { tr.hidden = !open; });
+    groupMembers(box, key).forEach(function (tr, i) {
+      var shown = tr.hidden && open;
+      tr.hidden = !open;
+      /* a group opened: its first rows fade in (a row cannot grow) */
+      if (shown && i < STAGGER) { arrive(tr, "is-arriving"); }
+    });
     return true;
   }
   function colSwitchOf(box, col) { return byAttr(box.querySelectorAll(".pfas-sheet-colswitch input"), "data-col", col)[0] || null; }
@@ -2576,13 +3466,20 @@
   function flagRl(btn) { return flagNamed(btn, "rl"); }
   /* the words profile_grids._flag_words and _flag_state write; only the
      drawer's flag, which flips, is pressed or not */
+  /* a grid flag over an RL (data-rl-name) with none typed shows the RL that
+     applies, the lowest calibrator's (data-rl-derived), muted; with neither
+     it says "no RL", never a bare \u2713 */
   function drawFlag(btn, on, rl) {
-    btn.textContent = on ? (rl || "\u2713") : "\u2717";
+    var hasRl = btn.hasAttribute("data-rl-name") && !btn.hasAttribute("aria-pressed");
+    var derived = hasRl ? btn.getAttribute("data-rl-derived") || "" : "";
+    btn.textContent = on ? (rl || derived || (hasRl ? "no RL" : "\u2713")) : "\u2717";
     btn.classList.toggle("is-rl", on && !!rl);
+    btn.classList.toggle("is-derived", on && hasRl && !rl);
     btn.classList.toggle("is-out", !on);
     if (btn.hasAttribute("aria-pressed")) { btn.setAttribute("aria-pressed", on ? "true" : "false"); }
     btn.setAttribute("aria-label", (btn.getAttribute("data-label") || "") + ": " +
-                     (on ? (rl ? "reported, RL " + rl : "reported") : "left out"));
+                     (on ? (rl ? "reported, RL " + rl : derived ? "reported, RL " + derived + " from the lowest calibrator"
+                                : hasRl ? "reported, no RL" : "reported") : "left out"));
   }
   function syncFlag(td) {
     var btn = td && td.querySelector(".pfas-flag"), cb = btn && flagBox(td);
@@ -2631,7 +3528,7 @@
     rlRow.appendChild(lab);
     rlRow.appendChild(inp);
     pop.appendChild(rlRow);
-    if (rin) { pop.appendChild(el("p", "pfas-flag-note", "Blank RL shows \u2713 in the grid.")); }
+    if (rin) { pop.appendChild(el("p", "pfas-flag-note", "A blank RL takes the lowest calibrator.")); }
     makeNum(inp);
     function reported() { return yes.getAttribute("aria-pressed") === "true"; }
     function sync() {
@@ -2670,6 +3567,11 @@
     var v = readJSON(tr.getAttribute("data-quantifies"), []);
     return Object.prototype.toString.call(v) === "[object Array]" ? v : [];
   }
+  /* the composites a standard is a member of (data-held-by): it stays while one averages it */
+  function rowHeldBy(tr) {
+    var v = readJSON(tr.getAttribute("data-held-by"), []);
+    return Object.prototype.toString.call(v) === "[object Array]" ? v : [];
+  }
   function memberRows(box) {
     return sheetSelection(box).map(function (k) { return sheetRowOf(box, k); })
       .filter(function (tr) { return tr && tr.hasAttribute("data-member"); })
@@ -2706,29 +3608,58 @@
     [lo, hi].forEach(function (v, k) { if (nums[k] && nums[k].value !== v) { nums[k].value = v; fire(nums[k]); } });
   }
   /* a grid row's actions as menu entries: what its \u22ef button and a right
-     click on the row offer ({label, act, disabled, reason}) */
+     click on the row offer ({id, label, act, disabled, reason}); a page that
+     draws the row elsewhere (a list's node) runs an entry by its id */
   function rowMenuItems(btn) {
     var box = sheetBox(btn), tr = btn && btn.closest("tr"), items = [];
     if (!box || !tr) { return items; }
     var key = tr.getAttribute("data-row"), base = btn.getAttribute("data-base");
+    /* a row that has a card of its own opens it (the page hears
+       pfas:row-card); what it quantifies, a plain count in its cell, is
+       listed in a window */
+    if (tr.getAttribute("data-card")) {
+      items.push({ id: "card", label: "Show its card", act: function () {
+        tr.dispatchEvent(new CustomEvent("pfas:row-card", { bubbles: true, detail: { row: tr, key: tr.getAttribute("data-card") } }));
+      } });
+    }
+    var quant = readJSON(tr.getAttribute("data-quant-list"), []);
+    if (quant.length) {
+      var natives = rowQuantifies(tr).length, one = quant.length === 1;
+      var noun = natives === quant.length ? (one ? "analyte" : "analytes") : (!natives ? (one ? "standard" : "standards") : "");
+      items.push({ id: "quantifies", label: noun ? "Show the " + quant.length + " " + noun + " it quantifies" : "Show what it quantifies",
+                   act: function () { showQuantifies(tr, quant); } });
+    }
     /* a role drawn as a word (td.pfas-sheet-role) is set in the row's drawer,
        opened on the role's segment */
     var role = tr.querySelector("td.pfas-sheet-role[data-col]");
-    if (role) { items.push({ label: "Set role", act: function () { openSheetRow(box, key, role.getAttribute("data-col")); } }); }
-    items.push({ label: base ? "Edit link and limits" : "Edit link", act: function () { openSheetRow(box, key); } });
+    if (role) { items.push({ id: "role", label: "Set role", act: function () { openSheetRow(box, key, role.getAttribute("data-col")); } }); }
+    items.push({ id: "edit", label: base ? "Edit link and limits" : "Edit link", act: function () { openSheetRow(box, key); } });
     if (base) {
-      items.push({ label: "Copy Aqueous to every class", act: function () {
+      items.push({ id: "copy", label: "Copy Aqueous to every class", act: function () {
         var aq = sheetInputs(tr, base).filter(function (i) { return i.type !== "checkbox"; }).map(function (i) { return i.value; });
         classCols(tr).forEach(function (col) { setPair(tr, col, aq[0] || "", aq[1] || ""); });
       } });
-      items.push({ label: "Reset classes to Aqueous", act: function () { classCols(tr).forEach(function (col) { setPair(tr, col, "", ""); }); } });
+      items.push({ id: "reset", label: "Reset classes to Aqueous", act: function () { classCols(tr).forEach(function (col) { setPair(tr, col, "", ""); }); } });
     }
     if (box.querySelector(".pfas-sheet-remove")) {
-      var natives = rowQuantifies(tr);
-      items.push({ label: "Remove from method", act: function () { postRemove(box, [key]); }, disabled: natives.length > 0,
-                   reason: natives.length ? "Refused: it quantifies " + nativesWords(natives) + ". Change their Quantified by first." : "" });
+      var natives = rowQuantifies(tr), held = rowHeldBy(tr);
+      items.push({ id: "remove", label: "Remove from method", act: function () { postRemove(box, [key]); },
+                   disabled: natives.length > 0 || held.length > 0,
+                   reason: natives.length ? "Refused: it quantifies " + nativesWords(natives) + ". Change their Quantified by first."
+                     : held.length ? "Refused: it is a member of " + nativesWords(held) + ". Edit or remove that composite first." : "" });
     }
     return items;
+  }
+  /* what a row quantifies, in a window that reads it */
+  function showQuantifies(tr, names) {
+    var body = el("ul", "pfas-tile-read pfas-quant-list");
+    names.forEach(function (n) { body.appendChild(el("li", "", String(n))); });
+    drawer.open((tr.getAttribute("data-label") || "") + ": quantifies", body, { cls: "is-dialog", opener: tr.querySelector(".pfas-rowmenu") || null });
+  }
+  /* the entries of the row `key`'s menu, or none for a row with no menu */
+  function sheetRowItems(root, key) {
+    var box = sheetBox(root), tr = box && sheetRowOf(box, key), btn = tr && tr.querySelector(".pfas-rowmenu");
+    return btn ? rowMenuItems(btn) : [];
   }
   function openRowMenu(btn) {
     var box = sheetBox(btn), tr = btn && btn.closest("tr");
@@ -2785,6 +3716,24 @@
       gh.setAttribute("colspan", String(shown || total));
       gh.classList.toggle("is-col-off", !shown);
     });
+    spanColumns(box);
+  }
+  /* A pair over several columns (td[data-span] names them, its upper end's
+     td beside it): as wide as those of them shown, gone with the last. */
+  function spanColumns(box) {
+    var heads = box.querySelectorAll("thead th[data-col]");
+    Array.prototype.forEach.call(box.querySelectorAll(".pfas-sheet td[data-span]"), function (lo) {
+      var hi = pairPartner(lo, "lo"), width = 0;
+      (lo.getAttribute("data-span") || "").split(" ").forEach(function (k) {
+        var th = byAttr(heads, "data-col", k)[0];
+        if (th && !th.classList.contains("is-col-off")) { width += Number(th.getAttribute("colspan") || 1) || 1; }
+      });
+      lo.classList.toggle("is-col-off", !width);
+      if (hi) {
+        hi.classList.toggle("is-col-off", width < 2);
+        hi.setAttribute("colspan", String(Math.max(1, width - 1)));
+      }
+    });
   }
   /* the table's segment shows its hidden input's value; a state drawn as a
      word (td.pfas-sheet-role) shows the word its data-words give the value */
@@ -2801,8 +3750,8 @@
     var item = seg && byAttr(seg.querySelectorAll(".pfas-seg-item"), "data-value", hidden.value)[0];
     if (item) { activate(seg, item); }
   }
-  function sheetForm(box, key) {
-    var tpl = byAttr(box.querySelectorAll("template.pfas-sheet-row-tpl"), "data-row", key)[0];
+  function sheetForm(box, key, group) {
+    var tpl = byAttr(box.querySelectorAll("template.pfas-sheet-row-tpl"), group ? "data-group" : "data-row", key)[0];
     var src = tpl && tpl.content && tpl.content.firstElementChild;
     if (!src) { return null; }
     var form = src.cloneNode(true);
@@ -2935,15 +3884,17 @@
   }
   /* one row's drawer; `col` names the field it opens on (its pressed
      segment item, else its first control) */
-  function openSheetRow(root, key, col) {
-    var box = sheetBox(root), tr = box && sheetRowOf(box, key), form = tr && sheetForm(box, key);
+  function openSheetRow(root, key, col, group) {
+    var box = sheetBox(root);
+    var tr = box && (group ? byAttr(box.querySelectorAll("tr.pfas-sheet-grouprow"), "data-group", key)[0] : sheetRowOf(box, key));
+    var form = tr && sheetForm(box, key, group);
     if (!form) { return; }
     var editable = Array.prototype.filter.call(form.querySelectorAll(".pfas-sheet-field"), function (f) {
       return !f.classList.contains("is-ro");
     });
     editable.forEach(function (f) { seedSheetField(f, tr); });
     trackTouched(form);
-    openSheetDrawer(tr.getAttribute("data-label") || key, form, function () {
+    openSheetDrawer(tr.getAttribute("data-label") || (group && groupTplLabel(box, key)) || key, form, function () {
       editable.forEach(function (f) { writeSheetField(f, tr, true); });
     }, col ? function () {
       var f = byAttr(form.querySelectorAll(".pfas-sheet-field"), "data-col", col)[0];
@@ -2951,8 +3902,16 @@
                    f.querySelector("button, select, input:not([type=hidden])")) || null;
     } : null);
   }
-  function openSheetSelected(root) {
-    var box = sheetBox(root), keys = sheetSelection(box);
+  /* a group row's own values (a heading row holding what every row shares):
+     its drawer, as a row's */
+  function groupTplLabel(box, key) {
+    var tpl = byAttr(box.querySelectorAll("template.pfas-sheet-row-tpl"), "data-group", key)[0];
+    return tpl ? tpl.getAttribute("data-label") : "";
+  }
+  function openSheetGroup(root, key, col) { openSheetRow(root, key, col, true); }
+  /* Edit selected on the ticked rows, or on `rows` */
+  function openSheetSelected(root, rows) {
+    var box = sheetBox(root), keys = rows || sheetSelection(box);
     if (box && box.getAttribute("data-layout") === "matrix") { openMatrixSelected(box, keys); return; }
     if (keys.length < 2) { if (keys.length) { openSheetRow(box, keys[0]); } return; }
     var form = sheetForm(box, keys[0]);
@@ -3076,7 +4035,7 @@
     c.hidden = none;
     if (!word) { word = el("span", "pfas-bulk-none", "none"); f.insertBefore(word, x); }
     word.hidden = !none;
-    x.textContent = none ? "\u21ba" : "\u2715";
+    if (none) { x.textContent = "\u21ba"; } else { x.innerHTML = icon("close", { hidden: true }) || "\u2715"; }
     x.setAttribute("aria-label", none ? "Leave " + label + " as is" : "Set " + label + " to none");
   }
   function bulkSync(form, count) {
@@ -3136,17 +4095,20 @@
   }
   /* ── the one-column actions and their toast ── */
   function analytesWord(n) { return n + (n === 1 ? " analyte" : " analytes"); }
-  function clearToast(box) {
+  /* the toast rises in; it fades out when it ends, at once when another takes its place */
+  function clearToast(box, now) {
     var t = box.__pfasToast;
     box.__pfasToast = null;
-    if (t && t.parentNode) { t.parentNode.removeChild(t); }
+    if (!t || !t.parentNode) { return; }
+    if (now) { t.parentNode.removeChild(t); return; }
+    leave(t, "is-leaving", function () { if (t.parentNode) { t.parentNode.removeChild(t); } });
   }
   function undoAction(box, log) {
     log.slice().reverse().forEach(function (p) { writeCtl(p[0], p[1], []); });
     clearToast(box);
   }
   function showToast(box, text, log) {
-    clearToast(box);
+    clearToast(box, true);
     var t = el("div", "pfas-toast"), undo = el("button", "btn btn-sm pfas-toast-undo", "Undo");
     t.setAttribute("role", "status");
     t.appendChild(el("span", "", text));
@@ -3156,6 +4118,7 @@
     var wrap = box.querySelector(".pfas-sheet-wrap");
     box.insertBefore(t, wrap ? wrap.nextSibling : null);
     box.__pfasToast = t;
+    arrive(t, "is-arriving");
   }
   /* write into every ticked row, then draw the toast, words(n) and its Undo,
      n the rows the action changed (a row that does not offer the value, or
@@ -3165,7 +4128,7 @@
   function applyAction(box, write, words) {
     var rows = tickedRows(box), log = [], n = 0;
     closeSheetPop();
-    clearToast(box);
+    clearToast(box, true);   /* the next action's toast takes its place at once */
     rows.forEach(function (tr) {
       var was = log.length;
       write(tr, log);
@@ -3297,8 +4260,10 @@
     var r = expandTarget(btn);
     btn.setAttribute("aria-expanded", r && regionOpen(r) ? "true" : "false");
   }
+  /* what opens a region: an expand button, or a row that is the button */
+  var EXPANDS = ".pfas-sheet-expand, tr[data-row-region]";
   function syncRegion(r) {
-    byAttr(doc.querySelectorAll(".pfas-sheet-expand"), "aria-controls", r.id).forEach(syncExpand);
+    byAttr(doc.querySelectorAll(EXPANDS), "aria-controls", r.id).forEach(syncExpand);
   }
   function toggleRegion(btn) {
     var r = expandTarget(btn);
@@ -3309,10 +4274,112 @@
     syncRegion(r);
     if (regionOpen(r)) { placeAll(r); r.scrollIntoView({ block: "nearest" }); }
   }
+  /* ── a box of equal neighbours (td[data-box]: profile_grids.merge_boxes) ──
+     The cells inside one box keep their own drawers; a pointer or focus on
+     any of them lights the whole box, and the box's words (its first cell's)
+     are centred across it at its first row's height: --box-w on that cell,
+     measured again whenever the table's size changes (a fold opened, a
+     resize). */
+  function boxCells(table, id) { return byAttr(table.querySelectorAll("td[data-box]"), "data-box", id); }
+  /* a box's first cell hidden (the column picker): the first cell shown in
+     its row leads, its words with it */
+  function boxLead(table, lead) {
+    if (lead.getBoundingClientRect().width) { return lead; }
+    var tr = lead.parentNode, next = boxCells(table, lead.getAttribute("data-box")).filter(function (td) {
+      return td.parentNode === tr && td.getBoundingClientRect().width;
+    })[0];
+    if (!next) { return lead; }
+    lead.removeAttribute("data-box-lead");
+    next.setAttribute("data-box-lead", "1");
+    Array.prototype.slice.call(lead.children).forEach(function (w) {
+      if (w.classList.contains("pfas-box-words")) { next.appendChild(w); }
+    });
+    return next;
+  }
+  /* a box whose cells are controls (data-box-live) stands for equal values
+     only until one changes: the change undoes it, each cell showing its own */
+  function unbox(table, id) {
+    boxCells(table, id).forEach(function (td) {
+      ["data-box", "data-box-edge", "data-box-lead", "data-box-live"].forEach(function (a) { td.removeAttribute(a); });
+      td.classList.remove("is-box-hot");
+      td.classList.remove("is-box-focus");
+      td.style.setProperty("--box-w", "");
+      Array.prototype.forEach.call(td.querySelectorAll(".pfas-box-words"), function (w) { w.parentNode.removeChild(w); });
+    });
+  }
+  function unboxRow(table, tr) {
+    var ids = {};
+    Array.prototype.forEach.call((tr || table).querySelectorAll("td[data-box-live]"), function (td) {
+      ids[td.getAttribute("data-box")] = true;
+    });
+    Object.keys(ids).forEach(function (id) { unbox(table, id); });
+  }
+  /* a cell's own words: its flag's, or its number's (a blank, what it inherits) */
+  function cellWords(td) {
+    var flag = td.querySelector(".pfas-flag"), inp = td.querySelector("input.pfas-sheet-in:not([type=checkbox]):not([type=hidden])");
+    if (flag) { return String(flag.textContent || "").trim(); }
+    return inp ? String(inp.value || inp.getAttribute("placeholder") || "").trim() : null;
+  }
+  /* a live box stands only while every cell says what its words say (a value
+     the browser restored on reload fires no event) */
+  function checkBoxes(table) {
+    Array.prototype.forEach.call(table.querySelectorAll("td[data-box-lead][data-box-live]"), function (lead) {
+      var id = lead.getAttribute("data-box"), w = boxCells(table, id).map(function (td) {
+        var words = td.querySelector(".pfas-box-words");
+        return words ? String(words.textContent || "").trim() : null;
+      }).filter(function (x) { return x !== null; })[0];
+      if (boxCells(table, id).some(function (td) { return cellWords(td) !== w; })) { unbox(table, id); }
+    });
+  }
+  function placeBoxes(table) {
+    checkBoxes(table);
+    Array.prototype.forEach.call(table.querySelectorAll("td[data-box-lead]"), function (first) {
+      var lead = boxLead(table, first), r0 = lead.getBoundingClientRect(), right = r0.right;
+      if (!r0.width) { return; }             /* folded or hidden: placed when it shows */
+      boxCells(table, lead.getAttribute("data-box")).forEach(function (td) {
+        var r = td.getBoundingClientRect();
+        if (r.width && Math.abs(r.top - r0.top) < 1) { right = Math.max(right, r.right); }
+      });
+      lead.style.setProperty("--box-w", (right - r0.left) + "px");
+    });
+  }
+  function initBoxes(table) {
+    if (!table.querySelector("td[data-box]")) { return; }
+    function light(e, on, focus) {
+      var td = e.target && e.target.closest ? e.target.closest("td[data-box]") : null;
+      if (!td || !table.contains(td)) { return; }
+      boxCells(table, td.getAttribute("data-box")).forEach(function (c) {
+        c.classList.toggle("is-box-hot", on);
+        if (focus) { c.classList.toggle("is-box-focus", on); }
+      });
+    }
+    table.addEventListener("mouseover", function (e) { light(e, true); });
+    table.addEventListener("mouseout", function (e) { light(e, false); });
+    table.addEventListener("focusin", function (e) { light(e, true, true); });
+    table.addEventListener("focusout", function (e) { light(e, false, true); });
+    /* a posted value changed in a row (typed, an editor's Done, Fill RLs,
+       paste, a column's switch row by row); a selection is no change */
+    function changed(e) {
+      var t = e.target, tr = t && t.getAttribute && t.getAttribute("name") && t.closest ? t.closest("tbody tr") : null;
+      if (tr && table.contains(tr)) { unboxRow(table, tr); }
+    }
+    table.addEventListener("input", changed, true);
+    table.addEventListener("change", changed, true);
+    /* typing in a boxed number shows its own value */
+    table.addEventListener("focusin", function (e) {
+      var td = e.target && e.target.matches && e.target.matches("input.pfas-sheet-in") ? e.target.closest("td[data-box-live]") : null;
+      if (td) { unbox(table, td.getAttribute("data-box")); }
+    });
+    placeBoxes(table);
+    if (window.ResizeObserver) {
+      try { new window.ResizeObserver(function () { placeBoxes(table); }).observe(table); } catch (e) {}
+    }
+  }
   function initSheet(box) {
     var table = box.querySelector(".pfas-sheet");
     if (box.__pfas || !table) { return; }
     box.__pfas = true;
+    initBoxes(table);
     Array.prototype.forEach.call(table.querySelectorAll(".pfas-seg"), initSeg);
     table.addEventListener("change", function (e) {
       var t = e.target, td = t.closest("td");
@@ -3331,8 +4398,19 @@
       /* an RL changed in its own cell (the drawer, a column action): its flag follows */
       var tr = t.getAttribute("name") ? t.closest("tr") : null;
       if (tr) { byAttr(tr.querySelectorAll(".pfas-flag"), "data-rl-name", t.getAttribute("name")).forEach(function (b) { syncFlag(b.closest("td")); }); }
+      if (td && td.hasAttribute("data-opens-row")) { syncListWords(td); }
+    });
+    /* a list cell (td[data-opens-row]) is no button: a click, Enter or
+       Space on it opens the row's drawer on that field */
+    table.addEventListener("keydown", function (e) {
+      var td = e.target;
+      if ((e.key !== "Enter" && e.key !== " ") || !td.matches || !td.matches("td[data-opens-row]")) { return; }
+      e.preventDefault();
+      openListCell(box, td);
     });
     table.addEventListener("click", function (e) {
+      var lc = e.target.closest("td[data-opens-row]");
+      if (lc && table.contains(lc)) { openListCell(box, lc); return; }
       var fold = e.target.closest(".pfas-group-toggle");
       if (fold && table.contains(fold)) {
         var gr = fold.closest("tr"), key = gr.getAttribute("data-group"), open = gr.getAttribute("aria-expanded") !== "true";
@@ -3352,7 +4430,7 @@
       var m = e.target.closest(".pfas-rowmenu");
       if (m && table.contains(m)) { openRowMenu(m); }
     });
-    Array.prototype.forEach.call(table.querySelectorAll(".pfas-sheet-expand"), function (x) {
+    Array.prototype.forEach.call(table.querySelectorAll(EXPANDS), function (x) {
       syncExpand(x);
       /* a section opened or closed by its own summary: its buttons follow
          (toggle does not bubble, so on the section itself) */
@@ -3425,12 +4503,28 @@
     }
     if (sheetChecks(box).some(function (c) { return c.checked; })) { sheetSync(box); }   /* a selection the browser restored */
   }
+  function openListCell(box, td) {
+    var tr = td.closest("tr");
+    if (tr && tr.getAttribute("data-row")) { openSheetRow(box, tr.getAttribute("data-row"), td.getAttribute("data-opens-row")); }
+  }
+  /* a list cell's words follow its hidden input: the items joined, a dash
+     for none (an inherited list: its placeholder, muted) */
+  function syncListWords(td) {
+    var inp = td.querySelector("input.pfas-sheet-in"), w = td.querySelector(".pfas-sheet-val");
+    if (!inp || !w) { return; }
+    var v = String(inp.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean).join(", ");
+    var ph = String(inp.getAttribute("placeholder") || "").trim();
+    w.textContent = v || ph || "—";
+    w.classList.toggle("is-empty", !v && !ph);
+    w.classList.toggle("is-inherited", !v && !!ph);
+  }
   function initSheets(root) {
     var boxes = root.querySelectorAll(".pfas-sheet-box");
     for (var i = 0; i < boxes.length; i++) { initSheet(boxes[i]); }
   }
-  var sheet = { init: initSheets, selection: sheetSelection, openRow: openSheetRow, openSelected: openSheetSelected,
-                openFlag: openFlag, openRowMenu: openRowMenu, fold: foldGroup };
+  var sheet = { init: initSheets, boxes: placeBoxes, selection: sheetSelection, openRow: openSheetRow, openGroup: openSheetGroup, openSelected: openSheetSelected,
+                openFlag: openFlag, openRowMenu: openRowMenu, rowItems: sheetRowItems, fold: foldGroup,
+                region: toggleRegion };
 
   /* Help: a .btn-help[data-help-entry] opens its entry in the panel beside
      the page (aside.pfas-help-panel, drawn once by the page macro), fetched
@@ -3484,6 +4578,7 @@
     title.textContent = helpTerm(btn);
     body.textContent = HELP_LOADING;
     panel.setAttribute("data-entry", id);
+    stay(panel, "is-leaving");
     panel.hidden = false;
     title.focus();
     var seq = ++help.seq;
@@ -3503,8 +4598,9 @@
   }
   function closeHelp() {
     var panel = helpPanel();
-    if (!panel || panel.hidden) { return; }
-    panel.hidden = true;
+    if (!panel || panel.hidden || panel.__pfasLeave) { return; }
+    /* it slides out as it came, then hides */
+    leave(panel, "is-leaving", function () { panel.hidden = true; });
     help.seq++;                             /* a reply still on its way is dropped */
     var opener = help.opener;
     help.opener = null;
@@ -3536,7 +4632,9 @@
      items: {id, label, key (the shortcut said beside it), disabled, reason
      (why it is disabled: its title and a muted line under it), checked
      (a choice of several, marked), act(item), items (a submenu, opening to
-     the right, to the left when the right has no room)} or {sep: true}.
+     the right, to the left when the right has no room)}, {sep: true} or
+     {head: words} (a group's heading over the entries after it: read,
+     never focused or chosen).
      opts: {x, y (viewport px; the pointer's), anchor (a node it opens under,
      above when there is no room below), opener (the focus goes back to it
      when the menu closes by a key or a choice), label}. Keys: the arrows,
@@ -3605,6 +4703,14 @@
     box.setAttribute("role", "menu");
     if (label) { box.setAttribute("aria-label", label); }
     (items || []).forEach(function (it) {
+      if (it.head) {
+        var hd = doc.createElement("div");
+        hd.className = "pfas-menu-head";
+        hd.setAttribute("role", "presentation");
+        hd.textContent = it.head;
+        box.appendChild(hd);
+        return;
+      }
       if (it.sep) {
         var sep = doc.createElement("div");
         sep.className = "pfas-menu-sep";
@@ -3623,7 +4729,7 @@
       if (it.items) {
         b.setAttribute("aria-haspopup", "menu");
         b.setAttribute("aria-expanded", "false");
-        h += '<span class="pfas-menu-key" aria-hidden="true">▸</span>';
+        h += '<span class="pfas-menu-key" aria-hidden="true">' + (icon("open", { hidden: true }) || "\u203a") + '</span>';
       } else if (it.key) {
         h += '<span class="pfas-menu-key">' + escapeText(it.key) + "</span>";
       }
@@ -3633,6 +4739,8 @@
           b.title = it.reason;
           h += '<span class="pfas-menu-why">' + escapeText(it.reason) + "</span>";
         }
+      } else if (it.note) {
+        h += '<span class="pfas-menu-note">' + escapeText(it.note) + "</span>";
       }
       b.innerHTML = h;
       b.__pfasItem = it;
@@ -3693,6 +4801,7 @@
   }
   function wireMenu(box) {
     box.addEventListener("click", function (e) {
+      if (box.classList.contains("is-leaving")) { return; }   /* closed: it only fades */
       var b = e.target && e.target.closest ? e.target.closest(".pfas-menu-item") : null;
       if (b && b.parentNode === box) { menuActivate(box, b); }
     });
@@ -3703,6 +4812,7 @@
       if (b.__pfasItem && b.__pfasItem.items) { openSub(box, b, false); } else { closeSub(box); }
     });
     box.addEventListener("keydown", function (e) {
+      if (box.classList.contains("is-leaving")) { e.preventDefault(); return; }
       var all = menuItems(box), i = all.indexOf(doc.activeElement), b = all[i], k = e.key;
       var done = true;
       if (k === "ArrowDown") { menuFocus(box, i + 1); }
@@ -3726,13 +4836,16 @@
       if (done) { e.preventDefault(); e.stopPropagation(); }
     });
   }
-  /* close the open menu (and its submenus); refocus: the focus back to its opener */
-  function closeMenu(refocus) {
+  /* close the open menu (and its submenus); refocus: the focus back to its
+     opener. It fades out as it came, taking no pointer while it does; now:
+     at once (a menu opened in its place) */
+  function closeMenu(refocus, now) {
     if (!menuState) { return; }
     var m = menuState;
     menuState = null;
     closeSub(m.box);
-    if (m.box.parentNode) { m.box.parentNode.removeChild(m.box); }
+    var gone = function () { if (m.box.parentNode) { m.box.parentNode.removeChild(m.box); } };
+    if (now) { gone(); } else { leave(m.box, "is-leaving", gone); }
     if (m.opener) {
       m.opener.removeAttribute("data-menu-open");
       if (m.opener.getAttribute("aria-haspopup") === "menu") { m.opener.setAttribute("aria-expanded", "false"); }
@@ -3760,7 +4873,7 @@
   }
   function openMenu(items, opts) {
     opts = opts || {};
-    closeMenu(false);
+    closeMenu(false, true);
     watchMenus();
     var box = menuBox(items, opts.label, 0), opener = opts.opener || doc.activeElement, host = menuHost(opener);
     wireMenu(box);
@@ -3784,6 +4897,195 @@
   }
   var menu = { open: openMenu, close: closeMenu, isOpen: function () { return !!menuState; },
                place: menuPlace, side: menuSide, find: menuFind };
+
+  /* ── A table row: the whole row opens its item; its actions are its menu ──
+     A row states its item's address once (data-row-open; or data-row-dialog,
+     the id of the .pfas-modal that shows its detail) and its actions
+     once (data-row-actions: a JSON list written by row_menu.actions, each
+     {label, and one of href, modal (a .pfas-modal id), form (a form's id,
+     with optional values to set and a confirm) or event (a name: the row
+     hears "pfas:row-action" with {name, row}; "remove-row" removes it), note,
+     blank, danger, off});
+     no button or link stands inside a row. A click anywhere on the row
+     opens the item (Ctrl, Cmd, Shift or the middle button: a new tab), the
+     row is a Tab stop and Enter opens it. The actions are the row's menu: a
+     right click with a mouse, the menu key or Shift+F10 on the focused
+     row, and on a touch screen a long press or the quiet ⋯ drawn at the
+     row's end, which a mouse never sees (td.row-plus-cell). */
+  var ROW = "tr[data-row-open], tr[data-row-dialog], tr[data-row-actions]";
+  /* a hierarchy's node with a row menu (.pfas-hier: the node is the row),
+     or a card's mini-card standing for an item with no node of its own */
+  var NODE_ROW = ".pfas-hier-node[data-row-actions], .pfas-hier-mini[data-row-actions]";
+  var OPENS = "tr[data-row-open], tr[data-row-dialog]";
+  var ROW_SKIP = "a[href], button, input, select, textarea, label, summary, details, [role=button], [contenteditable], .pfas-menu";
+  var rowPressedAt = 0;
+  /* the row's item: its page (a modifier or the middle button: a new tab) or its dialog */
+  function rowOpen(tr, blank) {
+    var dlg = tr.getAttribute("data-row-dialog"), m = dlg ? doc.getElementById(dlg) : null;
+    if (m) { openModal(m); return; }
+    rowGo(tr.getAttribute("data-row-open"), blank);
+  }
+  function rowGo(url, blank) {
+    if (!url) { return; }
+    if (blank) { window.open(url, "_blank", "noopener"); return; }
+    window.location.assign(url);
+  }
+  function rowActions(tr) {
+    var list = [];
+    try { list = JSON.parse(tr.getAttribute("data-row-actions") || "[]"); } catch (e) { list = []; }
+    return Array.isArray(list) ? list : [];
+  }
+  function openModal(m) { m.classList.add("open"); }
+  function submitForm(f) {
+    var b = f.querySelector("button[type=submit], input[type=submit]");
+    if (f.requestSubmit) { f.requestSubmit(b || null); } else if (b) { b.click(); } else { f.submit(); }
+  }
+  function rowAct(a, tr) {
+    if (a.href) { rowGo(a.href, !!a.blank); return; }
+    if (a.event) {
+      tr.dispatchEvent(new CustomEvent("pfas:row-action", { bubbles: true, detail: { name: a.event, row: tr } }));
+      return;
+    }
+    if (a.modal) {
+      var m = doc.getElementById(a.modal);
+      if (m) { openModal(m); }
+      return;
+    }
+    var f = a.form ? doc.getElementById(a.form) : null;
+    if (!f) { return; }
+    Object.keys(a.values || {}).forEach(function (k) {
+      var n = f.querySelector('[name="' + k + '"]');
+      if (!n) { n = el("input"); n.type = "hidden"; n.name = k; f.appendChild(n); }
+      n.value = String(a.values[k]);
+    });
+    if (a.confirm && !window.confirm(a.confirm)) { return; }
+    submitForm(f);
+  }
+  /* the row's menu as groups: its actions with Open in a new tab, then the
+     ones that end or remove something (danger) after a separator */
+  function rowItems(tr) {
+    var url = tr.getAttribute("data-row-open"), acts = [], last = [];
+    rowActions(tr).forEach(function (a) {
+      if (!a || !a.label) { return; }
+      var it = { label: String(a.label), note: a.note ? String(a.note) : "", act: function () { rowAct(a, tr); } };
+      if (a.off) { it.disabled = true; it.reason = String(a.off); }
+      (a.danger ? last : acts).push(it);
+    });
+    if (url) { acts.push({ label: "Open in a new tab", act: function () { rowGo(url, true); } }); }
+    return [acts, last];
+  }
+  /* a table whose rows carry actions: a cell at the end of every row for
+     the touch screen's ⋯, and a heading for it, so no column shifts */
+  function dotCell(r) {
+    var last = r.lastElementChild;
+    if (last && last.classList.contains("row-plus-cell")) { return; }
+    var head = !r.closest("tbody") && !r.querySelector("td");
+    var c = el(head ? "th" : "td", "row-plus-cell");
+    if (head) { c.setAttribute("aria-hidden", "true"); }
+    if (!head && r.matches(ROW) && rowActions(r).length) {
+      var b = el("button", "pfas-rowmenu");
+      b.innerHTML = icon("more", { hidden: true }) || "\u22ef";
+      b.type = "button";
+      b.setAttribute("aria-haspopup", "menu");
+      b.setAttribute("aria-label", "Actions");
+      c.appendChild(b);
+    }
+    r.appendChild(c);
+  }
+  function rowDots(tr) {
+    var table = tr.closest("table");
+    if (!table) { return; }
+    if (table.__pfasDots) { dotCell(tr); return; }   /* a row added later */
+    table.__pfasDots = true;
+    Array.prototype.forEach.call(table.querySelectorAll("tr"), dotCell);
+  }
+  function initRowLinks(root) {
+    root = root || doc;
+    var rows = Array.prototype.slice.call(root.querySelectorAll(ROW));
+    if (root.matches && root.matches(ROW)) { rows.unshift(root); }
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      if (tr.__pfasRow || !tr.closest("tbody")) { continue; }
+      tr.__pfasRow = true;
+      if (!tr.hasAttribute("tabindex")) { tr.setAttribute("tabindex", "0"); }
+      if (rowActions(tr).length) { rowDots(tr); }
+    }
+    if (doc.__pfasRows) { return; }
+    doc.__pfasRows = true;
+    function rowOf(t) {
+      if (!t || !t.closest) { return null; }
+      var tr = t.closest(ROW);
+      if (!tr || !tr.closest("tbody")) { return null; }
+      var skip = t.closest(ROW_SKIP);
+      return skip && tr.contains(skip) && skip !== tr ? null : tr;
+    }
+    function selecting(tr) {
+      var sel = window.getSelection ? window.getSelection() : null;
+      return !!(sel && !sel.isCollapsed && String(sel).trim() && sel.anchorNode && tr.contains(sel.anchorNode));
+    }
+    doc.addEventListener("click", function (e) {
+      var dots = e.target && e.target.closest ? e.target.closest("td.row-plus-cell > .pfas-rowmenu") : null;
+      if (dots) {
+        var owner = dots.closest(ROW);
+        if (!owner) { return; }
+        e.preventDefault();
+        if (menuState && menuState.opener === dots) { closeMenu(true); return; }
+        openMenu(contextItems(owner), { anchor: dots, opener: dots });
+        return;
+      }
+      var tr = rowOf(e.target);
+      if (!tr || e.defaultPrevented || e.button) { return; }
+      if (Date.now() - rowPressedAt < 800) { e.preventDefault(); return; }   /* the long press's lift */
+      if (!tr.matches(OPENS) || selecting(tr)) { return; }
+      rowOpen(tr, e.ctrlKey || e.metaKey || e.shiftKey);
+    });
+    doc.addEventListener("auxclick", function (e) {
+      var tr = rowOf(e.target);
+      if (tr && e.button === 1 && tr.getAttribute("data-row-open")) { e.preventDefault(); rowGo(tr.getAttribute("data-row-open"), true); }
+    });
+    doc.addEventListener("keydown", function (e) {
+      var tr = e.target;
+      if (!tr || !tr.matches || !tr.matches(ROW) || !tr.closest("tbody")) { return; }
+      /* the menu key or Shift+F10 on the focused row: its menu, under the row */
+      if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+        var items = contextItems(tr);
+        if (items.length) { e.preventDefault(); openMenu(items, { anchor: tr, opener: tr }); }
+        return;
+      }
+      if (e.key !== "Enter" || !tr.matches(OPENS)) { return; }
+      e.preventDefault();
+      rowOpen(tr, e.ctrlKey || e.metaKey);
+    });
+    /* a long press on a touch screen: the row's menu where the finger is */
+    var press = null;
+    function unpress() { if (press) { clearTimeout(press.timer); press = null; } }
+    doc.addEventListener("pointerdown", function (e) {
+      unpress();
+      var tr = e.pointerType === "touch" ? (rowOf(e.target) || (e.target.closest ? e.target.closest(NODE_ROW) || e.target.closest("[data-limit-box]") : null) || tileFor(e.target)) : null;
+      if (!tr) { return; }
+      var x = e.clientX, y = e.clientY, t = e.target;
+      press = { x: x, y: y, timer: setTimeout(function () {
+        press = null;
+        rowPressedAt = Date.now();
+        if (menuState) { return; }   /* the browser's own long press already opened it */
+        var items = contextItems(t);
+        if (items.length) { openMenu(items, { x: x, y: y, opener: tr }); }
+      }, 500) };
+    });
+    doc.addEventListener("pointermove", function (e) {
+      if (press && (Math.abs(e.clientX - press.x) > 10 || Math.abs(e.clientY - press.y) > 10)) { unpress(); }
+    });
+    doc.addEventListener("pointerup", unpress);
+    doc.addEventListener("pointercancel", unpress);
+    /* an editable grid's row taken out: the form no longer posts its fields */
+    doc.addEventListener("pfas:row-action", function (e) {
+      var tr = e.detail && e.detail.row;
+      if (e.detail.name !== "remove-row" || !tr || !tr.parentNode) { return; }
+      var next = tr.nextElementSibling || tr.previousElementSibling;
+      tr.parentNode.removeChild(tr);
+      if (next && next.focus) { next.focus(); }
+    });
+  }
 
   /* ── Right click: a menu for what was clicked ─────────────────────────────
      On every page a right click (a long press on a touch screen; the menu key
@@ -3831,13 +5133,256 @@
     });
     return out.map(function (o) { return o.item; });
   }
+  /* ── A limit box's state (limit_placard.py) ──────────────────────────────
+     Every limit box ([data-limit-box]: a tile, a cell, a tier row) carries a
+     placard of its state, Enforced, Evaluate or Off; its one posted input is
+     limitstate.<box> (drawn once, with the tab's Table view). A right click
+     on the box, the menu key or Shift+F10 on it, or a long press opens the
+     menu with its State group first: the three states, the one in force
+     checked, and Use the method default where the state differs from it.
+     A choice changes that box alone: it writes the input (a change the
+     page's Save counts), and every placard of the box redraws. */
+  var LIMIT_GLYPH = { enforced: "\u25cf", evaluate: "\u25d0", off: "\u29b8" };
+  var LIMIT_WORDS = { enforced: "Enforced", evaluate: "Evaluate", off: "Off" };
+  var LIMIT_LABEL = "State: ";          /* limit_placard.STATE_LABEL */
+  /* the glyph alone, drawn (limit_placard.GLYPH_SVG, GLYPH_SVG_DEFAULT):
+     filled for a state set on this profile, outlined for the method default */
+  var LIMIT_SVG_RING = '<circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/>';
+  var LIMIT_SVG = {
+    enforced: '<circle cx="8" cy="8" r="6.5" fill="currentColor"/>',
+    evaluate: LIMIT_SVG_RING + '<path d="M8 1.5a6.5 6.5 0 0 0 0 13z" fill="currentColor"/>',
+    off: '<path fill-rule="evenodd" fill="currentColor" d="M1.5 8a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0zM4.78 3.02l8.2 8.2-1.76 1.76-8.2-8.2z"/>'
+  };
+  var LIMIT_SVG_DEFAULT = {
+    enforced: LIMIT_SVG_RING,
+    evaluate: LIMIT_SVG_RING + '<path d="M8 2.25v11.5" stroke="currentColor" stroke-width="1.5"/>',
+    off: LIMIT_SVG_RING + '<path d="M3.9 3.9l8.2 8.2" stroke="currentColor" stroke-width="1.5"/>'
+  };
+  [LIMIT_SVG, LIMIT_SVG_DEFAULT].forEach(function (map) {
+    Object.keys(map).forEach(function (st) {
+      map[st] = '<svg class="pfas-glyph" viewBox="0 0 16 16" focusable="false" aria-hidden="true">' + map[st] + "</svg>";
+    });
+  });
+  /* the box's one input: the name its greying follows (data-mute-if) */
+  function limitInput(box) {
+    var name = box.getAttribute("data-mute-if") || "limitstate." + box.getAttribute("data-limit-box");
+    return doc.getElementsByName(name)[0] || null;
+  }
+  /* a placard that is a choice field's own control (limit_placard.choice_box):
+     its states and the value each posts, [[state, value]] in menu order */
+  function limitValues(box) {
+    var v = box.getAttribute("data-limit-values");
+    if (!v) { return null; }
+    try { v = JSON.parse(v); } catch (e) { return null; }
+    return Array.isArray(v) && v.length ? v : null;
+  }
+  function limitState(box) {
+    var input = limitInput(box), vals = limitValues(box);
+    if (vals) {
+      var hit = input ? vals.filter(function (x) { return x[1] === input.value; })[0] : null;
+      return hit ? hit[0] : (box.getAttribute("data-limit-state") || vals[0][0]);
+    }
+    return (input && input.value) || box.getAttribute("data-limit-state") || "enforced";
+  }
+  function drawLimit(key, state, held) {
+    Array.prototype.forEach.call(doc.querySelectorAll("[data-limit-box]"), function (box) {
+      if (box.getAttribute("data-limit-box") !== key) { return; }
+      box.setAttribute("data-limit-state", state);
+      box.classList.toggle("is-muted", state === "off");
+      Array.prototype.forEach.call(box.querySelectorAll("[data-limit-placard]"), function (p) {
+        if (p.getAttribute("data-limit-placard") !== key) { return; }
+        placardGhost(p);
+        ["enforced", "evaluate", "off"].forEach(function (st) { p.classList.toggle("is-" + st, st === state); });
+        if (held) { p.classList.remove("is-default"); }
+        p.classList.toggle("is-unset", state === "enforced" && p.classList.contains("is-empty"));
+        var g = p.querySelector(".pfas-placard-g"), w = p.querySelector(".pfas-placard-w");
+        /* a glyph alone is drawn (limit_placard.GLYPH_SVG), a word's glyph is text */
+        if (g) {
+          if (g.querySelector("svg")) { g.innerHTML = (p.classList.contains("is-default") ? LIMIT_SVG_DEFAULT : LIMIT_SVG)[state]; }
+          else { g.textContent = LIMIT_GLYPH[state]; }
+        }
+        if (w) { w.textContent = LIMIT_WORDS[state]; }
+        p.setAttribute("title", LIMIT_WORDS[state]);
+        /* a glyph alone (a card's corner, a grid cell's mark) is an image
+           whose label is the state, as its hover says */
+        if (p.hasAttribute("aria-label")) { p.setAttribute("aria-label", LIMIT_LABEL + LIMIT_WORDS[state]); }
+        arrive(p, "is-arriving");
+      });
+    });
+    drawGlyphs(doc);
+  }
+  /* a state change cross-fades: a copy of the old placard, laid over it,
+     fades out while the new one fades and grows in (--t-fast). The copy is
+     no placard of the box (no data-limit-placard) and is hidden from
+     assistive technology. */
+  function placardGhost(p) {
+    if (!p.getAnimations || !p.getClientRects || !p.parentNode || !p.getClientRects().length) { return; }
+    var g = p.cloneNode(true);
+    g.removeAttribute("data-limit-placard");
+    g.removeAttribute("title");
+    g.removeAttribute("role");
+    g.removeAttribute("aria-label");
+    g.classList.remove("is-arriving");
+    g.classList.add("pfas-placard-ghost");
+    g.setAttribute("aria-hidden", "true");
+    g.style.margin = "0";
+    p.parentNode.insertBefore(g, p);
+    var a = g.getBoundingClientRect(), b = p.getBoundingClientRect();
+    g.style.marginLeft = Math.round(b.left - a.left) + "px";
+    g.style.marginTop = Math.round(b.top - a.top) + "px";
+    leave(g, "is-leaving", function () { if (g.parentNode) { g.parentNode.removeChild(g); } });
+  }
+  /* A list row's state (.pfas-state-g, profile_grids): the placard's glyph
+     in the placard's colour, its word kept as visually hidden text, so the
+     row's name still says it. A rule with limit boxes (data-glyph-inputs:
+     their posted inputs) shows a glyph for each state its boxes hold, in
+     the order Enforced, Evaluate, Off; a rule with none shows the state its
+     own input holds (data-state-of), the method default's while it is blank.
+     A line that is words (no .pfas-state-g) is written as words. */
+  function glyphStates(line) {
+    var held = [];
+    (line.getAttribute("data-glyph-inputs") || "").split(" ").forEach(function (n) {
+      var inp = n ? doc.getElementsByName(n)[0] : null, v = inp ? inp.value : "";
+      if (LIMIT_WORDS[v] && held.indexOf(v) < 0) { held.push(v); }
+    });
+    return ["enforced", "evaluate", "off"].filter(function (st) { return held.indexOf(st) >= 0; });
+  }
+  function stateLine(line, value) {
+    if (!line.classList || !line.classList.contains("pfas-state-g")) {
+      line.textContent = value ? (LIMIT_WORDS[value] || value) : (line.getAttribute("data-inherited") || "");
+      return;
+    }
+    var states = glyphStates(line), words;
+    if (states.length) {
+      words = states.map(function (st) { return LIMIT_WORDS[st]; }).join(", ");
+    } else {
+      var st = value || line.getAttribute("data-state") || "";
+      states = LIMIT_GLYPH[st] ? [st] : [];
+      words = value ? (LIMIT_WORDS[value] || value) : (line.getAttribute("data-inherited") || LIMIT_WORDS[st] || "");
+    }
+    line.textContent = "";
+    states.forEach(function (st) {
+      var g = el("span", "pfas-state-m is-" + st, LIMIT_GLYPH[st]);
+      g.setAttribute("aria-hidden", "true");
+      line.appendChild(g);
+    });
+    line.appendChild(el("span", "pfas-sr-hide", words));
+  }
+  function drawGlyphs(root) {
+    Array.prototype.forEach.call((root || doc).querySelectorAll(".pfas-state-g"), function (line) {
+      var own = doc.getElementById(line.getAttribute("data-state-of") || "");
+      stateLine(line, own ? own.value : "");
+    });
+    groupStates(root);
+  }
+  /* A group node of the rules list (profile_grids._group_state) is active,
+     green, while any limit box of its rules is Enforced or Evaluate, and
+     idle, grey, while every one is Off: read from the state lines it draws
+     (their boxes' inputs, else the rule's own state). A parent
+     (data-group-of: its groups' keys) is active while any of its groups
+     is. Its words (data-group-words) say which. */
+  function lineStates(line) {
+    var held = glyphStates(line);
+    if (held.length) { return held; }
+    var own = doc.getElementById(line.getAttribute("data-state-of") || "");
+    var v = (own && own.value) || line.getAttribute("data-state") || "";
+    return v ? [v] : [];
+  }
+  function markGroup(n, on) {
+    n.classList.toggle("is-active", on);
+    n.classList.toggle("is-idle", !on);
+    var w = n.querySelector("[data-group-words]");
+    if (w) { w.textContent = w.getAttribute(on ? "data-on-words" : "data-off-words") || w.textContent; }
+  }
+  function groupStates(root) {
+    var nodes = (root || doc).querySelectorAll(".pfas-hier-node.is-group.is-active, .pfas-hier-node.is-group.is-idle");
+    var parents = [];
+    Array.prototype.forEach.call(nodes, function (n) {
+      if (n.hasAttribute("data-group-of")) { parents.push(n); return; }
+      var lines = n.querySelectorAll(".pfas-state-g");
+      if (!lines.length) { return; }
+      markGroup(n, Array.prototype.some.call(lines, function (l) {
+        return lineStates(l).some(function (st) { return st !== "off"; });
+      }));
+    });
+    parents.forEach(function (p) {
+      var hier = p.closest(".pfas-hier") || doc;
+      markGroup(p, (p.getAttribute("data-group-of") || "").split(" ").some(function (k) {
+        var g = k ? hier.querySelector('.pfas-hier-node.is-group[data-hier-target="' + k + '"]') : null;
+        return !!g && g.classList.contains("is-active");
+      }));
+    });
+  }
+  function initGlyphs(root) {
+    drawGlyphs(root);
+    watchGlyphs();
+  }
+  /* a box's state set anywhere (its menu, a script writing its input):
+     every row that shows it follows */
+  function watchGlyphs() {
+    if (doc.__pfasGlyphs) { return; }
+    doc.__pfasGlyphs = true;
+    ["input", "change"].forEach(function (t) {
+      doc.addEventListener(t, function (e) {
+        var n = e.target && e.target.name;
+        if (n && (n.indexOf("limitstate.") === 0 || n.indexOf("rulestate.") === 0)) { drawGlyphs(doc); }
+      });
+    });
+  }
+  function setLimit(box, state) {
+    var key = box.getAttribute("data-limit-box"), input = limitInput(box), vals = limitValues(box);
+    var hit = vals ? vals.filter(function (x) { return x[0] === state; })[0] : null;
+    var value = hit ? hit[1] : state;
+    if (input && input.value !== value) {
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    drawLimit(key, state, true);
+  }
+  function limitItems(box) {
+    var now = limitState(box), seed = box.getAttribute("data-limit-seed") || "", vals = limitValues(box);
+    var states = vals ? vals.map(function (x) { return x[0]; }) : ["enforced", "evaluate", "off"];
+    var items = states.map(function (st) {
+      return { label: LIMIT_WORDS[st], checked: st === now, act: function () { setLimit(box, st); } };
+    });
+    /* its limits' editor is the tile's own menu entry, drawn after this group */
+    if (seed && seed !== now) {
+      items.push({ label: "Use the method default", note: LIMIT_WORDS[seed] || "",
+                   act: function () { setLimit(box, seed); } });
+    }
+    if (!limitInput(box)) {
+      items.forEach(function (it) { it.disabled = true; it.reason = "Not editable here"; });
+    }
+    return items;
+  }
+
   /* the menu for a node, as groups of entries (a separator between groups) */
   function contextItems(target) {
     var groups = [], seen = {};
     function group(items) {
-      items = items.filter(function (it) { if (!it || seen[it.label]) { return false; } seen[it.label] = true; return true; });
-      if (items.length) { groups.push(items); }
+      items = items.filter(function (it) {
+        if (!it) { return false; }
+        if (it.head) { return true; }
+        if (seen[it.label]) { return false; }
+        seen[it.label] = true;
+        return true;
+      });
+      /* a heading alone, its entries all offered above, is no group */
+      if (items.some(function (it) { return !it.head; })) { groups.push(items); }
     }
+    /* a row that states its actions (data-row-actions): those first; a
+       hierarchy's node states them the same way (it is a button, so its
+       own press is choosing it, never an entry of its menu) */
+    sourceGroups(target, true).forEach(group);
+    var node = target.closest(NODE_ROW);
+    if (node) { rowItems(node).forEach(group); }
+    var tile = tileFor(target);
+    if (tile) { tileItems(tile, tileSpec(tile).menu).forEach(group); }
+    var head = target.closest(".pfas-hier-card-t"), hcard = head ? head.closest("[data-hier-card]") : null;
+    if (hcard) { headItems(hcard).forEach(group); }
+    var tr = target.closest("tbody tr"), declared = !!(tr && tr.matches(ROW));
+    if (declared) { rowItems(tr).forEach(group); }
     var cell = target.closest("td, tbody th"), value = [];
     var edit = cell && cell.querySelector(".pfas-cell-btn, .pfas-flag");
     if (edit) { value.push(pressItem("Edit", edit)); }
@@ -3849,8 +5394,7 @@
     var typed = cell && Array.prototype.some.call(cell.querySelectorAll(TEXT_BOX), function (n) { return !n.classList.contains("pfas-sr-hide"); });
     if (shown && !typed) { value.push({ label: "Copy value", act: function () { copyText(shown); } }); }
     group(value);
-    var tr = target.closest("tbody tr");
-    if (tr) {
+    if (tr && !declared) {
       var row = [], rm = tr.querySelector(".pfas-rowmenu");
       if (rm) { row = row.concat(rowMenuItems(rm)); }
       row = row.concat(rowButtons(tr));
@@ -3867,7 +5411,8 @@
              { label: "Copy link", act: function () { copyText(a.href); } }]);
     }
     var ctl = target.closest("button, [role=button], [role=tab], summary, label.pfas-switch");
-    if (ctl && !(tr && ctl.closest(".row-more-menu, .row-actions, .row-actions-cell, .pfas-rowmenu")) &&
+    if (ctl && ctl !== node &&
+        !(tr && ctl.closest(".row-more-menu, .row-actions, .row-actions-cell, .pfas-rowmenu")) &&
         !ctl.classList.contains("pfas-cell-btn") && !ctl.classList.contains("pfas-flag") && !ctl.classList.contains("btn-help")) {
       var box = ctl.matches("label.pfas-switch") ? ctl.querySelector("input[type=checkbox]") : null;
       if (box) { group([pressItem(box.checked ? "Switch off" : "Switch on", box)]); }
@@ -3876,16 +5421,257 @@
     var scope = target.closest("details.pfas-sec, section, .pfas-card, .pfas-sheet-box, fieldset, .pfas-pane, form");
     var help = scope && scope.querySelector(".btn-help");
     if (help && !target.closest(".btn-help")) { group([pressItem("Help", help)]); }
+    sourceGroups(target, false).forEach(group);
     var out = [];
     groups.forEach(function (g, i) { if (i) { out.push({ sep: true }); } out = out.concat(g); });
     return out;
   }
+  /* ── A card's tiles: a click opens the window that edits the tile ─────────
+     A card draws no Edit button. Its actions are drawn once, as triggers:
+     <button data-act="KEY"> in the card's (or a block's) hidden
+     .pfas-hier-acts, each keeping the attributes its page script hears, so a
+     trigger pressed opens what its button opened; a trigger hidden itself is
+     not offered at present, one marked data-danger comes last. A tile names
+     what it opens (data-tile-open="KEY") and what its menu offers
+     (data-tile-menu, a JSON list of KEYs, else the open one), on itself or on
+     the block or card holding it, the nearest winning; KEY is looked up from
+     the tile outwards. data-tile-read: nowhere to edit it, the tile opens a
+     window that reads it. A left click anywhere on the tile but an inline
+     control (a switch, a segment, a button, a link, a field) presses its
+     trigger; the tile is a Tab stop and Enter does the same; a right click,
+     the menu key, Shift+F10 or a long press gives its menu. The window
+     focuses the field the tile reads and gives the focus back to the tile. */
+  var TILE = ".pfas-hier-tile, .pfas-hier-tilebox";
+  var TILE_SKIP = "a[href], button, input, select, textarea, label, summary, .pfas-seg, .pfas-switch, [contenteditable]," +
+                  " .pfas-menu, .pfas-hier-mini";
+  var tilePending = null;
+  /* the nearest of `attrs` on the tile or what holds it, up to its card: [attr, value] */
+  function tileUp(tile, attrs) {
+    for (var n = tile; n && n.nodeType === 1; n = n.parentNode) {
+      for (var i = 0; i < attrs.length; i++) { if (n.hasAttribute(attrs[i])) { return [attrs[i], n.getAttribute(attrs[i])]; } }
+      if (n.hasAttribute("data-hier-card")) { break; }
+    }
+    return null;
+  }
+  /* what a tile does: {open: KEY, read: true, menu: [KEY]}, or null for a tile that only reads where it is */
+  function tileDepth(tile, attr) {
+    var d = 0;
+    for (var n = tile; n && n.nodeType === 1; n = n.parentNode, d++) {
+      if (n.hasAttribute(attr)) { return d; }
+      if (n.hasAttribute("data-hier-card")) { break; }
+    }
+    return -1;
+  }
+  /* the menu is the nearest one no farther out than what the tile opens,
+     and always offers what the tile opens */
+  function tileSpec(tile) {
+    if (!tile || !tile.matches || !tile.matches(TILE)) { return null; }
+    var o = tileUp(tile, ["data-tile-open", "data-tile-read"]), m = tileUp(tile, ["data-tile-menu"]), menu = [];
+    var open = o && o[0] === "data-tile-open" ? o[1] : "";
+    if (m && !(open && tileDepth(tile, "data-tile-menu") > tileDepth(tile, "data-tile-open"))) {
+      try { menu = JSON.parse(m[1] || "[]") || []; } catch (e) { menu = []; }
+    }
+    if (open && menu.indexOf(open) < 0) { menu = [open].concat(menu); }
+    var spec = { open: open, read: !!(o && o[0] === "data-tile-read"), menu: menu };
+    return spec.open || spec.read || menu.length ? spec : null;
+  }
+  /* the acts a node holds as its own (not a nested card's or block's) */
+  function ownActs(n) {
+    var out = [];
+    for (var i = 0; i < n.children.length; i++) {
+      var box = n.children[i];
+      if (!box.classList.contains("pfas-hier-acts")) { continue; }
+      for (var j = 0; j < box.children.length; j++) { if (box.children[j].hasAttribute("data-act")) { out.push(box.children[j]); } }
+    }
+    return out;
+  }
+  /* the trigger KEY names, from `from` outwards up to its card */
+  function actOf(from, key) {
+    for (var n = from; n && n.nodeType === 1; n = n.parentNode) {
+      var hit = ownActs(n).filter(function (b) { return b.getAttribute("data-act") === key; })[0];
+      if (hit) { return hit; }
+      if (n.hasAttribute("data-hier-card")) { break; }
+    }
+    return null;
+  }
+  function actOffered(b) { return !!b && !b.hidden && !b.disabled; }
+  /* a trigger as a menu entry: a refused one (disabled) drawn off, its title saying why */
+  function actItem(b, from) {
+    var it = { label: String(b.textContent || "").replace(/\s+/g, " ").trim(), act: function () { pressAct(b, from); } };
+    if (b.disabled) { it.disabled = true; it.reason = b.getAttribute("title") || ""; }
+    return it;
+  }
+  /* a trigger pressed for a tile (or the heading): its own click, or where it goes */
+  function pressAct(b, from) {
+    tilePending = { tile: from || null, at: Date.now() };
+    var go = b.getAttribute("data-go"), node = b.getAttribute("data-go-node");
+    if (go) { tilePending = null; rowGo(go, false); return; }
+    if (node) {
+      /* another card's values (the parent a tile follows, a tier): that
+         card's own window, in place, the focus back to the tile; with none,
+         its card is chosen */
+      var to = doc.querySelector('[data-hier-card="' + node + '"]'), key = to ? to.getAttribute("data-tile-open") : "";
+      var own = key ? ownActs(to).filter(function (x) { return x.getAttribute("data-act") === key; })[0] : null;
+      if (actOffered(own)) { tilePending = { tile: from || null, at: Date.now() }; own.click(); return; }
+      tilePending = null;
+      var h = b.closest(".pfas-hier"), n = h ? h.querySelector('[data-hier-target="' + node + '"]') : null;
+      if (h) { hierSelect(h, node, true); }
+      if (n && n.focus) { n.focus(); }
+      return;
+    }
+    b.click();
+  }
+  function tileLabel(tile) {
+    var l = tile.querySelector(".pfas-hier-tile-l");
+    return String((l ? l.textContent : tile.getAttribute("aria-label")) || "").replace(/\s+/g, " ").trim();
+  }
+  /* a tile with nowhere to edit it: a window that reads it */
+  function readTile(tile) {
+    var body = el("div", "pfas-tile-read"), v = tile.querySelector(".pfas-hier-tile-v"), s = tile.querySelector(".pfas-hier-tile-s");
+    body.appendChild(el("p", "pfas-tile-read-v", String((v || tile).textContent || "").replace(/\s+/g, " ").trim()));
+    if (s && s.textContent.trim()) { body.appendChild(el("p", "pfas-tile-read-s", s.textContent.trim())); }
+    drawer.open(tileLabel(tile), body, { cls: "is-dialog", opener: tile });
+  }
+  function openTile(tile) {
+    var spec = tileSpec(tile);
+    if (!spec) { return false; }
+    if (spec.read) { readTile(tile); return true; }
+    var b = actOf(tile, spec.open);
+    if (!actOffered(b)) { return false; }
+    pressAct(b, tile);
+    return true;
+  }
+  /* the tile's menu as groups: its actions, then the ones that remove or reset (danger) */
+  function tileItems(tile, keys) {
+    var acts = [], last = [];
+    keys.forEach(function (k) {
+      var b = actOf(tile, k);
+      if (!b || b.hidden) { return; }
+      (b.hasAttribute("data-danger") ? last : acts).push(actItem(b, tile));
+    });
+    return [acts, last];
+  }
+  /* a card heading's menu: every action the card offers, its button row's too */
+  function headItems(card) {
+    var acts = [], last = [];
+    ownActs(card).forEach(function (b) {
+      if (b.hidden) { return; }
+      (b.hasAttribute("data-danger") ? last : acts).push(actItem(b, card.querySelector(".pfas-hier-card-t")));
+    });
+    for (var i = 0; i < card.children.length; i++) {
+      if (!card.children[i].classList.contains("pfas-hier-actions")) { continue; }
+      Array.prototype.forEach.call(card.children[i].querySelectorAll("button, a[href]"), function (n) {
+        if (!n.hidden && said(n)) { acts.push(pressItem(clipped(said(n), 40), n)); }
+      });
+    }
+    return [acts, last];
+  }
+  function tileFor(t) {
+    var tile = t && t.closest ? t.closest(TILE) : null;
+    return tile && tileSpec(tile) ? tile : null;
+  }
+  /* the window just opened for a tile: the field it reads focused, the focus back to the tile on close */
+  function tileNames(tile) {
+    var out = [];
+    Array.prototype.forEach.call(tile.attributes || [], function (a) {
+      if (!/^data-.*names?$/.test(a.name) || !a.value) { return; }
+      var v = a.value;
+      if (/^[\[{]/.test(v)) {
+        try { var j = JSON.parse(v); (Array.isArray(j) ? j : Object.keys(j).map(function (k) { return j[k]; })).forEach(function (x) { out = out.concat(x); }); } catch (e) { /* not a list */ }
+      } else { out.push(v); }
+    });
+    return out.filter(function (x) { return typeof x === "string" && x; });
+  }
+  function tileFocus(body, tile) {
+    var names = tileNames(tile), label = tileLabel(tile).toLowerCase(), hit = null;
+    var marked = body.querySelectorAll("[data-for-name]");
+    for (var i = 0; i < marked.length && !hit; i++) { if (names.indexOf(marked[i].getAttribute("data-for-name")) >= 0) { hit = marked[i]; } }
+    if (!hit && label) {
+      var labels = body.querySelectorAll(".pfas-sheet-flabel, .pfas-pop-l, label");
+      for (var j = 0; j < labels.length && !hit; j++) {
+        var w = String(labels[j].textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+        if (!w || !(w === label || label.indexOf(w) === 0 || w.indexOf(label) === 0)) { continue; }
+        var box = labels[j].tagName === "LABEL" ? labels[j] : labels[j].parentNode;
+        /* a field first, never a stepper's button beside it */
+        hit = box.querySelector("input:not([type=hidden]):not([type=range]), select, textarea") || box.querySelector("button");
+      }
+    }
+    if (hit && hit.focus) { hit.focus(); }
+  }
+  /* only a window a trigger opened (its opener the trigger, or none) is the tile's */
+  function tileOpened(d, opener) {
+    var p = tilePending;
+    tilePending = null;
+    if (!p || !p.tile || Date.now() - p.at > 1500) { return; }
+    if (opener && !(opener.closest && opener.closest(".pfas-hier-acts"))) { return; }
+    drawer.opener = p.tile;
+    tileFocus(d.querySelector(".pfas-drawer-body"), p.tile);
+  }
+  function initTiles(root) {
+    var all = (root || doc).querySelectorAll(TILE);
+    for (var i = 0; i < all.length; i++) {
+      var t = all[i];
+      if (!tileSpec(t)) { continue; }
+      if (!t.hasAttribute("tabindex")) { t.setAttribute("tabindex", "0"); }
+      t.classList.add("is-opens");
+    }
+    if (doc.__pfasTiles) { return; }
+    doc.__pfasTiles = true;
+    doc.addEventListener("click", function (e) {
+      var t = e.target, tile = tileFor(t);
+      if (!tile || e.defaultPrevented || e.button) { return; }
+      var skip = t.closest(TILE_SKIP);
+      if (skip && tile.contains(skip) && skip !== tile) { return; }
+      var sel = window.getSelection ? window.getSelection() : null;
+      if (sel && !sel.isCollapsed && String(sel).trim() && sel.anchorNode && tile.contains(sel.anchorNode)) { return; }
+      if (Date.now() - rowPressedAt < 800) { return; }   /* the long press's lift */
+      openTile(tile);
+    });
+    doc.addEventListener("keydown", function (e) {
+      var tile = e.target;
+      if (!tile || !tile.matches || !tile.matches(TILE) || !tileSpec(tile)) { return; }
+      if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+        var items = contextItems(tile);
+        if (items.length) { e.preventDefault(); openMenu(items, { anchor: tile, opener: tile }); }
+        return;
+      }
+      if (e.key === "Enter") { e.preventDefault(); openTile(tile); }
+    });
+  }
+  /* more groups for every right-click menu: fn(target) returns a list of
+     groups (each a list of entries) or nothing; first: above what the
+     target offers itself (a limit box's states), else after it */
+  var menuSources = [];
+  menu.source = function (fn, opts) { menuSources.push({ fn: fn, first: !!(opts && opts.first) }); };
+  /* a limit box's State group, above what the box offers itself: the menu
+     changes that box alone */
+  menu.source(function (target) {
+    var box = target && target.closest ? target.closest("[data-limit-box]") : null;
+    /* headed by the box's own name, else the word State */
+    return box ? [[{ head: box.getAttribute("data-limit-label") || "State" }].concat(limitItems(box))] : null;
+  }, { first: true });
+  function sourceGroups(target, first) {
+    var out = [];
+    menuSources.forEach(function (s) {
+      if (s.first !== first) { return; }
+      var gs = null;
+      try { gs = s.fn(target); } catch (e) { gs = null; }
+      (gs || []).forEach(function (g) { if (g && g.length) { out.push(g); } });
+    });
+    return out;
+  }
+
   function initContextMenu() {
     if (doc.__pfasContext) { return; }
     doc.__pfasContext = true;
     doc.addEventListener("contextmenu", function (e) {
       var t = e.target && e.target.closest ? e.target : null;
-      if (!t || e.defaultPrevented || e.shiftKey || t.closest(TEXT_BOX) || t.closest(".pfas-menu")) { return; }
+      /* inside the open menu (where the menu key's own event lands once the
+         keydown has opened it): nothing more, not the browser's menu over it */
+      if (t && t.closest(".pfas-menu")) { e.preventDefault(); return; }
+      if (!t || e.defaultPrevented || e.shiftKey || t.closest(TEXT_BOX)) { return; }
+      /* a touch screen's own long press after the row's: the row's menu is open */
+      if (Date.now() - rowPressedAt < 800) { e.preventDefault(); return; }
       var sel = window.getSelection ? window.getSelection() : null;
       if (sel && !sel.isCollapsed && String(sel).trim()) { return; }
       var items = contextItems(t);
@@ -3893,12 +5679,295 @@
       e.preventDefault();
       /* the menu key and Shift+F10 come with no pointer: the menu opens under the focused node */
       var keyed = !e.clientX && !e.clientY;
-      openMenu(items, keyed ? { anchor: t, opener: t } : { x: e.clientX, y: e.clientY, opener: t });
+      openMenu(items, keyed ? { anchor: t, opener: t } : { x: e.clientX, y: e.clientY, opener: menuOpener(t) });
     });
+  }
+  /* where the focus goes back when a right click's menu closes: the
+     nearest node that takes it (the box, tile or row clicked inside), never
+     the word or glyph the pointer was on */
+  var FOCUSABLE = "[data-limit-box], [tabindex]:not([tabindex='-1']), a[href], button, input, select, textarea, summary";
+  function menuOpener(t) {
+    var tile = tileFor(t);
+    var n = t.closest(FOCUSABLE) || tile || t.closest(NODE_ROW) || t.closest(ROW);
+    return n || t;
+  }
+
+  /* ── Hierarchy (.pfas-hier): a list of parent nodes beside the chosen
+     node's card. A node (.pfas-hier-node[data-hier-target], a button) shows
+     the card whose data-hier-card it names and hides the others (hidden,
+     never removed); the choice is remembered per list for the visit
+     (sessionStorage "pfas.hier.<data-hier>"), so a list drawn again keeps
+     it; Up / Down (Home / End) move between the nodes. A card with no
+     node of its own names its parent's (data-hier-parent): choosing it
+     shows that card with the parent's node chosen. A node that heads a
+     nest (aria-controls naming a .pfas-hier-nest under it, a group's
+     rules) opens it on a click and closes it on the next, aria-expanded
+     saying which; choosing a node inside a closed nest opens it, and
+     Up / Down pass over the nodes of a closed one. A band
+     (.pfas-band[data-hi]) draws a range: its bar's ends are --lo / --hi,
+     fractions of its scale (data-scale, else 0 to 200 %). A view switch ([data-view-switch="k"], a
+     segment) shows the blocks [data-view-of="k"] whose data-view is the
+     choice and hides the others, never disabling a field in them, and
+     remembers it (localStorage, its data-view-store). A field the browser
+     refuses while a view or a card hides it shows that view and card
+     first, so the refusal is seen. */
+  function hierStore(kind) {
+    try { return window[kind] || null; } catch (e) { return null; }
+  }
+  function hierGet(kind, key) {
+    try { var s = hierStore(kind); return s ? s.getItem(key) : null; } catch (e) { return null; }
+  }
+  function hierSet(kind, key, v) {
+    try { var s = hierStore(kind); if (s) { s.setItem(key, v); } } catch (e) { /* storage refused: only forgets */ }
+  }
+  /* an axis from `min` (data-min, else 0) to `scale`; one that starts below
+     zero marks its zero (--zero) */
+  function band(el, lo, hi, scale, min) {
+    var base = isFinite(min) ? min : 0;
+    var top = isFinite(scale) && scale > base ? scale : (base < 0 ? 0 : 200);
+    var a = isFinite(lo) ? lo : base, b = isFinite(hi) ? hi : a;
+    if (b < a) { var t = a; a = b; b = t; }
+    function frac(v) { return Math.max(0, Math.min(1, (v - base) / (top - base))); }
+    el.style.setProperty("--lo", String(frac(a)));
+    el.style.setProperty("--hi", String(frac(b)));
+    if (base < 0 && top > 0) { el.style.setProperty("--zero", String(frac(0))); }
+  }
+  function bandOf(n) {
+    band(n, parseFloat(n.getAttribute("data-lo")), parseFloat(n.getAttribute("data-hi")),
+         parseFloat(n.getAttribute("data-scale")), parseFloat(n.getAttribute("data-min")));
+  }
+  function initBands(root) {
+    var all = root.querySelectorAll(".pfas-band[data-hi]");
+    for (var i = 0; i < all.length; i++) { bandOf(all[i]); }
+  }
+  function hierNodes(hier) {
+    return Array.prototype.slice.call(hier.querySelectorAll(".pfas-hier-node[data-hier-target]"));
+  }
+  /* the node that shows `key`'s card: its own, else its parent's */
+  function hierOwner(hier, key) {
+    var nodes = hierNodes(hier);
+    var own = nodes.filter(function (n) { return n.getAttribute("data-hier-target") === key; })[0];
+    if (own) { return key; }
+    var card = Array.prototype.filter.call(hier.querySelectorAll("[data-hier-card]"), function (c) {
+      return c.getAttribute("data-hier-card") === key;
+    })[0];
+    var parent = card ? card.getAttribute("data-hier-parent") : null;
+    return parent && nodes.some(function (n) { return n.getAttribute("data-hier-target") === parent; }) ? parent : null;
+  }
+  /* a group node's nest: the container its aria-controls names, in its list */
+  function nestOf(hier, n) {
+    var id = n.getAttribute("aria-controls"), nest = id ? doc.getElementById(id) : null;
+    return nest && nest.classList.contains("pfas-hier-nest") && hier.contains(nest) ? nest : null;
+  }
+  function setNest(hier, nest, open) {
+    nest.hidden = !open;
+    hierNodes(hier).forEach(function (n) {
+      if (n.getAttribute("aria-controls") === nest.id) { n.setAttribute("aria-expanded", open ? "true" : "false"); }
+    });
+  }
+  /* a node shown: not drawn hidden, nor inside a closed nest */
+  function nodeShown(n) {
+    for (var e = n; e && e.nodeType === 1; e = e.parentNode) {
+      if (e.hidden) { return false; }
+      if (e.classList && e.classList.contains("pfas-hier")) { return true; }
+    }
+    return true;
+  }
+  /* the card that gives way to the next steps out (opacity, 6 px, quick):
+     a copy of it with nothing a script finds or a form posts (no id, name,
+     form or data-*), inert, dropped once it has faded; with reduced motion,
+     none */
+  function cardLeaves(card) {
+    var mm = window.matchMedia;
+    if (!mm || mm("(prefers-reduced-motion: reduce)").matches || !card.parentNode || !card.cloneNode) { return; }
+    var ghost = card.cloneNode(true);
+    [ghost].concat(Array.prototype.slice.call(ghost.querySelectorAll("*"))).forEach(function (n) {
+      Array.prototype.slice.call(n.attributes || []).forEach(function (a) {
+        if (a.name === "id" || a.name === "name" || a.name === "form" || a.name.indexOf("data-") === 0) { n.removeAttribute(a.name); }
+      });
+    });
+    ghost.hidden = false;
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.setAttribute("inert", "");
+    ghost.classList.add("is-leaving");
+    card.parentNode.insertBefore(ghost, card.parentNode.firstChild);
+    function drop() { if (ghost.parentNode) { ghost.parentNode.removeChild(ghost); } }
+    ghost.addEventListener("animationend", drop);
+    setTimeout(drop, 400);
+  }
+  function hierSelect(hier, key, remember) {
+    var nodes = hierNodes(hier), found = null, owner = hierOwner(hier, key);
+    if (!owner) { return null; }
+    nodes.forEach(function (n) {
+      var on = n.getAttribute("data-hier-target") === owner;
+      n.classList.toggle("is-selected", on);
+      n.setAttribute("aria-pressed", on ? "true" : "false");
+      if (on) { found = n; }
+    });
+    if (!found) { return null; }
+    /* the nest the chosen node sits in is opened, so it is seen */
+    for (var e = found.parentNode; e && e !== hier && e.nodeType === 1; e = e.parentNode) {
+      if (e.classList.contains("pfas-hier-nest") && e.hidden) { setNest(hier, e, true); }
+    }
+    var cards = hier.querySelectorAll("[data-hier-card]");
+    for (var i = 0; i < cards.length; i++) {
+      var was = !cards[i].hidden;
+      cards[i].hidden = cards[i].getAttribute("data-hier-card") !== key;
+      if (was && cards[i].hidden) { cardLeaves(cards[i]); }
+    }
+    if (remember && hier.getAttribute("data-hier")) { hierSet("sessionStorage", "pfas.hier." + hier.getAttribute("data-hier"), key); }
+    initTiles(hier);   /* a card drawn again since: its tiles Tab stops too */
+    return found;
+  }
+  function initHier(hier) {
+    if (hier.__pfas) { return; }
+    hier.__pfas = true;
+    var nodes = hierNodes(hier);
+    if (!nodes.length) { return; }
+    var want = hier.getAttribute("data-hier") ? hierGet("sessionStorage", "pfas.hier." + hier.getAttribute("data-hier")) : null;
+    var drawn = hier.querySelector('.pfas-hier-node[aria-pressed="true"]');
+    /* a remembered node now drawn hidden is not chosen again (one in a
+       closed nest is: choosing it opens the nest) */
+    if (want && !nodes.some(function (n) { return n.getAttribute("data-hier-target") === hierOwner(hier, want) && !n.hidden; })) { want = null; }
+    if (!(want && hierSelect(hier, want, false))) {
+      hierSelect(hier, (drawn || nodes[0]).getAttribute("data-hier-target"), false);
+    }
+    hier.addEventListener("click", function (e) {
+      /* the touch screen's dots after a node: the node's row menu */
+      var dots = e.target.closest ? e.target.closest(".pfas-hier-dots") : null;
+      if (dots && dots.closest(".pfas-hier") === hier) {
+        var owner = dots.previousElementSibling;
+        while (owner && !owner.matches(NODE_ROW)) { owner = owner.previousElementSibling; }
+        if (!owner) { return; }
+        if (menuState && menuState.opener === dots) { closeMenu(true); return; }
+        openMenu(contextItems(owner), { anchor: dots, opener: dots });
+        return;
+      }
+      /* a count in a card's table opens its list, as a grid's links cell */
+      var a = e.target.closest ? e.target.closest(".pfas-hier-table .pfas-sheet-links") : null;
+      if (a && a.closest(".pfas-hier") === hier) { e.preventDefault(); openSheetPop(a, a.nextElementSibling); return; }
+      var n = e.target.closest ? e.target.closest(".pfas-hier-node[data-hier-target]") : null;
+      if (n && n.closest(".pfas-hier") === hier) {
+        /* a group's node: one click opens its nest, the next closes it */
+        var nest = nestOf(hier, n), open = nest ? nest.hidden : false;
+        hierSelect(hier, n.getAttribute("data-hier-target"), true);
+        if (nest) { setNest(hier, nest, open); }
+      }
+    });
+    hier.addEventListener("keydown", function (e) {
+      /* the menu key or Shift+F10 on a node with a row menu: its menu, under
+         the node (the page's contextmenu leaves Shift to the browser) */
+      if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && e.target.matches &&
+          e.target.matches(NODE_ROW) && e.target.closest(".pfas-hier") === hier) {
+        var items = contextItems(e.target);
+        if (items.length) { e.preventDefault(); openMenu(items, { anchor: e.target, opener: e.target }); }
+        return;
+      }
+      var keys = { ArrowUp: -1, ArrowDown: 1, Home: "first", End: "last" };
+      if (!(e.key in keys)) { return; }
+      /* a node drawn hidden (a compound that sets nothing of its own) is passed over */
+      var list = hierNodes(hier).filter(nodeShown), i = list.indexOf(doc.activeElement);
+      if (i < 0) { return; }
+      var k = keys[e.key];
+      var next = list[k === "first" ? 0 : (k === "last" ? list.length - 1 : Math.max(0, Math.min(list.length - 1, i + k)))];
+      next.focus();
+      hierSelect(hier, next.getAttribute("data-hier-target"), true);
+      e.preventDefault();
+    });
+  }
+  /* the segment's chosen item, after its own click or key has moved it */
+  function segValue(seg) {
+    var on = seg.querySelector('.pfas-seg-item[aria-pressed="true"], .pfas-seg-item[aria-selected="true"]');
+    return on ? on.getAttribute("data-value") : null;
+  }
+  function segPress(seg, value) {
+    var items = seg.querySelectorAll(".pfas-seg-item");
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].getAttribute("data-value") === value) { press(seg, items[i]); placePill(seg); return true; }
+    }
+    return false;
+  }
+  function onSegChoice(seg, fn) {
+    seg.addEventListener("click", function (e) {
+      if (e.target.closest && e.target.closest(".pfas-seg-item")) { fn(segValue(seg)); }
+    });
+    seg.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") { fn(segValue(seg)); }
+    });
+  }
+  function showView(name, value, remember) {
+    var blocks = doc.querySelectorAll("[data-view-of]"), any = false;
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].getAttribute("data-view-of") !== name) { continue; }
+      var was = blocks[i].hidden;
+      blocks[i].hidden = blocks[i].getAttribute("data-view") !== value;
+      /* a view chosen rises in as a card does; a view of cards has its
+         cards rise already */
+      if (remember && was && !blocks[i].hidden && !blocks[i].querySelector(".pfas-hier-card")) { arrive(blocks[i], "is-arriving"); }
+      any = any || !blocks[i].hidden;
+    }
+    var segs = doc.querySelectorAll("[data-view-switch]");
+    for (var j = 0; j < segs.length; j++) {
+      if (segs[j].getAttribute("data-view-switch") !== name) { continue; }
+      if (segValue(segs[j]) !== value) { segPress(segs[j], value); }
+      if (remember && segs[j].getAttribute("data-view-store")) { hierSet("localStorage", segs[j].getAttribute("data-view-store"), value); }
+    }
+    return any;
+  }
+  function initViewSwitch(seg) {
+    if (seg.__pfasView) { return; }
+    seg.__pfasView = true;
+    var name = seg.getAttribute("data-view-switch"), key = seg.getAttribute("data-view-store");
+    var kept = key ? hierGet("localStorage", key) : null;
+    if (!(kept && seg.querySelector('.pfas-seg-item[data-value="' + kept + '"]') && showView(name, kept, false))) {
+      showView(name, segValue(seg), false);
+    }
+    onSegChoice(seg, function (v) { if (v) { showView(name, v, true); } });
+  }
+  function revealHidden(e) {
+    for (var n = e.target; n && n.nodeType === 1; n = n.parentNode) {
+      if (n.hidden && n.hasAttribute("data-view-of")) { showView(n.getAttribute("data-view-of"), n.getAttribute("data-view"), false); }
+      if (n.hidden && n.hasAttribute("data-hier-card")) {
+        var h = n.parentNode && n.parentNode.closest ? n.parentNode.closest(".pfas-hier") : null;
+        if (h) { hierSelect(h, n.getAttribute("data-hier-card"), false); }
+      }
+    }
+  }
+  function initHierAll(root) {
+    var hs = root.querySelectorAll(".pfas-hier"); for (var i = 0; i < hs.length; i++) { initHier(hs[i]); }
+    initBands(root);
+    var vs = root.querySelectorAll("[data-view-switch]"); for (var v = 0; v < vs.length; v++) { initViewSwitch(vs[v]); }
+    if (!doc.__pfasReveal) {
+      doc.__pfasReveal = true;
+      doc.addEventListener("invalid", revealHidden, true);
+    }
+  }
+
+  /* The pinned bar's Save line (pfas_macros save-bar): a field of the form it
+     names, inside it or joined to it by form=, changed since the page was
+     drawn. One listener for the page; a submit ends the page. */
+  var unsavedWatched = false;
+  function initUnsaved() {
+    if (unsavedWatched) { return; }
+    unsavedWatched = true;
+    function changed(e) {
+      var form = e.target && e.target.form;
+      if (!form || !form.id) { return; }
+      var notes = doc.querySelectorAll("[data-unsaved-for]");
+      for (var i = 0; i < notes.length; i++) {
+        if (notes[i].getAttribute("data-unsaved-for") === form.id && !notes[i].classList.contains("is-dirty")) {
+          notes[i].classList.add("is-dirty");
+          notes[i].textContent = "Unsaved changes";
+        }
+      }
+    }
+    doc.addEventListener("input", changed);
+    doc.addEventListener("change", changed);
   }
 
   function init(root) {
     root = root || doc;
+    initUnsaved();
     var multis = root.querySelectorAll(".pfas-multi"); for (var mi = 0; mi < multis.length; mi++) { initMulti(multis[mi]); }
     var pickers = root.querySelectorAll(".pfas-picker"); for (var pi = 0; pi < pickers.length; pi++) { initPicker(pickers[pi]); }
     var plists = root.querySelectorAll(".pfas-picker-lists"); for (var pl = 0; pl < plists.length; pl++) { initPickerLists(plists[pl]); }
@@ -3908,16 +5977,23 @@
     initHScroll();
     watchTables();
     watchListings();
+    watchMotion();
     initModals(root);
     initRows(root);
     initSheets(root);
     initHelp();
     initContextMenu();
+    initRowLinks(root);
+    initTiles(root);
+    initGlyphs(root);
+    initTips();
+    alertMarks(root);
     var segs = root.querySelectorAll(".pfas-seg"); for (var i = 0; i < segs.length; i++) { initSeg(segs[i]); }
     var secs = root.querySelectorAll("details.pfas-sec"); for (var si = 0; si < secs.length; si++) { initSection(secs[si]); }
     var fabs = root.querySelectorAll(".pfas-fab"); for (var f = 0; f < fabs.length; f++) { initFab(fabs[f]); }
     var trees = root.querySelectorAll(".pfas-tree"); for (var t = 0; t < trees.length; t++) { initTree(trees[t]); }
-    initNavTree(root);
+    initHierAll(root);
+    initNavTiles(root);
     var forms = root.querySelectorAll("form[data-autosubmit]");   /* a filter bar: applies on change */
     for (var a = 0; a < forms.length; a++) {
       (function (form) {
@@ -3949,15 +6025,171 @@
     var segs = (root || doc).querySelectorAll(".pfas-seg"); for (var i = 0; i < segs.length; i++) { placePill(segs[i]); initStripCue(segs[i]); stripCue(segs[i]); }
   }
   window.addEventListener("resize", function () { placeAll(); });
+  watchGlyphs();
   /* the tabs change width once the web font is in: place each marker again */
   window.PFAS.numeric.whenSettled(window, doc, function () { placeAll(); });
+  /* one icon per group of sample types (sample_type_icons.py): the page
+     macro writes the drawings once as JSON (#pfas-type-icons), so a row this
+     script builds draws the same icon a template does. A code no group holds
+     draws nothing. */
+  var typeSpecCache = null;
+  function typeSpec() {
+    if (typeSpecCache) { return typeSpecCache; }
+    var el = document.getElementById("pfas-type-icons");
+    if (!el) { return null; }
+    try { typeSpecCache = JSON.parse(el.textContent || "{}"); } catch (e) { return null; }
+    return typeSpecCache;
+  }
+  function typeGroup(code) {
+    var spec = typeSpec(), text = String(code == null ? "" : code).trim(), key;
+    if (!spec || !text) { return null; }
+    if (spec.words[text]) { return text; }
+    key = text.toUpperCase();
+    if (!spec.codes[key]) { key = key.replace(/-/g, " ").split(/\s+/)[0]; }
+    return spec.codes[key] || null;
+  }
+  function typeLabel(code, sub) {
+    var spec = typeSpec(), g = typeGroup(code), text = String(code == null ? "" : code).trim();
+    if (!g) { return text; }
+    if (g === "not_judged") { return spec.words[g]; }
+    sub = sub != null ? String(sub) : (spec.words[text] ? "" : text);
+    return sub ? spec.words[g] + ": " + sub : spec.words[g];
+  }
+  function typeIcon(code, sub, na, hidden) {
+    var spec = typeSpec(), g = typeGroup(code), name;
+    if (!g) { return ""; }
+    name = na ? spec.words[g] + ": " + spec.na : typeLabel(code, sub);
+    return '<svg class="pfas-type is-' + g.replace("_", "-") + (na ? " is-na" : "") + '" viewBox="0 0 24 24" focusable="false" ' +
+           (hidden ? 'aria-hidden="true"' : 'role="img" aria-label="' + esc(name) + '"') +
+           '><title>' + esc(name) + '</title>' + spec.drawings[g] + '</svg>';
+  }
+  function typeCell(code, words) {
+    words = words == null ? String(code == null ? "" : code) : String(words);
+    var icon = typeIcon(code, words, false, true);
+    return icon ? '<span class="pfas-type-cell">' + icon + '<span>' + esc(words) + '</span></span>' : esc(words);
+  }
+  /* every other icon (icons.py): the page macro writes the drawings once as
+     JSON (#pfas-icons), so an icon this script draws is the one a template
+     draws. A name the set does not hold draws nothing. */
+  var iconSpecCache = null;
+  function iconSpec() {
+    if (iconSpecCache) { return iconSpecCache; }
+    var el = doc.getElementById("pfas-icons");
+    if (!el) { return null; }
+    try { iconSpecCache = JSON.parse(el.textContent || "{}"); } catch (e) { return null; }
+    return iconSpecCache;
+  }
+  /* opts: label (the words, else the drawing's own), state (done, now,
+     next), mark (warn, fail, wait, back), size (md, lg, xl), hidden, colour */
+  function icon(name, opts) {
+    var spec = iconSpec(), o = opts || {}, cls, tone, words;
+    name = String(name == null ? "" : name);
+    if (name.indexOf("type:") === 0) { return typeIcon(name.slice(5), o.label, false, o.hidden); }
+    if (!spec || !spec.drawings[name]) { return ""; }
+    words = o.label ? String(o.label) : (spec.words[name] || name);
+    tone = o.colour || spec.colour[name];
+    if (o.state === "next") { tone = "neutral"; }
+    cls = "pfas-icon is-" + name + (tone ? " is-" + tone : "") + (o.state ? " is-" + o.state : "") +
+          (o.size && o.size !== "sm" ? " is-" + o.size : "");
+    return '<svg class="' + cls + '" viewBox="0 0 24 24" focusable="false" ' +
+           (o.hidden ? 'aria-hidden="true">' : 'role="img" aria-label="' + esc(words) + '"><title>' + esc(words) + '</title>') +
+           spec.drawings[name] + (o.mark && spec.marks[o.mark] ? spec.marks[o.mark] : "") + '</svg>';
+  }
+  function tipIcon(name, label, opts) {
+    var o = {}, k, svg;
+    for (k in (opts || {})) { if (Object.prototype.hasOwnProperty.call(opts, k)) { o[k] = opts[k]; } }
+    o.label = label; o.hidden = true;
+    svg = icon(name, o);
+    if (!svg) { return esc(label); }
+    return '<span class="pfas-tip" tabindex="0" role="img" aria-label="' + esc(label) + '" data-pfas-tip="' + esc(label) + '">' + svg + '</span>';
+  }
+  /* the tooltip: an icon's words on pointer hover, keyboard focus and a long
+     press; it stays while the pointer is over it and closes on Escape */
+  var tipEl = null, tipFor = null, tipPress = null;
+  function tipShow(target) {
+    var words = target.getAttribute("data-pfas-tip"), r, top;
+    if (!words) { return; }
+    if (!tipEl) {
+      tipEl = doc.createElement("div");
+      tipEl.className = "pfas-tooltip"; tipEl.setAttribute("role", "tooltip"); tipEl.id = "pfas-tooltip";
+      tipEl.addEventListener("mouseleave", function () { tipHide(); });
+      doc.body.appendChild(tipEl);
+    }
+    tipEl.textContent = words; tipEl.hidden = false; tipFor = target;
+    r = target.getBoundingClientRect ? target.getBoundingClientRect() : { left: 0, top: 0, bottom: 0, width: 0 };
+    top = r.top - (tipEl.offsetHeight || 24) - 6;
+    tipEl.style.left = Math.max(4, r.left) + "px";
+    tipEl.style.top = (top < 4 ? r.bottom + 6 : top) + "px";
+  }
+  function tipHide() {
+    if (tipEl) { tipEl.hidden = true; }
+    tipFor = null;
+  }
+  function tipTarget(e) {
+    var n = e.target;
+    while (n && n.nodeType === 1) { if (n.hasAttribute && n.hasAttribute("data-pfas-tip")) { return n; } n = n.parentNode; }
+    return null;
+  }
+  function initTips() {
+    if (doc.__pfasTips) { return; }
+    doc.__pfasTips = true;
+    doc.addEventListener("mouseover", function (e) { var t = tipTarget(e); if (t) { tipShow(t); } });
+    doc.addEventListener("mouseout", function (e) {
+      var t = tipTarget(e), to = e.relatedTarget;
+      if (t && t === tipFor && !(to && tipEl && (to === tipEl || tipEl.contains(to))) && !(to && t.contains(to))) { tipHide(); }
+    });
+    doc.addEventListener("focusin", function (e) { var t = tipTarget(e); if (t) { tipShow(t); } });
+    doc.addEventListener("focusout", function (e) { if (tipTarget(e) === tipFor) { tipHide(); } });
+    doc.addEventListener("keydown", function (e) { if ((e.key === "Escape" || e.key === "Esc") && tipFor) { tipHide(); } });
+    doc.addEventListener("touchstart", function (e) {
+      var t = tipTarget(e);
+      if (tipPress) { clearTimeout(tipPress); tipPress = null; }
+      if (!t) { if (tipFor) { tipHide(); } return; }
+      tipPress = setTimeout(function () { tipPress = null; tipShow(t); }, 450);
+    }, { passive: true });
+    doc.addEventListener("touchend", function () { if (tipPress) { clearTimeout(tipPress); tipPress = null; } }, { passive: true });
+  }
+  /* a list of notices (.bench-alerts): each says its kind by a mark at its
+     start, a failure's diamond or a warning's triangle, not by the colour of
+     its edge alone. A notice a template already marks is left as it is. */
+  function hasMark(li) {
+    for (var c = li.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 1 && /(^|\s)pfas-(alert-mark|icon)(\s|$)/.test(c.getAttribute("class") || "")) { return true; }
+    }
+    return false;
+  }
+  function alertMarks(root) {
+    var items = (root || doc).querySelectorAll(".bench-alerts > li.bench-bad, .bench-alerts > li.bench-warn"), i, li, kind, svg, span;
+    for (i = 0; i < items.length; i++) {
+      li = items[i];
+      if (hasMark(li)) { continue; }
+      kind = li.className.indexOf("bench-bad") >= 0 ? "fail" : "warn";
+      svg = icon(kind, { size: "md" });
+      if (!svg) { continue; }
+      span = doc.createElement("span");
+      span.className = "pfas-alert-mark";
+      span.innerHTML = svg;
+      li.insertBefore(span, li.firstChild);
+    }
+  }
   window.PFAS = window.PFAS || {};
   /* range, picker, num: one control drawn where init() does not reach (a drawer, outside the content area) */
-  window.PFAS.components = { esc: esc, labToday: labToday, stripCue: stripCue, init: init, enhance: enhance, theme: theme, drawer: drawer, placePill: placePill, wrapTables: wrapTables, sheet: sheet,
-                             range: initRange, picker: initPicker, num: makeNum, initNavTree: initNavTree, resetNavTree: resetNavTree,
+  window.PFAS.components = { muteIf: applyMuteIf, esc: esc, labToday: labToday, labelListSearch: labelListSearch, stripCue: stripCue, init: init, enhance: enhance, theme: theme, drawer: drawer, placePill: placePill, seg: initSeg, wrapTables: wrapTables, sheet: sheet,
+                             range: initRange, picker: initPicker, num: makeNum, fields: houseFields, initNavTiles: initNavTiles, resetNavTiles: resetNavTiles,
                              tables: initTables, initColResize: initColResize, initScrollCue: initScrollCue, switchWord: switchWord,
                              hscroll: { init: initHScroll, railBox: railBox, autoSpeed: autoSpeed, scroller: scroller,
                                         place: function () { if (hplace) { hplace(); } }, rail: function () { return hrail; } },
                              inheritMark: inheritMark, help: { open: openHelp, close: closeHelp }, menu: menu,
-                             context: { items: contextItems, init: initContextMenu } };
+                             limit: { items: limitItems, set: setLimit, line: stateLine, glyphs: drawGlyphs, groups: groupStates,
+                                      svg: { set: LIMIT_SVG, "default": LIMIT_SVG_DEFAULT } },
+                             motion: { leave: leave, stay: stay, arrive: arrive, settleList: settleList, nameTabs: nameTabs, unnameTabs: unnameTabs,
+                                       ring: ring, hint: hint, stillGif: stillGif, noticed: noticed },
+                             icon: { svg: icon, tip: tipIcon, alerts: alertMarks, tips: initTips, hide: tipHide, states: stateCells, coreImages: coreImages,
+                                     reset: function () { iconSpecCache = null; } },
+                             type: { icon: typeIcon, cell: typeCell, group: typeGroup, label: typeLabel, reset: function () { typeSpecCache = null; } },
+                             context: { items: contextItems, init: initContextMenu },
+                             rows: { init: initRowLinks, items: rowItems },
+                             tiles: { init: initTiles, open: openTile, spec: tileSpec, act: actOf, press: pressAct },
+                             hier: { init: initHierAll, band: band, drawBand: bandOf, select: hierSelect, view: showView },
+                             equation: { init: initEquations, draw: drawEquations, open: openEquation } };
 })();

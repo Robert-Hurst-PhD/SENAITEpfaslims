@@ -181,7 +181,7 @@ class PFASHomogenisationView(ViewHelpers, GateMixin, BrowserView):
             return
         valid = set(m for m, _t in self.method_choices())
         if method not in valid:
-            self.errors.append(u"Choose the method used.")
+            self.errors.append(u"Choose the technique used.")
             return
         unit_name = u""
         if serial:

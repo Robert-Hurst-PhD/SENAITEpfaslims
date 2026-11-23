@@ -18,7 +18,7 @@
     }
 
     .receipt {
-      max-width: 380px; margin: 0 auto; padding: 28px 28px 20px;
+      max-width: 440px; margin: 0 auto; padding: 28px 28px 20px;
       border: 2px solid var(--s-dark); border-radius: 8px;
     }
 
@@ -48,9 +48,14 @@
     }
     .tracking-number {
       font-family: var(--font-mono, monospace);
-      font-size: 28px; font-weight: 900; color: var(--s-primary-dk);
-      letter-spacing: .08em; word-spacing: -.02em;
+      font-size: 24px; font-weight: 900; color: var(--s-primary-dk);
+      letter-spacing: .02em; white-space: nowrap;
     }
+    /* what was received: the sample by both its numbers, and its CoC */
+    .receipt-ids { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    .receipt-ids th { text-align: left; font-weight: 600; color: var(--s-secondary); padding: 2px 8px 2px 0;
+                      white-space: nowrap; vertical-align: top; }
+    .receipt-ids td { padding: 2px 0; word-break: break-word; }
 
     /* ── QR code ──────────────────────────────────────────────────────────── */
     .qr-section {
@@ -64,9 +69,11 @@
       font-size: 10px; color: var(--s-secondary); margin-top: 8px; text-align: center;
     }
     .qr-url {
-      font-family: var(--font-mono, monospace); font-size: 9px; color: var(--s-info-text);
-      margin-top: 4px; word-break: break-all; text-align: center;
+      font-family: var(--font-mono, monospace); font-size: 12px; color: var(--s-info-text);
+      margin-top: 4px; overflow-wrap: anywhere; text-align: center;
     }
+    /* the address breaks before the tracking number, never inside it */
+    .qr-url span { display: inline-block; max-width: 100%; white-space: nowrap; }
 
     /* ── No QR fallback ───────────────────────────────────────────────────── */
     .qr-placeholder {
@@ -111,7 +118,7 @@
 
   <!-- Header -->
   <div class="receipt-header">
-    <div class="lab-name">PFAS Analytical Laboratory</div>
+    <div class="lab-name" tal:content="view/lab_name">Laboratory</div>
     <div class="receipt-title">Sample Receipt</div>
   </div>
 
@@ -125,6 +132,11 @@
          style="font-size:var(--fs-lg);color:var(--s-secondary);">No tracking number provided</div>
   </div>
 
+  <!-- What was received -->
+  <table class="receipt-ids" tal:define="ids view/identity" tal:condition="ids">
+    <tr tal:repeat="row ids"><th tal:content="python:row[0]">Sample</th><td tal:content="python:row[1]">DEMO-0001</td></tr>
+  </table>
+
   <!-- QR code -->
   <div class="qr-section" tal:condition="view/tracking_number">
     <tal:qr tal:condition="view/qr_svg">
@@ -134,7 +146,7 @@
       QR code unavailable
     </div>
     <div class="qr-label">Scan to track your sample</div>
-    <div class="qr-url" tal:content="view/tracker_url">http://...</div>
+    <div class="qr-url"><span tal:repeat="part view/tracker_url_parts" tal:content="part">http://...</span></div>
   </div>
 
   <!-- Instructions -->
@@ -155,6 +167,9 @@
 </div><!-- /.receipt -->
 
 <button class="print-btn no-print" onclick="window.print()">Print Receipt</button>
+<p class="no-print" style="text-align:center" tal:define="num view/coc_link_number" tal:condition="num">
+  <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-coc?coc=${num}">CoC</a>
+</p>
 
 </body>
 </html>

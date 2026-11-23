@@ -43,6 +43,8 @@ from senaite.pfas.qc_qualification import format_remark_codes
 # nothing from Plone at load -- there is no import-order hazard. Most add-on helpers in this file are imported
 # locally inside the method that needs them (see _bapi, analytes_for_failure,
 # get_batch); do not copy this pattern for a module that does touch Plone.
+from senaite.pfas import above_range as _above_range
+from senaite.pfas.above_range import REASONS_KEY as ABOVE_RANGE_REASONS_KEY
 from senaite.pfas import holding_time
 from senaite.pfas import lab_time
 from senaite.pfas import print_doc
@@ -54,6 +56,13 @@ from senaite.pfas.study_runs import CHECKLIST_KEY  # noqa: E402  (one definition
 from senaite.pfas.raw_edit import FAILED_TEXT as RAW_FAILED_TEXT  # noqa: E402
 from senaite.pfas.raw_edit import WAITING_TEXT as RAW_WAITING_TEXT  # noqa: E402
 INSTRUMENT_REPORT_DIR = os.environ.get("PFAS_INSTRUMENT_REPORTS", "/data/instrument_reports")
+# the QC result the worker files for a sample's result above the calibration
+# range with no dilution (above_range)
+ABOVE_RANGE_QC_TYPE = _above_range.QC_TYPE
+# and for a sample's result the instrument wrote BLoQ with no number
+from senaite.pfas import no_number as _no_number  # noqa: E402
+from senaite.pfas.injection_identity import KEY as IDENTITY_KEY  # noqa: E402
+from senaite.pfas.review_send_back import KEY as SEND_BACK_KEY  # noqa: E402
 DEFAULT_DB_PATH       = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
 
@@ -98,6 +107,23 @@ def on_after_transition(instance, event):
     except Exception as exc:                                    # noqa: BLE001
         logger.error("criteria-freeze: failed for worksheet %s on verify: %s",
                      getattr(instance, "getId", lambda: "?")(), exc)
+    # each result keeps the reporting limit it was verified with
+    try:
+        from senaite.pfas import verified_rl
+        review = instance.restrictedTraverse(str("@@pfas-data-review"))
+        verified_rl.freeze_worksheet(review._portal(), instance)
+    except Exception as exc:                                    # noqa: BLE001
+        logger.error("RL freeze: failed for worksheet %s on verify: %s",
+                     getattr(instance, "getId", lambda: "?")(), exc)
+    # the worksheet keeps the QC types not run and the deviations that
+    # released them, as verified
+    try:
+        from senaite.pfas import verified_rl
+        review = instance.restrictedTraverse(str("@@pfas-data-review"))
+        verified_rl.freeze_worksheet_not_run(instance, lambda: review.qc_types_not_run(instance))
+    except Exception as exc:                                    # noqa: BLE001
+        logger.error("not-run freeze: failed for worksheet %s on verify: %s",
+                     getattr(instance, "getId", lambda: "?")(), exc)
 
 # Ordered checklist items (key, label, auto-computed)
 _CHECKLIST_ITEMS = [
@@ -130,6 +156,12 @@ _CHECKLIST_ITEMS = [
 # model to reach this view at all (`can_act`), so capability and classification
 # stay separate -- do not attach permissions to this group.
 AUTOMATION_GROUP = "PFASAutomation"
+
+# an interim certificate is released in Submit's sign dialog
+INTERIM_SIGN_FIRST = u"Sign the interim certificate to submit."
+# before verification a final signed on the card would replace the interim
+# certificate that waits to be issued
+INTERIM_WAITS = u"An interim certificate waits to be issued: issue it before signing the final."
 
 
 def changed_after(change_at, written_at):
@@ -196,8 +228,8 @@ def _is_analyst(context):
 
 
 # A lot cell an analyst has filled in to mean "this material has no lot number".
-# Dry ice, compressed gas and a machined part genuinely have none, and FM-ENV-004
-# on the released WS-0005 records exactly that: `{"name": "Dry ice", "lot": "N/A"}`.
+# Dry ice, compressed gas and a machined part genuinely have none, and the
+# processing stage on the released WS-0005 records exactly that: `{"name": "Dry ice", "lot": "N/A"}`.
 #
 # Treated as NO LOT, which is what the analyst meant, not as a lot that failed to
 # resolve. Resolving it would have invented a traceability failure for dry ice the
@@ -236,6 +268,8 @@ def _run_order(rows):
 class PFASDataReviewView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/data_review.pt")
+    # {lot: reason} of the worksheet whose traceability is being built
+    _use_reasons = None
 
     def __call__(self):
         flatten_form(self.request)
@@ -367,6 +401,19 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             logger.warning("import_problems: %s", exc)
             return []
 
+    def import_refusals(self):
+        """Run files delivered after the worksheet closed, refused by the
+        worker: the record stands, nothing is held."""
+        ws = self._get_worksheet()
+        if ws is None or not self.db_available:
+            return []
+        try:
+            return [ip for ip in self._store().import_problems(ws.getId(), refused=True)
+                    if ip.get("status") == "refused"]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("import_refusals: %s", exc)
+            return []
+
     def ws_state(self):
         ws = self._get_worksheet()
         if not ws:
@@ -377,6 +424,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             from senaite.pfas.study_runs import checklist_review_state
             return checklist_review_state(state, False, self._get_checklist(ws))
         return state
+
+    def ws_state_title(self):
+        """The worksheet's state as core titles it, for the eye; ws_state
+        stays the id the page's logic reads."""
+        from senaite.pfas.browser.sample_status import _state_title
+        return _state_title(self._get_worksheet() or self.context, self.ws_state())
 
     def _study_review(self, ws):
         """A study worksheet without analyses: its review is this checklist
@@ -392,9 +445,6 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # result and RT): an old link lands there
         return "final_data" if tab == "samples" else tab
 
-    # the stage names the lab reads (sample_status keeps the five-stage model)
-    _STAGE_WORDS = {1: u"Processing", 2: u"Extraction", 3: u"Analysis", 4: u"Review", 5: u"Reported"}
-
     def context_tree(self):
         """Where this run sits: client > chain of custody >
         batch > this worksheet > its stage, with the samples and QC under it.
@@ -405,13 +455,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         from bika.lims import api
         from senaite.pfas.core_fields import samples_of
         from senaite.pfas.browser.sample_status import _compute_stage, _build_stage_steps
-        out = {"client": None, "coc": [], "batch": None, "worksheet": {"id": ws.getId(), "state": self.ws_state(),
+        out = {"client": None, "coc": [], "batch": None, "worksheet": {"id": ws.getId(), "state": self.ws_state_title(),
                                                                        "url": ws.absolute_url()},
                "stages": [], "samples": [], "qc": 0}
         try:
             stage, who = _compute_stage(ws)
-            out["stages"] = [dict(s, label=self._STAGE_WORDS.get(s["num"], s["label"]))
-                             for s in _build_stage_steps(stage)]
+            # the one line of stage names (sample_status.STAGES)
+            out["stages"] = _build_stage_steps(stage)
             out["stage_who"] = who
         except Exception as exc:                            # noqa: BLE001
             logger.warning("context_tree stage: %s", exc)
@@ -481,31 +531,47 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             u"One or more items carry an automated attestation. ISO 17025 "
             u"requires a person to authorise results, so a human must sign "
             u"those items off before submission."),
-        "submitted_for_review":    u"Submitted for manager review.",
+        "submitted_for_review":    u"Submitted for verification.",
         "workflow_error":          u"Workflow transition failed — check worksheet state.",
         "wrong_state":             u"Worksheet is not in the expected state.",
         "record_closed":           (u"The review record is closed: this worksheet was "
                                     u"submitted or released. A manager's rejection reopens it."),
-        "batch_approved":          u"Batch approved and released.",
-        "batch_rejected":          u"Batch rejected and returned for re-analysis.",
+        "batch_approved":          u"Worksheet verified.",
+        "batch_rejected":          u"Worksheet sent back for re-analysis.",
+        "run_rejected":            u"Run rejected. Its results go to a new worksheet for the retest.",
+        "reject_refused":          u"Not rejected:",
         "report_uploaded":         u"Instrument report uploaded.",
         "spike_saved":             u"Spike level recorded on the extraction log.",
         "request_sent":            u"Request sent to the bench.",
         "request_refused":         u"Request not sent.",
-        "lot_reviewed":            u"Lot reviewed.",
+        "above_range_reported":    u"Reason recorded: the result is reported above the calibration range with E.",
+        "above_range_refused":     u"Reason not recorded.",
+        "no_number_resolved":      u"Reason recorded: the result is reported without the instrument's number.",
+        "no_number_refused":       u"Reason not recorded.",
+        "lot_reviewed":           u"Lot reviewed.",
         "lot_refused":             u"Lot not reviewed.",
         "run_sent_back":           u"Lot rejected and quarantined. The run is sent back to be rebuilt.",
         "lot_not_found":           u"The lot is not in the inventory.",
-        "spike_saved_not_method":  (u"Spike level recorded on this batch. The "
+        "spike_saved_not_method":  (u"Spike level recorded on this worksheet. The "
                                     u"method's nominal level was not changed "
                                     u"\u2014 that needs a manager."),
         "spike_missing":           u"Enter a spike level.",
         "spike_invalid":           u"Spike level must be a positive number.",
-        "no_batch":                u"No batch is linked to this worksheet.",
+        "no_batch":                u"No worksheet found.",
         "upload_error":            u"File upload failed.",
         "path_error":              u"Download failed — file not found.",
         "initials_required":       u"Your initials are required to sign off / correct — nothing was saved.",
         "run_plan_cleared":        u"Run plan item cleared with your note.",
+        "identity_corrected":      u"Identity corrected. The run is being judged again; release waits until it is.",
+        "identity_reverted":       u"Correction undone. The run is being judged again; release waits until it is.",
+        "identity_refused":        u"Not done:",
+        "identity_confirmed":      u"Correction confirmed.",
+        "identity_pending_signoff": u"Not signed: the run is not yet judged again.",
+        "review_sent_back":        u"Sent back to the analyst. The run is filed again; the cleared sign-offs are made again before it is submitted.",
+        "send_back_refused":       u"Not sent back:",
+        "extraction_corrected":    u"Extraction record:",
+        "extraction_refused":      u"Not done:",
+        "extraction_pending_signoff": u"Not signed: an extraction amendment is not yet judged again.",
         "subtraction_blank_changed": u"Subtraction blank changed. Reprocess the run so the results follow it.",
         "subtraction_blank_reason": u"Changing the subtraction blank needs a reason. Nothing was saved.",
         "subtraction_blank_invalid": u"Choose one of the run's method blanks.",
@@ -516,8 +582,6 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "calibration_held":        u"The calibration is not approved, nothing was saved.",
         "run_plan_note_required":  u"Clearing a run plan item needs a note saying why — nothing was saved.",
         "run_plan_not_cleared":    u"That run plan item was not open — nothing was saved.",
-        "correction_logged":       u"Correction saved and logged (initialed + dated).",
-        "no_change":               u"New value is identical — no correction logged.",
         "reintegrated":            u"Re-integrated and listed under Manual changes; the run is being processed again.",
         "apex_chosen":             u"Apex chosen and listed under Manual changes; the run is being processed again.",
         "peak_deleted":            u"Peak deleted and listed under Manual changes; the run is being processed again.",
@@ -526,9 +590,17 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "manual_changes_refused":  u"Manual changes:",
         "manual_changes_open":     u"Give each manual change a reason and your initials before submitting:",
         "raw_countersign_refused": u"Not released:",
+        "sign_refused":            u"Not released:",
+        "certificate_refused":     u"Not signed:",
+        "submit_sign_refused":     u"Not submitted:",
+        "issue_email_refused":     u"Not issued:",
+        "issue_email":             u"Issue and e-mail:",
         "raw_pull_asked":          u"The raw data is asked for again; the run waits until its folders are settled.",
         "raw_pull_nothing":        u"No failed pull to ask for again.",
+        "raw_pull_closed":         u"This worksheet is closed: its run is not imported again. Import it on a new worksheet.",
         "raw_edit_refused":        u"Not changed:",
+        "expected_rt_set":         u"Expected retention time set on the method; it applies from the next run.",
+        "expected_rt_refused":     u"Expected retention time not set:",
         "raw_edits_waiting":       RAW_WAITING_TEXT,
         "raw_run_failed":          RAW_FAILED_TEXT,
     }
@@ -589,17 +661,6 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             except Exception:
                 self._method_profile_cache = {}
         return self._method_profile_cache
-
-    def _fc(self, slug):
-        """The lab's form number for a logbook (FM-ENV-003...), from the pool."""
-        try:
-            from senaite.pfas.logbook_store import form_code
-            return form_code(self._portal(), slug)
-        except Exception:                                   # noqa: BLE001
-            return u"logbook %s" % slug
-
-    def form_code(self, slug):
-        return self._fc(slug)
 
     def batch_method_conflicts(self):
         """[(source, method)] that disagree with the batch's method."""
@@ -915,6 +976,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                      limits={"min_manual_change_pct": change, "min_manual_sn": sn},
                      method_baseline=raw_edit.method_baseline(quant.get("peak"), integration),
                      unit=self.instrument_unit())
+        # the compound's expected time on the method, and the analyst's route
+        # to set it from this peak (expected_rt), where a row holds one
+        row = (integration.get("analytes") or {}).get(an)
+        if isinstance(row, dict) and self.raw_can_edit():
+            found.update(expected_rt=row.get("rt"), set_rt_url=self.ws_url() + u"/@@pfas-set-expected-rt")
         raw_review.name_pending(found, found["method_baseline"])
         return json.dumps(found, sort_keys=True)
 
@@ -1080,6 +1146,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         from senaite.pfas.browser.run_builder import UPLOAD_DIR
         if not self.can_act():
             return self._redirect_with_msg("permission_denied", "error")
+        # verified, published or rejected: the worker refuses the run too
+        if self.ws_state() in self.VERIFIED_STATES or self.ws_state() == "rejected":
+            return self._redirect_with_msg("raw_pull_closed", "error", tab="instrument_report")
         stem = (self._run_manifest(self._get_worksheet()).get("raw_expectation") or {}).get("stem")
         if not stem or not raw_review.pull_again(os.path.join(UPLOAD_DIR, stem)):
             return self._redirect_with_msg("raw_pull_nothing", "error", tab="instrument_report")
@@ -1156,7 +1225,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # is exactly the to_be_verified and verified worksheets this page exists
         # to review. Found by loading the page against a real worksheet in each
         # state rather than only the one that happened to have QC rows.
-        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": [], "groups": []}
+        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": [], "groups": [], "factor": None}
         if not self.db_available:
             return empty
         ws = self._get_worksheet()
@@ -1177,16 +1246,41 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         qca = prof.get("qc_acceptance", {}) or {}
         from senaite.pfas.qc.qc_types import enabled_qc_types
         required = set(enabled_qc_types(prof))
+        # every required spike has its column, judged or not
+        wanted = [t for t in qc_cells.SPIKE if t in required]
+        for t in wanted:
+            if t not in spike_types:
+                spike_types.append(t)
+        spike_types.sort(key=qc_cells.column_order)
         # whether each is required every run (its windows are the cited notes)
         specs = dict((t, {"required": t in required,
                           "enabled": bool((qca.get(t) or {}).get("enabled", True))})
                      for t in spike_types)
+        # why a required spike's cells are empty: the run's own flag, and a
+        # matrix factor the method lacks for a spike judged per sample
+        why = {}
+        for f in summary.get("run_flags") or []:
+            if f.get("flags"):
+                why.setdefault(f["qc_type"], u"; ".join(f["flags"]))
+        mf = self.missing_matrix_factor()
+        said = u""
+        if mf:
+            said = self._no_factor_text(mf)
+            said = said[:1].upper() + said[1:] + u"."
+            for t in self._SAMPLE_BASIS_SPIKES:
+                why[t] = said
+        groups = qc_cells.with_equations(qc_cells.with_required(
+            shown["groups"], wanted, summary.get("qc_types") or [],
+            [r.get("analyte") for r in summary.get("rows") or [] if r.get("analyte")], why))
         # per analyte and type, the verdict cells (the QC Review report's table)
         rows = [{"analyte": row.get("analyte", ""),
                  "cells": dict((t, (row.get("cells") or {}).get(t)) for t in spike_types)}
                 for row in summary.get("rows", [])]
-        return {"rows": rows, "groups": shown["groups"], "types": spike_types,
-                "specs": specs, "pending_spikes": self.pending_spike_levels()}
+        fix = None
+        if mf and [t for t in self._SAMPLE_BASIS_SPIKES if t in wanted]:
+            fix = {"text": said, "label": u"Matrices", "url": mf["url"]}
+        return {"rows": rows, "groups": groups, "types": spike_types,
+                "specs": specs, "pending_spikes": self.pending_spike_levels(), "factor": fix}
 
     def pending_spike_levels(self):
         """Spiked injections whose spike level nobody has recorded.
@@ -1208,7 +1302,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
 
         # Spiked injections the RUN contains but the extraction pedigree does
         # not. Driving the prompt from the pedigree alone meant that when
-        # FM-ENV-003 was never filled in, `spikes` was empty, the loop yielded
+        # the extraction record was never filled in, `spikes` was empty, the loop yielded
         # nothing, and the reviewer was offered no way to supply a level — while
         # the QC gate blocked on "required QC not evaluated: LFSM, LFSMD". A
         # gate with no exit is worse than no gate: it cannot be satisfied and it
@@ -1256,7 +1350,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                         "level": label,
                         "matrix": matrix, "unit": unit,
                         # True when the pedigree does not know this injection at
-                        # all, so the prompt can say "not in FM-ENV-003" rather
+                        # all, so the prompt can say "not in the extraction record" rather
                         # than "level missing".
                         "unrecorded": bool(entry.get("from_run"))})
         return out
@@ -1382,8 +1476,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         """The date a logbook says its lots were used, or "" if it does not say.
 
         There is no single "use date" for a worksheet, and choosing one would be
-        wrong: on the real released WS-0005 the FM-ENV-004 processing date is
-        2025-10-17 and the FM-ENV-003 extraction date is 2026-08-03 -- ten months
+        wrong: on the real released WS-0005 the processing stage's date is
+        2025-10-17 and the extraction record's date is 2026-08-03 -- ten months
         apart. Each logbook carries the date ITS OWN rows were used, so each set
         of lots is judged against its own date. A worksheet-wide date would
         condemn one set or excuse the other.
@@ -1393,6 +1487,18 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             if v:
                 return v[:10]
         return u""
+
+    @staticmethod
+    def _names_lots(lb):
+        """True when a logbook names something its date is needed for: an
+        active row holding a lot number, or a balance serial. A logbook that
+        holds none (the processing record the guided extraction replaced,
+        never written now) has nothing to check, so no date is missing."""
+        if (lb.get("balance_sn") or u"").strip():
+            return True
+        return any((row.get("lot") or u"").strip()
+                   for rows in lb.values() if isinstance(rows, list)
+                   for row in active_rows(rows))
 
     def review_flags(self):
         """Why this run is flagged for review (a corrected certificate behind a
@@ -1475,8 +1581,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         evidence of expiry. That is reported as a warning rather than enforced, the
         same posture the equipment walk takes for an unregistered serial -- only an
         ESTABLISHED unmet obligation blocks release.
+
+        Returns None too when a reason was recorded for that use: at the bench
+        the stage's deviation note is the reason (`self._use_reasons`, set by
+        _build_traceability_tree from lot_expiry.stage_reasons).
         """
         if not resolved or not use_date:
+            return None
+        if (self._use_reasons or {}).get(lot):
             return None
         try:
             if resolved.get("type") == "PreparedStandard":
@@ -1486,9 +1598,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     _get as _ps_get, effective_expiry_info)
                 uid = resolved.get("uid") or u""
                 d = _ps_get(portal, uid) if (portal and uid) else None
-                exp = ((effective_expiry_info(portal, d) or {}).get("date")
+                # the date in force on the day of use: an extension QA
+                # approved later does not reach back (lot_extension)
+                exp = ((effective_expiry_info(portal, d, as_of=use_date) or {}).get("date")
                        if d else resolved.get("expiry_date")) or u""
-                if exp and exp < use_date:
+                from senaite.pfas.lot_expiry import expired_on
+                if expired_on(exp, use_date):
                     return (u"prepared standard lot %s expired %s, before it was "
                             u"used on %s" % (lot or name, exp, use_date))
                 return None
@@ -1501,7 +1616,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             ref = datetime.strptime(use_date, "%Y-%m-%d").date()
             if _is_expired(resolved, as_of=ref):
                 return (u"lot %s expired %s, before it was used on %s"
-                        % (lot or name, _effective_expiry(resolved) or u"?",
+                        % (lot or name, _effective_expiry(resolved, as_of=use_date) or u"?",
                            use_date))
         except Exception as exc:                            # noqa: BLE001
             logger.warning("expiry-at-use for %s: %s", lot, exc)
@@ -1522,7 +1637,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                             or _with_lots("direct_standards")
                             or _with_lots("prepared_standards"))
             # and the extraction itself finished: the
-            # calibration-prep lots alone passed with FM-ENV-003 never done
+            # calibration-prep lots alone passed with the extraction record never done
             return (has_data and len(tree.get("unresolved", [])) == 0
                     and self._extraction_finalized())
         except Exception as exc:
@@ -1587,6 +1702,19 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             logger.error("qualifier_for(%s, %s): %s", failure, role, exc)
             return None
 
+    def _high_bias_qualifier(self):
+        """The QC Qualifiers library's high-bias entry
+        (qc_qualification.high_bias_qualifier), read once per view; None
+        when the QAO holds the release or the library cannot be read."""
+        if "_high_bias" not in self.__dict__:
+            from senaite.pfas.qc_qualification import high_bias_qualifier
+            try:
+                self._high_bias = high_bias_qualifier(self._portal())
+            except Exception as exc:                        # noqa: BLE001
+                logger.error("high-bias qualifier: %s", exc)
+                self._high_bias = None
+        return self._high_bias
+
     def _stamp_qualifier_remarks(self, ws):
         """Write each qualifier code onto the analyses it applies to.
 
@@ -1623,12 +1751,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             if not marker:
                 continue
             try:
-                from senaite.pfas.qc_qualification import (
-                    HIGH_BIAS_CODE, remarks_text)
+                from senaite.pfas.qc_qualification import remarks_text
                 existing = remarks_text(analysis.getRemarks())
                 # the release note of a high-biased failure rides beside the codes
+                hb_code = (self._high_bias_qualifier() or {}).get("code") or u""
                 lines = [marker] + sorted(set(
-                    reason for code, reason in pairs if code == HIGH_BIAS_CODE and reason))
+                    reason for code, reason in pairs if hb_code and code == hb_code and reason))
                 lines = [l for l in lines if l not in existing]
                 if not lines:
                     continue
@@ -1647,8 +1775,32 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         worksheet's QC puts on that analysis, only on the samples each
         failure belongs to. None when there are none.
         The stamp writes them; the Final Data tab shows them for review."""
+        entries_for = self._qualifier_entries(ws, summary)
+        if entries_for is None:
+            return None
+
+        from senaite.pfas.rule_flags import on_certificate
+
+        def codes_for(analysis):
+            out = []
+            for e in entries_for(analysis):
+                if not on_certificate(e):
+                    continue                # an EDD-only flag's code: never stamped or printed
+                item = (e["code"], e.get("reason") or e.get("qc_type") or u"")
+                if item not in out:
+                    out.append(item)
+            return out
+        return codes_for
+
+    def _qualifier_entries(self, ws, summary=None):
+        """entries_for(analysis) -> the QC summary's qualifier entries that
+        belong on that analysis (its code, the lab's statement, the reason),
+        only on the samples each failure belongs to. None when the summary
+        has none. One plan for the stamp, Final Data and the certificate's
+        rows, so a code is never on one and missing from another."""
         from senaite.pfas.qc_qualification import (
             COC_BLANKS, applies_to_coc, applies_to_sample, reported_keyword)
+        from senaite.pfas import rule_flags
         if summary is None:
             try:
                 summary = self._get_qc_summary(ws) or {}
@@ -1685,12 +1837,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return uids, [samples[u][1] for u in uids if u in samples]
 
         def applies(e, uid, names):
+            if rule_flags.applies_everywhere(e):
+                return True             # an analyte row's or the batch's code: every sample
             if e.get("qc_type") in COC_BLANKS:
                 frb_uids, cocs = frb_scope(e.get("applies_to") or u"")
                 return applies_to_coc(frb_uids, cocs, uid, (samples.get(uid) or ((), u""))[1])
             return applies_to_sample(e.get("applies_to") or u"", uid, names, pushed)
 
-        def codes_for(analysis):
+        def entries_for(analysis):
             try:
                 sample = analysis.getRequest()
                 names = (sample.getId(), sample.getClientSampleID())
@@ -1699,14 +1853,174 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     list(by_keyword.get(self.ALL_ANALYTES) or ())
             except Exception:                               # noqa: BLE001
                 return []
-            out = []
-            for e in entries:
-                if applies(e, uid, names):
-                    item = (e["code"], e.get("reason") or e.get("qc_type") or u"")
-                    if item not in out:
-                        out.append(item)
+            out = [e for e in entries if applies(e, uid, names)]
+            if out and [e for e in out if self._estimate_entry(e)] and not self._prints_number(analysis):
+                # an estimate needs a number: a result printed with none
+                # carries neither the S/N qualifier nor the code J
+                out = [e for e in out if not self._estimate_entry(e)]
             return out
-        return codes_for
+        return entries_for
+
+    def _flag_qualifiers(self, qualifiers, qc_results, batch_key):
+        """The QC summary's qualifier entries with each rule's flags applied
+        (rule_flags): an Enforced failing rule, or the tier that judged it,
+        adds its kind's code (flag_kinds) and each code of its own, each at
+        its place and output, and the library's own entry for that failure
+        goes. Nothing printing anywhere: the entries as they are. An
+        Evaluate failure prints nothing (_flag_advisories). Never changes a
+        verdict."""
+        from senaite.pfas import rule_flags as rf
+        profile = self._method_profile() or {}
+        try:
+            library = self._qualifier_library()
+            if not rf.any_code(profile, library):
+                return list(qualifiers)
+            tier_of = self._flag_tier_finder(profile)
+            role_of = self._flag_role_finder(profile)
+            rows = [r for r in qc_results if rf.failing(r) and rf.enforced(r)]
+            if any(f["code"] for f in rf.rule_flag_list(profile, "mdl_check")):
+                rows += [r for r in self._mdl_rows(batch_key) if rf.enforced(r)]
+            added = []
+            for r in rows:
+                rule, flags = rf.printing_flags(profile, r, library, tier_of, role_of)
+                if not flags:
+                    continue
+                failure = self._QC_TYPE_TO_FAILURE.get(r.get("qc_type"))
+                analytes = (self._affected_analytes(failure, r.get("analyte"))
+                            if r.get("analyte") else [self.ALL_ANALYTES])
+                for flag in flags:
+                    added += rf.flag_entries(r, rule, flag, library, analytes, self.ALL_ANALYTES)
+            kept = [e for e in qualifiers
+                    if not rf.replaced(profile, library, e, self._QC_TYPE_TO_FAILURE, tier_of, role_of)]
+            return kept + added
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("flag qualifiers: %s", exc)
+            return list(qualifiers)
+
+    def _flag_advisories(self, qc_results):
+        """What each Evaluate failure would raise (rule_flags
+        .advisory_entries): for Data Review alone, each marked not printed;
+        never a qualifier, a stamp, a certificate or an EDD code."""
+        from senaite.pfas import rule_flags as rf
+        profile = self._method_profile() or {}
+        try:
+            library = self._qualifier_library()
+            tier_of = self._flag_tier_finder(profile)
+            role_of = self._flag_role_finder(profile)
+            out = []
+            for r in qc_results:
+                if rf.failing(r) and not rf.enforced(r):
+                    for e in rf.advisory_entries(profile, r, library, tier_of, role_of):
+                        if e not in out:
+                            out.append(e)
+            return out
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("flag advisories: %s", exc)
+            return []
+
+    def _flag_role_finder(self, profile):
+        """compound -> its role in the method's labelled-standards grid
+        ("surrogate", "injection_is" or ""), as the flags read an IS row."""
+        try:
+            from senaite.pfas import labelled_standards
+            roles = labelled_standards.roles(profile or {}) or {}
+        except Exception:                                   # noqa: BLE001
+            roles = {}
+
+        def role_of(name):
+            name = name or u""
+            if name in roles:
+                return roles[name] or u""
+            # another spelling of the same compound (qc_qualification._same_compound)
+            try:
+                from senaite.pfas.qc_qualification import _same_compound
+                for key, role in roles.items():
+                    if _same_compound(key, name):
+                        return role or u""
+            except Exception:                               # noqa: BLE001
+                pass
+            return u""
+        return role_of
+
+    def advisory_lines(self):
+        """Final Data's "Not printed (Evaluate)" lines: each Evaluate
+        failure's code (No code while the lab has set none), its kind, and
+        what failed where. [] when there is none."""
+        try:
+            ws = self._get_worksheet()
+            summary = self._get_qc_summary(ws) if ws is not None else {}
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("advisory lines: %s", exc)
+            return []
+        out = []
+        for e in (summary or {}).get("advisories") or []:
+            head = [e.get("code") or u"No code"] + ([e["kind"]] if e.get("kind") else [])
+            where = u" ".join(x for x in (e.get("qc_type"), e.get("analyte")) if x)
+            if e.get("applies_to"):
+                where += u" on %s" % e["applies_to"]
+            line = u"%s: %s" % (u" \u00b7 ".join(head), where)
+            if e.get("reason"):
+                line += u", %s" % e["reason"]
+            if line not in out:
+                out.append(line)
+        return out
+
+    def _qualifier_library(self):
+        """The QC Qualifiers library, read once per view; its seeds when it
+        cannot be read."""
+        if "_flag_library" not in self.__dict__:
+            from senaite.pfas import qc_qualification
+            try:
+                self._flag_library = qc_qualification.get_library(self._portal())
+            except Exception:                               # noqa: BLE001
+                self._flag_library = qc_qualification.library_from({})
+        return self._flag_library
+
+    def _flag_tier_finder(self, profile):
+        """row -> the ordinary tier the engine judges the row's analyte by
+        in this worksheet's matrix (method_profile_sections.resolve_tier),
+        for a QC type that has tiers; None otherwise."""
+        from senaite.pfas import method_profile_sections as mps
+        from senaite.pfas import report_limits
+        try:
+            matrix = report_limits.canonical_matrix(profile, self._batch_matrix())
+        except Exception:                                   # noqa: BLE001
+            matrix = self._batch_matrix()
+        groups = mps.engine_flags(profile)
+        name = self._qc_row_namer()
+
+        def tier_of(row):
+            qc_type = row.get("qc_type") or u""
+            if not isinstance(((profile.get("qc_acceptance") or {}).get(qc_type)), dict):
+                return None
+            k, n = groups.get(name(row.get("analyte") or u""), (False, False))
+            return mps.resolve_tier(profile, k, n, matrix, qc_type)
+        return tier_of
+
+    def _mdl_rows(self, batch_key):
+        """The MDL check's failures (a detection below the MDL, the
+        worker's "(MDL)" on a field sample's injection) as QC rows its
+        flag can attach to: they are no QC Summary column."""
+        from senaite.pfas.rule_flags import MDL_MARK
+        try:
+            rows = self._store().get_injection_results(batch_id=batch_key, qc_type="Sample")
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("MDL rows: %s", exc)
+            return []
+        # an MDL Check in Evaluate files its failure advisory: never printed
+        return [{"qc_type": u"MDL", "analyte": r.get("analyte") or u"", "applies_to": r.get("injection_name") or u"",
+                 "flag": r.get("flag") or u"", "passed": 0, "result_status": "active",
+                 "advisory": 1 if r.get("advisory") else 0}
+                for r in rows if MDL_MARK in (r.get("flag") or u"")]
+
+    def _estimate_entry(self, entry):
+        """A qualifier entry that says the value is an estimate: any
+        carrying the code J (the certificate's estimate between the MDL and
+        the RL), or the S/N failure of a quantifier below its limit (the
+        worker's "(J)"), whatever code the QAO gives it."""
+        from senaite.pfas.coa_format import J_CODE
+        return entry.get("code") == J_CODE or (
+            entry.get("qc_type") == u"S/N" and u"(J)" in (entry.get("reason") or u""))
 
     def _respike_qualifiers(self, ws):
         """The "respike" qualifier (QC Qualifiers) on each result the worker
@@ -1722,6 +2036,19 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             logger.error("re-spike qualifier: %s", exc)
             return []
         return respike_qualifier_rows(items, qual)
+
+    def _coelution_qualifiers(self, ws):
+        """The "coelution" qualifier (QC Qualifiers) on each result the
+        worker measured by the co-eluting pair's fit."""
+        from senaite.pfas.qc_qualification import coelution_qualifier_rows, qualifier_for, remarks_text
+        try:
+            qual = qualifier_for(self._portal(), "coelution")
+            items = [{"sample_id": a.getRequest().getId(), "analyte": a.getKeyword(),
+                      "remarks": remarks_text(a.getRemarks())} for a in (ws.getAnalyses() or [])]
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("co-elution qualifier: %s", exc)
+            return []
+        return coelution_qualifier_rows(items, qual)
 
     def _receipt_qualifiers(self, ws):
         """The receipt qualifier (qc_qualification "receipt") on every result
@@ -1767,16 +2094,24 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         They qualify the result and do not hold release; they lived only in injection_results, which the gate
         never read (synthetic runs). A flag from a rule in the state
         Evaluate carries the row's advisory mark: a warning, never a
-        failure (a database from before the column reads as Enforced)."""
+        failure (a database from before the column reads as Enforced).
+        A dilution's flag qualifies the sample it was diluted from, as the
+        worker files it (a qualifier deleted on the dilution)."""
         from senaite.pfas.qc_qualification import injection_flag_qc_types
         try:
             rows = self._store().get_injection_results(batch_id=batch_key, qc_type="Sample")
+            diluted = self._store().get_injection_results(batch_id=batch_key, qc_type="Dilution")
         except Exception as exc:                            # noqa: BLE001
             logger.warning("_injection_qc_rows: %s", exc)
             return []
+        parents = self._dilution_parents() if diluted else {}
         out, seen = [], set()
-        for r in rows:
+        for r, is_dilution in [(r, False) for r in rows] + [(r, True) for r in diluted]:
             if r.get("passed", 1) or not r.get("flag"):
+                continue
+            # a dilution with no parent on record qualifies nothing it can name
+            sample = parents.get(r.get("injection_name")) if is_dilution else r.get("injection_name")
+            if not sample:
                 continue
             for qc_type in injection_flag_qc_types(r.get("flag"), r.get("role") or u"",
                                                    r.get("std_role") or u""):
@@ -1786,13 +2121,25 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 seen.add(key)
                 out.append({"analyte": r.get("analyte") or u"", "qc_type": qc_type,
                             "qc_level": r.get("injection_name") or u"",
-                            "applies_to": r.get("injection_name") or u"",
+                            "applies_to": sample or u"",
                             "value": None, "expected_value": None,
                             "flag": r.get("flag") or u"", "passed": 0,
                             "advisory": 1 if r.get("advisory") else 0,
                             "limit_basis": u"Judged per injection: see the Samples tab",
                             "result_status": "active"})
         return out
+
+    def _dilution_parents(self):
+        """{dilution injection: the sample injection it was diluted from},
+        from the worksheet's extraction record (dilution_ref.get_dilutions,
+        what the worker is given); {} when it cannot be read."""
+        try:
+            from senaite.pfas.dilution_ref import get_dilutions
+            return dict((k, (v or {}).get("parent") or u"")
+                        for k, v in get_dilutions(self._get_worksheet()).items())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("_dilution_parents: %s", exc)
+            return {}
 
     #: an entry's analyte meaning "every result on its sample"
     ALL_ANALYTES = u"*"
@@ -1838,8 +2185,16 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 return False             # a run not (fully) imported: its results are not all here
             if self.subtraction_change_pending():
                 return False             # results still use the blank chosen before
-            # and the run's calibration approved at review
-            return bool(summary.get("overall_pass", False)
+            if self.identity_pending():
+                return False             # the run is not yet judged with the identity corrections
+            if self.extraction_pending():
+                return False             # nor with the extraction amendments
+            if self.send_back_pending():
+                return False             # sent back: the retests are not filed yet
+            # nothing the gate holds on (a failure, a result not judged, a
+            # required QC type not run), and the run's calibration approved
+            # at review
+            return bool(not self._gate_holds(self._qc_gate(summary))
                         and self.calibration_review().get("status") == "approved")
         except Exception as exc:
             logger.error("_compute_qc_status: %s", exc)
@@ -1919,13 +2274,23 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if item.get("checked"):
             if key == "qc_summary":
                 summary = self._get_qc_summary(ws) or {}
-                applied = summary.get("qualifiers") or []
+                # a study's own replicates are judged by the study: their
+                # routine qualifiers are not the run's
+                gate = self._qc_gate(summary)
+                by_study = gate["by_study"]
+                # a type not run that a closed deviation released is said
+                released = u"; ".join(u"{0} not run: released by {1}".format(qt, did)
+                                      for qt, did in sorted((gate.get("released") or {}).items()))
+                applied = [q for q in summary.get("qualifiers") or []
+                           if q.get("qc_type") not in by_study]
                 if applied:
                     codes = sorted({(q.get("code") or "?") for q in applied})
                     return "qualified", (
                         u"released with {0} qualified result(s) [{1}] — the "
                         u"certificate carries the corresponding statement"
-                        .format(len(applied), u", ".join(codes)))
+                        .format(len(applied), u", ".join(codes))) + (u"; " + released if released else u"")
+                if released:
+                    return "pass", released
             return "pass", u""
         if key == "traceability":
             tree = self._build_traceability_tree(ws) or {}
@@ -1937,11 +2302,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             if not (tree.get("prepared_standards") or tree.get("direct_reagents")):
                 return "blocked", (
                     u"No reagent or standard lots recorded \u2014 choose the lots "
-                    u"loaded in the Run Builder and fill in {0}.".format(self._fc("252")))
+                    u"loaded in the Run Builder and fill in the extraction record.")
             if not self._extraction_finalized():
                 return "blocked", (
-                    u"The guided extraction is not finished: {0} must name the "
-                    u"lots the samples were extracted with.".format(self._fc("252")))
+                    u"The guided extraction is not finished: the extraction record "
+                    u"must name the lots the samples were extracted with.")
             return "fail", u""
         if key == "qc_summary":
             summary = self._get_qc_summary(ws)
@@ -1954,6 +2319,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             if self.subtraction_change_pending():
                 return "blocked", (u"The subtraction blank was changed: reprocess the run "
                                    u"so its results use it.")
+            if self.identity_pending():
+                return "blocked", self.IDENTITY_PENDING
+            if self.extraction_pending():
+                return "blocked", self.EXTRACTION_PENDING
+            if self.send_back_pending():
+                return "blocked", self.SEND_BACK_PENDING
             gate = self._qc_gate(summary)
             failing = [qt for qt, _a, _c in gate["failing"]]
             unevaluated = [qt for qt, _a, _c in gate["unevaluated"]]
@@ -2012,7 +2383,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 # result without the certificate saying so is the thing
                 # §7.8.4 forbids. Said only for this verdict: beside a hold,
                 # the reason names the hold.
-                summary_q = summary.get("qualifiers") or []
+                summary_q = [q for q in summary.get("qualifiers") or []
+                             if q.get("qc_type") not in gate["by_study"]]
                 codes = sorted({(q.get("code") or "?") for q in summary_q})
                 parts.insert(0, u"released with {0} qualified result(s) [{1}] across "
                                 u"{2}".format(len(summary_q), u", ".join(codes),
@@ -2029,21 +2401,24 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "unevaluated": [(qc_type, analyte, cell)], "qualified": [qc_type],
         "missing": [qc_type], "run": [flag] the whole-run flags that hold
         it (failed or not judged), "unset": [qc_type] the blanks of those
-        not judged for want of their own limit}. A study run's own QC type
-        counts as overall_pass counts it; the study scopes only what the
-        run must carry (gate_scope)."""
+        not judged for want of their own limit, "by_study": the QC types a
+        study run's replicates take}. A study run must carry its part's own
+        role (gate_scope), and its replicates are judged by the study, not
+        by the routine limits of that role: their routine verdicts never
+        hold the run."""
         failing, unevaluated, qualified = [], [], []
-        study, study_required = self.study_run(), None
+        study, study_required, by_study = self.study_run(), None, set()
         if study is not None:
             from senaite.pfas.qc.qc_types import enabled_qc_types
             from senaite.pfas.study_runs import gate_scope
             from senaite.pfas.study_data import blank_role
-            study_required = gate_scope(
+            study_required, by_study = gate_scope(
                 study, enabled_qc_types(self._method_profile() or {}),
-                blank_role(self._method_profile() or {}))[0]
+                blank_role(self._method_profile() or {}))
+            by_study = set(by_study or ())
         for row in (summary.get("rows") or []):
             for qc_type, cell in sorted((row.get("cells") or {}).items()):
-                if not cell:
+                if not cell or qc_type in by_study:
                     continue
                 if cell.get("status") == "fail":
                     failing.append((qc_type, row.get("analyte"), cell))
@@ -2068,11 +2443,64 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # a sample duplicate run instead of the LFSMD satisfies the
             # batch's precision requirement
             missing.remove("LFSMD")
-        run_flags = summary.get("run_flags") or []
+        # a type not run that the worksheet's missing-data deviation lists,
+        # closed with notes, is released by it; reopened, it holds again
+        released = {}
+        if missing:
+            closed = self._released_missing()
+            released = dict((qt, closed[qt]) for qt in missing if qt in closed)
+            missing = [qt for qt in missing if qt not in released]
+        run_flags = [f for f in summary.get("run_flags") or [] if f.get("qc_type") not in by_study]
         unset = self._unset_blank_limits(run_flags)
         run = [f for f in run_flags if f.get("status") in self._GATING and f.get("qc_type") not in unset]
         return {"failing": failing, "unevaluated": unevaluated,
-                "qualified": qualified, "missing": missing, "run": run, "unset": unset}
+                "qualified": qualified, "missing": missing, "run": run, "unset": unset,
+                "by_study": by_study, "released": released}
+
+    def _released_missing(self):
+        """{qc_type: dev_id} the worksheet's closed missing-data deviation
+        releases (qc_deviation.released_checks), read once per request; {}
+        when the registry cannot be read, so nothing is released unread."""
+        memo = getattr(self, "_released_memo", None)
+        if memo is None:
+            memo = {}
+            try:
+                from senaite.pfas.qc_deviation import get_registry, released_checks
+                ws = self._get_worksheet()
+                if ws is not None:
+                    memo = released_checks(get_registry(self._portal()), ws.getId())
+            except Exception as exc:                        # noqa: BLE001
+                logger.error("_released_missing: %s", exc)
+                memo = {}
+            self._released_memo = memo
+        return memo
+
+    def qc_types_not_run(self, ws):
+        """[{"qc_type", "dev_id"}] (qc_deviation.not_run): the QC types the
+        method requires every run that this worksheet's run did not hold, as
+        the gate reads them, each with the closed missing-data deviation
+        that released it. The certificate states them. Raises ValueError
+        when the QC summary cannot be read: a gate not read is never stated
+        as nothing missing."""
+        from senaite.pfas.qc_deviation import not_run
+        summary = self._get_qc_summary(ws) or {}
+        if summary.get("error"):
+            raise ValueError(u"the QC summary of {0} could not be read ({1})".format(
+                ws.getId(), summary["error"]))
+        gate = self._qc_gate(summary)
+        return not_run(gate.get("missing"), gate.get("released"))
+
+    @staticmethod
+    def _gate_holds(gate):
+        """True when the QC Summary gate (_qc_gate) holds release: a failing
+        result, one not judged, a whole-run flag that holds, a blank limit
+        not set, or a QC type the method requires every run that was not
+        run. A required type not run holds like a failure until it is run,
+        the method or the project's QAPP switch stops requiring it, or the
+        worksheet's missing-data deviation that lists it is closed with
+        notes."""
+        return bool(gate["failing"] or gate["unevaluated"] or gate["run"]
+                    or gate["unset"] or gate["missing"])
 
     def raise_unconfigured_deviation(self, ws):
         """Raise the deviation for the criteria this run's method never set,
@@ -2085,13 +2513,16 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         summary = self._get_qc_summary(ws) or {}
         if summary.get("error"):
             return None
-        if not self._qc_gate(summary)["unevaluated"]:
+        gate = self._qc_gate(summary)
+        if not gate["unevaluated"] and not gate.get("missing"):
             return None
-        return self._raise_unconfigured_deviation(ws, summary)
+        return self._raise_unconfigured_deviation(ws, summary, gate.get("missing") or ())
 
-    def _raise_unconfigured_deviation(self, ws, summary):
-        """File/refresh the deviation for criteria this method never set; the
-        record, or None.
+    def _raise_unconfigured_deviation(self, ws, summary, not_run=()):
+        """File/refresh the deviation for criteria this method never set, and
+        the worksheet's missing-data deviation for each required QC type
+        `not_run` (the gate's, after what a closed record releases); the
+        first record, or None.
 
         Idempotent by gap signature, so a run pushed again does not file a
         duplicate. A notification problem never stops the push: it is
@@ -2112,6 +2543,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     entry = {"qc_type": qc_type, "reason": reason}
                     if entry not in gaps:
                         gaps.append(entry)
+            from senaite.pfas.qc_deviation import NOT_RUN
+            gaps += [{"qc_type": qt, "reason": NOT_RUN} for qt in not_run or ()]
             if gaps:
                 # self._portal() -- `_portal` is a method on this view, not a
                 # module function. Calling it bare raised NameError on every
@@ -2119,7 +2552,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 # ever filed. It only surfaced once the gap rows it depends on
                 # became visible at all.
                 return ensure_deviation(self._portal(), ws.getId(), gaps,
-                                        filed_by=u"system (QC evaluation)")
+                                        filed_by=u"system (QC evaluation)",
+                                        method_id=self._method_id_for_qualification())
         except Exception as exc:                            # noqa: BLE001
             logger.error("could not raise the unconfigured-criteria "
                          "deviation: %s", exc)
@@ -2155,6 +2589,24 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if not self.raw_changes_gate()[0]:
             return False
         return not self.machine_attested_items()
+
+    def submit_held(self):
+        """Why Submit for verification is held, said at the top of the page while
+        the worksheet is open, the person may submit and the checklist does
+        not pass: {"text", "next", "fix_label", "fix_url"}, the next step
+        being the first block of the strip (its own button), else the
+        checklist at the foot of the Overview. None otherwise."""
+        if not (self.can_act() and self.ws_state() == u"open") or self.all_items_pass():
+            return None
+        pending = [i.get("label") for i in self.checklist_status() if not i.get("checked")]
+        text = u"Submit for verification is held until every checklist item passes"
+        text += (u": %s not yet." % u", ".join(pending)) if pending else u"."
+        blocks = [w for w in self.warnings() or [] if w.get("severity") == self.BLOCKS]
+        if blocks:
+            return {"text": text, "next": u"First: %s" % blocks[0]["text"],
+                    "fix_label": blocks[0]["fix_label"], "fix_url": blocks[0]["fix_url"]}
+        return {"text": text, "next": u"", "fix_label": u"Checklist",
+                "fix_url": u"%s#dr-submit" % self.review_url(u"overview")}
 
     def mi_gate(self):
         """(ok, [missing], records, stamped file) for the worksheet's manual
@@ -2289,7 +2741,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # report's records; a staff record that cannot be read signs nothing
             try:
                 info = miv.staff_sign_info(who)
-                mi.initial_raw(state, initials, who, when, info["name"], no_effect, info["sign_as"])
+                mi.initial_raw(state, initials, who, when, info["name"], no_effect, info["sign_as"], info["signature"])
             except ValueError as exc:
                 error = u"%s" % exc
         miv.save_state(ws, state)
@@ -2317,7 +2769,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         try:
             info = miv.staff_sign_info(who)
             mi.countersign_raw(work, who, datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"), info["name"],
-                               no_effect, info["sign_as"])
+                               no_effect, info["sign_as"], info["signature"])
         except ValueError as exc:
             return u"%s" % exc
         if save:
@@ -2358,43 +2810,18 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return core_fields.core_values(ws).get("sample_collection_date") or u""
 
     def coc_records_summary(self, ws):
-        """The worksheet's samples' CoC records:
-        {} when no sample carries a CoC number (older samples: the logbook)."""
+        """The worksheet's samples' CoC records (coc_records.summary), with
+        core's collection date: {} when no sample carries a CoC number."""
         from senaite.pfas import coc_records as cr
         from senaite.pfas.core_fields import samples_of
         samples = list(samples_of(ws))
-        nums = [(s.getField("CoCNumber").get(s) or u"") for s in samples]
-        if not samples or not any(nums):
-            return {}
-        portal = self._portal()
-        recs = [cr.load(portal, n) for n in sorted(set(n for n in nums if n))]
-        recs = [r for r in recs if r]
-        receipts = [r.get("receipt") or {} for r in recs]
-        received = bool(recs) and all(r.get("status") == cr.RECEIVED for r in recs) and all(nums)
-        first = recs[0] if recs else {}
-        rc = receipts[0] if receipts else {}
-        return {
-            "records": [{"number": r["number"], "status": r.get("status"), "origin": r.get("origin"),
-                         "flags": (r.get("receipt") or {}).get("flags") or [],
-                         "note": (r.get("receipt") or {}).get("note") or u""} for r in recs],
-            "missing": [s.getId() for s, n in zip(samples, nums) if not n],
-            "all_received": received,
-            "client_name": first.get("client") or u"",
-            "project_name": first.get("project") or u"",
-            "sample_collection_date": self._core_collection_date(ws),
-            "lab_received_by": rc.get("received_by") or u"",
-            "lab_received_date": rc.get("received_at") or u"",
-            "seals_intact": all(x.get("seals_intact") is True for x in receipts) if receipts else False,
-            "labels_legible": all(x.get("labels_legible") is True for x in receipts) if receipts else False,
-            "holding_time_ok": received and all(x.get("holding_time_ok") is True for x in receipts),
-            "condition_notes": u" ".join(x.get("note") or u"" for x in receipts).strip(),
-            "reviewed_by": u"", "reviewed_date": u"",
-            "n_containers": len(samples),
-            "n_transfers": sum(len(r.get("transfers") or []) for r in recs),
-            "receipt_thermometer": None,
-            "receipt_temps": [(t.get("sample_id") or u"", t.get("observed"), t.get("corrected"))
-                              for x in receipts for t in x.get("readings") or []],
-        }
+        out = cr.worksheet_summary(self._portal(), samples)
+        if out:
+            out["sample_collection_date"] = self._core_collection_date(ws)
+            # which of the scoped checks the receipts hold an answer to: a
+            # check that was not asked is neither shown nor required
+            out["checks"] = cr.stored_checks(cr.worksheet_records(self._portal(), samples))
+        return out
 
     def study_run(self):
         """The worksheet's study run record (study_runs), or None."""
@@ -2412,10 +2839,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if hasattr(self, "_study_source"):
             return self._study_source
         from senaite.pfas import study_runs as sru
+        from senaite.pfas.dilution_ref import LOGBOOK_KEY
         run = self.study_run() or {}
         source = run.get("source") or {}
         ws = self._get_worksheet()
-        use_date = ((self._logbook_json(ws, u"senaite.pfas.logbook.252") or {}).get("extraction_date")
+        use_date = ((self._logbook_json(ws, LOGBOOK_KEY) or {}).get("extraction_date")
                     or u"")[:10] if ws is not None else u""
         detail = {"source": source, "source_label": sru.SOURCE_LABELS.get(source.get("kind"), u""),
                   "use_date": use_date, "lot": None, "receipt": None, "coa": None, "water_check": None,
@@ -2444,8 +2872,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return self._study_source
 
     def coc_summary(self):
-        """The CoC as Data Review checks it: the samples' CoC records, or
-        (samples from before CoC numbers) the logbook annotation; {} if none."""
+        """The CoC as Data Review checks it: the samples' CoC records
+        (coc_records.worksheet_summary); {} when no sample carries a CoC
+        number."""
         ws = self._get_worksheet()
         if not ws:
             return {}
@@ -2455,37 +2884,6 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 return from_records
         except Exception as exc:                            # noqa: BLE001
             logger.error("coc records summary: %s", exc)
-        try:
-            # worksheet first, then its batch -- where the CoC logbook is filled
-            # (the gate used to read the worksheet only, so a CoC on the batch
-            # never counted; found in the 2026-10-06 end-to-end run)
-            data = self._logbook_json(ws, u"senaite.pfas.logbook.coc")
-            if data:
-                return {
-                    "client_name":            data.get("client_name") or u"",
-                    "project_name":           data.get("project_name") or u"",
-                    # core owns it: the samples' Date Sampled (core_fields.py)
-                    "sample_collection_date": self._core_collection_date(ws),
-                    "lab_received_by":        data.get("lab_received_by") or u"",
-                    "lab_received_date":      data.get("lab_received_date") or u"",
-                    "seals_intact":           bool(data.get("seals_intact")),
-                    "labels_legible":         bool(data.get("labels_legible")),
-                    "holding_time_ok":        bool(data.get("holding_time_ok")),
-                    "condition_notes":        data.get("condition_notes") or u"",
-                    "reviewed_by":            data.get("reviewed_by") or u"",
-                    "reviewed_date":          data.get("reviewed_date") or u"",
-                    "n_containers":           len(data.get("containers") or []),
-                    "n_transfers":            len(data.get("transfers") or []),
-                    # : the receipt thermometer and the factor applied
-                    "receipt_thermometer":    data.get("receipt_thermometer_record") or None,
-                    "receipt_temps":          [(r.get("sample_id") or u"", r.get("temp_c"),
-                                                r.get("temp_c_corrected"))
-                                               for r in data.get("containers") or []
-                                               if isinstance(r, dict)
-                                               and r.get("temp_c") not in (None, u"", "")],
-                }
-        except Exception as exc:
-            logger.error("coc_summary: %s", exc)
         return {}
 
     def _run_date(self, ws):
@@ -2496,11 +2894,66 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except Exception:                                   # noqa: BLE001
             return None
 
+    def _analysis_times(self, ws):
+        """When each of the worksheet's reported results was analysed, in
+        order, as naive datetimes on the laboratory's clock: the
+        certificate's reader (analysed_at: the injection's acquisition time,
+        else the date the result was captured), never the run's date in the
+        QC store. A result not yet entered, or retracted, rejected or
+        cancelled, has none."""
+        cache = self.__dict__.setdefault("_analysis_times_cache", {})
+        key = ws.getId()
+        if key not in cache:
+            from bika.lims import api as _api
+            from senaite.pfas import analysed_at
+            from senaite.pfas.sample_method import EXCLUDED_STATES
+            reported = [an for an in ws.getAnalyses() or []
+                        if getattr(an, "portal_type", "") == "Analysis"
+                        and (an.getResult() or u"").strip()
+                        and _api.get_review_status(an) not in EXCLUDED_STATES]
+            acquired = analysed_at.acquired_by_uid([_api.get_uid(an) for an in reported])
+            times = [analysed_at.wall(acquired.get(_api.get_uid(an)), an.getResultCaptureDate())
+                     for an in reported]
+            cache[key] = sorted(t for t in times if t is not None)
+        return cache[key]
+
+    def analysis_dates(self, ws=None):
+        """When the worksheet's results were analysed, one answer for holding
+        time, this page's run line and the QC Review: the certificate's
+        reader (_analysis_times) whenever any reported result has a date;
+        when none has, the run's date in the QC store, marked so, never
+        nothing -- a gate does not weaken because a date is missing.
+        {"days": ["YYYY-MM-DD"], "last": date or None, "by_run_date": bool,
+         "text": "2026-10-05, 2026-10-06" or "2026-11-07, by run date"}."""
+        ws = ws if ws is not None else self._get_worksheet()
+        none = {"days": [], "last": None, "by_run_date": False, "text": u""}
+        if ws is None:
+            return none
+        try:
+            times = self._analysis_times(ws)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("analysis_dates: %s", exc)
+            times = []
+        if times:
+            days = sorted(set(t.date().isoformat() for t in times))
+            return {"days": days, "last": times[-1].date(), "by_run_date": False,
+                    "text": u", ".join(days)}
+        last = holding_time.parse_date(self._run_date(ws))
+        if last is None:
+            return none
+        return {"days": [last.isoformat()], "last": last, "by_run_date": True,
+                "text": u"%s, %s" % (last.isoformat(), holding_time.BY_RUN_DATE)}
+
+    def run_days(self):
+        """The run line: the days the worksheet's results were analysed, or
+        the run's date marked "by run date" (analysis_dates)."""
+        return self.analysis_dates()["text"]
+
     def holding_time_summary(self):
         """Computed holding time for this worksheet's batch.
 
         Each sample's own collection date (core Date Sampled: core owns it; it was the Chain of Custody's one date) and
-        `extraction_date` on FM-ENV-003. Read through `_logbook_json`, which
+        `extraction_date` on the extraction record. Read through `_logbook_json`, which
         looks on the worksheet then the linked batch — on the one worksheet
         with real data the CoC is on both and 252 is on the BATCH only, so a
         worksheet-only read would have found nothing and reported `no_dates`
@@ -2516,7 +2969,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # each sample from its own Date Sampled (core owns the collection
             # date; core_fields.py)
             from senaite.pfas import core_fields
-            ext = self._logbook_json(ws, u"senaite.pfas.logbook.252") or {}
+            from senaite.pfas.dilution_ref import LOGBOOK_KEY
+            ext = self._logbook_json(ws, LOGBOOK_KEY) or {}
             profile = self._method_profile() or {}
             limit = holding_time.limit_for(profile, self._batch_matrix())
             samples = core_fields.samples_of(ws)
@@ -2535,11 +2989,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 if rec and rec.get("method") not in (None, u"", hg.NONE_ID):
                     judged[holding_time.PROCESSED + s.getId()] = holding_time.evaluate_processed(
                         lab_time.lab_date(rec.get("at"), "utc"), ext.get("extraction_date"), proc_limit)
-            # the extract, extraction to analysis (EPA 537.1 §8.5: 28 days), where the method sets one
+            # the extract, extraction to analysis (EPA 537.1 §8.5: 28 days), where the method sets one:
+            # to the last result's analysis date, read as the certificate reads it, else the run's date
             ext_limit = holding_time.extract_limit_for(profile, self._batch_matrix())
             if ext_limit is not None:
+                dates = self.analysis_dates(ws)
                 judged[u"extract"] = holding_time.evaluate_extract(
-                    ext.get("extraction_date"), self._run_date(ws), ext_limit)
+                    ext.get("extraction_date"), dates["last"], ext_limit, by_run_date=dates["by_run_date"])
             verdict = holding_time.combine(judged)
         except Exception as exc:                            # noqa: BLE001
             logger.error("holding_time_summary: %s", exc)
@@ -2552,21 +3008,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         """The three clocks as dates: sample, processed sample, extract."""
         return holding_time.clock_rows(self.holding_time_summary())
 
-    def my_initials(self):
-        """The signed-in person's initials from their Lab Contact, else u""
-        (then they are typed)."""
-        try:
-            from AccessControl import getSecurityManager
-            from senaite.pfas.browser.staff import contact_for
-            from senaite.pfas.staff import staff_record
-            contact = contact_for(getSecurityManager().getUser().getId())
-            return (staff_record(contact) or {}).get("initials") or u"" if contact is not None else u""
-        except Exception:                                   # noqa: BLE001
-            return u""
-
     # ── Traceability ──────────────────────────────────────────────────────
 
-    def _build_lot_indices(self, portal):
+    @staticmethod
+    def _build_lot_indices(portal):
         """Build in-memory lot dicts (lot_number is not a catalog index).
 
         ARCHIVED reagents are excluded. This walked
@@ -2621,6 +3066,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             "lot_number": getattr(r, "lot_number", "") or u"",
             "url":        r.absolute_url(),
             "has_coa":    has_coa,
+            # the inventory category the lot is filed under
+            "category":   getattr(r, "category", "") or u"",
         }
 
     def _resolve_parent(self, portal, parent, reagent_by_lot):
@@ -2662,10 +3109,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         """The SENAITE Batch this worksheet's analyses belong to.
 
         Derived structurally: every analysis knows its sample, and every sample
-        knows its batch. This used to read a `batch_id` out of the CoC logbook
-        — a field the CoC schema does not define, so the join was always None
-        and the traceability gate saw nothing however carefully the logbooks
-        had been filled in.
+        knows its batch (SENAITE's own link); a worksheet whose analyses name
+        no batch has none.
         """
         try:
             counts = {}
@@ -2680,22 +3125,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 return max(counts, key=counts.get)
         except Exception:
             pass
-        # A CoC that carries a batch_id still resolves.
-        try:
-            raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
-            bid = (json.loads(raw).get("batch_id") or "").strip() if raw else ""
-            if bid:
-                from senaite.pfas.batch_ref import get_batch
-                return get_batch(self._portal(), bid)
-        except Exception:
-            pass
         return None
 
     def _logbook_json(self, ws, key):
-        """Logbook data with a DUAL-READ home: the worksheet first
-        (canonical), else the CoC-linked batch (where the logbook
-        views historically write) — so review finds the data wherever the
-        bench recorded it."""
+        """A record annotation with a DUAL-READ home: the worksheet first
+        (canonical), else the batch SENAITE links its analyses to, which
+        holds the records written before they moved to the worksheet -- so
+        review finds the extraction record wherever the bench recorded it."""
         for obj in (ws, self._linked_batch(ws)):
             if obj is None:
                 continue
@@ -2708,13 +3144,43 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return {}
 
     def _build_traceability_tree(self, ws):
+        from senaite.pfas.dilution_ref import LOGBOOK_KEY
         portal = self._portal()
 
         def _load(key):
             return self._logbook_json(ws, key)
 
-        lb252 = _load(u"senaite.pfas.logbook.252")
-        # FM-ENV-004 (sample processing / homogenisation). Its rows were traced
+        lb252 = _load(LOGBOOK_KEY)
+        # The guided extraction's stages are the record of the lots it used,
+        # and the batch record prints them from the session. The walk reads
+        # the same rows through the same function (worksheet_lots), never
+        # the copy Finalise leaves on the extraction table: a lot the batch
+        # record lists is then always a lot this walk judges.
+        from senaite.pfas import worksheet_lots
+        from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
+        session = _load(EXTRACTION_SESSION_KEY)
+        if worksheet_lots.recorded(session):
+            lb252 = dict(lb252, **worksheet_lots.extraction_tables(session))
+        # the spike lots the QC members were made with are standards the
+        # analysis used: walked and judged as the stages' standards are
+        # so are the other lots it used: each dilution's diluent, internal
+        # standard and surrogate, and each matrix blank's blank-matrix lot
+        from senaite.pfas import extraction_batch
+        from senaite.pfas.browser.bench_inventory import item_index
+        members = extraction_batch.load(ws)
+        index = item_index(portal)
+        more = worksheet_lots.analysis_lots(members, extraction_batch.load_requests(ws),
+                                            lambda kind, uid: index.get((kind, uid)))
+        more[worksheet_lots.STANDARDS] = worksheet_lots.spike_standards(members) + more[worksheet_lots.STANDARDS]
+        for table, rows in sorted(more.items()):
+            if rows:
+                lb252 = dict(lb252, **{table: list(lb252.get(table) or []) + rows})
+        # a lot a stage used out of date with a deviation note is a recorded
+        # use, not a finding (_expired_at_use)
+        from senaite.pfas import lot_expiry
+        from senaite.pfas.extraction_review import done_on as stage_day
+        self._use_reasons = lot_expiry.stage_reasons(session, stage_day)
+        # The processing stage (sample processing / homogenisation). Its rows were traced
         # NOWHERE: the walk read 252 and 251 only, so a grinder-blade or sorbent
         # lot named here was neither resolved nor reported unresolved, and the
         # balance the samples were WEIGHED on had no calibration chain. Same
@@ -2734,6 +3200,16 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # Reported but not enforced — see _expired_at_use.
             "warnings":           [],
         }
+        # a solution a stage prepared at the bench: walked as a standard when
+        # the inventory holds its lot; else listed, untraced, with a warning
+        for sol in worksheet_lots.solutions(session):
+            if sol["lot"] in ps_by_lot or sol["lot"] in reagent_by_lot:
+                lb252 = dict(lb252, standards=list(lb252.get("standards") or []) + [
+                    {"name": sol["name"], "lot": sol["lot"], "conc": u"", "volume": u""}])
+            else:
+                tree["direct_standards"].append({"name": sol["name"], "lot": sol["lot"], "resolved": None})
+                tree["warnings"].append(u"%s, lot %s, stage %s, is not in the inventory: its parents "
+                                        u"are not traced" % (sol["name"], sol["lot"], sol["stage"]))
 
         # Each logbook's own date, because its rows were used on ITS date.
         use_252 = self._use_date(lb252, "extraction_date")
@@ -2741,14 +3217,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # Every logbook the walk reads appears here. A logbook left out would skip
         # its expiry check SILENTLY, which is the failure  exists to prevent —
         # an unenforceable check must not look like a satisfied one.
-        for lb_name, lb_date in ((self._fc("252"), use_252),
-                                 (self._fc("253"), use_253)):
-            if not lb_date:
+        for lb_name, lb_date, lb in ((self._SOURCE_LABELS["252"], use_252, lb252),
+                                     (self._SOURCE_LABELS["253"], use_253, lb253)):
+            if not lb_date and self._names_lots(lb):
                 tree["warnings"].append(
-                    u"%s records no date, so the lots it names cannot be checked "
+                    u"%s: no date, so the lots it names cannot be checked "
                     u"for expiry at the time of use" % lb_name)
 
-        # --- FM-ENV-003: reagents[] table ---
+        # --- extraction record: reagents[] table ---
         # active_rows(): a row struck as not-applicable is recorded but inert.
         # Without this a struck row holding a half-typed lot would be reported
         # as unresolved and would block worksheet release.
@@ -2779,6 +3255,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                         "reason": reason,
                     })
                 self._flag_pending(tree, reagent_by_lot[lot], u"reagent", "252.reagents", lot, name, use_252)
+            elif lot and lot in ps_by_lot:
+                entry["resolved"] = self._resolve_prepared(
+                    tree, portal, ps_by_lot[lot], "252.reagents", lot, name, use_252)
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.reagents", "lot": lot, "name": name,
@@ -2792,7 +3271,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 })
             tree["direct_reagents"].append(entry)
 
-        # --- FM-ENV-003: standards[] table ---
+        # --- extraction record: standards[] table ---
         for row in active_rows(lb252.get("standards")):
             lot  = (row.get("lot") or u"").strip()
             name = row.get("name") or u""
@@ -2810,7 +3289,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 entry["resolved"] = {"title": ps.Title(),
                                      "url": ps.absolute_url(),
                                      "uid": ps.getId(),
-                                     "type": "PreparedStandard"}
+                                     "type": "PreparedStandard",
+                                     "category": getattr(ps, "standard_type", "") or u""}
             elif lot and lot in reagent_by_lot:
                 self._flag_pending(tree, reagent_by_lot[lot], u"reagent", "252.standards", lot, name, use_252)
                 entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
@@ -2837,7 +3317,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     })
             tree["direct_standards"].append(entry)
 
-        # --- FM-ENV-003: extraction_materials[] table ---
+        # --- extraction record: extraction_materials[] table ---
         # Traced nowhere before: the gate read only reagents[] and
         # standards[], so a cartridge or sorbent lot was neither resolved nor
         # reported unresolved. These consumables touch the extract and belong in
@@ -2863,6 +3343,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     })
                 self._flag_pending(tree, reagent_by_lot[lot], u"reagent",
                                    "252.extraction_materials", lot, name, use_252)
+            elif lot and lot in ps_by_lot:
+                entry["resolved"] = self._resolve_prepared(
+                    tree, portal, ps_by_lot[lot], "252.extraction_materials", lot, name, use_252)
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.extraction_materials", "lot": lot,
@@ -2872,7 +3355,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 })
             tree["direct_reagents"].append(entry)
 
-        # --- FM-ENV-004: processing_materials[] table ---
+        # --- processing stage: processing_materials[] table ---
         # Traced nowhere, exactly as extraction_materials was: the
         # rows carry lots, `processing_date` records when they were used, and
         # nothing read either. Grinder blades, dry ice and sorbents touch the
@@ -2895,7 +3378,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 # The analyst said this material has no lot. Reported, not
                 # enforced — see lot_or_none.
                 tree["warnings"].append(
-                    self._fc("253") + u" records %s with lot \u201c%s\u201d, so it is "
+                    u"The processing stage records %s with lot \u201c%s\u201d, so it is "
                     u"traced to nothing; strike the row instead if it is genuinely "
                     u"not applicable" % (name or u"a processing material",
                                          sentinel))
@@ -2911,6 +3394,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     })
                 self._flag_pending(tree, reagent_by_lot[lot], u"reagent",
                                    "253.processing_materials", lot, name, use_253)
+            elif lot and lot in ps_by_lot:
+                entry["resolved"] = self._resolve_prepared(
+                    tree, portal, ps_by_lot[lot], "253.processing_materials", lot, name, use_253)
             elif lot:
                 tree["unresolved"].append({
                     "source": "253.processing_materials", "lot": lot,
@@ -2920,7 +3406,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 })
             tree["direct_reagents"].append(entry)
 
-        # --- FM-ENV-004: the balance the samples were WEIGHED on ---
+        # --- processing stage: the balance the samples were WEIGHED on ---
         # 253 records `balance_sn` as free text and nothing resolved it, so the
         # mass every result is calculated from rested on a balance with no
         # calibration chain. Same defect  fixed for the extraction stages'
@@ -2931,17 +3417,17 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if bal_sn:
             try:
                 from senaite.pfas import facility_qc as _fq253
-                entry = {"label": self._fc("253") + u" balance", "serial": bal_sn,
+                entry = {"label": u"Processing stage balance", "serial": bal_sn,
                          "unit": None, "records": [], "problems": [],
                          "warnings": []}
                 unit = _fq253.unit_by_serial(bal_sn)
                 if unit is None:
                     entry["warnings"].append(
-                        u"balance %s is not registered in Facility QC, so its "
+                        u"balance %s is not registered under Equipment, so its "
                         u"calibration on the processing date is unknown" % bal_sn)
                 elif not use_253:
                     entry["warnings"].append(
-                        self._fc("253") + u" records no processing date, so balance %s "
+                        u"The processing stage records no date, so balance %s "
                         u"cannot be checked for the day it was used" % bal_sn)
                 else:
                     prov = _fq253.equipment_provenance(unit.get("id"), use_253)
@@ -2953,7 +3439,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 for prob in entry["problems"]:
                     tree["unresolved"].append({
                         "source": "253.balance_sn", "lot": bal_sn,
-                        "name": self._fc("253") + u" balance", "reason": prob,
+                        "name": u"Processing stage balance", "reason": prob,
                     })
                 tree["warnings"].extend(entry["warnings"])
             except Exception as exc:                        # noqa: BLE001
@@ -3009,7 +3495,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                             # Blocking here would have retroactively failed the
                             # already-released WS-0005 on a cryogenic mill.
                             entry["warnings"].append(
-                                u"serial %s is not registered in Facility QC, so "
+                                u"serial %s is not registered under Equipment, so "
                                 u"its calibration status is unknown" % serial)
                         else:
                             prov = _fq.equipment_provenance(unit.get("id"),
@@ -3049,15 +3535,15 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # --- The run: the lots the instrument was loaded with (Run Builder) ---
         # Each is walked to full depth (build_parentage) and judged on the run
         # date (parentage_checks): expired, a parent out of date when it was
-        # made, a lot that outlives a parent, pending verification,
-        # quarantined, no storage conditions. An unreviewed prep entry is
+        # made, a lot that outlives a parent, pending acceptance,
+        # quarantined, no storage conditions. An unreviewed preparation record is
         # reported, never a block.
         from senaite.pfas import parentage_checks as pchk
         from senaite.pfas import prep_entries
         from senaite.pfas import run_lots as rl
         from senaite.pfas.browser.prepared_standards import (
-            KIND_PREPARED, _obj_to_dict as _psdict, _resolve_lot, build_parentage,
-            equipment_gate_problems, parentage_problems)
+            KIND_PREPARED, _obj_to_dict as _psdict, build_parentage,
+            equipment_gate_problems, parentage_problems, resolve_loaded)
         from senaite.pfas import send_back as sb
         manifest = self._run_manifest(ws) or {}
         run_day = _lab_day(manifest.get("built_at"))
@@ -3068,33 +3554,39 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 "reason": u"sent back %s on %s: %s" % (
                     u"to the Run Builder" if back.get("stage") == sb.RUN else u"to the extraction",
                     _lab_day(back.get("at")), back.get("reason") or u"")})
-        loaded = rl.run_loaded(manifest)
+        # the same rows the batch record's Loaded table prints, each looked
+        # up in the inventory once (worksheet_lots.loaded_lots)
+        loaded = worksheet_lots.loaded_lots(manifest, lambda snap: resolve_loaded(portal, snap))
         if manifest and not loaded:
             tree["warnings"].append(u"The run records no lots loaded on the instrument (Run Builder).")
         try:
             entries = prep_entries.load(portal)
         except Exception as exc:                            # noqa: BLE001
-            logger.warning("prep entries unreadable: %s", exc)
+            logger.warning("preparation records unreadable: %s", exc)
             entries = {}
         warned = set()
-        for display_label, snap in loaded:
-            lot_ref = (snap.get("lot") or u"").strip()
+        for row in loaded:
+            display_label, snap, lot_ref = row["label"], row["snap"], row["lot"]
+            # kind: what the run recorded when the lot was loaded, replaced
+            # below by what the inventory holds once the lot is found
             ps_node = {"field": u"run", "label": display_label, "lot": lot_ref,
                        "title": snap.get("name") or u"", "prepared_date": u"", "prepared_by": u"",
                        "expiry_date": snap.get("expiry") or u"", "url": u"", "found": False,
-                       "parent_reagents": [], "parentage": []}
+                       "kind": row["kind"], "parent_reagents": [], "parentage": []}
             tree["prepared_standards"].append(ps_node)
-            obj, kind = _resolve_lot(portal, {"uid": snap.get("uid"), "lot": lot_ref})
+            obj, kind = row["obj"], row["inventory_kind"]
             if obj is None:
                 tree["unresolved"].append({"source": u"run", "lot": lot_ref, "label": display_label,
                                            "reason": u"the lot loaded is not in the inventory"})
                 continue
-            ps_node.update(found=True, title=obj.Title(), url=obj.absolute_url())
+            ps_node.update(found=True, title=obj.Title(), url=obj.absolute_url(),
+                           kind=rl.PREPARED if kind == KIND_PREPARED else rl.REAGENT)
             if kind == KIND_PREPARED:
                 rec = _psdict(obj)
                 ps_node.update(prepared_date=str(rec.get("prepared_date") or "")[:10],
                                prepared_by=rec.get("prepared_by") or u"",
-                               expiry_date=str(rec.get("expiry_date") or "")[:10])
+                               expiry_date=str(rec.get("expiry_date") or "")[:10],
+                               category=rec.get("standard_type") or u"")
                 try:
                     ps_node["parentage"] = build_parentage(portal, rec)
                     for prob in parentage_problems(ps_node["parentage"]):
@@ -3112,18 +3604,23 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                         "expiry": ps_node["expiry_date"], "prepared_date": ps_node["prepared_date"],
                         "status": rec.get("status") or u"", "entry_id": rec.get("entry_id") or u"",
                         "storage_conditions": rec.get("storage_conditions") or u"",
+                        "extensions": rec.get("extensions") or [],
                         "children": ps_node["parentage"]}
             else:
                 # a purchased solvent loaded straight on the LC
                 from senaite.pfas.browser.reagents import (
-                    _obj_to_dict as _rd, _effective_expiry, get_expiry_defaults)
+                    _obj_to_dict as _rd, _base_expiry, _effective_expiry, get_expiry_defaults)
                 rd = _rd(obj)
                 ps_node["expiry_date"] = _effective_expiry(rd, get_expiry_defaults(portal))
+                ps_node["category"] = rd.get("category") or u""
                 root = {"kind": kind, "lot": lot_ref, "name": ps_node["title"], "uid": obj.getId(),
                         "expiry": ps_node["expiry_date"], "status": rd.get("status") or u"",
+                        "expiry_base": _base_expiry(rd, get_expiry_defaults(portal)),
+                        "extensions": rd.get("extensions") or [], "no_expiry": bool(rd.get("no_expiry")),
                         "storage_conditions": rd.get("storage_conditions") or u"", "children": []}
             ps_node["parent_reagents"] = [
                 {"name": n.get("name") or u"", "lot": n.get("lot") or u"",
+                 "expiry": n.get("expiry") or u"",
                  "resolved": n.get("kind") != u"unresolved" or None}
                 for n in root["children"]]
             for p in pchk.walk_problems([root], run_day):
@@ -3134,14 +3631,32 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 if eid in warned:
                     continue
                 warned.add(eid)
-                if not (entries.get(eid) or {}).get("reviewed_by"):
-                    tree["warnings"].append(u"%s: prep entry %s not reviewed" % (display_label, eid))
+                rec = entries.get(eid) or {}
+                code = (rec.get("recipe") or {}).get("code")
+                if not rec.get("reviewed_by"):
+                    tree["warnings"].append(u"%s: preparation record %s not reviewed" % (
+                        display_label, u"%s \u00b7 %s" % (code, eid) if code else eid))
         # the run's last injection after a solvent lot expired (after import)
         for late in rl.late_injections(self._run_date(ws), manifest.get("solvents")):
             tree["unresolved"].append({"source": u"run.solvents", "lot": late["lot"],
                                        "label": u"LC %s" % late["channel"], "reason": late["reason"]})
 
         return tree
+
+    def _resolve_prepared(self, tree, portal, ps, source, lot, name, use_date):
+        """A lot a reagent or material row names that is an in-house prepared
+        lot: resolved to its prepared standard, judged on its expiry and
+        walked to its parents, as a standards row is."""
+        self._flag_pending(tree, ps, u"prepared", source, lot, name, use_date)
+        self._walk_extraction_lot(tree, portal, ps, name, use_date)
+        resolved = {"title": ps.Title(), "url": ps.absolute_url(),
+                    "uid": ps.getId(), "type": "PreparedStandard",
+                    "category": getattr(ps, "standard_type", "") or u""}
+        reason = self._expired_at_use(resolved, lot, name, use_date, portal)
+        if reason:
+            tree["unresolved"].append({"source": source, "lot": lot,
+                                       "name": name, "reason": reason})
+        return resolved
 
     @staticmethod
     def _walk_extraction_lot(tree, portal, ps, label, use_date):
@@ -3158,6 +3673,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     "prepared_date": str(rec.get("prepared_date") or "")[:10],
                     "status": rec.get("status") or u"",
                     "storage_conditions": rec.get("storage_conditions") or u"",
+                    "extensions": rec.get("extensions") or [],
                     "children": build_parentage(portal, rec)}
         except Exception as exc:                            # noqa: BLE001
             logger.error("parentage walk for %s: %s", ps.getId(), exc)
@@ -3171,7 +3687,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
 
     @staticmethod
     def _flag_pending(tree, obj, kind, source, lot, name, used_on=u""):
-        """A lot the extraction used that is pending verification: release
+        """A lot the extraction used that is pending acceptance: release
         waits for the reviewer to approve it, or reject it and send the run
         back (send_back.py). One rejected at review after it was used holds
         release until the record no longer names it, so a rebuild alone never
@@ -3180,14 +3696,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         status = getattr(obj, "status", None)
         if status == u"pending":
             tree["unresolved"].append({"source": source, "lot": lot, "name": name,
-                                       "reason": u"pending verification", "pending": True,
+                                       "reason": u"pending acceptance", "pending": True,
                                        "uid": obj.getId(), "kind": kind})
         elif status == u"quarantine" and _rejected_after(obj, used_on):
             tree["unresolved"].append({"source": source, "lot": lot, "name": name,
                                        "reason": u"rejected after use"})
 
     def _entry_ids(self, nodes):
-        """Every prep entry named in a parentage tree, depth-first."""
+        """Every preparation record named in a parentage tree, depth-first."""
         out = []
         for n in nodes or []:
             if n.get("entry_id"):
@@ -3222,7 +3738,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             memo = self._qc_summary_memo = {}
         key = ws.getId()
         if key not in memo:
-            memo[key] = self._get_qc_summary_uncached(ws)
+            out = self._get_qc_summary_uncached(ws)
+            if not out.get("error"):
+                # the summary's overall verdict is the gate's one reading: a
+                # required QC type not run holds it, a study's own replicates
+                # do not
+                out["overall_pass"] = not self._gate_holds(self._qc_gate(out))
+            memo[key] = out
         return memo[key]
 
     def _get_qc_summary_uncached(self, ws):
@@ -3283,22 +3805,38 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 logger.warning("_get_qc_summary.get_profile: %s", exc)
 
         qc_results += self._injection_qc_rows(batch_key)
-        out = self._build_qc_matrix(qc_results, qc_acceptance, run_date, ws=ws)
+        # a recovery is judged and shown at the method's decimal places; a run
+        # that recorded the places its checks judged at is shown at those, so a
+        # value never sits beside a verdict reached at other places
+        from senaite.pfas import method_engine, rounding
+        places = method_engine.recovery_decimals(self._method_profile()) if method_id else 0
+        recorded = self._judged_rules(batch_key)
+        if len(recorded) == 1:
+            places = rounding.judged_places(recorded[0])
+        out = self._build_qc_matrix(qc_results, qc_acceptance, run_date, ws=ws, places=places,
+                                    rule=self._rounding_rule() if places else None,
+                                    row_name=self._qc_row_namer())
         if not out.get("result_count"):
             # a run on record with no QC row at all is a lost write, never a
             # pass (an empty matrix read overall_pass=True)
             return {"error": u"no QC results are stored for this run; reprocess it",
                     "rows": [], "qc_types": [], "overall_pass": False,
                     "batch_id": batch_key}
+        # each failing rule whose flag carries a code: that code at its
+        # place, in place of the library's (rule_flags)
+        out["qualifiers"] = self._flag_qualifiers(out.get("qualifiers") or [], qc_results, batch_key)
+        # an Evaluate failure: shown in Data Review, marked not printed
+        out["advisories"] = self._flag_advisories(qc_results)
         # a sample received out of compliance with its method: every result
         # of that sample (receipt_compliance)
         out["qualifiers"] = (list(out.get("qualifiers") or []) + self._receipt_qualifiers(ws)
-                             + self._respike_qualifiers(ws))
+                             + self._respike_qualifiers(ws) + self._coelution_qualifiers(ws))
         return out
 
     def _sample_results_for(self, ws, keyword, applies_to=u""):
-        """[{"keyword", "nondetect", "undecidable"}] for the worksheet's
-        sample analyses of one analyte that a QC row covers, skipping the
+        """[{"keyword", "nondetect", "below_rl", "undecidable"}] for the
+        worksheet's sample analyses of one analyte that a QC row covers,
+        skipping the
         samples the LIMS itself records as QC: a SENAITE reference analysis,
         or a sample the worksheet's QC assignment (extraction_batch) gives a
         QC role. A matrix spike is always detected. A sample it records as
@@ -3306,9 +3844,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         for counts too, and its non-detect is "undecidable", which never
         releases. A sample's ids are never read for its role.
         `applies_to` is the row's own scope (a matrix spike's parent); empty
-        covers every sample of the run. Non-detect is the certificate's own
-        rule (coa_format.format_result: below the reporting limit, or a
-        non-detect text)."""
+        covers every sample of the run. Both are the certificate's own row
+        (coa_format.build_rows: its RL and MDL, scaled by a dilution's fold):
+        non-detect is a result it prints as not detected; below_rl is one it
+        prints below its reporting limit, a non-detect or a J value (a J
+        value is detected)."""
         from senaite.pfas import coa_format, extraction_batch, report_limits
         from senaite.pfas.browser.dilution_retests import dilution_fold
         from senaite.pfas.print_settings import get_print_settings
@@ -3378,32 +3918,68 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     continue
                 matrix = report_limits.canonical_matrix(
                     profile, sample.getSampleTypeTitle())
-                rl = report_limits.scaled_rl(
-                    report_limits.limits_for(profile, matrix, keyword)["rl"],
-                    dilution_fold(analysis))
-                # judged under the certificate's own format for this sample
+                # judged as the certificate prints this sample's row
                 merged, _fmt = certificate_format(snap, method_id, profile, matrix, live)
-                res = coa_format.format_for_settings(analysis.getResult(), rl, merged)
+                # its run's acid-basis analytes; unknown, the salt factor applies, as in the worker
+                try:
+                    from senaite.pfas.browser.run_builder import analysis_acid_basis
+                    acid = analysis_acid_basis(analysis, self.__dict__.setdefault("_acid_basis_cache", {}))
+                except Exception as exc:                    # noqa: BLE001
+                    logger.warning("acid basis for %s: %s", keyword, exc)
+                    acid = []
+                from senaite.pfas.above_range import of as above_range_of
+                res = coa_format.build_rows(
+                    [{"keyword": keyword, "result": analysis.getResult(),
+                      "dilution": dilution_fold(analysis),
+                      "above": (above_range_of(analysis) or {}).get("limit"),
+                      "acid_basis": keyword.upper() in [a.upper() for a in acid]}], profile, matrix, merged)[0]
             except Exception as exc:                        # noqa: BLE001
                 logger.warning("sample result for %s: %s", keyword, exc)
                 return []                                   # unknown: holds
             out.append({"keyword": keyword, "nondetect": res["detected"] is False,
+                        "below_rl": res["detected"] is False or bool(res["estimated"]),
                         "undecidable": role != u"Sample"})
         return out
 
-    def _build_qc_matrix(self, qc_results, qc_acceptance, run_date="", ws=None):
+    def _qc_row_namer(self):
+        """name -> the name the QC Summary's row goes by
+        (compound_library.listed_namer over the method's analytes and its
+        isotope standards); the name as stored when the library cannot be
+        read."""
+        try:
+            from senaite.pfas import compound_library, compound_library_store
+            profile = self._method_profile() or {}
+            listed = list(profile.get("master_analyte_set") or []) + sorted(
+                (profile.get("labelled_standards") or {}).keys()
+                if isinstance(profile.get("labelled_standards"), dict) else [])
+            return compound_library.listed_namer(compound_library_store.library(), listed)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("QC Summary analyte names not resolved: %s", exc)
+            return lambda name: name or u""
+
+    def _build_qc_matrix(self, qc_results, qc_acceptance, run_date="", ws=None, places=0, rule=None,
+                         row_name=None):
         """Group QC results into analyte x qc_type matrix with pass/warn/fail.
+        `row_name(name)`: the name a result's row goes by (_qc_row_namer);
+        the name as stored without it.
 
         An Evaluate (advisory) failure is a warning and never blocks. A
         failure biased high on an analyte that is a non-detect in every
         sample of ws is qualified with a note instead of failing."""
         by_analyte = {}
         qc_type_set = []
+        # a sample's result above the calibration range with no dilution
+        from senaite.pfas.above_range import QC_TYPE as above_range_type
+        # and one the instrument wrote BLoQ with no number
+        from senaite.pfas.no_number import QC_TYPE as no_number_type
+        # one row per analyte, named as the method's analyte list names it,
+        # whatever spelling a check stored its result under
+        row_name = row_name or (lambda name: name)
 
         for r in qc_results:
             if r.get("result_status") == "voided":
                 continue
-            analyte  = r.get("analyte", "") or ""
+            analyte  = row_name(r.get("analyte", "") or "")
             qc_type  = r.get("qc_type", "") or ""
             if not analyte and (r.get("result_status") == "unevaluated"
                                 or not r.get("passed", 1)):
@@ -3451,11 +4027,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     recovery = None
                     if qc_type != "MB" and val is not None and exp:
                         try:
-                            # shown as the checks judge it: a whole percent by
-                            # the method's rule
+                            # shown as the checks judge it: the method's
+                            # decimal places for recoveries by its rule
                             from senaite.pfas.rounding import judged_pct
                             recovery = judged_pct(float(val) / float(exp) * 100.0,
-                                                  self._rounding_rule())
+                                                  self._rounding_rule(), places)
                         except (TypeError, ZeroDivisionError):
                             recovery = None
 
@@ -3468,6 +4044,32 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                             cell_status = "unevaluated"
                         unjudged = True
                         overall_pass = False
+                    elif not passed and qc_type == above_range_type:
+                        # a sample's result above the calibration range with
+                        # no dilution: held until the reviewer records the
+                        # reason to report it with E. Never qualified by the
+                        # library: the reason is the reviewer's, per result
+                        # (a dilution, once run, files no such row)
+                        why = self.above_range_reason(rec.get("applies_to"), rec.get("analyte"))
+                        if why:
+                            if cell_status in ("ok", "warn"):
+                                cell_status = "qualified"
+                            cell_note = u"Reported with E: %s" % why.get("reason")
+                        else:
+                            cell_status = "fail"
+                            overall_pass = False
+                    elif not passed and qc_type == no_number_type:
+                        # a sample's result the instrument wrote BLoQ with no
+                        # number: held until the reviewer records the reason
+                        # to report it, never reported not detected silently
+                        why = self.no_number_reason(rec.get("applies_to"), rec.get("analyte"))
+                        if why:
+                            if cell_status in ("ok", "warn"):
+                                cell_status = "qualified"
+                            cell_note = u"Reported without a number: %s" % why.get("reason")
+                        else:
+                            cell_status = "fail"
+                            overall_pass = False
                     elif not passed and rec.get("advisory"):
                         # an Evaluate rule: shown, never blocking
                         if cell_status == "ok":
@@ -3483,18 +4085,28 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                         # material is otherwise never qualifiable by the
                         # library (disposition_for blocks it).
                         qual = self._qualify_failure(qc_type, rec.get("analyte"))
-                        note = None
+                        note = hb = None
                         if ws is not None:
-                            from senaite.pfas.qc_qualification import (
-                                HIGH_BIAS_CODE, high_bias_release)
+                            from senaite.pfas.qc_qualification import high_bias_release
                             from senaite.pfas.rounding import judged_pct
                             rule = self._rounding_rule()
+                            # a recovery judged at the method's decimal places
                             note = high_bias_release(
                                 rec, self._sample_results_for(
                                     ws, rec.get("analyte"),
                                     applies_to=rec.get("applies_to") or u""),
-                                judged=lambda pct: judged_pct(pct, rule))
+                                judged=lambda pct: judged_pct(pct, rule, places))
+                            # released under the library's entry: held while
+                            # the QAO holds it (None), asked for while it has
+                            # no code or wording
+                            hb = self._high_bias_qualifier() if note else None
+                            if note and hb is None:
+                                note = None
+                            elif note and hb.get("needs_config"):
+                                note, qual = None, hb
                         if note:
+                            from senaite.pfas.qc_qualification import high_bias_note
+                            note = high_bias_note(hb.get("statement"), qc_type)
                             if cell_status in ("ok", "warn"):
                                 cell_status = "qualified"
                             cell_note = note
@@ -3503,7 +4115,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                                 "applies_to": rec.get("applies_to") or u"",
                                 "reason": note,
                                 "analyte": rec.get("analyte") or u"",
-                                "code": HIGH_BIAS_CODE,
+                                "code": hb.get("code") or u"",
                                 "statement": note,
                             })
                         elif qual and not qual.get("needs_config"):
@@ -3525,6 +4137,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                                     "analyte": affected,
                                     "code": qual.get("code") or u"",
                                     "statement": qual.get("statement") or u"",
+                                    # the library entry and the compound the
+                                    # failure was recorded on: what a rule's
+                                    # flag replaces it by (rule_flags.replaced)
+                                    "failure": qual.get("failure_type") or u"",
+                                    "source": rec.get("analyte") or u"",
                                 })
                         elif qual and qual.get("needs_config"):
                             if cell_status != "fail":
@@ -3550,7 +4167,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                         "limit_high": rec.get("limit_high"),
                         "limit_basis": rec.get("limit_basis") or u"",
                         "units": rec.get("units") or u"",
-                        "kind": u"RPD" if (rec.get("qc_level") or u"").split(u" ")[0] == u"RPD" else u"",
+                        # a precision: a pair's RPD, or the RSD of several spikes
+                        "kind": u"RPD" if (rec.get("qc_level") or u"").split(u" ")[0] in (u"RPD", u"RSD") else u"",
                         # the value's provenance record (the drawer)
                         "prov_key": rec.get("prov_key") or u"",
                     })
@@ -3577,14 +4195,20 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             for qt in qc_type_set:
                 c = row["cells"].get(qt)
                 if c and c["status"] != "ok":
-                    run_flags.append({"qc_type": qt, "status": c["status"],
-                                      "flags": [v["flag"] for v in c["values"] if v["flag"]],
+                    # each reason once, however many records state it
+                    said = []
+                    for v in c["values"]:
+                        if v["flag"] and v["flag"] not in said:
+                            said.append(v["flag"])
+                    run_flags.append({"qc_type": qt, "status": c["status"], "flags": said,
                                       "unjudged": bool(c.get("unjudged")),
                                       "unmapped": c.get("unmapped") or u""})
         rows = [r for r in rows if r["analyte"] != u"(whole run)"]
 
         # what each cell shows: the value, coloured by its verdict, and the
         # criteria cited once per column (qc_cells)
+        # a recovery shows `places`, the method's decimal places for
+        # recoveries, by its `rule` (display only)
         from senaite.pfas import qc_cells
         display_cols, col_values = [], {}
         for row in rows:
@@ -3595,7 +4219,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     continue
                 for key, vals in qc_cells.split(qt, c["values"]):
                     row["display"][key] = qc_cells.cell_display(
-                        qt, vals, qc_cells.sub_status(c["status"], vals))
+                        qt, vals, qc_cells.sub_status(c["status"], vals), places, rule)
                     if key not in display_cols:
                         display_cols.append(key)
                     col_values.setdefault(key, []).extend(vals)
@@ -3834,6 +4458,27 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             memo[ws_id] = self._result_pushes_uncached(ws_id)
         return memo[ws_id]
 
+    def _judged_rules(self, batch_id, path=None):
+        """The rules ("epa;3;pct1") a run's checks recorded they judged with,
+        from its injection rows in the QC store; [] when none is recorded or
+        the store cannot be read."""
+        import sqlite3
+        from senaite.pfas.qc.store import DEFAULT_DB_PATH
+        path = path or DEFAULT_DB_PATH
+        if not batch_id or not os.path.exists(path):
+            return []
+        try:
+            con = sqlite3.connect(path)
+            try:
+                return sorted(r[0] for r in con.execute(
+                    "SELECT DISTINCT judged_rule FROM injection_results "
+                    "WHERE batch_id=? AND judged_rule != ''", (batch_id,)))
+            finally:
+                con.close()
+        except sqlite3.Error as exc:
+            logger.warning("judged rules of %s unreadable: %s", batch_id, exc)
+            return []
+
     def _result_pushes_uncached(self, ws_id):
         import sqlite3
         from senaite.pfas.qc.store import DEFAULT_DB_PATH
@@ -3865,12 +4510,64 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except Exception:                                   # noqa: BLE001
             return result, unit
 
+    def _certificate_row(self, analysis):
+        """The certificate's own row for one analysis (coa_format.build_rows:
+        its RL and MDL, frozen at verification where they were, scaled by a
+        dilution's fold), without QC codes: what it prints and the rule's
+        codes. None where it cannot be read. Once per analysis per request."""
+        cache = self.__dict__.setdefault("_cert_rows", {})
+        try:
+            uid = analysis.UID()
+        except Exception:                                   # noqa: BLE001
+            return None
+        if uid in cache:
+            return cache[uid]
+        row = None
+        try:
+            from senaite.pfas import coa_format, verified_rl
+            from senaite.pfas.above_range import of as above_range_of
+            from senaite.pfas.browser.dilution_retests import dilution_fold
+            from senaite.pfas.report_limits import canonical_matrix
+            sample_type = analysis.getRequest().getSampleTypeTitle()
+            merged = self._certificate_format(sample_type)
+            profile = self._cert_inputs[1]
+            keyword = analysis.getKeyword()
+            try:
+                from senaite.pfas.browser.run_builder import analysis_acid_basis
+                acid = analysis_acid_basis(analysis, self.__dict__.setdefault("_acid_basis_cache", {}))
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("acid basis for %s: %s", keyword, exc)
+                acid = []
+            row = coa_format.build_rows(
+                [{"keyword": keyword, "result": analysis.getResult(),
+                  "dilution": dilution_fold(analysis), "frozen_rl": verified_rl.frozen_for(analysis),
+                  "above": (above_range_of(analysis) or {}).get("limit"),
+                  "acid_basis": keyword.upper() in [a.upper() for a in acid]}],
+                profile, canonical_matrix(profile, sample_type), merged)[0]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("certificate row of an analysis: %s", exc)
+        cache[uid] = row
+        return row
+
+    def _prints_number(self, analysis):
+        """Does the certificate print this result as a number? Not for a text
+        result (BLoQ, N.D.), "< RL", N.Q. or "> top". Where the certificate's
+        row cannot be read, whether the stored result is a number."""
+        from senaite.pfas.rounding import number
+        row = self._certificate_row(analysis)
+        if row is not None:
+            return number(row.get("result")) is not None
+        try:
+            return number(analysis.getResult()) is not None
+        except Exception:                                   # noqa: BLE001
+            return True
+
     def final_data_diagnosis(self):
         """When the Final Data table is empty, say WHY (which link in the
         chain has no data) instead of rendering a silent blank."""
         ws = self._get_worksheet()
         if not ws:
-            return u"No worksheet found for this batch."
+            return u"No worksheet found."
         try:
             n_assigned = len(ws.getAnalyses() or [])
         except Exception:
@@ -3900,10 +4597,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         """Samples for this worksheet when none are formally assigned.
 
         Join chain (Worksheet ↔ Batch was a missing link in the model):
-          1. ARs assigned via the worksheet's own analyses (SENAITE-native);
-          2. the SENAITE Batch named by this worksheet's CoC (`batch_id`) —
-             the CoC accompanies the worksheet, so it carries the link;
-          3. ARs whose Batch UID is this worksheet's UID."""
+          1. the samples of the SENAITE Batch the worksheet's analyses
+             belong to (_linked_batch: SENAITE's own sample -> batch link);
+          2. ARs whose Batch UID is this worksheet's UID."""
         ws = self._get_worksheet()
         if ws is None:
             return []
@@ -3911,25 +4607,17 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             cat = getToolByName(self.context, "senaite_catalog_sample")
         except Exception:
             return []
-        # 2. CoC carries the batch id
+        # 1. the batch SENAITE links the worksheet's samples to
         try:
-            raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
-            coc = json.loads(raw) if raw else {}
-            bid = (coc.get("batch_id") or "").strip()
-            if bid:
-                portal = getToolByName(self.context,
-                                       "portal_url").getPortalObject()
-                from senaite.pfas.batch_ref import get_batch
-                batch = get_batch(portal, bid)
-                if batch is not None:
-                    ars = [b.getObject() for b in cat(
-                        portal_type="AnalysisRequest",
-                        getBatchUID=batch.UID())]
-                    if ars:
-                        return ars
+            batch = self._linked_batch(ws)
+            if batch is not None:
+                ars = [b.getObject() for b in cat(
+                    portal_type="AnalysisRequest", getBatchUID=batch.UID())]
+                if ars:
+                    return ars
         except Exception as exc:
-            logger.warning("_batch_ars coc join: %s", exc)
-        # 3. legacy join
+            logger.warning("_batch_ars batch join: %s", exc)
+        # 2. legacy join
         try:
             return [b.getObject() for b in cat(
                 portal_type="AnalysisRequest", getBatchUID=self.batch_uid())]
@@ -3984,10 +4672,20 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                             sample_type = st.Title()
                     except Exception:
                         pass
+                    # its field QC (FRB, TB, FD) as the worker reads it,
+                    # for the type icon beside the sample
+                    field_qc = u""
+                    try:
+                        from senaite.pfas.coc_records import WORKER_FIELD_QC
+                        fld = ar.getField("FieldQCType")
+                        field_qc = WORKER_FIELD_QC.get((fld.get(ar) if fld else u"") or u"", u"")
+                    except Exception:                       # noqa: BLE001
+                        pass
                     ar_map[ar_uid] = {
                         "sample_id": sample_id,
                         "client_sample_id": client_sid,
                         "sample_type": sample_type,
+                        "field_qc": field_qc,
                         "analyses": [],
                     }
 
@@ -4012,12 +4710,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 # which value is reported: a neat reading replaced by its
                 # dilution is kept for review, its retest is what reports
                 reported = u""
+                dilution = False
                 try:
                     if analysis.isRetested():
                         reported = u"replaced by its dilution"
                     elif analysis.isRetest():
                         from senaite.pfas.browser.dilution_retests import dilution_fold
                         fold = dilution_fold(analysis)
+                        dilution = bool(fold)
                         reported = (u"reported \u2014 dilution %g-fold" % fold) if fold \
                             else u"reported \u2014 retest"
                 except Exception:                           # noqa: BLE001
@@ -4026,6 +4726,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 # the lab's rounding for the method x matrix, and the unit
                 # from the profile when core holds none (runs before then)
                 result, unit = self._as_reported(result, unit, ar_map[ar_uid]["sample_type"])
+                # the certificate's J: a number between the MDL and the RL
+                cert = self._certificate_row(analysis)
+                from senaite.pfas.coa_format import J_CODE
+                rule_code = J_CODE if cert is not None and cert.get("estimated") else u""
                 pairs = codes_for(analysis)
                 ar_map[ar_uid]["analyses"].append({
                     "analyte":      keyword,
@@ -4033,17 +4737,20 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     "result":       result,
                     "unit":         unit,
                     "qualifier":    qualifier,
+                    "rule_code":    rule_code,
                     "qc_pairs":     pairs,
                     "qc_codes":     u", ".join(sorted(set(c for c, _r in pairs))),
                     "qc_reasons":   u"; ".join(r for _c, r in pairs if r),
                     "review_state": state,
                     "reported":     reported,
+                    "dilution":     dilution,
                 })
             except Exception as exc:
                 logger.error("get_final_data analysis loop: %s", exc)
 
         from senaite.pfas import qc_cells
         from senaite.pfas import final_data
+        from senaite.pfas import sample_type_icons as sti
         # the instrument's result and RT behind each reported result (the
         # injection rows the Samples tab used to show)
         try:
@@ -4073,17 +4780,27 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     "client_sample_id": ar_data["client_sample_id"],
                     "sample_type":      ar_data["sample_type"],
                     "analyte":          a["analyte"],
+                    # the analysis's title: the name the certificate prints
+                    "title":            a.get("title") or u"",
                     "result":           a["result"],
                     "unit":             a["unit"],
                     "qualifier":        a["qualifier"],
+                    # the certificate's J beside a number in the band
+                    "rule_code":        a.get("rule_code") or u"",
                     "qc_codes":         a.get("qc_codes") or u"",
                     "qc_reasons":       a.get("qc_reasons") or u"",
                     "qc_pairs":         a.get("qc_pairs") or [],
                     # the codes drawn as the QC Summary draws a qualified cell
-                    "qc_cell":          qc_cells.code_cell(a.get("qc_codes"), a.get("qc_reasons")),
+                    "qc_cell":          qc_cells.code_cell(a.get("qc_codes"), a.get("qc_reasons"),
+                                                       self.code_meanings()),
                     "review_state":     a["review_state"],
                     "reported":         a.get("reported") or u"",
+                    # the type beside the sample: a field QC or a dilution
+                    # retest; a plain field sample has none
+                    "type_code":        sti.result_code(ar_data.get("field_qc"), a.get("dilution")),
                 })
+        # a sample withheld for re-extraction stays listed, greyed
+        rows = self._withheld_rows(rows, inj)
         return self._beyond_common_codes(rows, qc_cells)
 
     def _beyond_common_codes(self, rows, qc_cells):
@@ -4096,22 +4813,21 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 extra = [(c, why) for c, why in r.get("qc_pairs") or [] if c not in common]
                 r["qc_cell"] = qc_cells.code_cell(
                     u", ".join(sorted(set(c for c, _w in extra))),
-                    u"; ".join(why for _c, why in extra if why))
+                    u"; ".join(why for _c, why in extra if why), self.code_meanings())
             r["state"] = u"review" if (r.get("qc_cell") and not r.get("qualifier")) else u""
         return rows
 
     # ── Extraction record ──────
 
-    _SOURCE_LABELS = {"252": (u"252", u"Extraction Log"), "253": (u"253", u"Sample Processing Log")}
+    _SOURCE_LABELS = {"252": u"Extraction record", "253": u"Processing stage"}
 
     def source_label(self, source):
         """A traceability source as the reader knows it: "252.standards" ->
-        "Extraction Log (FM-ENV-003), standards"; storage slugs never shown."""
+        "Extraction record, standards"; storage slugs never shown."""
         slug, _sep, part = (source or u"").partition(u".")
         if slug in self._SOURCE_LABELS:
-            key, title = self._SOURCE_LABELS[slug]
-            return u"%s (%s)%s" % (title, self._fc(key),
-                                   u", " + part.replace(u"_", u" ") if part else u"")
+            return u"%s%s" % (self._SOURCE_LABELS[slug],
+                              u", " + part.replace(u"_", u" ") if part else u"")
         if slug == u"prepstd":
             return u"prepared standard parents"
         if source == u"run.sent_back":
@@ -4121,33 +4837,37 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return (source or u"").replace(u"_", u" ")
 
     def extraction_record(self):
-        """The guided extraction of this worksheet's batch, for review: every
+        """The guided extraction of this worksheet, for review: every
         stage (extraction_review.review), the per-sample amounts and final
-        volumes and the dilutions recorded in FM-ENV-003, finalized or not.
+        volumes and the dilutions recorded in the extraction record, finalized or not.
         Its being finished is part of the traceability gate; the rest is shown for review."""
         batch = self._extraction_home(self._get_worksheet())
         if batch is None:
             return None
         try:
             from senaite.pfas.browser.extraction_guide import _load_session
-            from senaite.pfas.browser.logbooks import _get_logbook
+            from senaite.pfas.browser.sample_status import _fullname
+            from senaite.pfas import extraction_store
             from senaite.pfas.extraction_review import review
             from senaite.pfas.method_profile_store import get_profile
             from senaite.pfas import sample_table
             from senaite.pfas.dilution_ref import parse_factor
             sess = _load_session(batch)
+            # the record's home named by what it is: a worksheet (WS) or,
+            # for an older record, its client batch (B)
+            kind = u"Worksheet" if getattr(batch, "portal_type", "") == "Worksheet" else u"Batch"
             if not sess:
-                return {"started": False, "batch_uid": batch.UID(), "batch_id": batch.getId()}
+                return {"started": False, "batch_uid": batch.UID(), "batch_id": batch.getId(), "kind": kind}
             from senaite.pfas.stage_plan import stages_for
             stages = stages_for(sess, get_profile(self._portal(), sess.get("method_id", "")))
             rv = review(sess, stages)
-            rows = (_get_logbook(batch, "252") or {}).get("samples") or []
+            rows = extraction_store.load_table(batch).get("samples") or []
             samples = sample_table.rows_for_card(rows, [])
             return {
-                "started": True, "batch_uid": batch.UID(), "batch_id": batch.getId(),
+                "started": True, "batch_uid": batch.UID(), "batch_id": batch.getId(), "kind": kind,
                 "finalized": bool(sess.get("finalized")),
                 "finalized_at": sess.get("finalized_at") or u"",
-                "finalized_by": sess.get("finalized_by") or u"",
+                "finalized_by": _fullname(self.context, sess.get("finalized_by") or u""),
                 "started_at": sess.get("started_at") or u"",
                 "analyst": sess.get("analyst") or u"",
                 "review": rv,
@@ -4173,7 +4893,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if rec is None:
             return []
         if not rec.get("started"):
-            return [u"No guided extraction is recorded for batch %s." % rec["batch_id"]]
+            return [u"No guided extraction is recorded for %s %s." % (rec.get("kind", u"Worksheet").lower(), rec["batch_id"])]
         out = []
         rv = rec["review"]
         if not rec["finalized"]:
@@ -4317,6 +5037,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         peer review, how long the case has been open since extraction, and
         (once submitted) how long it has been in review: u"" until then,
         which the queue reads "not yet"."""
+        from senaite.pfas import retired
         from senaite.pfas.browser.sample_status import (
             _fullname, _load_extraction_log)
         try:
@@ -4340,7 +5061,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return []
         now = datetime.datetime.utcnow()
         result = []
-        for b in brains[:50]:
+        for b in brains:
+            # the 50 listed are the newest that are not retired
+            if len(result) >= 50:
+                break
             try:
                 wid = b.getId
                 state = b.review_state
@@ -4352,6 +5076,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     obj = b.getObject()
                 except Exception:
                     obj = None
+                if obj is not None and retired.is_retired(obj):
+                    continue
                 log = (_load_extraction_log(obj) if obj is not None else None) or {}
                 analyst = (log.get("analyst") or u"").strip()
                 started = self._parse_iso(log.get("started"))
@@ -4381,12 +5107,73 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 logger.error("recent_worksheets brain: %s", exc)
         return result
 
+    # the field blanks whose columns show whenever the method's rules
+    # enforce them, said "none on this worksheet" when it holds none
+    _SHOWN_FIELD_BLANKS = (u"FRB",)
+
     def blanks_table(self, qc=None):
         """The Blanks tab: every extracted blank against its limit
-        (qc_cells.blank_table)."""
+        (qc_cells.blank_table). A field blank the method's rules enforce
+        (its row on the Rules grid is not Off) always has its columns; the
+        limit heading states the method's rule as Effective QC does where
+        no stored row carries the limit applied."""
         from senaite.pfas import qc_cells
         qc = qc if qc is not None else self.get_qc_summary()
-        return qc_cells.blank_table(qc.get("rows") or [], qc.get("qc_types") or [])
+        rules = self.blank_rules() or {}
+        return qc_cells.blank_table(qc.get("rows") or [], qc.get("qc_types") or [],
+                                    always=rules.get("always") or (), absent=rules.get("absent") or (),
+                                    rule=rules.get("rule") or {})
+
+    def blank_rules(self):
+        """What the method's rules say of the blanks, for the Blanks tab:
+        {"always": the field blanks its rules enforce, "absent": those the
+        worksheet holds none of, "rule": {qc_type: its limit in Effective
+        QC's words, for the field blanks}}. Once per request."""
+        if hasattr(self, "_blank_rules"):
+            return self._blank_rules
+        out = {"always": [], "absent": [], "rule": {}}
+        try:
+            from senaite.pfas.effective_qc import blank_limit_words
+            from senaite.pfas import limit_states
+            profile = self._method_profile() or {}
+            matrix = self._batch_matrix()
+            qca = profile.get("qc_acceptance") or {}
+            # a blank judged: held, and its limit box not Off
+            out["always"] = [qt for qt in self._SHOWN_FIELD_BLANKS
+                             if qt in qca and limit_states.qc_type_state(profile, qt) != u"off"]
+            if out["always"]:
+                held = self._field_qc_held()
+                out["absent"] = [qt for qt in out["always"] if qt not in held]
+            # only a field blank's row was ever filed without the limit it
+            # was judged by; any other blank with none stored had none applied
+            for qt in self._RUN_BLANKS:
+                words = blank_limit_words(profile, qt, matrix)
+                if words:
+                    out["rule"][qt] = words
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("blank rules: %s", exc)
+        self._blank_rules = out
+        return out
+
+    def _field_qc_held(self):
+        """The field QC kinds ("FRB", "TB", "FD") the worksheet's samples
+        carry, read from each sample's Field QC as the worker reads it."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return set()
+        try:
+            from senaite.pfas.coc_records import WORKER_FIELD_QC
+            from senaite.pfas.core_fields import samples_of
+            out = set()
+            for s in samples_of(ws):
+                fld = s.getField("FieldQCType") if s is not None else None
+                code = WORKER_FIELD_QC.get((fld.get(s) if fld else u"") or u"")
+                if code:
+                    out.add(code)
+            return out
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("field QC held: %s", exc)
+            return set()
 
     def run_level_flags(self, flags=None):
         """The run's whole-run QC flags (a field reagent blank, a run not
@@ -4495,6 +5282,48 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return None
         return self._QC_TABS[kind]
 
+    # the spikes judged against a spike level per sample: a run whose results
+    # stay in the extract's unit cannot judge them
+    _SAMPLE_BASIS_SPIKES = (u"LFSM", u"LFSMD")
+
+    # how the worker records a matrix spike it could not judge because its
+    # results and its spike level are in different units
+    # (pfas_pipeline/run_queue.py, the LFSM evaluation)
+    _SPIKE_UNITS_DIFFER = u"results are in"
+
+    def missing_matrix_factor(self):
+        """{"matrix", "method", "url"} when a matrix spike was not judged
+        because its results and its spike level are in different units, and
+        the method puts its results on the sample basis by its matrix
+        factor (Sample correction: nominal) yet sets none for the batch's
+        matrix, so they stayed in the extract's unit; the url opens the
+        method's Matrices tab. None otherwise (another cause, or a factor
+        set)."""
+        if hasattr(self, "_missing_factor"):
+            return self._missing_factor
+        out = None
+        try:
+            from senaite.pfas.calibration_levels import matrix_factor
+            from senaite.pfas.sample_correction import NOMINAL
+            profile = self._method_profile() or {}
+            matrix = self._batch_matrix()
+            mode = (profile.get("sample_correction") or u"").strip()
+            flags = [t for f in (self.get_qc_summary(shared=True) or {}).get("run_flags") or []
+                     if f.get("qc_type") in self._SAMPLE_BASIS_SPIKES for t in f.get("flags") or []]
+            differ = any(self._SPIKE_UNITS_DIFFER in (t or u"") for t in flags)
+            if differ and profile and matrix and mode in (NOMINAL, u"") and matrix_factor(profile, matrix) is None:
+                out = {"matrix": matrix, "method": self.method_label(),
+                       "url": self.editor_url(u"pane-matrices")}
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("missing matrix factor: %s", exc)
+        self._missing_factor = out
+        return out
+
+    @staticmethod
+    def _no_factor_text(mf):
+        return (u"no matrix factor for %s on %s, so the results stay in the extract's unit and "
+                u"cannot be compared with the spike level" % (mf["matrix"], mf["method"]))
+
     def _unset_blank_limits(self, run_flags):
         """The run's blanks judged against their own limit that were not
         judged for want of one (FRB, TB), in the order filed."""
@@ -4528,6 +5357,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if self.subtraction_change_pending():
             out.append((u"The subtraction blank was changed: reprocess the run so its results "
                         u"use it.", u"", u""))
+        if self.identity_pending():
+            out.append((self.IDENTITY_PENDING, u"", u""))
+        if self.extraction_pending():
+            out.append((self.EXTRACTION_PENDING, u"", u""))
+        if self.send_back_pending():
+            out.append((self.SEND_BACK_PENDING, u"", u""))
         gate = self._qc_gate(summary)
         from senaite.pfas import qc_cells
         names = self._qc_names(set(qt for qt, _a, _c in gate["failing"] + gate["unevaluated"])
@@ -4551,8 +5386,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         for _qt, _a, cell in gate["unevaluated"]:
             if cell.get("unmapped") and cell["unmapped"] not in unmapped:
                 unmapped.append(cell["unmapped"])
+        mf = self.missing_matrix_factor()
         for qt, analytes in by_kind([e for e in gate["unevaluated"]
                                      if e[2].get("unjudged") or not e[2].get("unmapped")]):
+            if mf and qt in self._SAMPLE_BASIS_SPIKES:
+                out.append((u"%s not judged for %s: %s." % (
+                    names.get(qt, qt), self._analytes(len(analytes)), self._no_factor_text(mf)),
+                    u"Matrices", mf["url"]))
+                continue
             out.append((u"%s not judged for %s: its criterion is not set." % (
                 names.get(qt, qt), self._analytes(len(analytes))),
                 u"QC criteria" if criteria else u"", criteria))
@@ -4569,6 +5410,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 if f["unmapped"] not in unmapped:
                     unmapped.append(f["unmapped"])
                 continue
+            elif mf and f["qc_type"] in self._SAMPLE_BASIS_SPIKES:
+                # judged against a per-sample spike level: with no matrix
+                # factor the results stay in the extract's unit
+                out.append((u"%s for the whole run: %s." % (f["title"], self._no_factor_text(mf)),
+                            u"Matrices", mf["url"]))
+                continue
             else:
                 fix = (u"QC criteria" if criteria else u"", criteria)
             out.append((u"%s %s" % (f["title"], f["text"]),) + fix)
@@ -4576,7 +5423,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             out.append((u"No qualifier mapped for %s failures." % label, u"QC Qualifiers", qualifiers))
         for qt in gate["missing"]:
             out.append((u"%s not run: the method requires it every run." % names.get(qt, qt),
-                        u"Batch QC", self.extraction_guide_url()))
+                        u"Worksheet QC", self.extraction_guide_url()))
         from senaite.pfas import run_calibration as rc
         cal = self.calibration_review() or {}
         st = cal.get("status")
@@ -4646,6 +5493,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 add(self.BLOCKS, u"Import of %s is retrying after %s attempts: %s. The worker "
                     u"tries again shortly." % (ip.get("file"), ip.get("attempts"),
                                                ip.get("error") or u"no reason given"))
+        # a run delivered again after the worksheet closed: refused, the record stands
+        for ip in self.import_refusals():
+            add(self.NOTE, u"Import refused for %s: %s." % (ip.get("file"), ip.get("error") or u""))
         accred = self.accreditation_disclosure() or {}
         mode = accred.get("mode")
         if accred.get("out_of_scope"):
@@ -4689,6 +5539,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         out.sort(key=lambda w: 0 if w["severity"] == self.BLOCKS else 1)
         self._warnings = out
         return out
+
+    @staticmethod
+    def warnings_actionable(warns):
+        """True when the strip holds something the reviewer can act on: a
+        row that blocks release, or one with a button to where it is fixed.
+        Notes with neither are read, not acted on, so no table is drawn."""
+        return any(w.get("severity") == u"blocks" or w.get("fix_url") for w in warns or [])
 
     @staticmethod
     def warning_counts(warns):
@@ -4735,13 +5592,20 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                          u"limit" if len(unset) == 1 else u"limits", self.method_label()))
         if failing:
             parts.append(u"%s failed" % u", ".join(failing))
-        if unjudged:
-            parts.append(u"%s not judged" % u", ".join(unjudged))
+        mf = self.missing_matrix_factor() if unjudged else None
+        no_factor = [qt for qt in unjudged if mf and qt in self._SAMPLE_BASIS_SPIKES]
+        other = [qt for qt in unjudged if qt not in no_factor]
+        if no_factor:
+            parts.append(u"%s not judged: no matrix factor for %s" % (u", ".join(no_factor), mf["matrix"]))
+        if other:
+            parts.append(u"%s not judged" % u", ".join(other))
         if unmapped:
             parts.append(u"no qualifier mapped for %s" % u", ".join(unmapped))
         if not parts:
             return None
-        if unset or unjudged:
+        if no_factor and not unset and not other:
+            fix_label, fix_url = u"Matrices", mf["url"]
+        elif unset or unjudged:
             fix_label, fix_url = (u"QC criteria" if criteria else u""), criteria
         elif unmapped:
             fix_label, fix_url = u"QC Qualifiers", u"%s/@@pfas-qc-qualifiers" % self.portal_url()
@@ -4762,7 +5626,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         """The QC qualifier codes every result of the table carries (a table
         of two or more), stated once above it; the rows show a chip only for
         the codes beyond these. [] otherwise."""
-        rows = list(rows or [])
+        # a withheld result is not reported: it carries nothing to state
+        rows = [r for r in rows or [] if not r.get("withheld")]
         if len(rows) < 2:
             return []
         common = set(self._codes(rows[0]))
@@ -4783,6 +5648,45 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except Exception as exc:                            # noqa: BLE001
             logger.warning("code_label: %s", exc)
             return u""
+
+    def code_meanings(self):
+        """{code: what it means}, as the certificate's legend words it: the
+        wording each code carries in this worksheet's plan (the QC
+        Qualifiers library's, a rule's flag's included), and J's reporting
+        rule. Read once per request."""
+        if "_code_meanings" not in self.__dict__:
+            said = {}
+            try:
+                ws = self._get_worksheet()
+                summary = self._get_qc_summary(ws) if ws is not None else {}
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("code meanings: %s", exc)
+                summary = {}
+            for e in (summary or {}).get("qualifiers") or []:
+                code, text = e.get("code") or u"", (e.get("statement") or u"").strip()
+                if code and text and text not in said.setdefault(code, []):
+                    said[code].append(text)
+            from senaite.pfas.coa_format import J_CODE
+            if self.estimate_meaning():
+                said.setdefault(J_CODE, [])
+                if self.estimate_meaning() not in said[J_CODE]:
+                    said[J_CODE].insert(0, self.estimate_meaning())
+            self._code_meanings = dict((c, u"; ".join(t.rstrip(u".") for t in ts)) for c, ts in said.items() if ts)
+        return self._code_meanings
+
+    def final_data_legend(self, rows):
+        """[{"code", "line"}]: the legend under Final Data, one line per
+        code its rows carry in the certificate's words (coa_format.legend_lines)."""
+        from senaite.pfas import coa_format
+        meanings = self.code_meanings()
+        as_cert = []
+        for r in rows or []:
+            if r.get("withheld"):
+                continue
+            codes = self._codes(r)
+            as_cert.append({"estimated": bool(r.get("rule_code")), "qc_codes": codes,
+                            "qc_statements": dict((c, [meanings.get(c) or u""]) for c in codes)})
+        return coa_format.legend_lines(as_cert, {coa_format.J_CODE: self.estimate_meaning()})
 
     def common_codes_line(self, rows):
         """"All 12 results carry H (Sample receipt not compliant)", or u""."""
@@ -4832,12 +5736,6 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
 
     # ── Corrections (ISO 17025: traceable, initialed + dated) ─────────────
     CORRECTIONS_KEY = u"senaite.pfas.data_review.corrections"
-    # field → (label, CoC-annotation key). Whitelist: only these are correctable.
-    # The collection date is not: core owns it (each sample's Date Sampled; core_fields.py) and it is corrected on the sample.
-    CORRECTABLE_FIELDS = {
-        "lab_received_date":      (u"Lab Received Date",      "lab_received_date"),
-    }
-
     def signature_for(self, initials):
         """Signature image URL + fullname for a set of initials (staff pool) —
         appended next to sign-offs so documents carry the person's signature."""
@@ -4848,16 +5746,37 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except Exception:
             return {}
 
+    def _report_ars(self):
+        """The samples a report from this worksheet covers: its own (its
+        analyses' samples); a worksheet with no analyses yet, the batch join
+        (_batch_ars). Never every sample of the client Batch, which may sit
+        on other worksheets."""
+        from senaite.pfas.core_fields import samples_of
+        ws = self._get_worksheet()
+        own = list(samples_of(ws)) if ws is not None else []
+        return own or self._batch_ars()
+
+    def _issue_ars(self):
+        """The samples a certificate is generated and issued for now: the
+        worksheet's own; before its run is verified, those an interim
+        certificate waits on when any does (only they may issue then)."""
+        ars = self._report_ars()
+        if self.ws_state() in self.VERIFIED_STATES:
+            return ars
+        from senaite.pfas.browser.controlled_publications import pending_signature
+        interim = [ar for ar in ars if (pending_signature(ar) or {}).get("interim")]
+        return interim or ars
+
     def publish_url(self):
         """senaite.impress COA (publish) view pre-loaded with this
-        worksheet's samples — the client-facing report step (core reuse)."""
-        ars = self._batch_ars()
+        worksheet's samples — the client-facing report step (core reuse);
+        before verification, the samples an interim certificate waits on."""
+        from senaite.pfas.browser.view_helpers import publisher_url
+        ars = self._issue_ars()
         if not ars:
             return u""
-        uids = ",".join(ar.UID() for ar in ars)
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        return u"{0}/samples/publish?uids={1}".format(
-            portal.absolute_url(), uids)
+        return publisher_url(portal.absolute_url() + u"/samples", [ar.UID() for ar in ars])
 
     def template_status(self):
         """The issued reporting-template revision the certificate will be drawn
@@ -4887,29 +5806,35 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         up front so the controlled register records why (best-effort policy)."""
         from bika.lims import api as _bapi
         out = []
-        for ar in self._batch_ars():
+        for ar in self._report_ars():
             try:
-                if _bapi.get_review_status(ar) == "published":
+                # an interim certificate issued before verification leaves
+                # the sample unpublished: its register says it was issued
+                if _bapi.get_review_status(ar) == "published" or self._issued_before(ar):
                     out.append(ar)
             except Exception:
                 pass
         return out
 
+    def _issued_before(self, ar):
+        """True when the sample's register holds an issued revision."""
+        from senaite.pfas.browser.controlled_publications import get_publication_log
+        return bool(get_publication_log(ar))
+
     def is_reissue(self):
         return bool(self.reissue_ars())
 
     def needs_assignment(self):
-        """True when this worksheet has no assigned analyses but its linked
-        batch has samples — the assign-before-submit process point."""
+        """True while this worksheet holds no analyses: its samples are added
+        on @@pfas-worksheet-samples before any result is entered. A method
+        study's worksheet holds none by design."""
         ws = self._get_worksheet()
-        if ws is None:
+        if ws is None or self.study_run() is not None:
             return False
         try:
-            if len(ws.getAnalyses() or []):
-                return False
-        except Exception:
-            pass
-        return bool(self._batch_ars())
+            return not ws.getRawAnalyses()
+        except Exception:                                   # noqa: BLE001
+            return False
 
     def corrections(self):
         """Correction log for this worksheet (rendered in Final Review)."""
@@ -4922,109 +5847,28 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except Exception:
             return []
 
-    def _log_correction(self, ws, field_label, old, new, initials, reason):
-        user = getSecurityManager().getUser()
-        entry = {
-            "field":    field_label,
-            "old":      old or u"—",
-            "new":      new or u"—",
-            "user":     user.getId(),
-            "initials": initials,
-            "ts":       datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-            "reason":   reason or u"",
-        }
-        log = self.corrections()
-        log.append(entry)
-        IAnnotations(ws)[self.CORRECTIONS_KEY] = json.dumps(log)
-
-    def _handle_assign_batch_samples(self):
-        """D44#4: enforceable process order. Receives due samples and assigns
-        their UNSUBMITTED analyses to this worksheet — must happen BEFORE
-        results are submitted (SENAITE's assign guard forbids it after).
-        Runs in a real request, so workflow guards resolve."""
-        if not self.can_act():
-            return self._redirect_with_msg("permission_denied", "error")
-        ws = self._get_worksheet()
-        if ws is None:
-            return self._redirect_with_msg("no_worksheet", "error")
-        from bika.lims import api as _bapi
-        received = assigned = skipped = 0
-        for ar in self._batch_ars():
-            try:
-                if _bapi.get_workflow_status_of(ar) == "sample_due":
-                    _bapi.do_transition_for(ar, "receive")
-                    received += 1
-            except Exception as exc:
-                logger.warning("receive %s: %s", ar.getId(), exc)
-            for an in ar.getAnalyses(full_objects=True):
-                state = _bapi.get_workflow_status_of(an)
-                if state != "unassigned":
-                    skipped += 1
-                    continue
-                try:
-                    ws.addAnalysis(an)
-                    assigned += 1
-                except Exception as exc:
-                    logger.warning("assign %s: %s", an.getKeyword(), exc)
-                    skipped += 1
-        self._audit(ws)
-        msg = (u"Assigned {0} analyses ({1} samples received; {2} skipped — "
-               u"already submitted/assigned)").format(assigned, received,
-                                                      skipped)
-        url = "{0}/@@pfas-data-review?batch_id={1}&msg={2}&msg_type={3}".format(
-            self._portal().absolute_url(), self.batch_id(),
-            msg.replace(" ", "+"), "ok" if assigned else "error")
-        self.request.response.redirect(url)
-        return u""
-
-    def _handle_correct_field(self):
-        """E-sign-style correction: whitelisted field, REQUIRED initials,
-        old→new logged, write-through to the owning CoC record."""
-        if not self.can_act():
-            return self._redirect_with_msg("permission_denied", "error")
-        ws = self._get_worksheet()
-        if not ws:
-            return self._redirect_with_msg("no_worksheet", "error")
-        field = self.request.form.get("field", "")
-        new_value = (self.request.form.get("new_value") or "").strip()
-        initials = (self.request.form.get("initials") or "").strip()
-        reason = (self.request.form.get("reason") or "").strip()
-        if field not in self.CORRECTABLE_FIELDS:
-            return self._redirect_with_msg("invalid_item", "error", tab="coc")
-        if not initials:
-            return self._redirect_with_msg("initials_required", "error", tab="coc")
-        label, coc_key = self.CORRECTABLE_FIELDS[field]
-        ann = IAnnotations(ws)
-        raw = ann.get(u"senaite.pfas.logbook.coc")
-        data = json.loads(raw) if raw else {}
-        old_value = data.get(coc_key) or u""
-        if new_value == old_value:
-            return self._redirect_with_msg("no_change", "error", tab="coc")
-        data[coc_key] = new_value
-        ann[u"senaite.pfas.logbook.coc"] = json.dumps(data)
-        self._log_correction(ws, label, old_value, new_value, initials, reason)
-        self._audit(ws)
-        return self._redirect_with_msg("correction_logged", "ok", tab="coc")
-
     def _handle_post(self):
         action = self.request.form.get("action", "")
         dispatch = {
-            "correct_field":            self._handle_correct_field,
-            "assign_batch_samples":     self._handle_assign_batch_samples,
             "check_item":               self._handle_check_item,
             "submit_for_review":        self._handle_submit_for_review,
             "approve_release":          self._handle_approve_release,
             "reject":                   self._handle_reject,
             "upload_instrument_report": self._handle_upload_instrument_report,
             "download_report":          self._handle_download_report,
-            "record_amendment_reason":  self._handle_record_amendment_reason,
+            "sign_certificate":         self._handle_sign_certificate,
+            "issue_email":              self._handle_issue_email,
             "record_spike_level":       self._handle_record_spike_level,
             "request_run":              self._handle_request_run,
+            # a result above the range reported with E instead of a dilution
+            "report_above_range":       self._handle_report_above_range,
+            # a result the instrument wrote BLoQ with no number: the reason
+            "resolve_no_number":        self._handle_resolve_no_number,
             "clear_run_plan":           self._handle_clear_run_plan,
             "choose_subtraction_blank": self._handle_choose_subtraction_blank,
             "approve_calibration":      self._handle_approve_calibration,
             "reject_calibration":       self._handle_reject_calibration,
-            # a lot pending verification, on its traceability node
+            # a lot pending acceptance, on its traceability node
             "approve_lot":              self._handle_lot_review,
             "reject_lot":               self._handle_lot_review,
             # a raw run's peak edited by hand (the Raw Data tab)
@@ -5032,6 +5876,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             "raw_pull_again":           self._handle_raw_pull_again,
             # the Raw Data changes' reasons and the analyst's initials
             "save_manual_changes":      self._handle_manual_changes,
+            # an injection's identity corrected, or the correction undone
+            "correct_identity":         self._handle_correct_identity,
+            "revert_identity":          self._handle_correct_identity,
+            # the verifier confirms one (a verification act, not the review record's)
+            "confirm_identity":         self._handle_confirm_identity,
+            # the verifier sends the submitted worksheet back to the analyst
+            "send_back_review":         self._handle_send_back_review,
         }
         handler = dispatch.get(action)
         if handler and action in self.RECORD_ACTIONS and self.ws_state() in self.CLOSED_STATES:
@@ -5047,11 +5898,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
 
     # the actions that change the review record, and the states that close it
     RECORD_ACTIONS = frozenset((
-        "assign_batch_samples", "check_item", "submit_for_review",
-        "upload_instrument_report", "record_spike_level", "request_run",
-        "clear_run_plan", "choose_subtraction_blank", "approve_calibration",
+        "check_item", "submit_for_review",
+        "upload_instrument_report", "record_spike_level", "request_run", "report_above_range",
+        "resolve_no_number", "clear_run_plan", "choose_subtraction_blank", "approve_calibration",
         "reject_calibration", "approve_lot", "reject_lot", "raw_edit",
-        "save_manual_changes"))
+        "save_manual_changes", "correct_identity", "revert_identity"))
     CLOSED_STATES = frozenset(("to_be_verified", "verified", "published"))
     # past release: the Raw Data changes must carry the verifier's countersignature
     VERIFIED_STATES = frozenset(("verified", "published"))
@@ -5292,6 +6143,638 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         self._audit(ws)
         return self._redirect_with_msg("subtraction_blank_changed", "ok", tab="qc_summary")
 
+    # ── The extraction record corrected (extraction_amendments) ─────
+    # The corrections are made on the batch record page and posted to
+    # @@pfas-extraction-corrections; Data Review reads them: what to
+    # confirm at Verify, whether the run is judged with them, which rows
+    # are withheld, and the way to each window.
+
+    EXTRACTION_PENDING = (u"An extraction correction is recorded: waiting for the run to be "
+                          u"judged or filed again.")
+
+    def _extraction_state(self):
+        from senaite.pfas import extraction_amendments as ea
+        ws = self._get_worksheet()
+        if ws is None:
+            return ea.empty()
+        return ea.load(IAnnotations(ws).get(ea.KEY))
+
+    def _extraction_members(self, ws):
+        """The members as everything downstream reads them (in force)."""
+        if "_extraction_members_memo" in self.__dict__:
+            return self._extraction_members_memo
+        from senaite.pfas import extraction_amendments as ea
+        from senaite.pfas import extraction_batch
+        try:
+            members = ea.members_in_force(extraction_batch.load(ws) or [], self._extraction_state())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("extraction members: %s", exc)
+            members = []
+        self._extraction_members_memo = members
+        return members
+
+    def extraction_applied(self):
+        """The extraction corrections the stored run was judged with; []
+        while the provenance store cannot say, so release keeps waiting."""
+        if "_extraction_applied" in self.__dict__:
+            return self._extraction_applied
+        out = []
+        bid = self.batch_id()
+        if bid and self.db_available:
+            try:
+                from senaite.pfas.provenance_store import ProvenanceStore
+                applied = getattr(ProvenanceStore(DEFAULT_DB_PATH), "amendments_applied", None)
+                out = list(applied(bid) or []) if applied is not None else []
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("extraction amendments applied: %s", exc)
+        self._extraction_applied = out
+        return out
+
+    def extraction_pending(self):
+        """The corrections in force the stored run was not yet judged with;
+        [] when none."""
+        from senaite.pfas import extraction_amendments as ea
+        state = self._extraction_state()
+        if not state["log"]:
+            return []
+        # an amendment made after release is signed as the record's next
+        # revision; the released run is not judged again, so it holds nothing
+        later = set(e.get("id") for e in state["log"] if e.get("after_release"))
+        out = [i for i in ea.pending(state, self.extraction_applied()) if i not in later]
+        # a send back to the data import waits for the run filed after it
+        sent = ea.send_back_pending(state, self._run_filed_at())
+        if sent is not None:
+            out.append(sent.get("id"))
+        return out
+
+    def _run_filed_at(self):
+        """When the run's QC was last written for this worksheet, or None."""
+        ws = self._get_worksheet()
+        if ws is None or not self.db_available:
+            return None
+        try:
+            row = self._store().get_batch(ws.getId()) or {}
+        except Exception:                                   # noqa: BLE001
+            return None
+        return row.get("updated_at") or row.get("created_at")
+
+    def extraction_verify_refusal(self):
+        """Why Verify waits on the extraction corrections, or u""."""
+        from senaite.pfas import extraction_amendments as ea
+        return ea.verify_refusal(self._extraction_state()) or u""
+
+    def _record_url(self, ws, opens=u"", member=u""):
+        """The worksheet's batch record page, opening one of its windows."""
+        url = u"%s/@@pfas-batch-records?record=%s" % (self.portal_url(), ws.UID())
+        if opens:
+            url += u"&open=%s" % opens
+        if member:
+            from six.moves.urllib.parse import quote
+            url += u"&member=%s" % quote(member.encode("utf-8"), safe="")
+        return url
+
+    def _extraction_to_confirm(self):
+        """The extraction corrections in force, as Verify lists them beside
+        the identity corrections ({injection, change, reason, by, when,
+        confirmed, confirmed_text, actions}). Only a submitted worksheet's
+        verifier acts on them; one made by the verifier is shown, refused."""
+        from senaite.pfas import extraction_amendments as ea
+        from senaite.pfas import row_menu
+        ws = self._get_worksheet()
+        state = self._extraction_state()
+        if ws is None or not state["log"]:
+            return []
+        members = self._extraction_members(ws)
+        who = getSecurityManager().getUser().getId()
+        mine = self.is_manager() and self.ws_state() == "to_be_verified"
+        out = []
+        for e in ea.to_confirm(state):
+            act = None
+            if mine:
+                act = (u"Confirm the correction", "form", "dr-extraction-confirm",
+                       {"values": {"entry": e.get("id")},
+                        "off": ea.OWN.format(e.get("id")) if e.get("by") == who else None})
+            change = ea.describe(e, members)
+            if e.get("action") == ea.AMEND:
+                change = u"%s: %s to %s" % (change, e.get("from") or u"not recorded", e.get("to") or u"")
+            out.append({"injection": e.get("id") or u"", "change": change,
+                        "reason": e.get("reason") or u"", "by": e.get("name_by") or e.get("by") or u"",
+                        "when": lab_time.show(e.get("at")) if e.get("at") else u"",
+                        "confirmed": None, "confirmed_text": u"Not confirmed",
+                        "actions": row_menu.actions(act, (u"Open the batch record", "href",
+                                                          self._record_url(ws)))})
+        return out
+
+    def _amend_links(self, ws):
+        """{injection name: the batch record's Amend window for its member}:
+        every name a member answers to (in force, and the name issued)."""
+        out = {}
+        for m in self._extraction_members(ws) if ws is not None else []:
+            url = self._record_url(ws, u"amend", m.get("id") or u"")
+            for name in [m.get("injection")] + list(m.get("aliases") or []):
+                if name:
+                    out[name] = url
+        return out
+
+    def send_back_url(self):
+        """Overview's Send back: the batch record's window, for an Analyst
+        or a Lab Manager while open, a Lab Manager once submitted; u""
+        otherwise."""
+        ws = self._get_worksheet()
+        state = self.ws_state()
+        if ws is None or self.study_run() is not None:
+            return u""
+        if not ((self.can_act() and state == "open") or (self.is_manager() and state == "to_be_verified")):
+            return u""
+        return self._record_url(ws, u"send_back")
+
+    def _withheld_rows(self, rows, inj):
+        """Final Data with the samples withheld for re-extraction kept
+        listed, greyed and tagged (a withheld sample's analyses have left the
+        worksheet: its row is drawn from the instrument's rows, values
+        still readable); every other sample's rows offer Needs
+        re-extraction."""
+        ws = self._get_worksheet()
+        members = [m for m in self._extraction_members(ws) if m.get("role") == u"Sample"] if ws else []
+        held = dict((m.get("sample_id"), m) for m in members if m.get("withheld"))
+        ask = dict((m.get("sample_id"), self._record_url(ws, u"reextract", m.get("id") or u""))
+                   for m in members if not m.get("withheld")) if self.can_act() else {}
+        seen = set()
+        for r in rows:
+            sid = r.get("sample_id")
+            if sid in held:
+                r["withheld"] = True
+                seen.add(sid)
+            else:
+                r["reextract_url"] = ask.get(sid, u"")
+        for sid in sorted(k for k in held if k and k not in seen):
+            for part in inj.get(sid) or [{}]:
+                value = part.get("result")
+                rows.append({"sample_id": sid, "analyte": part.get("analyte") or u"", "title": u"",
+                             "client_sample_id": held[sid].get("client_sid") or u"", "sample_type": u"",
+                             "instrument": (u"%.4g" % value) if isinstance(value, (int, float)) else u"",
+                             "instrument_parts": u"", "rt": u"", "rt_parts": u"",
+                             "injection": part.get("injection_name") or u"", "instrument_prov": None,
+                             "result_prov": None, "result": u"", "unit": u"", "qualifier": u"",
+                             "rule_code": u"", "qc_codes": u"", "qc_reasons": u"", "qc_pairs": [],
+                             "qc_cell": None, "review_state": u"", "reported": u"", "state": u"",
+                             "withheld": True})
+        return rows
+
+    # ── An injection's identity, corrected at review ─────────────────
+    # (injection_identity: the overlay, its refusals and its requeue)
+
+    IDENTITY_PENDING = (u"An injection's identity was corrected: waiting for the run to be "
+                        u"judged again.")
+
+    def _identity_state(self):
+        from senaite.pfas import injection_identity as ii
+        ws = self._get_worksheet()
+        if ws is None:
+            return ii.empty()
+        return ii.load(IAnnotations(ws).get(IDENTITY_KEY))
+
+    def identity_applied(self):
+        """{injection: correction id} the stored run was judged with."""
+        if "_identity_applied" in self.__dict__:
+            return self._identity_applied
+        out = {}
+        bid = self.batch_id()
+        if bid and self.db_available:
+            try:
+                from senaite.pfas.provenance_store import ProvenanceStore
+                out = ProvenanceStore(DEFAULT_DB_PATH).identity_applied(bid)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("identity applied: %s", exc)
+        self._identity_applied = out
+        return out
+
+    def identity_pending(self):
+        """The injections whose correction the stored run was not yet
+        judged with (in force against applied); [] when none."""
+        from senaite.pfas import injection_identity as ii
+        state = self._identity_state()
+        if not state["log"]:
+            return []
+        return ii.pending(state, self.identity_applied())
+
+    def _identity_low(self):
+        """The injections a stored CCV or ICV verdict judged by the
+        Low-Level window (its basis names the lowest level)."""
+        conn = self._raw_connect()
+        if conn is None:
+            return set()
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT qc_level FROM qc_results WHERE batch_id=? AND qc_type IN ('CCV', 'ICV') "
+                "AND limit_basis LIKE '%lowest level%' AND result_status != 'superseded'",
+                (self.batch_id(),)).fetchall()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("identity low level: %s", exc)
+            rows = []
+        finally:
+            conn.close()
+        return set((r[0] or u"").split(u"|")[0] for r in rows)
+
+    def _identity_members(self, ws):
+        from senaite.pfas import extraction_batch
+        from senaite.pfas.dilution_ref import get_dilutions
+        try:
+            members = [m.get("injection") for m in extraction_batch.load(ws) or [] if m.get("injection")]
+        except Exception:                                   # noqa: BLE001
+            members = []
+        try:
+            dilutions = list((get_dilutions(ws) or {}).keys())
+        except Exception:                                   # noqa: BLE001
+            dilutions = []
+        return members, dilutions
+
+    def _identity_filed(self, ws):
+        """The injections whose results the worker filed on a SENAITE sample
+        (the push log, written)."""
+        try:
+            return set(p.get("injection") for p in self._result_pushes(ws.getId()) if p.get("ok"))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("identity: push log unread: %s", exc)
+            return set()
+
+    def identity_to_confirm(self):
+        """The corrections in force as Verify lists them: {injection,
+        change, reason, by, when, confirmed (the confirm entry or None),
+        actions}. Only a submitted worksheet's verifier acts on them."""
+        from senaite.pfas import injection_identity as ii
+        from senaite.pfas import row_menu
+        state = self._identity_state()
+        done = ii.confirmed(state)
+        who = getSecurityManager().getUser().getId()
+        mine = self.is_manager() and self.ws_state() == "to_be_verified"
+        out = []
+        for inj, e in sorted(ii.in_force(state).items()):
+            c = done.get(inj)
+            off = None
+            if e.get("by") == who:
+                off = ii.OWN.format(inj)
+            act = None
+            if mine and c is None:
+                act = (u"Confirm the correction", "form", "dr-identity-confirm",
+                       {"values": {"injection": inj}, "off": off})
+            out.append({"injection": inj,
+                        "change": u"{0} to {1}".format(ii.label(e.get("from")), ii.label(e.get("to"))),
+                        "from_code": e.get("from") or u"", "to_code": e.get("to") or u"",
+                        "from_label": ii.label(e.get("from")), "to_label": ii.label(e.get("to")),
+                        "reason": e.get("reason") or u"", "by": e.get("by") or u"",
+                        "when": lab_time.show(e.get("at")) if e.get("at") else u"",
+                        "confirmed": c,
+                        "confirmed_text": (u"{0}, {1}".format(c.get("name") or c.get("by"),
+                                                              lab_time.show(c.get("at")))
+                                           if c else u"Not confirmed"),
+                        "actions": row_menu.actions(act)})
+        # the extraction corrections are confirmed in the same list
+        out.extend(self._extraction_to_confirm())
+        return out
+
+    def identity_undo_lines(self):
+        from senaite.pfas import injection_identity as ii
+        return ii.undo_lines()
+
+    def identity_unconfirmed(self):
+        from senaite.pfas import injection_identity as ii
+        return ii.unconfirmed(self._identity_state())
+
+    def identity_closed(self):
+        """Why no identity is corrected now (the person or the state), or u""."""
+        from senaite.pfas import injection_identity as ii
+        return (ii.actor_refusal(self.can_act(), _actor_kind(getSecurityManager().getUser()))
+                or ii.state_refusal(self.ws_state()) or u"")
+
+    def identity_offered(self):
+        """[{code, label}] of the roles this method offers."""
+        from senaite.pfas import injection_identity as ii
+        return [{"code": c, "label": ii.label(c)} for c in ii.offered_roles(self._method_profile())]
+
+    def identity_what_json(self):
+        """{current: {target: [sentence]}}: what each change judges again,
+        for the window."""
+        from senaite.pfas import injection_identity as ii
+        offered = ii.offered_roles(self._method_profile())
+        return json.dumps(dict((cur, dict((t, ii.rejudged(cur, t)) for t in offered if t != cur))
+                               for cur in ii.CORRECTABLE), sort_keys=True)
+
+    def identity_injections(self):
+        """The run's injections, in run order, as the Injections table lists
+        them: {injection, role, role_label, sample_id, compounds, entry,
+        marker, actions}."""
+        if "_identity_rows" in self.__dict__:
+            return self._identity_rows
+        from senaite.pfas import injection_identity as ii
+        from senaite.pfas import row_menu
+        ws = self._get_worksheet()
+        rows = _run_order(self._injection_rows())
+        state = self._identity_state()
+        forced = ii.in_force(state)
+        if ws is None or not (rows or forced):
+            self._identity_rows = []
+            return []
+        low = self._identity_low()
+        members, dilutions = self._identity_members(ws)
+        waiting = set(ii.pending(state, self.identity_applied()))
+        closed = self.identity_closed()
+        # a member's role belongs to the extraction record: amended there
+        amend = self._amend_links(ws)
+        order, by = [], {}
+        for r in rows:
+            name = r.get("injection_name") or u""
+            if not name:
+                continue
+            if name not in by:
+                order.append(name)
+                by[name] = {"injection": name, "qc_type": r.get("qc_type") or u"",
+                            "sample_id": r.get("sample_id") or u"", "compounds": set()}
+            by[name]["compounds"].add(r.get("analyte") or u"")
+        # an injection corrected to Not judged has no rows once the run is
+        # judged again: it stays listed, from its record
+        for name in sorted(forced):
+            if name not in by:
+                order.append(name)
+                by[name] = {"injection": name, "qc_type": forced[name].get("from") or u"",
+                            "sample_id": u"", "compounds": set()}
+        out = []
+        for name in order:
+            row = by[name]
+            role = ii.judged_role(row["qc_type"], name in low)
+            entry = forced.get(name)
+            shown = entry.get("to") if entry else role
+            why = closed
+            if not why and name in dilutions:
+                why = ii.DILUTION.format(name)
+            elif not why and name in members:
+                why = ii.MEMBER.format(name)
+            elif not why and shown not in ii.CORRECTABLE:
+                why = ii.NOT_CORRECTABLE.format(name, ii.label(shown))
+            acts = [(u"Correct identity\u2026", "event", "dr-identity", {"off": why})]
+            if name in amend:
+                acts = [(u"Amend on the extraction record\u2026", "href", amend[name])]
+            if entry:
+                acts.append((u"Undo the correction\u2026", "event", "dr-identity-undo",
+                             {"danger": True, "off": closed}))
+            out.append({
+                "injection": name, "role": shown, "role_label": ii.label(shown),
+                "sample_id": row["sample_id"], "compounds": len(row["compounds"]),
+                "entry": entry,
+                "marker": ii.marker(entry, name in waiting,
+                                    lab_time.show(entry.get("at")) if entry else None) if entry else None,
+                "actions": row_menu.actions(*acts)})
+        self._identity_rows = out
+        return out
+
+    def identity_history(self):
+        """Every correction and undo, newest first, for Overview."""
+        from senaite.pfas import injection_identity as ii
+        out = []
+        for e in ii.history(self._identity_state()):
+            out.append(dict(e, when=lab_time.show(e.get("at")) if e.get("at") else u""))
+        return out
+
+    def _identity_requeue_args(self, ws):
+        from senaite.pfas.browser.run_builder import RUN_FILES_KEY, UPLOAD_DIR
+        from senaite.pfas.annotation_store import read_json
+        return UPLOAD_DIR, self._raw_stem(), read_json(ws, RUN_FILES_KEY, [])
+
+    def _handle_correct_identity(self):
+        """A reviewer corrects what an injection is (correct_identity) or
+        undoes a correction (revert_identity). injection_identity refuses,
+        before anything is written, what the person, the worksheet's state,
+        the injection or the method does not allow; a reason is required.
+        The entry is appended to the worksheet's log and its trail, and once
+        the save commits the run is queued again: the worker judges it with
+        the corrections in force, and release waits until it has."""
+        from senaite.pfas import after_commit
+        from senaite.pfas import injection_identity as ii
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        f = self.request.form
+        who = getSecurityManager().getUser()
+        when = datetime.datetime.utcnow().replace(microsecond=0).isoformat()
+        upload_dir, stem, files = self._identity_requeue_args(ws)
+        can_requeue = ii.requeue_target(upload_dir, stem, files) is not None
+        state = self._identity_state()
+        if f.get("action") == "revert_identity":
+            problem, state, _entry = ii.revert(
+                state, f.get("injection"), f.get("reason"), who.getId(), when, self.ws_state(),
+                self.can_act(), _actor_kind(who), can_requeue=can_requeue)
+            done = "identity_reverted"
+        else:
+            judged = dict((r["injection"], r["role"]) for r in self.identity_injections())
+            # the stored run's judgement, not a correction already in force
+            for inj, e in ii.in_force(state).items():
+                if inj in judged:
+                    judged[inj] = e.get("from")
+            members, dilutions = self._identity_members(ws)
+            problem, state, _entry = ii.correct(
+                state, f.get("injection"), f.get("to"), f.get("reason"), who.getId(), when,
+                self.ws_state(), self.can_act(), _actor_kind(who), judged,
+                ii.offered_roles(self._method_profile()), members=members, dilutions=dilutions,
+                can_requeue=can_requeue, filed=self._identity_filed(ws))
+            done = "identity_corrected"
+        if problem:
+            return self._redirect_with_msg("identity_refused", "error", tab="instrument_report",
+                                           detail=problem)
+        if _entry is not None and _entry.get("retract"):
+            # the results filed on its sample are retracted with the
+            # correction, in this transaction: a refusal keeps nothing
+            from senaite.pfas import identity_retract as ir
+            try:
+                _entry["retracted"] = self._identity_retract(ws, _entry, ir)
+            except ir.RetractRefused as exc:
+                import transaction
+                transaction.abort()
+                return self._redirect_with_msg("identity_refused", "error", tab="instrument_report",
+                                               detail=exc.args[0] if exc.args else u"")
+        # the sign-offs over what is judged again are cleared, to be made
+        # again once it is; kept on the entry and in the trail
+        checklist, cleared = ii.reset_signoffs(self._get_checklist(ws))
+        if cleared:
+            _entry["cleared"] = cleared
+            self._save_checklist(ws, checklist)
+        IAnnotations(ws)[IDENTITY_KEY] = ii.dump(state)
+        from senaite.pfas import records
+        records.log(ws, f.get("action") or u"correct_identity", reason=(f.get("reason") or u"").strip(),
+                    detail={u"injection": _entry.get("injection"), u"from": _entry.get("from"),
+                            u"to": _entry.get("to"), u"cleared": [c["item"] for c in cleared]})
+        # the worker reads the corrections from the run manifest only once
+        # they are committed
+        after_commit.run_once("identity-requeue:" + ws.getId(), ii.requeue, upload_dir, stem, files)
+        return self._redirect_with_msg(done, "ok", tab="instrument_report")
+
+    def _identity_retract(self, ws, entry, ir):
+        """Retract the results the worker filed for the entry's injection
+        (the push log), through core's workflow; the worksheet stays open
+        (a retest is added to it), or RetractRefused."""
+        from bika.lims import api as _bapi
+        from bika.lims.workflow import doActionFor as _do
+        uids = sorted(set(p.get("analysis_uid") for p in self._result_pushes(ws.getId())
+                          if p.get("ok") and p.get("injection") == entry["injection"] and p.get("analysis_uid")))
+        analyses = [a for a in (_bapi.get_object_by_uid(u, None) for u in uids) if a is not None]
+
+        def note(an, text):
+            try:
+                an.setRemarks(text)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("identity retract: remark on %s: %s", _bapi.get_uid(an), exc)
+        # a reopen on purpose: the guard lets these retracts run (reopen_guard)
+        from senaite.pfas import reopen_guard
+        with reopen_guard.allowing(self.request):
+            out = ir.retract(analyses, lambda o, t: bool(_do(o, t)[0]), _bapi.get_review_status,
+                             lambda a: bool((a.getResult() or u"").strip()), note, entry.get("reason"))
+        if _bapi.get_review_status(ws) != "open":
+            raise ir.RetractRefused(u"The worksheet did not stay open after the retraction.")
+        return out
+
+    # ── Verify sends a submitted worksheet back to the analyst ─────────
+
+    SEND_BACK_PENDING = u"Sent back: waiting for the run to be filed again."
+
+    def _review_send_back_state(self):
+        from senaite.pfas import review_send_back as sb
+        ws = self._get_worksheet()
+        return sb.load(IAnnotations(ws).get(SEND_BACK_KEY)) if ws is not None else sb.empty()
+
+    def send_back_pending(self):
+        """True while the run is not filed again since the latest send back."""
+        from senaite.pfas import review_send_back as sb
+        state = self._review_send_back_state()
+        if not state["log"]:
+            return False
+        ws = self._get_worksheet()
+        filed = None
+        if ws is not None and self.db_available:
+            try:
+                row = self._store().get_batch(ws.getId()) or {}
+                filed = row.get("updated_at") or row.get("created_at")
+            except Exception:                               # noqa: BLE001
+                filed = None
+        return sb.pending(state, filed)
+
+    def send_back_history(self):
+        from senaite.pfas import review_send_back as sb
+        return [dict(e, when=lab_time.show(e.get("at")) if e.get("at") else u"")
+                for e in sb.history(self._review_send_back_state())]
+
+    def _mark_interims(self, ws, entry):
+        """Mark, on each sample of the worksheet whose current issue is an
+        interim certificate, that the next certificate supersedes it
+        (interim_certificates); its reissue reason is stashed unless one is
+        pending. Returns the interims marked."""
+        from senaite.pfas import interim_certificates as ic
+        from senaite.pfas.interim_certificates import MARKS_KEY as INTERIM_MARKS_KEY
+        from senaite.pfas.browser.controlled_publications import (
+            PENDING_REASON_KEY, get_publication_log, set_pending_amendment_reason)
+
+        def cp_has_pending_reason(ar):
+            return bool(IAnnotations(ar).get(PENDING_REASON_KEY))
+        marked, seen = [], set()
+        for an in ws.getAnalyses() or []:
+            try:
+                ar = an.getRequest()
+            except Exception:                               # noqa: BLE001
+                continue
+            if ar is None or ar.UID() in seen:
+                continue
+            seen.add(ar.UID())
+            report_id = ic.interim_to_mark(get_publication_log(ar))
+            if not report_id:
+                continue
+            ann = IAnnotations(ar)
+            marks, mark = ic.mark_superseded(json.loads(ann.get(INTERIM_MARKS_KEY) or "[]"), report_id,
+                                             entry["id"], entry["reason"], entry["by"], entry["at"])
+            ann[INTERIM_MARKS_KEY] = json.dumps(marks)
+            if not cp_has_pending_reason(ar):
+                set_pending_amendment_reason(ar, ic.reissue_reason([mark]))
+            marked.append(report_id)
+        return marked
+
+    def _handle_send_back_review(self):
+        """The verifier sends the submitted worksheet back to the analyst,
+        with a reason: core's worksheet retract (every analysis retracted,
+        its retest on the same worksheet, the worksheet open again), the
+        sign-offs the reset rule names cleared, the submission cleared, the
+        entry appended and the run queued again to file the retests. Any
+        refusal keeps nothing. The e-signature ledger is not written."""
+        from senaite.pfas import after_commit, records
+        from senaite.pfas import injection_identity as ii
+        from senaite.pfas import review_send_back as sb
+        from bika.lims import api as _bapi
+        from bika.lims.workflow import doActionFor as _do
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        user = getSecurityManager().getUser()
+        reason = (self.request.form.get("reason") or u"").strip()
+        upload_dir, stem, files = self._identity_requeue_args(ws)
+        why = sb.refusal(reason, self.ws_state(), self.is_manager(), _actor_kind(user),
+                         can_requeue=ii.requeue_target(upload_dir, stem, files) is not None)
+        if why:
+            return self._redirect_with_msg("send_back_refused", "error", detail=why)
+        before = [a for a in (ws.getAnalyses() or []) if _bapi.get_review_status(a) == "to_be_verified"]
+        import transaction
+        from senaite.pfas import reopen_guard
+        try:
+            # the one route that reopens a submitted worksheet (reopen_guard)
+            with reopen_guard.allowing(self.request):
+                _do(ws, "retract")
+        except Exception as exc:                            # noqa: BLE001
+            transaction.abort()
+            logger.error("send back: %s", exc)
+            return self._redirect_with_msg("send_back_refused", "error", detail=u"%s" % exc)
+        if _bapi.get_review_status(ws) != "open":
+            transaction.abort()
+            return self._redirect_with_msg("send_back_refused", "error",
+                                           detail=u"SENAITE did not reopen the worksheet.")
+        checklist, cleared = ii.reset_signoffs(self._get_checklist(ws))
+        self._save_checklist(ws, sb.clear_submission(checklist))
+        when = datetime.datetime.utcnow().replace(microsecond=0).isoformat()
+        state, entry = sb.record(self._review_send_back_state(), reason, user.getId(), when, cleared,
+                                 retracted=len(before))
+        # an interim certificate issued at Submit is marked superseded by
+        # the next certificate; it is never withdrawn nor altered
+        entry["interims"] = self._mark_interims(ws, entry)
+        IAnnotations(ws)[SEND_BACK_KEY] = sb.dump(state)
+        records.log(ws, u"send_back_review", reason=reason,
+                    detail={u"to": entry["to"], u"cleared": [c["item"] for c in cleared],
+                            u"retracted": entry["retracted"]})
+        # the retests are filed by the run, queued again once this commits
+        after_commit.run_once("send-back-requeue:" + ws.getId(), ii.requeue, upload_dir, stem, files)
+        return self._redirect_with_msg("review_sent_back", "ok")
+
+    def _handle_confirm_identity(self):
+        """The verifier confirms one identity correction in force: a Lab
+        Manager with the reviewer sign right, never the person who made it,
+        while the worksheet is submitted (injection_identity.confirm). The
+        confirmation is appended to the log, which the release signature
+        binds; Verify waits until every correction in force is confirmed."""
+        from senaite.pfas import injection_identity as ii
+        from senaite.pfas import records
+        from senaite.pfas.browser import manual_integration_view as miv
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        user = getSecurityManager().getUser()
+        who = user.getId()
+        try:
+            info = miv.staff_sign_info(who)
+        except ValueError as exc:
+            return self._redirect_with_msg("identity_refused", "error", detail=u"%s" % exc)
+        inj = self.request.form.get("injection") or u""
+        problem, state, entry = ii.confirm(
+            self._identity_state(), inj, who, datetime.datetime.utcnow().replace(microsecond=0).isoformat(),
+            self.ws_state(), self.is_manager(), _actor_kind(user), info["sign_as"], info["name"])
+        if problem:
+            return self._redirect_with_msg("identity_refused", "error", detail=problem)
+        IAnnotations(ws)[IDENTITY_KEY] = ii.dump(state)
+        records.log(ws, u"confirm_identity", detail={u"injection": inj, u"confirms": entry["confirms"]})
+        return self._redirect_with_msg("identity_confirmed", "ok")
+
     def _handle_clear_run_plan(self):
         """Clear one run-plan item with a note: the reviewer has seen it and
         says why the run stands (a re-injection made at the instrument, a
@@ -5313,21 +6796,301 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return self._redirect_with_msg("run_plan_cleared" if ok else "run_plan_not_cleared",
                                        "ok" if ok else "error", tab="qc_summary")
 
-    def _handle_record_amendment_reason(self):
-        """Stash an amendment reason on each already-published sample, then
-        continue to the publisher. The publish (republish) transition's
-        subscriber consumes it into the controlled register."""
+    def _handle_sign_certificate(self):
+        """The authoriser signs the certificate before it is generated: the
+        signature waits on each sample of the report (always a final one:
+        an interim certificate is released at Submit) and the publish guard asks for it;
+        the publish subscriber binds it to the stored PDF. A reissue's
+        amendment reason is kept for the register the same way. Then on to
+        the publisher."""
         if not self.can_act():
             return self._redirect_with_msg("permission_denied", "error")
-        reason = (self.request.form.get("reason") or "").strip()
+        if self.request.form.get("sign") != "1":
+            # a certificate is signed only through the sign dialog
+            return self._redirect_with_msg("certificate_refused", "error",
+                                           detail=u"Sign the certificate to issue it.")
+        from senaite.pfas.browser.controlled_publications import (
+            current_is_interim, pending_signature, set_pending_amendment_reason, set_pending_signature)
+        from senaite.pfas.esig import certificate as esig_certificate
+        from senaite.pfas.esig import ledger, signing
+        ars = self._report_ars()
+        if not ars:
+            return self._redirect_with_msg("certificate_refused", "error",
+                                           detail=u"No sample to issue a certificate for.")
+        form = self.request.form
+        # the card signs a final certificate; an interim is released at Submit
+        interim = False
+        if self.ws_state() not in self.VERIFIED_STATES and \
+                [ar for ar in ars if (pending_signature(ar) or {}).get("interim")]:
+            # a final signed now would replace the interim waiting to issue
+            return self._redirect_with_msg("certificate_refused", "error", detail=INTERIM_WAITS)
+        note = (form.get("sign_note") or u"").strip()
+        msgs = esig_certificate.problems(self.request, interim)
+        if msgs:
+            return self._redirect_with_msg("certificate_refused", "error", detail=u" ".join(msgs))
+        userid = signing.current_userid(self.request)
+        now = signing.utcnow()
+        # the credential the dialog confirmed (problems above), which the
+        # ledger row written at publish records
+        cred = signing.credential_ok(self.request, userid)
+        rec = esig_certificate.pending_record(userid, interim, note, esig_certificate.now_stamp(now),
+                                              credential=cred)
+        # the publish guard's own rule, asked before anything is stored: while
+        # the current revision is interim, another interim needs its reason
+        why = esig_certificate.refusal(rec, userid, any(current_is_interim(ar) for ar in ars), now)
+        if why:
+            return self._redirect_with_msg("certificate_refused", "error", detail=why)
+        # the certificate generated next prints the signer as signed now: the
+        # image is kept before the signature is stored, and the ledger row
+        # written at publish records the same picture
+        try:
+            signer = esig_certificate.signer_snapshot(userid)
+        except (signing.SignatureRefused, ledger.LedgerError) as exc:
+            return self._redirect_with_msg("certificate_refused", "error", detail=signing.reason(exc))
+        rec = esig_certificate.pending_record(userid, interim, note, rec["at"], signer=signer, credential=cred)
+        for ar in ars:
+            set_pending_signature(ar, rec)
+        reason = (form.get("reason") or u"").strip()
         if reason:
-            from senaite.pfas.browser.controlled_publications import \
-                set_pending_amendment_reason
             for ar in self.reissue_ars():
                 set_pending_amendment_reason(ar, reason)
         purl = self.publish_url()
         self.request.response.redirect(purl or self.request.URL)
         return u""
+
+    def issue_email_state(self):
+        """The card's Issue and e-mail: ready, or why not yet, and whom it
+        e-mails (browser/issue_email.py asks what Send asks)."""
+        from senaite.pfas.browser import issue_email
+        from senaite.pfas.esig import signing
+        from ZODB.POSException import ConflictError
+        try:
+            reports, why = issue_email.readiness(self._issue_ars(), signing.current_userid(self.request))
+            to = issue_email.recipients(reports) if reports else []
+        except ConflictError:
+            raise
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("issue and e-mail readiness: %s", exc)
+            reports, why, to = [], u"%s" % exc, []
+        from senaite.pfas import certificate_delivery as cd
+        return {"ready": bool(reports) and not why, "why": why or u"", "to": to,
+                "to_shown": [cd.shown_recipient(r) for r in to]}
+
+    def _handle_issue_email(self):
+        """Issue and e-mail in one step, in the signer's own session: the
+        publish transition, then the e-mail form's send, one e-mail per
+        client (browser/issue_email.py)."""
+        from senaite.pfas.browser import issue_email
+        from senaite.pfas.esig import signing
+        ars = self._issue_ars()
+        if not ars:
+            return self._redirect_with_msg("issue_email_refused", "error",
+                                           detail=u"No sample to issue a certificate for.")
+        ok, text = issue_email.issue_and_email(ars, self.request, signing.current_userid(self.request))
+        if not ok and not issue_email.any_issued(ars):
+            return self._redirect_with_msg("issue_email_refused", "error", detail=text)
+        return self._redirect_with_msg("issue_email", "ok" if ok else "error", detail=text)
+
+    def certificate_esig(self):
+        """The sign dialog of Issue certificate: the register's next report
+        id of each sample. The PDF does not exist yet: the signature binds
+        to it as it is issued."""
+        from senaite.pfas.browser.controlled_publications import get_publication_log
+        from senaite.pfas.browser.perms import signed_in_name
+        from senaite.pfas.esig import signing
+        ids, revisions = [], []
+        for ar in self._report_ars():
+            revision = len(get_publication_log(ar)) + 1
+            ids.append(u"%s-R%s" % (ar.getId(), revision))
+            revisions.append(revision)
+        return {"record": u", ".join(ids),
+                "revision": u", ".join(u"%s" % r for r in sorted(set(revisions))),
+                "hash_prefix": u"", "content_text": u"The certificate PDF as issued",
+                "meaning_label": signing.meaning_label("authoriser"),
+                "signer_name": signed_in_name(self.context), "action": u"sign_certificate",
+                "form_id": u"drIssueForm"}
+
+    def pending_certificate(self):
+        """The signature waiting on this worksheet's samples, as the card
+        shows it: the signer's name, the lab time, whether it is an interim,
+        whether it is the signed-in person's own ("mine": only they can
+        issue it) and whether it is too old to issue ("stale", read as the
+        publish guard reads it); None when none waits."""
+        from senaite.pfas.browser.controlled_publications import pending_signature
+        from senaite.pfas.esig import certificate as esig_certificate
+        from senaite.pfas.esig import signing
+        from ZODB.POSException import ConflictError
+        for ar in self._report_ars():
+            rec = pending_signature(ar)
+            if rec:
+                userid = rec.get("userid") or u""
+                try:
+                    name = signing.staff_info(userid).get("fullname") or userid
+                except ConflictError:
+                    raise
+                except Exception:                           # noqa: BLE001
+                    name = userid
+                return {"signer": name, "at": self.lab_at(rec.get("at"), rec.get("at") or u""),
+                        "interim": bool(rec.get("interim")),
+                        "mine": bool(userid) and userid == signing.current_userid(self.request),
+                        "stale": esig_certificate.is_stale(rec, signing.utcnow())}
+        return None
+
+    # ── interim certificates, released at Submit ──────────────────────────
+
+    def _interim_ars(self):
+        """The worksheet's samples whose client takes interim certificates
+        (Client reporting)."""
+        from senaite.pfas import edd_store
+        from senaite.pfas import interim_certificates as ic
+        out = []
+        for ar in self._report_ars():
+            try:
+                client = ar.getClient()
+                if client is not None and edd_store.get_client_settings(client).get(ic.SETTING):
+                    out.append(ar)
+            except Exception:                               # noqa: BLE001
+                logger.warning("interim: the client of %s could not be read", ar.getId(), exc_info=True)
+        return out
+
+    def interim_submit(self):
+        """What Submit does about interim certificates: {"due": a sample's
+        client takes them, "ok": this Submit signs one, "why": the note when
+        it cannot, "current": another interim then needs a reason, "ars":
+        the samples}. Asked before Submit, without the credential, which
+        the dialog asks (interim_certificates.why_not)."""
+        if hasattr(self, "_interim_submit"):
+            return self._interim_submit
+        from bika.lims import api as _bapi
+        from senaite.core.permissions import ManageAnalysisRequests
+        from senaite.pfas import interim_certificates as ic
+        from senaite.pfas import report_tiers
+        from senaite.pfas.browser.controlled_publications import current_is_interim
+        from senaite.pfas.esig import certificate as esig_certificate
+        from senaite.pfas.esig import signing
+        out = {"due": False, "ok": False, "why": u"", "current": False, "ars": []}
+        ars = self._interim_ars()
+        if ars:
+            portal = self._portal()
+            tiers = []
+            for ar in ars:
+                tier, tier_id, _catalogue, _rev = report_tiers.resolve(ar, portal)
+                tiers.append((_bapi.safe_unicode(ar.getClient().Title()),
+                              (tier.get("name") or tier_id) if tier else None,
+                              report_tiers.needs_package(tier) if tier else False))
+            sm = getSecurityManager()
+            # the Interim release right is the authority to issue it (asked
+            # below): prepublish is granted to its signer for the interim
+            # alone (interim_release); generating and sending it need the
+            # publisher and the e-mail form
+            can_issue = bool(sm.checkPermission(ManageAnalysisRequests, portal))
+            userid = signing.current_userid(self.request)
+            sign_problems = signing.problems(esig_certificate.KIND, esig_certificate.meaning_for(True),
+                                             userid, [], signing.staff_info(userid), True)
+            why = ic.why_not(tiers, can_issue, sign_problems)
+            out.update(due=True, ok=not why, why=ic.note(why) if why else u"", ars=ars,
+                       current=any(current_is_interim(ar) for ar in ars))
+        self._interim_submit = out
+        return out
+
+    def submit_esig(self):
+        """The sign dialog of Submit for a client taking interim
+        certificates: the register's next report id of each of its
+        samples, signed as released interim."""
+        from senaite.pfas.browser.controlled_publications import get_publication_log
+        from senaite.pfas.browser.perms import signed_in_name
+        from senaite.pfas.esig import signing
+        ids, revisions = [], []
+        for ar in self.interim_submit()["ars"]:
+            revision = len(get_publication_log(ar)) + 1
+            ids.append(u"%s-R%s" % (ar.getId(), revision))
+            revisions.append(revision)
+        return {"record": u", ".join(ids),
+                "revision": u", ".join(u"%s" % r for r in sorted(set(revisions))),
+                "hash_prefix": u"", "content_text": u"The interim certificate PDF as issued",
+                "meaning_label": signing.meaning_label("released_interim"),
+                "signer_name": signed_in_name(self.context), "action": u"submit_for_review",
+                "form_id": u"drSubmitForm"}
+
+    def _sign_interim(self):
+        """(record, None) when this Submit signs an interim certificate: the
+        pending record to keep on the interim clients' samples once the run
+        is submitted; (None, None) when no interim is released (the note
+        says why); (None, refusal detail) when the signature the dialog gave
+        is refused, which refuses the Submit: nothing has changed yet."""
+        state = self.interim_submit()
+        if not state["ok"]:
+            return None, None
+        from senaite.pfas.esig import certificate as esig_certificate
+        from senaite.pfas.esig import ledger, signing
+        if self.request.form.get("sign") != "1":
+            return None, INTERIM_SIGN_FIRST
+        msgs = esig_certificate.problems(self.request, True)
+        if msgs:
+            return None, u" ".join(msgs)
+        userid = signing.current_userid(self.request)
+        now = signing.utcnow()
+        cred = signing.credential_ok(self.request, userid)
+        note = (self.request.form.get("sign_note") or u"").strip()
+        rec = esig_certificate.pending_record(userid, True, note, esig_certificate.now_stamp(now),
+                                              credential=cred)
+        # the publish guard's own rule: another interim needs its reason
+        why = esig_certificate.refusal(rec, userid, state["current"], now)
+        if why:
+            return None, why
+        try:
+            signer = esig_certificate.signer_snapshot(userid)
+        except (signing.SignatureRefused, ledger.LedgerError) as exc:
+            return None, signing.reason(exc)
+        return esig_certificate.pending_record(userid, True, note, rec["at"], signer=signer,
+                                               credential=cred), None
+
+    def certificate_signatures(self):
+        """The current register row's signatures of each sample, read from
+        the ledger against the hash the row was signed on, as the one
+        signature table draws them (report_documents.signature_row, with
+        "doc" the certificate): a valid signature is on file; a certificate
+        issued unsigned, or whose signatures cannot be read, says so."""
+        from senaite.pfas import lab_time
+        from senaite.pfas import report_documents as rd
+        from senaite.pfas.browser.controlled_publications import get_publication_log
+        from senaite.pfas.esig import signing
+        from ZODB.POSException import ConflictError
+
+        def note(report_id, state):
+            row = rd.signature_row(u"", u"", u"", state, u"", u"", u"")
+            row["doc"] = report_id
+            return row
+
+        out = []
+        for ar in self._report_ars():
+            log = get_publication_log(ar)
+            if not log:
+                continue
+            entry = log[0]
+            if entry.get("unsigned"):
+                out.append(note(entry["report_id"], u"Issued without a signature"))
+                continue
+            if entry.get("signature_seq") is None:
+                continue
+            try:
+                st = signing.status("certificate", entry["report_id"], entry.get("certificate_sha256") or u"")
+            except ConflictError:
+                raise
+            except Exception:                               # noqa: BLE001
+                logger.warning("certificate signatures of %s unreadable", entry["report_id"], exc_info=True)
+                out.append(note(entry["report_id"], u"The signatures could not be read"))
+                continue
+            for meaning, row in sorted(st["valid"].items()):
+                e = row.get("entry") or {}
+                signer = e.get("signer") or {}
+                sig = rd.signature_row(signing.meaning_label(meaning), signer.get("fullname") or u"",
+                                       signer.get("credentials"), rd.ON_FILE,
+                                       lab_time.show(e.get("signed_at"), "utc"),
+                                       (e.get("record_hash") or u"")[:12], meaning, seq=row.get("seq"))
+                sig["doc"] = entry["report_id"]
+                out.append(sig)
+        return out
 
     def _handle_check_item(self):
         if not self.can_act():
@@ -5339,10 +7102,19 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         manual_keys = {"coc", "final_data", "instrument_report"}
         if item_key not in manual_keys:
             return self._redirect_with_msg("invalid_item", "error")
-        # ISO 17025 §10: holding_time_ok must be confirmed before CoC can pass.
-        # The tick is necessary and NOT sufficient — a measured breach blocks
-        # the gate whether or not somebody ticked the box. Until 2026-08-06 the
-        # tick was the only evidence in the system that a sample was in time.
+        # ISO 17025 §10: where a sample's method sets a holding time, the
+        # receipt's "within holding time" must be Yes before CoC can pass.
+        # The answer is necessary and NOT sufficient -- a measured breach
+        # blocks the gate whatever was answered.
+        # a sign-off a correction cleared is made again only once the run
+        # is judged with it
+        from senaite.pfas import injection_identity as _ii
+        if item_key in _ii.AFFECTED_SIGNOFFS and (self.identity_pending() or self.send_back_pending()):
+            return self._redirect_with_msg("identity_pending_signoff", "error",
+                                           tab=self.request.form.get("tab", "overview"))
+        if item_key in _ii.AFFECTED_SIGNOFFS and self.extraction_pending():
+            return self._redirect_with_msg("extraction_pending_signoff", "error",
+                                           tab=self.request.form.get("tab", "overview"))
         if item_key == "instrument_report":
             ok, need = self.mi_gate()[:2]
             if not ok:
@@ -5354,7 +7126,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             coc = self.coc_summary()
             if coc.get("records") is not None and not coc.get("all_received"):
                 return self._redirect_with_msg("coc_not_received", "error", tab="coc")
-            if not coc.get("holding_time_ok"):
+            from senaite.pfas.coc_records import holding_declared
+            if not holding_declared(coc):
                 return self._redirect_with_msg("coc_holding_time_fail", "error", tab="coc")
             verdict = self.holding_time_summary()
             if verdict.get("status") in holding_time.BLOCKING:
@@ -5429,6 +7202,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return self._redirect_with_msg("checklist_incomplete", "error")
         if self._study_review(ws):
             return self._sign_study_review(ws, "submitted")
+        # an interim certificate for a client taking them: signed in Submit's
+        # dialog, asked before anything moves; a refused signature refuses
+        # the Submit, an interim that cannot be released never does
+        interim, refused = self._sign_interim()
+        if refused:
+            return self._redirect_with_msg("submit_sign_refused", "error", detail=refused)
         wf_tool = getToolByName(self.context, "portal_workflow")
         # Submit the RESULTS this review just signed off, then the worksheet.
         #
@@ -5478,7 +7257,15 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         cl["submitted_at"] = now
         self._save_checklist(ws, cl)
         self._audit(ws)
-        return self._redirect_with_msg("submitted_for_review", "ok")
+        from senaite.pfas import interim_certificates as ic
+        said = self.interim_submit()
+        if interim is not None:
+            # the run is submitted: the interim waits on its clients' samples
+            from senaite.pfas.browser.controlled_publications import set_pending_signature
+            for ar in said["ars"]:
+                set_pending_signature(ar, interim)
+            return self._redirect_with_msg("submitted_for_review", "ok", detail=ic.SIGNED)
+        return self._redirect_with_msg("submitted_for_review", "ok", detail=said["why"] or None)
 
     def _handle_approve_release(self):
         if not self.is_manager():
@@ -5499,11 +7286,28 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # (a reprocess held a submitted worksheet's QC and Approve Release
             # still verified it).
             return self._redirect_with_msg("checklist_changed", "error")
+        # every identity correction in force is confirmed first: refused
+        # before anything is signed
+        from senaite.pfas import injection_identity as _ii
+        unconfirmed = _ii.verify_refusal(self._identity_state())
+        if unconfirmed:
+            return self._redirect_with_msg("identity_refused", "error", detail=unconfirmed)
+        # and every extraction correction
+        from senaite.pfas import extraction_amendments as ea
+        unconfirmed = ea.verify_refusal(self._extraction_state())
+        if unconfirmed:
+            return self._redirect_with_msg("extraction_refused", "error", detail=unconfirmed)
         # the verifier countersigns the Raw Data changes, and is never the
         # person who initialled them: tried here, saved once released
         refused = self._countersign_raw_changes(ws)
         if refused:
             return self._redirect_with_msg("raw_countersign_refused", "error", detail=refused)
+        # the approver signs the batch record as its reviewer before anything
+        # is verified: a refused signature releases nothing (a study
+        # worksheet's record too)
+        unsigned = self._sign_release(ws)
+        if unsigned is not None:
+            return unsigned
         if self._study_review(ws):
             self._countersign_raw_changes(ws, save=True)
             return self._sign_study_review(ws, "approved")
@@ -5559,6 +7363,68 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         self._audit(ws)
         return self._redirect_with_msg("batch_approved", "ok")
 
+    def _sign_release(self, ws):
+        """Sign the worksheet's batch record as its reviewer, the signed-in
+        person, bound to the whole record (batch_record.record_hash): None
+        when signed, else the refusal's redirect. The finaliser may not
+        approve (the signing core reads every live row of the record); a
+        record finalised before signatures were kept has no preparer row,
+        and is approved by this signature alone."""
+        if self.request.form.get("sign") != "1":
+            # a release is recorded only through the sign dialog
+            return self._redirect_with_msg("sign_refused", "error", detail=u"Sign the release to record it.")
+        from ZODB.POSException import ConflictError
+        from senaite.pfas import batch_record as br
+        from senaite.pfas.browser import extraction_pdf
+        from senaite.pfas.browser.extraction_guide import _load_session, _save_session
+        from senaite.pfas.esig import ledger, signing
+        try:
+            record = extraction_pdf.record_for(ws, self.request)
+        except ConflictError:
+            raise
+        except Exception as exc:                            # noqa: BLE001
+            logger.exception("approve_release: the record of %s could not be read", ws.getId())
+            return self._redirect_with_msg("sign_refused", "error",
+                                           detail=u"The batch record could not be read: %s" % signing.reason(exc))
+        try:
+            rows = br.sign_approved(self._portal(), self.request, record,
+                                    note=self.request.form.get("sign_note") or u"")
+        except signing.SignatureRefused as exc:
+            return self._redirect_with_msg("sign_refused", "error", detail=u"; ".join(exc.messages))
+        except ledger.LedgerError as exc:
+            return self._redirect_with_msg("sign_refused", "error", detail=signing.reason(exc))
+        # the session keeps the display cache; the ledger is the truth
+        home = self._extraction_home(ws)
+        sess = _load_session(home) if home is not None else {}
+        if sess:
+            sess["signatures"] = signing.merge_cache(sess.get("signatures"), rows)
+            _save_session(home, sess)
+        return None
+
+    def approve_esig(self):
+        """The sign dialog of Verify: the worksheet's record, its
+        method revision and the whole record's hash as it stands."""
+        from senaite.pfas import batch_record as br
+        from senaite.pfas.browser import extraction_pdf
+        from senaite.pfas.browser.perms import signed_in_name
+        from senaite.pfas.esig import signing
+        from ZODB.POSException import ConflictError
+        ws = self._get_worksheet()
+        record, prefix = {}, u""
+        try:
+            record = extraction_pdf.record_for(ws, self.request) if ws is not None else {}
+            prefix = br.record_hash(record)[:12] if record else u""
+        except ConflictError:
+            raise
+        except Exception:                                   # noqa: BLE001
+            # shown only: Approve Release reads the record again and refuses there
+            logger.warning("approve dialog: the record could not be read", exc_info=True)
+        return {"record": record.get("worksheet") or (ws.getId() if ws is not None else u""),
+                "revision": record.get("revision") or u"", "hash_prefix": prefix,
+                "meaning_label": signing.meaning_label("reviewer"),
+                "signer_name": signed_in_name(self.context), "action": u"approve_release",
+                "form_id": u"drApproveForm"}
+
     def _sign_study_review(self, ws, step):
         """Submit or approve a study worksheet's review: the checklist is the
         record (no core transition can fire on it). Approval freezes the
@@ -5596,14 +7462,30 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             self._save_checklist(ws, cl)
             self._audit(ws)
             return self._redirect_with_msg("batch_rejected", "ok")
-        wf_tool = getToolByName(self.context, "portal_workflow")
+        from senaite.pfas import run_reject
+        from senaite.pfas import records
+        reason = (self.request.form.get("reason") or u"").strip()
+        disposition = self.request.form.get("disposition") or u""
+        why = run_reject.refusal(reason, disposition)
+        if why:
+            return self._redirect_with_msg("reject_refused", "error", detail=why)
+        from bika.lims import api as _rapi
+        from bika.lims.workflow import doActionFor as _do
         try:
-            wf_tool.doActionFor(ws, "reject")
-        except Exception as exc:
+            retests = run_reject.reject(ws, lambda o, t: _do(o, t)[0], _rapi.get_review_status)
+        except Exception as exc:                            # noqa: BLE001
+            # a rejection half made is no rejection: nothing is kept
+            import transaction
+            transaction.abort()
             logger.error("reject: %s", exc)
             return self._redirect_with_msg("workflow_error", "error")
-        self._audit(ws)
-        return self._redirect_with_msg("batch_rejected", "ok")
+        who = getSecurityManager().getUser().getId()
+        rec = run_reject.record(who, datetime.datetime.utcnow().isoformat(), reason, disposition, retests)
+        IAnnotations(ws)[run_reject.REJECT_KEY] = json.dumps(rec)
+        records.log(ws, u"reject", reason=reason, detail={u"disposition": disposition, u"retests": rec[u"retests"]})
+        if disposition == run_reject.VOID:
+            self._store().void_run(ws.getId(), who, reason)
+        return self._redirect_with_msg("run_rejected", "ok", extra=u"&car=1")
 
     # ── dilution / re-injection requests to the bench ───────────────────
 
@@ -5623,6 +7505,193 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                                  if m.get("injection")]
         return self._request_targets
 
+    # ── above the calibration range with no dilution ─────────────────────
+
+    def above_range_reasons(self):
+        """{reason_key: {"reason", "by", "at"}}: the reasons the reviewer
+        recorded to report a result above the range with E. Once per request."""
+        if "_above_reasons" not in self.__dict__:
+            ws = self._get_worksheet()
+            try:
+                raw = IAnnotations(ws).get(ABOVE_RANGE_REASONS_KEY) if ws is not None else None
+                self._above_reasons = json.loads(raw) if raw else {}
+            except (TypeError, ValueError):
+                self._above_reasons = {}
+        return self._above_reasons
+
+    def above_range_reason(self, injection, analyte):
+        return self.above_range_reasons().get(_above_range.reason_key(injection, analyte))
+
+    def above_range_items(self):
+        """The run's sample results above the calibration range with no
+        dilution, as the worker filed them: [{"injection", "analyte",
+        "reading", "limit", "reason" (the record, or None)}]. Data Review
+        lists each until a dilution is run or a reason is recorded. Once per
+        request."""
+        if "_above_items" in self.__dict__:
+            return self._above_items
+        out = []
+        ws = self._get_worksheet()
+        if ws is not None and self.db_available:
+            try:
+                rows = self._store().get_qc_for_run(None, batch_id=ws.getId())
+            except Exception as exc:                        # noqa: BLE001
+                logger.error("above-range results: %s", exc)
+                rows = []
+            seen = set()
+            for r in rows:
+                r = dict(r)
+                if r.get("qc_type") != ABOVE_RANGE_QC_TYPE or r.get("result_status") == "voided":
+                    continue
+                key = _above_range.reason_key(r.get("applies_to"), r.get("analyte"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({"injection": r.get("applies_to") or u"", "analyte": r.get("analyte") or u"",
+                            "reading": r.get("value"), "limit": r.get("limit_high"),
+                            "reason": self.above_range_reasons().get(key)})
+        self._above_items = out
+        return out
+
+    @staticmethod
+    def above_range_number(value):
+        try:
+            return u"%g" % float(value)
+        except (TypeError, ValueError):
+            return u"—"
+
+    @staticmethod
+    def above_range_status(item):
+        """What an above-range result waits on, or the reason recorded."""
+        rec = item.get("reason")
+        if not rec:
+            return u"Waiting for a dilution or a reason"
+        return u"Reported with E: %s, %s" % (rec.get("reason") or u"", rec.get("by") or u"")
+
+    def _handle_report_above_range(self):
+        """The reviewer's reason to report a result above the calibration
+        range with E instead of running a dilution: one of the run's own,
+        recorded on the worksheet with who and when, logged."""
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error", tab="final_data")
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error", tab="final_data")
+        f = self.request.form
+        injection, analyte = (f.get("injection") or u"").strip(), (f.get("analyte") or u"").strip()
+        # only a result the run holds above its range (a forged form names any)
+        if not [i for i in self.above_range_items() if (i["injection"], i["analyte"]) == (injection, analyte)]:
+            return self._redirect_with_msg("above_range_refused", "error", tab="final_data",
+                                           detail=u"That result is not above the calibration range.")
+        user = getSecurityManager().getUser()
+        reasons, why = _above_range.reason_record(
+            self.above_range_reasons(), injection, analyte, f.get("reason"), user.getId(),
+            datetime.datetime.utcnow().isoformat())
+        if reasons is None:
+            return self._redirect_with_msg("above_range_refused", "error", tab="final_data", detail=why)
+        IAnnotations(ws)[ABOVE_RANGE_REASONS_KEY] = json.dumps(reasons)
+        from senaite.pfas import records
+        records.log(ws, u"report_above_range", reason=(f.get("reason") or u"").strip(),
+                    detail={u"injection": injection, u"analyte": analyte})
+        self._audit(ws)
+        return self._redirect_with_msg("above_range_reported", "ok", tab="final_data")
+
+    # ── the instrument gave no number ────────────────────────────────────
+
+    def no_number_reasons(self):
+        """{reason_key: {"reason", "by", "at"}}: the reasons the reviewer
+        recorded to report a result the instrument wrote BLoQ with no
+        number. Once per request."""
+        if "_no_number_reasons" not in self.__dict__:
+            ws = self._get_worksheet()
+            try:
+                raw = IAnnotations(ws).get(_no_number.REASONS_KEY) if ws is not None else None
+                self._no_number_reasons = json.loads(raw) if raw else {}
+            except (TypeError, ValueError):
+                self._no_number_reasons = {}
+        return self._no_number_reasons
+
+    def no_number_reason(self, injection, analyte):
+        return self.no_number_reasons().get(_no_number.reason_key(injection, analyte))
+
+    def no_number_items(self):
+        """The run's sample results the instrument wrote BLoQ with no
+        number, as the worker filed them: [{"injection", "analyte", "reason"
+        (the record, or None)}]. Data Review lists each until its reason is
+        recorded. Once per request."""
+        if "_no_number_items" in self.__dict__:
+            return self._no_number_items
+        out = []
+        ws = self._get_worksheet()
+        if ws is not None and self.db_available:
+            try:
+                rows = self._store().get_qc_for_run(None, batch_id=ws.getId())
+            except Exception as exc:                        # noqa: BLE001
+                logger.error("results with no number: %s", exc)
+                rows = []
+            seen = set()
+            for r in rows:
+                r = dict(r)
+                if r.get("qc_type") != _no_number.QC_TYPE or r.get("result_status") == "voided":
+                    continue
+                key = _no_number.reason_key(r.get("applies_to"), r.get("analyte"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({"injection": r.get("applies_to") or u"", "analyte": r.get("analyte") or u"",
+                            "reason": self.no_number_reasons().get(key)})
+        self._no_number_items = out
+        return out
+
+    @staticmethod
+    def no_number_status(item):
+        """What a result with no number waits on, or the reason recorded."""
+        rec = item.get("reason")
+        if not rec:
+            return u"Waiting for a reason"
+        return u"Reported without a number: %s, %s" % (rec.get("reason") or u"", rec.get("by") or u"")
+
+    def _handle_resolve_no_number(self):
+        """The reviewer's reason to report a result the instrument wrote
+        BLoQ with no number: one of the run's own, recorded on the worksheet
+        with who and when, logged and audited."""
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error", tab="final_data")
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error", tab="final_data")
+        f = self.request.form
+        injection, analyte = (f.get("injection") or u"").strip(), (f.get("analyte") or u"").strip()
+        # only a result the run holds for want of a number (a forged form names any)
+        if not [i for i in self.no_number_items() if (i["injection"], i["analyte"]) == (injection, analyte)]:
+            return self._redirect_with_msg("no_number_refused", "error", tab="final_data",
+                                           detail=u"The instrument gave a number for that result.")
+        user = getSecurityManager().getUser()
+        reasons, why = _no_number.reason_record(
+            self.no_number_reasons(), injection, analyte, f.get("reason"), user.getId(),
+            datetime.datetime.utcnow().isoformat())
+        if reasons is None:
+            return self._redirect_with_msg("no_number_refused", "error", tab="final_data", detail=why)
+        IAnnotations(ws)[_no_number.REASONS_KEY] = json.dumps(reasons)
+        from senaite.pfas import records
+        records.log(ws, u"resolve_no_number", reason=(f.get("reason") or u"").strip(),
+                    detail={u"injection": injection, u"analyte": analyte})
+        self._audit(ws)
+        return self._redirect_with_msg("no_number_resolved", "ok", tab="final_data")
+
+    def estimate_meaning(self):
+        """The J rule's wording (QC Qualifiers, "Between MDL and RL"), shown
+        on hover beside a number between the MDL and the RL. Once per
+        request."""
+        if "_estimate_meaning" not in self.__dict__:
+            from senaite.pfas import qc_qualification
+            try:
+                library = qc_qualification.get_library(self._portal())
+            except Exception:                               # noqa: BLE001
+                library = qc_qualification.DEFAULT_LIBRARY
+            self._estimate_meaning = (library.get("between_mdl_rl") or {}).get("statement") or u""
+        return self._estimate_meaning
+
     def ask_target(self, injection):
         """The request target a Final Data row's injection names (matched on
         letters and digits), u"" when none does: the dialog then asks for
@@ -5632,7 +7701,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
 
     def _handle_lot_review(self):
         """Approve (verified for use: active) or reject (quarantined) a lot
-        pending verification, from its node in the traceability check."""
+        pending acceptance, from its node in the traceability check."""
         from senaite.pfas import lot_status as ls
         if not self.can_act():
             return self._redirect_with_msg("permission_denied", "error", tab="traceability")
@@ -5692,8 +7761,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         from senaite.pfas import notices as nt
         portal = self._portal()
         initials = built.get("built_by") if stage == sb.RUN else before.get("finalized_by")
+        # the finaliser is kept as a user id; a run's builder, and a
+        # finaliser from before, by initials
+        from bika.lims import api as _napi
+        userid = initials if (initials and stage != sb.RUN and _napi.get_user(initials) is not None) \
+            else nt.userid_for_initials(portal, initials)
         store = nt.load(portal)
-        nt.raise_(store, "run_sent_back", nt.userid_for_initials(portal, initials), ws.getId(),
+        nt.raise_(store, "run_sent_back", userid, ws.getId(),
                   stage, lot, reason.strip(), nt.now())
         nt.save(portal, store)
 

@@ -40,7 +40,7 @@ from senaite.pfas.method_profile_store import get_profile
 from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
 from senaite.pfas.browser.reagents import _save_reagent, STATUS_OPENED
 from senaite.pfas.browser.formutil import flatten_form, json_list
-from senaite.pfas.bench_queue import is_consumable_row, is_standard_row
+from senaite.pfas.browser.queue_list import QueueList
 from senaite.pfas.document_templates import script_json
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_guide")
@@ -66,12 +66,35 @@ def _save_session(batch, data):
 
 def batch_method_id(batch, request):
     """The batch's method by the ONE resolver (batch_method.py: the batch's
-    analyses and core first, then the session and logbooks)."""
+    analyses and core first, then the session and the extraction record)."""
     try:
-        from senaite.pfas.browser.logbooks import PFASLogbookIndexView
-        return PFASLogbookIndexView(batch, request).batch_method() or u""
+        from senaite.pfas import batch_method as bm
+        return bm.of(batch) or u""
     except Exception:                                       # noqa: BLE001
         return u""
+
+
+def _extract_data_from_schema(form, schema_fields):
+    """A stage's answers from the POSTed form, by its questions' schema
+    (stage_form.generic_fields: no question type holds a table)."""
+    data = {}
+    for field in schema_fields:
+        fname = field.get("name")
+        if not fname:
+            continue
+        ftype = field.get("type", "text")
+        if ftype == "section":                  # a heading: holds no value
+            continue
+        if ftype == "choice" and field.get("display") == "checkboxes":
+            from senaite.pfas.logbook_schema import OPTION_PARAM
+            data[fname] = [o.get("value") for i, o in enumerate(field.get("options") or [])
+                           if isinstance(o, dict) and form.get(OPTION_PARAM % (fname, i))]
+            continue
+        if ftype == "checkbox":
+            data[fname] = form.get(fname) == "yes"
+        else:
+            data[fname] = form.get(fname, "") or ""
+    return data
 
 
 def _json_or(raw, default):
@@ -136,8 +159,9 @@ def extraction_queue(portal, request):
 
 
 def _extraction_queue(portal, request):
+    from senaite.pfas.doc_fields import utext
     from bika.lims import api
-    from senaite.pfas import extraction_batch
+    from senaite.pfas import extraction_batch, retired
     from senaite.pfas.bench_queue import extraction_state
     from senaite.pfas.method_profile_store import get_profile
     rows, seen = [], set()
@@ -150,31 +174,56 @@ def _extraction_queue(portal, request):
         uid = api.get_uid(batch)
         if uid in seen or api.get_review_status(batch) not in ("open",):
             continue
+        if retired.is_retired(batch):
+            continue
         seen.add(uid)
         session = _load_session(batch)
         method_id = queue_method_id(batch, request)       # core first (batch_method.py)
         profile = get_profile(portal, method_id) if method_id else {}
         from senaite.pfas.stage_plan import stages_for
         orders = [s.get("order") for s in stages_for(session, profile)]
-        state = extraction_state(session, orders)
+        has_samples = _has_samples(batch)
+        state = extraction_state(session, orders, has_samples)
         client = extraction_batch.linked_batch(batch)
-        title = batch.getId() + (u" \u00b7 " + client.Title() if client is not None else u"")
+        title = batch.getId() + (u" \u00b7 " + utext(client.Title()) if client is not None else u"")
         rows.append(dict(state, id=batch.getId(), uid=uid, title=title,
                          method_id=method_id,
                          method_label=profile.get("display_name") or method_id or u"",
                          analyst=session.get("analyst") or u"",
-                         created=_created_day(batch)))
-    order = {u"in_progress": 0, u"not_started": 1, u"finished": 2}
-    rows.sort(key=lambda r: (order.get(r["state"], 3), r["created"], r["id"]))
+                         finalized=bool(session.get("finalized")),
+                         created=_created_day(batch), url=batch.absolute_url(),
+                         can_remove=(not has_samples and _may_remove(batch))))
+    from senaite.pfas.bench_queue import QUEUE_ORDER
+    rows.sort(key=lambda r: (QUEUE_ORDER.get(r["state"], 4), r["created"], r["id"]))
     return rows
 
 
+def _has_samples(batch):
+    """Whether a worksheet holds any analysis (core's own test for an empty
+    worksheet); an object that is not a worksheet is taken to hold some."""
+    raw = getattr(batch, "getRawAnalyses", None)
+    try:
+        return bool(raw()) if callable(raw) else True
+    except Exception:                                       # noqa: BLE001
+        return True
+
+
+def _may_remove(batch):
+    """Whether core's workflow lets this user remove the worksheet (its
+    "remove" transition: an empty worksheet and the permission)."""
+    from bika.lims.workflow import isTransitionAllowed
+    try:
+        return bool(isTransitionAllowed(batch, "remove"))
+    except Exception:                                       # noqa: BLE001
+        return False
+
+
 def _created_day(batch):
-    """The day a batch was created as the queue shows it, "YYYY/MM/DD": the
+    """The day a batch was created as the queue shows it, "YYYY-MM-DD": the
     laboratory's day while the zone converts, the stored text's otherwise."""
-    from senaite.pfas import print_doc
+    from senaite.pfas import lab_time
     created = getattr(batch, "created", lambda: "")()
-    return print_doc.lab_or(created, str(created)[:10], u"%Y/%m/%d")
+    return lab_time.show(created, "utc", u"%Y-%m-%d") if created else u""
 
 
 def _utcnow():
@@ -191,10 +240,11 @@ def _extraction_date(started_at):
 
 # ── View ──────────────────────────────────────────────────────────────────────
 
-class PFASExtractionGuideView(ViewHelpers, BrowserView):
+class PFASExtractionGuideView(QueueList, ViewHelpers, BrowserView):
     """Stage-by-stage guided extraction for PFAS analyses."""
 
     template = ViewPageTemplateFile("templates/extraction_guide.pt")
+    QUEUE_VIEW = u"@@pfas-extraction-guide"
 
     def __call__(self):
         flatten_form(self.request)
@@ -214,6 +264,8 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
                 return self._handle_finalize()
             if action == "receive_lot":
                 return self._handle_receive_lot()
+            if action == "make_dilution":
+                return self._handle_make_dilution()
             if action == "log_dilution":
                 return self._handle_log_dilution()
             if action == "reopen_stage":
@@ -239,6 +291,9 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         from senaite.pfas import extraction_batch
         uid = self.request.form.get("batch_uid", "")
         if not uid:
+            # opened under a worksheet's (or a batch's) own address: that one
+            if getattr(self.context, "portal_type", "") in ("Worksheet", "Batch"):
+                return extraction_batch.home(self.context)
             return None
         catalog = getToolByName(self.context, "uid_catalog")
         brains = catalog(UID=uid)
@@ -267,16 +322,22 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
             return u""
 
     def batch_choices(self):
-        """No batch chosen: the open batches to pick from."""
-        return extraction_queue(self._portal(), self.request)
+        """No batch chosen: the page of open batches to pick from."""
+        return self.queue_rows()
+
+    def has_samples(self):
+        """Whether the chosen worksheet holds any sample."""
+        b = self._get_batch()
+        return b is None or _has_samples(b)
 
     def batch_title(self):
+        from senaite.pfas.doc_fields import utext
         from senaite.pfas import extraction_batch
         b = self._get_batch()
         if b is None:
             return ""
         client = extraction_batch.linked_batch(b) if extraction_batch.is_worksheet(b) else None
-        return b.getId() + (u" \u00b7 " + client.Title() if client is not None else u"")
+        return b.getId() + (u" \u00b7 " + utext(client.Title()) if client is not None else u"")
 
     def batch_url(self):
         b = self._get_batch()
@@ -351,7 +412,7 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
             from senaite.pfas import method_revisions as mr
             from senaite.pfas.qc.rules import method_toggles
             fp = mr.fingerprint(profile, method_toggles(profile, method_id))
-            st = mr.status(mr.records(portal, method_id), fp)
+            st = mr.status(mr.records(portal, method_id), mr.fingerprints(profile, method_toggles(profile, method_id)))
             rev = st.get("rev") if not st.get("unissued") else None
         except Exception as exc:                            # noqa: BLE001
             logger.warning("plan revision for %s: %s", method_id, exc)
@@ -429,6 +490,41 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
 
     def is_finalized(self):
         return bool(self.session().get("finalized", False))
+
+    def finalised_gap(self):
+        """For an extraction finalised with planned stages missing (finalised
+        before Finalise refused that), which: "stages 3 Concentration and 5
+        Reconstitution not recorded"; "" when every planned stage is
+        recorded."""
+        from senaite.pfas import batch_record as br
+        from senaite.pfas.extraction_review import review
+        rows = review(self.session(), self.extraction_stages())["stages"]
+        return br.not_recorded_note(br.missing_stages({"parts": {"stages": rows}}))
+
+    def finalize_esig(self):
+        """The sign dialog of Finalise: the worksheet's record, the method
+        revision it is kept under and the extraction's hash as it stands."""
+        from senaite.pfas import batch_record as br
+        from senaite.pfas.browser import extraction_pdf
+        from senaite.pfas.browser.perms import signed_in_name
+        from senaite.pfas.esig import signing
+        from ZODB.POSException import ConflictError
+        b = self._get_batch()
+        record, prefix = {}, u""
+        try:
+            record = extraction_pdf.record_for(b, self.request) if b is not None else {}
+            prefix = br.extraction_hash(record)[:12] if record else u""
+        except ConflictError:
+            raise
+        except Exception:                                   # noqa: BLE001
+            # shown only: Finalise reads the record again and refuses there
+            logger.warning("finalise dialog: the record of %s could not be read",
+                           getattr(b, "getId", lambda: u"?")(), exc_info=True)
+        return {"record": record.get("worksheet") or (b.getId() if b is not None else u""),
+                "revision": record.get("revision") or u"", "hash_prefix": prefix,
+                "meaning_label": signing.meaning_label("preparer"),
+                "signer_name": signed_in_name(self.context), "action": u"finalize",
+                "form_id": u"egFinalizeForm"}
 
     def total_stages(self):
         return len(self.extraction_stages())
@@ -531,8 +627,13 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
     def _handle_start(self):
         b = self._get_batch()
         if not b:
-            url = "{0}?error=Batch+not+found".format(self._self_url())
+            url = "{0}?error=Worksheet+not+found".format(self._self_url())
             return self._redirect(url)
+        from senaite.pfas.bench_queue import start_refusal
+        why = start_refusal(_has_samples(b))
+        if why:
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(why.encode("utf-8"))))
         method_id = (self.request.form.get("method_id", "").strip()
                      or batch_method_id(b, self.request))
         from senaite.pfas import configured_methods as cm
@@ -568,7 +669,7 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
     def _handle_complete_stage(self):
         b = self._get_batch()
         if not b:
-            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
         sess = _load_session(b)
         f = self.request.form
         stage_order = f.get("stage_order", "").strip()
@@ -591,23 +692,35 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         # changed -- but nothing the chemist entered is thrown away either:
         # the stage is kept as a draft and the page reopens on it.
         from senaite.pfas import lab_time
-        from senaite.pfas.bench_queue import balance_blocks, stage_warnings
+        from senaite.pfas.bench_queue import balance_blocks, stage_lot_blocks, stage_warnings
         equipment_sns = _json_or(f.get("equipment_sns_json"), {})
         from senaite.pfas.stage_plan import stages_for
         profile_stages = stages_for(sess, get_profile(self._portal(), sess.get("method_id", "")))
         stage_def = ([s for s in profile_stages
                       if u"%s" % s.get("order") == stage_order] or [{}])[0]
-        warnings = stage_warnings(reagents, lab_time.today())
         # a correction is judged on the day the stage was first done, the day
-        # the sample was weighed -- not the day the correction is typed
+        # the sample was weighed -- not the day the correction is typed; a
+        # lot's expiry is judged on that day too
         from senaite.pfas.extraction_review import done_on, unconfirmed
+        # a stage corrected later judges and records each lot's expiry as it
+        # was in force on the day the stage was done (lot_extension)
+        used_on = done_on((sess.get("stages") or {}).get(str(stage_order)))
+        if used_on and used_on != lab_time.today().isoformat():
+            from senaite.pfas.browser.prepared_standards import lot_in_force
+            for r in reagents:
+                if r.get("from_inventory") and r.get("inventory_uid"):
+                    r["expiry"] = lot_in_force(self._portal(), r["inventory_uid"], used_on)
+        warnings = stage_warnings(reagents, done_on((sess.get("stages") or {}).get(str(stage_order)))
+                                  or lab_time.today())
         blocks = balance_blocks(self._balance_checks(
             stage_def, equipment_sns,
             done_on((sess.get("stages") or {}).get(str(stage_order))) or None))
         # the stage's own questions (stage_form): a missing or out-of-rule
         # answer stops the stage like an unverified balance
         answers, answer_problems = self._answers_from_form(stage_def)
-        blocks = list(blocks) + answer_problems
+        # a lot not in the inventory traces to nothing: no note unlocks it
+        lot_problems = stage_lot_blocks(reagents)
+        blocks = list(blocks) + answer_problems + lot_problems
         # the automated SPE system's solvent channels at this stage: one lot
         # each, in date on the extraction date (run_lots.py); no note unlocks it
         from senaite.pfas import run_lots as rl
@@ -623,12 +736,13 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         checks = [c for c in stage_def.get("confirmations") or [] if (c or u"").strip()]
         confirmed = [c for i, c in enumerate(checks) if f.get("confirmed_%d" % i)]
         warnings += [u"Not confirmed: %s" % c for c in unconfirmed(stage_def, confirmed)]
-        # per-sample amount / final volume (FM-ENV-003 samples rows)
+        # per-sample amount / final volume (the extraction record's samples rows)
         from senaite.pfas import sample_table
         sample_col = sample_table.capture_column(stage_def)
         sample_edits = _json_or(f.get("samples_json"), []) if sample_col else []
         if sample_col == sample_table.SPE_PORT:
-            warnings += sample_table.port_warnings(sample_edits)
+            _manifold, ports = self._manifold_ports(sess, equipment_sns, stage_order)
+            warnings += sample_table.port_warnings(sample_edits, ports)
         else:
             what = u"sample amount" if sample_col == sample_table.AMOUNT else u"final extract volume"
             warnings += [u"{0}: no {1} recorded".format(sid, what)
@@ -651,10 +765,10 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
                 "samples": sample_edits, "deviations": deviations, "confirmed": confirmed,
                 "warnings": warnings, "blocks": blocks, "answers": answers}
             _save_session(b, sess)
-            msg = (u"Not completed: %s Your entries are kept." % u" ".join(answer_problems)
-                   if answer_problems else
-                   u"Not completed: a balance without a passed verification that day "
-                   u"cannot be used. Record its verification under Equipment, or choose "
+            msg = (u"Not completed: %s Your entries are kept." % u" ".join(answer_problems + lot_problems)
+                   if answer_problems or lot_problems else
+                   u"Not completed: a balance without a passed check that day "
+                   u"cannot be used. Record its check under Equipment, or choose "
                    u"a balance that passed. Your entries are kept." if blocks else
                    u"Not completed yet: write a deviation note explaining what is "
                    u"listed under Needs a note. Your entries are kept.")
@@ -734,7 +848,7 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         from senaite.pfas.extraction_review import reopen
         b = self._get_batch()
         if not b:
-            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
         try:
             order = int(self.request.form.get("stage_order") or "")
         except (TypeError, ValueError):
@@ -751,7 +865,7 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
     def _handle_save_pedigree(self):
         b = self._get_batch()
         if not b:
-            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
         sess = _load_session(b)
         pedigree_json = self.request.form.get("pedigree_json", "{}")
         try:
@@ -795,18 +909,12 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         return out
 
     def is_processing_stage(self, stage=None):
-        """True on the stage that is the Sample Processing Log (FM-ENV-004)."""
+        """True on the extraction record's processing stage: the first one
+        recording the sample amount."""
         from senaite.pfas.sample_table import processing_stage
         st = processing_stage(self.extraction_stages())
         cur = stage if stage is not None else self.current_stage()
         return bool(st) and st.get("order") == (cur or {}).get("order")
-
-    def processing_form_code(self):
-        from senaite.pfas.logbook_store import form_code
-        try:
-            return form_code(self._portal(), "253")
-        except Exception:                                   # noqa: BLE001
-            return u"FM-ENV-004"
 
     def _homogenisation_rows(self, b):
         """Each of the batch's samples: its homogenisation request and the
@@ -845,13 +953,26 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
             u"%s" % self.current_stage().get("order")) or {}
         return done.get("confirmed") or []
 
+    def equipment_register(self):
+        """[{"serial", "name"}]: every unit registered under Equipment, for
+        the serial a stage's additional equipment names."""
+        try:
+            from senaite.pfas import facility_qc as fq
+            units = fq.list_units()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("equipment register: %s", exc)
+            units = []
+        return [{"serial": u.get("serial_number") or u"", "name": u.get("name") or u""}
+                for u in units if u.get("serial_number")]
+
     def stage_equipment_json(self):
         """Per stage equipment label: the registered Facility QC units it can
         be (balances, pipettes) with today's status, so the chemist picks the
         unit instead of typing its serial. Other equipment keeps a serial
         field. The stored shape (label -> serial) is unchanged."""
+        from senaite.pfas import equipment_types as et
         from senaite.pfas import lab_time
-        from senaite.pfas.bench_queue import equipment_family, units_for
+        from senaite.pfas.bench_queue import SPE_MANIFOLD, equipment_family, units_for
         try:
             from senaite.pfas import facility_qc as fq
             units = fq.list_units()
@@ -863,7 +984,10 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         for label in self.current_stage().get("equipment") or []:
             fam = equipment_family(label)
             opts = []
-            for u in units_for(label, units):
+            found = units_for(label, units)
+            if fam == SPE_MANIFOLD and not found:
+                fam = u""              # none registered: a serial field, as for any other equipment
+            for u in found:
                 ok, note = True, u""
                 try:
                     if fam == u"balance":
@@ -873,12 +997,17 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
                         note = u"calibration in force" if ok else u"calibration NOT in force"
                 except Exception as exc:                    # noqa: BLE001
                     logger.warning("unit status %s: %s", u.get("id"), exc)
-                opts.append({"serial": u.get("serial_number") or u"",
-                             "name": u.get("name") or u"", "ok": ok, "note": note})
+                opt = {"serial": u.get("serial_number") or u"",
+                   "name": u.get("name") or u"", "ok": ok, "note": note}
+            if fam == SPE_MANIFOLD:
+                # its ports, offered where the stage records each member's port
+                opt["ports"] = et.spe_ports(u.get("spe_ports_json"))
+                opt["note"] = u"%d ports" % len(opt["ports"]) if opt["ports"] else u"no ports listed"
+            opts.append(opt)
             out.append({"label": label, "family": fam, "units": opts})
         return script_json(out)
 
-    # ── Per-sample table and dilution log (FM-ENV-003 samples rows) ─────────
+    # ── Per-sample table and dilution log (the extraction record's samples rows) ─
 
     def _batch_samples(self, b):
         """[{sample_id, matrix}] for the batch's samples: the Client Sample ID
@@ -917,24 +1046,22 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         return sorted(out, key=lambda s: s["sample_id"])
 
     def _samples_log(self, b):
-        """FM-ENV-003, its rows keyed by the members' LIMS-issued names."""
-        from senaite.pfas import extraction_batch
-        from senaite.pfas.browser.logbooks import _get_logbook
-        data = dict(_get_logbook(b, "252") or {})
+        """The extraction record, its rows keyed by the members' LIMS-issued names."""
+        from senaite.pfas import extraction_batch, extraction_store
+        data = dict(extraction_store.load_table(b))
         members = extraction_batch.load(b)
         if members and data.get("samples"):
             data["samples"] = extraction_batch.rekey_rows(data["samples"], members)
         return data
 
     def _save_samples(self, b, edits, column):
-        from senaite.pfas import sample_table
-        from senaite.pfas.browser.logbooks import _save_logbook
+        from senaite.pfas import extraction_store, sample_table
         data = self._samples_log(b)
         if column == sample_table.SPE_PORT:
             data["spe_ports"] = sample_table.merge_ports(data.get("spe_ports"), edits)
         else:
             data["samples"] = sample_table.merge_samples(data.get("samples"), edits, column)
-        _save_logbook(b, "252", data)
+        extraction_store.save_table(b, data)
 
     def _port_rows(self, b):
         """Every member, samples and QC, with its SPE port ("Every member"); a batch without members lists its samples."""
@@ -949,6 +1076,31 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
             r["spe_port"] = ports.get(r["sample_id"]) or u""
         return rows
 
+    def _manifold_ports(self, sess, equipment_sns=None, order=None):
+        """(manifold, ports) of the SPE manifold the extraction recorded:
+        stage `order`'s equipment first (as posted, else its draft or its
+        record), then the other stages done, latest first
+        (bench_queue.manifold_ports); (u"", []) when none lists ports."""
+        from senaite.pfas.bench_queue import manifold_ports
+        order = u"%s" % (order if order is not None else self.current_stage().get("order"))
+        done = sess.get("stages") or {}
+        own = (equipment_sns if equipment_sns is not None else
+               ((sess.get("drafts") or {}).get(order) or {}).get("equipment_sns") or
+               (done.get(order) or {}).get("equipment_sns"))
+
+        def rank(k):
+            k = u"%s" % k
+            return int(k) if k.isdigit() else 0
+        maps = [own] + [(done.get(k) or {}).get("equipment_sns")
+                        for k in sorted((k for k in done if u"%s" % k != order), key=rank, reverse=True)]
+        try:
+            from senaite.pfas import facility_qc as fq
+            units = fq.list_units()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("SPE manifold ports: %s", exc)
+            units = []
+        return manifold_ports(maps, units)
+
     def sample_card_json(self):
         """The current stage's per-sample table: which column it records and
         the rows (recorded ones, then the batch's samples not yet listed)."""
@@ -957,8 +1109,11 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         col = sample_table.capture_column(self.current_stage())
         if b is None or not col:
             return script_json({"column": u"", "rows": []})
+        extra = {}
         if col == sample_table.SPE_PORT:
             rows = self._port_rows(b)
+            manifold, ports = self._manifold_ports(self.session())
+            extra = {"manifold": manifold, "ports": ports}
         else:
             rows = sample_table.rows_for_card(self._samples_log(b).get("samples"),
                                               self._card_members(b))
@@ -969,7 +1124,7 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
                 r[col] = d.get("value") or u""
                 if col == sample_table.AMOUNT and d.get("unit"):
                     r["amount_unit"] = d["unit"]
-        return script_json({"column": col, "rows": rows})
+        return script_json(dict(extra, column=col, rows=rows))
 
     def dilution_rows(self):
         from senaite.pfas import sample_table
@@ -1007,14 +1162,13 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
             self._samples_log(b).get("samples"), self._batch_samples(b))]
 
     def _handle_log_dilution(self):
-        """Append one dilution to FM-ENV-003: which
+        """Append one dilution to the extraction record: which
         sample, the dilution's injection name, the factor, who and when.
         Never edited afterwards."""
-        from senaite.pfas import sample_table
-        from senaite.pfas.browser.logbooks import _save_logbook
+        from senaite.pfas import extraction_store, sample_table
         b = self._get_batch()
         if b is None:
-            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
         f = self.request.form
         data = self._samples_log(b)
         rows, error = sample_table.append_dilution(
@@ -1026,9 +1180,42 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
             return self._redirect("{0}?batch_uid={1}&error={2}".format(
                 self._self_url(), b.UID(), quote_plus(error.encode("utf-8"))))
         data["samples"] = rows
-        _save_logbook(b, "252", data)
+        extraction_store.save_table(b, data)
         return self._redirect("{0}?batch_uid={1}&ok={2}".format(
             self._self_url(), b.UID(), quote_plus(u"Dilution logged".encode("utf-8"))))
+
+    def dilution_requests(self):
+        """The dilutions Data Review asked for on this worksheet, open or
+        made (dilution_make.listed): the optional Dilutions stage, drawn
+        once one is asked for and never part of the stage plan, so
+        finalising and progress never wait on it."""
+        from senaite.pfas.dilution_make import listed
+        return [r for r in listed(self._get_batch()) if r.get("kind") == u"dilution"]
+
+    def make_options(self):
+        """The Make dialog's choices (dilution_make.options)."""
+        from senaite.pfas.dilution_make import options
+        return options(self._portal())
+
+    def _handle_make_dilution(self):
+        """The Dilutions stage's Make: a dilution Data Review asked for,
+        made with its prep under the method's dilution rules
+        (dilution_make.make, as Run Builder's step 4 makes it)."""
+        from senaite.pfas import entry_rights
+        from senaite.pfas.dilution_make import make
+        from senaite.pfas.browser.staff import may_enter
+        b = self._get_batch()
+        if b is None:
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
+        back = "{0}?batch_uid={1}".format(self._self_url(), b.UID())
+        if not may_enter():
+            return self._redirect("{0}&error={1}#dilution-card".format(
+                back, quote_plus(entry_rights.REFUSAL.encode("utf-8"))))
+        error = make(b, self.request.form, self.current_user_name(), _utcnow(), self.dilution_settings())
+        if error:
+            return self._redirect("{0}&error={1}#dilution-card".format(back, quote_plus(error.encode("utf-8"))))
+        return self._redirect("{0}&ok={1}#dilution-card".format(
+            back, quote_plus(u"Dilution made".encode("utf-8"))))
 
     # ── Batch QC (extraction_batch.py) ───────────────────────
 
@@ -1169,7 +1356,6 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         stage being completed (it is kept as a draft)."""
         from senaite.pfas import stage_form
         from senaite.pfas import logbook_schema as LS
-        from senaite.pfas.browser.logbooks import _extract_data_from_schema
         questions = stage_form.generic_fields(stage_def)
         if not questions:
             return {}, []
@@ -1237,7 +1423,7 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         """
         b = self._get_batch()
         if not b:
-            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
         f = self.request.form
         from senaite.pfas import lab_time
         from senaite.pfas.browser.prepared_standards import (
@@ -1264,6 +1450,19 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
                     self._self_url(), b.UID()))
 
         today = lab_time.today().isoformat()
+        # a parent out of date on the day the solution is made is used only
+        # with a reason, kept on that parent; its expiry is the inventory's
+        # now, never what the browser sent
+        from senaite.pfas import lot_expiry
+        from senaite.pfas.browser.bench_inventory import item_index
+        index = item_index(self._portal())
+        by_uid = dict((uid, it) for (_kind, uid), it in index.items())
+        parents, expired = lot_expiry.gate(
+            parents, [(by_uid.get((p.get("uid") or u"").strip()) or {}).get("expiry") for p in parents],
+            today, f.get("sol_expired_reason"))
+        if expired:
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(u" ".join(expired).encode("utf-8"))))
         analyst = f.get("sol_analyst", "").strip()
         conc = f.get("sol_conc", "").strip()
         rec = {
@@ -1340,23 +1539,70 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
         return self._redirect(url)
 
     def _handle_finalize(self):
+        """Finalise the extraction, signed by the signed-in person as its
+        preparer: the signature binds to the extraction as recorded
+        (batch_record.extraction_hash), and a refused signature finalises
+        nothing."""
         b = self._get_batch()
         if not b:
-            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+            return self._redirect("{0}?error=Worksheet+not+found".format(self._self_url()))
+        back = "{0}?batch_uid={1}".format(self._self_url(), b.UID())
+        if self.request.form.get("sign") != "1":
+            # a finalise is recorded only through the sign dialog
+            return self._redirect("{0}&error=Sign+the+finalisation+to+record+it.".format(back))
+        from AccessControl import getSecurityManager
+        from senaite.pfas import batch_record as br
+        from senaite.pfas.browser import extraction_pdf
+        from senaite.pfas.esig import ledger, signing
+        # the finaliser is the authenticated user, never a name typed or posted
+        userid = getSecurityManager().getUser().getId()
+        from ZODB.POSException import ConflictError
         sess = _load_session(b)
+        # finalised means every planned stage recorded: refused, named,
+        # before anything is signed
+        from senaite.pfas.extraction_review import finalise_refusal
+        why = finalise_refusal(sess, self.extraction_stages())
+        if why:
+            return self._redirect("{0}&error={1}".format(back, quote_plus(why.encode("utf-8"))))
+        try:
+            # the record as it stands: its extraction hash does not read the
+            # finalised flags, so it is the same before and after them
+            record = extraction_pdf.record_for(b, self.request)
+        except ConflictError:
+            raise
+        except Exception as exc:                            # noqa: BLE001
+            # nothing to sign, so nothing is finalised
+            logger.exception("finalise: the record of %s could not be read", b.getId())
+            return self._redirect("{0}&error={1}".format(back, quote_plus(
+                (u"The batch record could not be read: %s" % signing.reason(exc)).encode("utf-8"))))
+        try:
+            rows = br.sign_finalised(self._portal(), self.request, record,
+                                     note=self.request.form.get("sign_note") or u"")
+        except (signing.SignatureRefused, ledger.LedgerError) as exc:
+            return self._redirect("{0}&error={1}".format(back, quote_plus(signing.reason(exc).encode("utf-8"))))
+        sess["signatures"] = signing.merge_cache(sess.get("signatures"), rows)
         sess["finalized"] = True
         sess["finalized_at"] = _utcnow()
-        sess["finalized_by"] = self.request.form.get("analyst", "").strip()
+        sess["finalized_by"] = userid
         _save_session(b, sess)
-
-        # Write a summary stub into logbook 252 so the logbook index shows it as filled
+        # a sample re-extracted here: the record it was withheld from names
+        # this worksheet; a link not made never undoes the Finalise
         try:
-            from senaite.pfas.browser.logbooks import _save_logbook, _get_logbook
-            # MERGE onto what is already stored. _save_logbook replaces the
-            # annotation wholesale, so writing this summary flat would erase
+            from senaite.pfas.browser import extraction_corrections
+            extraction_corrections.link_reextractions(b, userid, sess["finalized_at"])
+        except ConflictError:
+            raise
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("_handle_finalize: re-extractions of %s not linked: %s", b.getId(), exc)
+
+        # The summary on the extraction record's table
+        try:
+            from senaite.pfas import extraction_store
+            # MERGE onto what is already stored. save_table replaces the
+            # table wholesale, so writing this summary flat would erase
             # the samples table (and its dilution rows) that the analyst filled
-            # in on the FM-ENV-003 form.
-            data = dict(_get_logbook(b, "252") or {})
+            # in on the extraction record.
+            data = dict(extraction_store.load_table(b))
             data.update({
                 "analyst":         sess.get("analyst", ""),
                 "extraction_date": _extraction_date(sess.get("started_at")),
@@ -1365,50 +1611,19 @@ class PFASExtractionGuideView(ViewHelpers, BrowserView):
                 "finalized_at":    sess.get("finalized_at", ""),
                 "finalized_by":    sess.get("finalized_by", ""),
             })
-            # Carry the per-stage reagent and standard lots the guide collected
-            # into the shape Data Review's traceability gate reads. They were
-            # captured in the session and then dropped on the floor.
-            reagents, standards, materials = [], [], []
-            for _order in sorted((sess.get("stages") or {}), key=lambda k: int(k)):
-                for rg in (sess["stages"][_order].get("reagents") or []):
-                    entry = {
-                        "name": rg.get("name") or "",
-                        "lot": rg.get("lot") or "",
-                        "supplier": rg.get("supplier") or "",
-                        "volume": rg.get("volume") or "",
-                        # the lot's inventory status when the stage used it:
-                        # a quarantined or used-up lot is shown to the
-                        # reviewer at release
-                        "status_at_use": rg.get("status_at_use") or "",
-                    }
-                    if not entry["lot"]:
-                        continue
-                    if is_consumable_row(rg):
-                        m = {"name": entry["name"], "lot": entry["lot"], "notes": u"",
-                             "status_at_use": entry["status_at_use"]}
-                        if m not in materials:
-                            materials.append(m)
-                        continue
-                    bucket = standards if is_standard_row(rg) else reagents
-                    if entry not in bucket:
-                        bucket.append(entry)
-            # The guide OWNS these two tables — they are derived from its own
-            # per-stage scans, so replaying the stages must refresh them.
-            # Preserving them instead left stale lots behind after a correction.
-            # What must survive untouched is `samples`, which the analyst fills
-            # in on the FM-ENV-003 form.
-            if reagents:
-                data["reagents"] = reagents
-            if materials:
-                data["extraction_materials"] = materials
-            if standards:
-                data["standards"] = [
-                    {"name": e["name"], "lot": e["lot"], "conc": "", "volume": e["volume"],
-                     "status_at_use": e.get("status_at_use") or ""} for e in standards]
-            _save_logbook(b, "252", data)
+            # The stages' lots in the shape the extraction table keeps them:
+            # the one derivation Data Review's traceability walk reads too
+            # (worksheet_lots), so the copy never differs from the record.
+            # The guide owns these three tables: each is replaced whole, an
+            # empty one included, so a lot a correction removed does not
+            # stay behind. `samples`, which the analyst fills in on the
+            # extraction record, is untouched.
+            from senaite.pfas import worksheet_lots
+            data.update(worksheet_lots.extraction_tables(sess))
+            extraction_store.save_table(b, data)
         except Exception as exc:
-            logger.warning("_handle_finalize: could not write logbook 252 stub: %s", exc)
+            logger.warning("_handle_finalize: could not write the extraction record's summary: %s", exc)
 
-        url = "{0}?batch_uid={1}&ok=Extraction+logbook+finalized".format(
+        url = "{0}?batch_uid={1}&ok=Extraction+record+finalised".format(
             self._self_url(), b.UID())
         return self._redirect(url)

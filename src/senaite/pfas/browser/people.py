@@ -67,7 +67,7 @@ class PFASPeopleView(GateMixin, PFASLabStaffView):
 
     def __call__(self):
         # flatten_form keeps only the first of a repeated field; the role pills
-        # and the sign-as choices post one field per value, so read them first
+        # and the sign-right switches post one field per value, so read them first
         multi = dict((k, self.request.form.get(k)) for k in MULTI_FIELDS)
         flatten_form(self.request)
         req = self.request
@@ -237,12 +237,6 @@ class PFASPeopleView(GateMixin, PFASLabStaffView):
 
     # ── page data ──────────────────────────────────────────────────────────
 
-    def signs_as(self):
-        return [(k, label) for k, label, _w in staff.SIGNS_AS]
-
-    def signs_as_key(self, info):
-        return staff.signs_as_key(info.get("sign_as"))
-
     def role_choices(self):
         return [(g, label) for g, _r, label in role_guard.ROLE_GROUPS]
 
@@ -309,6 +303,10 @@ class PFASPeopleView(GateMixin, PFASLabStaffView):
                     "sign_as": [], "signature": u"", "has_contact": contact is not None},
                 "badge": self._badge(userid) if userid else None}
 
+    def sign_roles(self):
+        """The sign rights People & Roles grants (staff.SIGN_ROLES)."""
+        return staff.SIGN_ROLES
+
     def checklist(self):
         """What still stops a designed document from being signed."""
         rows = [r for r in self.rows() if r["userid"] and r["status"] != INACTIVE]
@@ -316,8 +314,10 @@ class PFASPeopleView(GateMixin, PFASLabStaffView):
         if not staff.director_userid():
             out.append(u"No Laboratory Director is set: choose one on Laboratory.")
         for role, title in staff.SIGN_ROLES:
+            if role in staff.OPTIONAL_SIGN_ROLES:
+                continue
             if not [r for r in rows if role in r["info"]["sign_as"]]:
-                out.append(u"Nobody may sign as %s yet." % title.lower())
+                out.append(u"Nobody may sign as %s yet." % (title if title[:2].isupper() else title.lower()))
         return out
 
     def _badge(self, userid):

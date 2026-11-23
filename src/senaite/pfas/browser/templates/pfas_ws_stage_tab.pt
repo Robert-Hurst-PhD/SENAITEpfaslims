@@ -8,10 +8,10 @@
 
   <div class="pfas-card pfas-card-narrow">
     <div class="pfas-card-head">
-      <span><i class="fas fa-layer-group pfas-text-accent"></i>
-        <strong>PFAS Batch Stage</strong></span>
-      <span tal:attributes="class python:'badge badge-ok' if info['stage'] == 5 else ('badge badge-info' if info['stage'] in (2, 3, 4) else 'badge badge-pending')"
-            tal:content="info/stage_label">Received</span>
+      <strong>Worksheet stage</strong>
+      <span class="pfas-stage-now" tal:condition="info/stage_icon|nothing" tal:define="ic context/@@pfas-icons"><tal:m
+            tal:replace="structure python:ic.svg(info['stage_icon'], hidden=True, state='now', size='md')" /><span
+            tal:content="info/stage_label">Received</span></span>
     </div>
 
     <div class="pfas-meta-row pfas-muted">
@@ -19,12 +19,12 @@
         Responsible: <strong tal:content="info/responsible">&#8212;</strong>
       </div>
       <div>
-        Workflow state: <strong tal:content="info/ws_state">open</strong>
+        Worksheet state: <strong tal:content="info/ws_state">Open</strong>
       </div>
     </div>
 
     <div class="pfas-mt">
-      <a class="btn btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">All batches (Batch Status page)</a>
+      <a class="btn btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">Worksheet status</a>
     </div>
   </div>
 

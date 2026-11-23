@@ -12,7 +12,9 @@
   <div class="page-body-narrow">
     <div class="pfas-card">
       <p tal:content="view/reason"></p>
-      <h3 tal:condition="view/status_label" tal:content="view/status_label">status</h3>
+      <h3 class="pfas-doc-state" tal:condition="view/status_label" tal:define="ic context/@@pfas-icons"><tal:m
+          tal:replace="structure python:ic.svg('pass' if view.status_label() == u'Allowed' else 'warn', hidden=True, size='md')" /><span
+          tal:content="view/status_label">status</span></h3>
       <div class="form-actions">
         <a class="btn btn-primary" tal:attributes="href string:${view/portal_url}/@@pfas-people">People &amp; Roles</a>
         <button type="button" class="btn btn-secondary" onclick="history.back()">Back</button>

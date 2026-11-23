@@ -292,6 +292,27 @@ def refresh_linked_batches(portal, method_id=None, project_uid=None, request=Non
     return refreshed, skipped
 
 
+def export_if_first_known(portal, batch_uid, directory=None, request=None):
+    """Write the file of a project-linked batch that has none yet, once its
+    method and matrix are known (from its samples). A batch with a file
+    keeps it until the next refresh of linked batches. Returns the path
+    written, or None."""
+    from bika.lims import api
+    from senaite.pfas import project_ref
+    from senaite.pfas.browser.batch_project_viewlet import _batch_method_id, _batch_matrix
+    batch = api.get_object_by_uid(batch_uid, None) if batch_uid else None
+    if batch is None or not project_ref.get_project_uid(batch):
+        return None
+    batch_id = getattr(batch, "getId", lambda: None)()
+    if not batch_id or os.path.exists(resolved_file_path(batch_id, directory=directory)):
+        return None
+    method_id = _batch_method_id(batch, request) or u""
+    matrix = _batch_matrix(portal, batch) or u""
+    if not method_id or not matrix:
+        return None
+    return export_resolved_criteria(portal, batch, method_id, matrix, directory=directory)
+
+
 def remove_resolved_criteria(batch_id, directory=None):
     """Delete the resolved-criteria file for batch_id, if any. Called when a
     batch's project link is CLEARED (project_ref.set_project_uid(batch,

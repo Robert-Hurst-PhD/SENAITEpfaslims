@@ -34,12 +34,10 @@
     <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${view/portal_url}/@@pfas-project-specs">
       <input type="hidden" name="uid" tal:attributes="value view/uid" />
-      <div class="pfas-field"><label for="ps-method">Method</label>
-        <select name="method_id" id="ps-method" class="pfas-select">
-          <option tal:repeat="mid view/method_ids" tal:content="mid"
-                  tal:attributes="value mid; selected python:'selected' if mid == view.method_id() else None">FDA</option>
-        </select></div>
-      <div class="pfas-field"><label for="ps-scope">Applies to</label>
+      <div class="pfas-form-field" tal:define="mc_choices python:[{'value': m, 'label': view.method_name(m)} for m in view.method_ids()];
+                                               mc_value view/method_id; mc_label string:Method; mc_id string:ps-method; mc_name string:method_id"><span>Method</span>
+        <metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></div>
+      <div class="pfas-form-field"><label for="ps-scope">Applies to</label>
         <select name="scope" id="ps-scope" class="pfas-select">
           <option tal:repeat="s view/scopes" tal:content="python:s[1]"
                   tal:attributes="value python:s[0]; selected python:'selected' if s[0] == view.scope() else None">All</option>

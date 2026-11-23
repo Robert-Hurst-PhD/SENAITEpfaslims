@@ -100,13 +100,16 @@ def persist_batch_row(batch, db_path: str = None) -> None:
 # the qc_results type of a raw run's analyte not quantified for a deleted
 # isotope standard peak (qc_engine.raw_is_deleted)
 IS_DELETED_QC_TYPE = "Isotope standard deleted"
+# the qc_results type of a raw result held because its linked response
+# ratio could not be formed (qc_engine.ratio_held)
+RATIO_HELD_QC_TYPE = "Linked response ratio held"
 
 
 def _qc_rows(batch) -> list:
     """Flatten the engine's verdicts into qc_results rows."""
     from .importer import classify_injection
     from .models import reported_conc
-    from .qc_engine import BLANK_ROLES, KIND_IS_DELETED
+    from .qc_engine import BLANK_ROLES, KIND_IS_DELETED, KIND_RATIO_HELD
 
     run_date = _run_date(batch)
     method = getattr(batch, "method_id", "") or ""
@@ -154,6 +157,18 @@ def _qc_rows(batch) -> list:
                              flag=(rec_flag.issue if rec_flag else ""),
                              advisory=_advisory(rec_flag),
                              passed=0 if rec_flag else 1))
+
+    # the RSD of three or more LFSMs at one level, their duplicates' recoveries
+    # with theirs: the LFSMD's precision, one row per spike (a duplicate too),
+    # each qualifying its own parent sample
+    for res in (getattr(batch, "lfsm_rsd_results", None) or []):
+        flag = res.get("flag")
+        for inj, parent in zip(res.get("injections") or [], res.get("parents") or []):
+            rows.append(dict(common, analyte=res["analyte"], qc_type="LFSMD", applies_to=parent,
+                             prov_key="", qc_level="RSD %s %s" % (res.get("level") or "", inj),
+                             value=res["rsd_pct"], units="%", **_window(res.get("window")),
+                             flag=(flag.issue if flag else ""), advisory=_advisory(flag),
+                             passed=0 if flag else 1))
 
     # Method blank — the measured concentration IS the result being judged
     blank_failed = {(f.injection_name, f.analyte) for f in (batch.qc_flags or [])
@@ -217,16 +232,26 @@ def _qc_rows(batch) -> list:
         by_name.setdefault(r.injection_name, []).append(r)
     frb_written = set()
 
-    field_qc = {"FRB": ("FRB within the method's field reagent blank limit (Blank limits)",
+    field_qc = {"FRB": ("the method's field reagent blank limit (Blank limits)",
                         "(BLK) field reagent blank above the field reagent blank limit"),
-             "TB": ("TB within the method's trip blank limit (Blank limits)",
+             "TB": ("the method's trip blank limit (Blank limits)",
                     "(BLK) trip blank above the trip blank limit")}
 
-    def _frb_row(inj, analyte, value, failed, qc_type="FRB", advisory=False):
+    def _frb_row(inj, analyte, value, failed, qc_type="FRB", advisory=False, lim=None, unit=""):
+        # the row carries the limit it was judged by and its unit, as a
+        # method blank's does, so every reader shows the limit applied
         basis, issue = field_qc[qc_type]
+        lim = lim or {}
+        if lim.get("x_rl") is not None:
+            basis = "%s %s %g x RL, %s" % (qc_type, "<" if lim.get("at_limit") else "\u2264",
+                                          lim["x_rl"], basis)
+        else:
+            basis = "%s within %s" % (qc_type, basis)
         return dict(common, analyte=analyte, qc_type=qc_type,
                     applies_to=inj, qc_level=inj, value=value,
-                    limit_basis=basis, units="", flag=(issue if failed else ""),
+                    limit_low=None, limit_high=lim.get("limit"),
+                    limit_basis=basis, units=unit or lim.get("unit") or "",
+                    flag=(issue if failed else ""),
                     advisory=1 if failed and advisory else 0,
                     passed=0 if failed else 1)
     # a field reagent or trip blank is written only where it was judged (its
@@ -245,13 +270,15 @@ def _qc_rows(batch) -> list:
             # the export's own name), never keyed by the row alone
             key = judged_as.get((inj, r.compound_name), (inj, r.compound_name))
             frb_written.add(key)
+            unit = (getattr(r, "conc_units", "") or "").strip()
             rows.append(dict(_frb_row(inj, r.compound_name, reported_conc(r), key in blank_flags, qc_type,
-                                      key in blank_advisory),
+                                      key in blank_advisory, blank_limits.get(key),
+                                      "" if unit.lower() == "nan" else unit),
                              prov_key=_pk("BLANK", key[0], key[1]) if key in blank_limits else ""))
         for key, lim in sorted(blank_limits.items()):
             if key[0] == inj and key not in frb_written:
                 rows.append(dict(_frb_row(inj, key[1], lim.get("value"), key in blank_flags, qc_type,
-                                      key in blank_advisory),
+                                      key in blank_advisory, lim),
                                  prov_key=_pk("BLANK", key[0], key[1])))
 
     # CCV and calibration verdicts: every judged one is written, pass or
@@ -285,6 +312,43 @@ def _qc_rows(batch) -> list:
                              applies_to=f.injection_name, qc_level=f.injection_name,
                              value=None, units="", flag=f.issue or "",
                              advisory=_advisory(f), passed=0))
+    # a raw result whose linked response ratio could not be formed: one
+    # failing row per analyte and injection, so release waits
+    for f in (batch.qc_flags or []):
+        if getattr(f, "check_kind", "") == KIND_RATIO_HELD:
+            rows.append(dict(common, analyte=f.analyte, qc_type=RATIO_HELD_QC_TYPE,
+                             applies_to=f.injection_name, qc_level=f.injection_name,
+                             value=None, units="", flag=f.issue or "",
+                             advisory=0, passed=0))
+    # a sample's result above the calibration range and reported from no
+    # dilution: one failing row per analyte and sample, so release waits
+    # until a dilution is run or the reviewer records the reason to report
+    # it with E (Data Review). Whatever rule switch is set: no result is
+    # reported extrapolated without one or the other.
+    from .addon import load
+    from .constants import QUALIFIER_ALOQ
+    above = load("above_range")
+    for s in (getattr(batch, "summary", None) or []):
+        if (s.qualifier != QUALIFIER_ALOQ or (getattr(s, "qc_type", "Sample") or "Sample") != "Sample"
+                or (s.source_injection and s.source_injection != s.sample_injection)):
+            continue
+        rows.append(dict(common, analyte=s.analyte, qc_type=above.QC_TYPE,
+                         applies_to=s.sample_injection, qc_level=s.sample_injection,
+                         value=s.result_ppt, units="",
+                         limit_high=getattr(s, "range_top", None),
+                         limit_basis="the top of the calibration range on the sample basis",
+                         flag=above.flag_text(s.analyte, s.sample_injection), advisory=0, passed=0))
+    # a sample's result the instrument wrote BLoQ with no number: one failing
+    # row per analyte and sample, so release waits until the reviewer records
+    # the reason to report it; never reported not detected silently
+    no_number = load("no_number")
+    for s in (getattr(batch, "summary", None) or []):
+        if not getattr(s, "no_number", False) or (getattr(s, "qc_type", "Sample") or "Sample") != "Sample":
+            continue
+        rows.append(dict(common, analyte=s.analyte, qc_type=no_number.QC_TYPE,
+                         applies_to=s.sample_injection, qc_level=s.sample_injection,
+                         value=s.result_ppt, units="",
+                         flag=no_number.flag_text(s.analyte, s.sample_injection), advisory=0, passed=0))
     # sample duplicates judged, pass or fail (a Dup also stands in for an
     # LFSMD)
     for v in (getattr(batch, "dup_results", None) or []):
@@ -333,7 +397,43 @@ def _qc_rows(batch) -> list:
                          flag=(res.flag.issue if res.flag else ""),
                          advisory=_advisory(res.flag),
                          passed=0 if res.flag else 1))
-    return _unique_keys(rows)
+    # every QC result under the analyte's keyword, whatever the export
+    # calls it; its prov_key is built from the same keyword (provenance.key)
+    from .provenance import qc_analyte
+    for r in rows:
+        r["analyte"] = qc_analyte(r.get("analyte") or "")
+    return _unique_keys(_without_cells_off(batch, rows))
+
+
+def _without_cells_off(batch, rows):
+    """`rows` less those of an analyte whose check the method sets off on
+    its cell in the run's matrix (qc_tiers.cell_setting): not judged there,
+    so never filed, neither as a pass nor as a gap. An LFSMD's recovery is
+    the LFSM check's."""
+    try:
+        from .analyte_alias import keyword_for
+        from .method_profiles import _engine_module, _qc_tiers, get_profile
+        data = get_profile(getattr(batch, "method_id", "") or "")._profile_data()
+        aliases = _engine_module().engine(data)["qc_type_aliases"]
+        qt = _qc_tiers()
+    except Exception:                        # noqa: BLE001  (no profile: nothing is set off)
+        return rows
+    if not any(isinstance(e, dict) and e.get(qt.CELLS_KEY)
+               for e in (data.get("qc_acceptance") or {}).values()):
+        return rows
+    matrix = getattr(batch, "matrix", "") or ""
+
+    def off(r):
+        qc = r.get("qc_type") or ""
+        if qc == "LFSMD" and (r.get("qc_level") or "").startswith("Recovery"):
+            qc = "LFSM"
+        try:
+            kw = keyword_for(r.get("analyte") or "") or r.get("analyte")
+        except Exception:                    # noqa: BLE001  (no library)
+            kw = r.get("analyte")
+        cell = qt.cell_setting(data, aliases.get(qc, qc), kw, matrix)
+        return bool(cell and cell.get("off"))
+    return [r for r in rows if not off(r)]
 
 
 def _advisory(flag):
@@ -373,7 +473,7 @@ def _blank_row(common, role, injection, analyte, conc, unit, lim, over):
                 # the rule that set this row's verdict
                 limit_low=None, limit_high=(lim or {}).get("limit"),
                 limit_basis=(("%s %s %g x RL (Blank limits)" % (
-                    role, "below" if lim.get("at_limit") else "at most", lim.get("x_rl"))) if lim else
+                    role, "<" if lim.get("at_limit") else "\u2264", lim.get("x_rl"))) if lim else
                     "%s not judged: the method sets it no limit" % role),
                 flag=("above the blank limit" if over else ""),
                 passed=0 if over else 1)
@@ -412,7 +512,7 @@ def _cal_window(res):
         parts.append("%s within \u00b1%g %%" % (
             "Lowest calibrator" if getattr(res, "lowest", False) else "Calibrator", lim))
     if r2 is not None:
-        parts.append("R\u00b2 at least %g" % r2)
+        parts.append("R\u00b2 \u2265 %g" % r2)
     return {"lo": -lim if lim is not None else None, "hi": lim,
             "basis": "; ".join(parts)} if parts else None
 
@@ -435,7 +535,8 @@ def _calibration_rows(batch) -> list:
     """One row per analyte: the curve r² the instrument reported, and its
     points (`_levels`: one per calibrator: level, expected, calculated, %
     deviation, pass, response ratio), for the Calibrations page and Data
-    Review's Calibration tab."""
+    Review's Calibration tab. A raw run's row names the fit and weighting
+    its curve was fitted with; a vendor export's stays blank."""
     run_date = _run_date(batch)
     seen = {}
     rows_by = {}
@@ -443,10 +544,13 @@ def _calibration_rows(batch) -> list:
         rows_by[(r.injection_name, r.compound_name)] = r
     points = {}
     calibrators = {}
+    fitted = {}
     for res in (getattr(batch, "cal_results", None) or []):
         if res.r2 is not None:
             seen.setdefault(res.analyte, res.r2)
         row = rows_by.get((res.injection_name, res.analyte))
+        if fitted.get(res.analyte) is None:
+            fitted[res.analyte] = _fit_used(row)
         calibrators.setdefault(res.analyte, []).append(
             (res.injection_name, getattr(row, "acquisition_datetime", None) if row is not None else None))
         exp = getattr(row, "expected_conc", None) if row is not None else None
@@ -468,16 +572,40 @@ def _calibration_rows(batch) -> list:
         for n, p in enumerate(pts, 1):
             p["level"] = p["level"] or n             # a level the run did not number: its order
         exps = [p["expected"] for p in pts if p["expected"] is not None]
+        fit_type, weight_type = fitted.get(analyte) or ("", "")
         out.append({
             "batch_id": batch.batch_id, "run_date": run_date, "analyte": analyte,
             "method": getattr(batch, "method_id", "") or "",
             "analyst": getattr(batch, "analyst", "") or "",
-            "instrument_id": "", "equation": "", "fit_type": "", "weight_type": "",
+            "instrument_id": "", "equation": "", "fit_type": fit_type, "weight_type": weight_type,
             "r2": r2, "n_levels": len(pts),
             "min_level": min(exps) if exps else None, "max_level": max(exps) if exps else None,
             "cal_key": calibration_key(calibrators.get(analyte)),
             "_levels": pts})
     return out
+
+
+def _fit_used(row):
+    """(fit, weighting) a raw run's curve was fitted with, from its
+    calibrator's record, in the curve card's words: the fit's label, the
+    weighting "" for none. ("", "") for a vendor export's row (its
+    instrument fitted the curve) or a calibrator with no curve; None when
+    the row is not there, so the next calibrator is read."""
+    if row is None:
+        return None
+    import json
+    derived = getattr(row, "derived_from", "") or ""
+    if not derived.startswith("raw:"):
+        return ("", "")
+    try:
+        curve = ((json.loads(derived[len("raw:"):]) or {}).get("quant") or {}).get("curve") or {}
+    except ValueError:
+        return ("", "")
+    if not curve.get("kind"):
+        return None
+    from .addon import load
+    weighting = curve.get("weighting") or ""
+    return (load("calibration_fit").fit_label(curve["kind"]), "" if weighting == "none" else weighting)
 
 
 def calibration_key(calibrators) -> str:
@@ -494,10 +622,21 @@ def calibration_key(calibrators) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
+# what a re-import leaves of a run's earlier QC rows: kept, read by no gate
+# or chart
+SUPERSEDED = "superseded"
+
+
+def _supersede(conn, batch_id):
+    """The run's earlier QC rows marked superseded, kept as its history."""
+    conn.execute("UPDATE qc_results SET result_status=? WHERE batch_id=? "
+                 "AND result_status NOT IN ('superseded', 'voided')", (SUPERSEDED, batch_id))
+
+
 def persist_qc_results(batch, db_path: str = None) -> int:
-    """Write the run's QC verdicts. Replaces any previous rows for this batch,
-    so a re-import supersedes rather than duplicating, the same contract as
-    `persist_injection_results`."""
+    """Write the run's QC verdicts. A re-import supersedes the earlier rows
+    of this batch: they are kept, marked superseded, and only the new ones
+    are read."""
     path = db_path or DB_PATH
     rows = _qc_rows(batch)
 
@@ -518,6 +657,21 @@ def persist_qc_results(batch, db_path: str = None) -> int:
             "passed": 0,
             "_status": "unevaluated",
         })
+    # A box in the state Evaluate with no limit: the run goes on, and "no
+    # limit set" is filed as an advisory row, shown in Data Review and
+    # holding nothing.
+    for gap in (getattr(batch, "advisory_gaps", None) or []):
+        unevaluated.append({
+            "batch_id": batch.batch_id,
+            "run_date": _run_date(batch),
+            "analyte": gap.get("analyte") or "",
+            "qc_type": gap.get("qc_type") or "",
+            "method": gap.get("method_id") or "",
+            "flag": gap.get("reason") or "",
+            "passed": 0,
+            "advisory": 1,
+            "_status": "active",
+        })
 
     persist_batch_row(batch, path)
     if not rows and not unevaluated:
@@ -527,7 +681,7 @@ def persist_qc_results(batch, db_path: str = None) -> int:
         have = {r[1] for r in conn.execute("PRAGMA table_info(qc_results)")}
         if not have:
             return 0
-        conn.execute("DELETE FROM qc_results WHERE batch_id=?", (batch.batch_id,))
+        _supersede(conn, batch.batch_id)
         now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         for r in list(rows) + unevaluated:
             status = r.pop("_status", "active")
@@ -546,12 +700,11 @@ def persist_qc_results(batch, db_path: str = None) -> int:
             pass
     except Exception:
         # A failed insert rolls back, which would leave the PREVIOUS run's rows
-        # in place looking current. Clear the batch instead: "no QC record"
+        # in place looking current. Supersede them instead: "no QC record"
         # blocks the gate, and re-raise so the run reports it.
         conn.rollback()
         try:
-            conn.execute("DELETE FROM qc_results WHERE batch_id=?",
-                         (batch.batch_id,))
+            _supersede(conn, batch.batch_id)
             conn.commit()
             # and say so where the gate reads: an empty summary is no pass
             conn.execute(

@@ -147,14 +147,30 @@ def read(portal):
     return out
 
 
+def lab_name(portal=None):
+    """The laboratory's name, the one every screen and printout shows: core's
+    Laboratory record, trimmed. u"" when it has none or cannot be read."""
+    try:
+        return read(portal)["name"].strip()
+    except Exception:                                       # noqa: BLE001
+        logger.warning("laboratory name not readable", exc_info=True)
+        return u""
+
+
+def lab_address(portal=None):
+    """The laboratory's address as it prints (one line), from core's
+    Laboratory record; u"" when it has none or cannot be read."""
+    try:
+        return read(portal)["print_address"].strip()
+    except Exception:                                       # noqa: BLE001
+        logger.warning("laboratory address not readable", exc_info=True)
+        return u""
+
+
 def mail_prefix(portal):
     """The bracketed prefix of a notice e-mail subject: the laboratory's
     name, else the site title, else "LIMS"."""
-    name = u""
-    try:
-        name = read(portal)["name"].strip()
-    except Exception:                                       # noqa: BLE001
-        logger.warning("laboratory name not readable", exc_info=True)
+    name = lab_name(portal)
     if not name:
         try:
             name = _text(_registry()[SITE_TITLE]).strip()
@@ -170,8 +186,8 @@ def print_fields(portal):
     cur = read(portal)
     return {
         "logo_sha": logo_sha(_live_logo_data(portal)) if cur["logo_url"] else u"",
-        "lab_name": cur["name"],
-        "lab_address": cur["print_address"],
+        "lab_name": lab_name(portal),
+        "lab_address": lab_address(portal),
         "lab_phone": cur["phone"],
         "lab_email": cur["email"],
         "logo_url": cur["logo_url"],

@@ -69,8 +69,8 @@ STEP_META = [
      "to the Method so SENAITE knows which analytes belong to this protocol.",
      "Analysis Category (Step 2)"),
     (4, "sampletypes",
-     "Associate Sample Types / Matrices",
-     "Select the Sample Types (matrices) this method analyzes: Drinking "
+     "Associate Matrices",
+     "Select the matrices this method analyses: Drinking "
      "Water, Fish Tissue, Soil, Serum, etc.  The method profile's QC "
      "windows, reporting limits and units are then set per matrix.",
      "Method (Step 1)"),
@@ -79,8 +79,8 @@ STEP_META = [
      "Select which QC sample types from the PFAS QC Type Pool apply to "
      "this method.  Each selected type will require acceptance criteria to "
      "be defined in the Method Profile (Step 6).  No fallbacks — only "
-     "associated types will be evaluated during a batch run.",
-     "Sample Types (Step 4)"),
+     "associated types will be evaluated during a run.",
+     "Matrices (Step 4)"),
     (6, "profile",
      "Method Profile",
      "Review and configure the extraction parameters, instrument verification "
@@ -95,7 +95,7 @@ STEP_META = [
      "reporting limits on its Analytes tab and action levels on "
      "Regulatory Limits, per matrix. SENAITE's own Analysis Specifications "
      "are not used: nothing needs creating here.",
-     "Analytes (Step 3) + Sample Types (Step 4)"),
+     "Analytes (Step 3) + Matrices (Step 4)"),
     (8, "storage",
      "Storage Locations & Sample Containers",
      "Select the storage locations and sample containers associated with "
@@ -109,7 +109,7 @@ STEP_META = [
      "method: calibration r-squared, CCV frequency and recovery window, "
      "IS response drift, ion-ratio tolerance, RT deviation tolerance, "
      "and S/N thresholds.  Defaults are pre-loaded from the Method Profile "
-     "— review before your first batch.",
+     "— review before your first worksheet.",
      "Method Profile (Step 6)"),
     (10, "instruments",
      "Link Instruments",

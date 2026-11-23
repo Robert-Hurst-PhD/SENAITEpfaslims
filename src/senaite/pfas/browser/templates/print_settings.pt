@@ -9,15 +9,18 @@
 <body>
   <tal:t metal:fill-slot="header-title">Print Settings</tal:t>
 
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="sb_form string:print-settings-form; sb_label string:Save Print Settings"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
   <div metal:fill-slot="content">
   <div class="page-body" tal:define="ps view/settings">
 
     <div class="alert alert-success" tal:condition="view/saved">
-      Print settings saved — every printable form (logbooks, CoC, SOP copies)
-      now uses the updated header/footer.
+      Print settings saved: every print now uses the updated header.
     </div>
 
-    <p class="pfas-lead is-narrow">The header and footer printed on every form: logbooks, chain of custody, SOP copies.</p>
+    <p class="pfas-lead is-narrow">The header on every print: the batch and preparation records, chain of custody, SOP copies.</p>
 
     <!-- live preview of the print header -->
     <div class="pfas-print-preview">
@@ -32,65 +35,49 @@
           <div class="pfas-print-line" tal:condition="ps/accreditation"
                tal:content="ps/accreditation">accreditation</div>
         </div>
-        <div class="pfas-print-line is-end"
-             tal:condition="ps/show_print_date">Printed: 2026-07-02 12:00</div>
       </div>
-      <div class="pfas-print-foot"
-           tal:condition="ps/show_page_footer" tal:content="ps/footer_text">footer</div>
     </div>
 
-    <form method="post" class="pfas-form-narrow"
+    <form method="post" class="pfas-form-narrow" id="print-settings-form"
           tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
       <input type="hidden" name="action" value="save"/>
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
 
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Laboratory name</span>
-        <div tal:content="ps/lab_name">DEMO Laboratory</div></div>
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Address</span>
-        <div tal:content="ps/lab_address">address</div></div>
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Phone</span>
-        <div tal:content="ps/lab_phone">phone</div></div>
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Email</span>
-        <div tal:content="ps/lab_email">email</div></div>
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Accreditation line</span>
-        <div tal:content="ps/accreditation">accreditation</div></div>
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Logo</span>
-        <div><img class="pfas-print-logo" tal:condition="ps/logo_url" tal:attributes="src python:view.logo_src()"/>
-          <span tal:condition="not:ps/logo_url">None</span></div></div>
-      <div class="pfas-form-field is-spaced">
-        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Edit on Laboratory</a>
-        <span class="pfas-hint">These come from the Laboratory record and the site logo.</span></div>
-      <div class="pfas-form-field is-spaced"><label>Footer text</label>
-        <input type="text" name="footer_text" tal:attributes="value ps/footer_text"/>
-        <span class="pfas-hint">The controlled-copy notice printed at the bottom of every page.</span></div>
-
-      <div class="pfas-check is-spaced">
-        <label class="pfas-switch"><input type="checkbox" name="show_form_code" id="sfc"
-               tal:attributes="checked ps/show_form_code"/><span class="pfas-switch-track"></span></label>
-        <label for="sfc">Show form code block (FM-ENV-xxx)</label></div>
-      <div class="pfas-check is-spaced">
-        <label class="pfas-switch"><input type="checkbox" name="show_print_date" id="spd"
-               tal:attributes="checked ps/show_print_date"/><span class="pfas-switch-track"></span></label>
-        <label for="spd">Show print date/time in the header</label></div>
-      <div class="pfas-check is-spaced">
-        <label class="pfas-switch"><input type="checkbox" name="show_page_footer" id="spf"
-               tal:attributes="checked ps/show_page_footer"/><span class="pfas-switch-track"></span></label>
-        <label for="spf">Show page footer</label></div>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Laboratory name</span>
+          <div tal:content="ps/lab_name">DEMO Laboratory</div></div>
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Address</span>
+          <div tal:content="ps/lab_address">address</div></div>
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Phone</span>
+          <div tal:content="ps/lab_phone">phone</div></div>
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Email</span>
+          <div tal:content="ps/lab_email">email</div></div>
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Accreditation line</span>
+          <div tal:content="ps/accreditation">accreditation</div></div>
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Logo</span>
+          <div><img class="pfas-print-logo" tal:condition="ps/logo_url" tal:attributes="src python:view.logo_src()"/>
+            <span tal:condition="not:ps/logo_url">None</span></div></div>
+        <div class="pfas-form-field is-spaced is-full"><div class="pfas-inline">
+          <span>These come from the Laboratory record and the site logo.</span>
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Edit on Laboratory</a></div></div>
+      </div>
 
       <!-- ── QA sign-off attestation signers ──────────────────────────────── -->
       <h3 class="pfas-subhead">QA Sign-off Attestation</h3>
       <p class="pfas-hint is-flush">The Prepared, Verified, Authorized sign-off block on SOPs and prep logs; signatures come from each person&#8217;s Lab Contact. <tal:h define="hid string:sign-rights"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
-      <div class="pfas-form-field is-spaced"><label>Quality assurance officer</label>
-        <select name="qao_initials" class="pfas-select">
-          <option value="">— none —</option>
-          <option tal:repeat="s view/staff"
-                  tal:attributes="value s/initials;
-                                  selected python:s['initials']==ps.get('qao_initials')"
-                  tal:content="string:${s/fullname} (${s/initials})">name</option>
-        </select></div>
-      <div class="pfas-form-field is-spaced"><span class="pfas-label">Laboratory director</span>
-        <div><strong tal:content="python:view.director_name() or u'None'">AN3</strong>
-          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Laboratory</a></div></div>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field is-spaced"><label>Quality assurance officer</label>
+          <select name="qao_initials" class="pfas-select">
+            <option value="">— none —</option>
+            <option tal:repeat="s view/staff"
+                    tal:attributes="value s/initials;
+                                    selected python:s['initials']==ps.get('qao_initials')"
+                    tal:content="string:${s/fullname} (${s/initials})">name</option>
+          </select></div>
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Laboratory director</span>
+          <div><strong tal:content="python:view.director_name() or u'None'">AN3</strong>
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Laboratory</a></div></div>
+      </div>
       <div class="pfas-check is-spaced">
         <label class="pfas-switch"><input type="checkbox" name="show_signoff" id="sso"
                tal:attributes="checked ps/show_signoff"/><span class="pfas-switch-track"></span></label>
@@ -120,9 +107,6 @@
           <option value="full" tal:attributes="selected python:ps.get('coa_signature_style')=='full'">Full: signature space per signatory</option>
         </select></div>
 
-      <button class="btn btn-primary pfas-mt" type="submit">
-        Save Print Settings
-      </button>
     </form>
 
 

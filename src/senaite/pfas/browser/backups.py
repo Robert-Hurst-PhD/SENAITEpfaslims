@@ -92,6 +92,16 @@ class PFASBackupsView(ViewHelpers, GateMixin, BrowserView):
         from senaite.pfas.annotation_store import read_json
         return read_json(api.get_portal(), STATUS_KEY, {})
 
+    # ── status first: one line, four figures ─────────────────────────────
+    def status_line(self):
+        from senaite.pfas import backup_log
+        return backup_log.status_line(self.summary(), self.status())
+
+    def figures(self):
+        from senaite.pfas import backup_log
+        run_at = (self.settings_state().get("current") or {}).get("run_at")
+        return backup_log.figures(self.summary(), self.status(), run_at, self.level_label)
+
     # ── levels and the current chain ─────────────────────────────
     def level_rows(self):
         from senaite.pfas import backup_log
@@ -120,6 +130,11 @@ class PFASBackupsView(ViewHelpers, GateMixin, BrowserView):
         return [{"key": k, "label": label, "value": bs.describe(k, cur.get(k)), "raw": cur.get(k),
                  "waiting": bs.describe(k, waiting[k]["after"]) if k in waiting else u""}
                 for k, label in bs.SETTINGS]
+
+    def path_settings(self):
+        """The settings that name a folder on the server."""
+        from senaite.pfas import backup_settings as bs
+        return bs.PATHS
 
     def days(self):
         from senaite.pfas import backup_settings as bs
@@ -253,6 +268,8 @@ class PFASBackupsView(ViewHelpers, GateMixin, BrowserView):
             return self._back("refused", u"%s" % exc, bundle=bundle["bundle_id"])
         backup_log.record(portal, {"kind": "method_restore", "status": "ok", "who": who,
                                    "point": bundle.get("point"), "ended": out["at"].replace(u" ", u"T"),
-                                   "note": u"%s: %d part(s); %s" % (bundle["method_id"], out["parts"], reason)})
+                                   # the log names the method as every page does
+                                   "note": u"%s: %d part(s); %s" % (self.method_name(bundle["method_id"]),
+                                                                    out["parts"], reason)})
         self._pending_store().clear()
-        return self._back("applied", u"%s, %d part(s)" % (bundle["method_id"], out["parts"]))
+        return self._back("applied", u"%s, %d part(s)" % (self.method_name(bundle["method_id"]), out["parts"]))

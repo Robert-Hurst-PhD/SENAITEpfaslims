@@ -60,11 +60,10 @@ def method_panel(mid, purl, why):
     return {"why": list(why or []),
             "set": [[u"Method profile", edit], [u"QC criteria", edit + u"#pane-qc"],
                     [u"Reporting limits", edit + u"#pane-analytes"], [u"Engine", edit + u"#pane-engine"],
-                    [u"Logbook sequence", u"%s/@@pfas-logbook-admin?tab=sequence" % purl],
+                    [u"Recipes", u"%s/@@pfas-recipes?method=%s" % (purl, mid)],
                     [u"EDD method codes", u"%s/@@pfas-edd-config" % purl],
                     [u"Import layouts", u"%s/@@pfas-import-studio" % purl]],
             "records": [[u"Issued revisions", edit + u"#pane-engine"],
-                        [u"Logbook templates", u"%s/@@pfas-prep-logbooks" % purl],
                         [u"Configuration history", u"%s/@@pfas-config-history" % purl],
                         [u"Method studies", u"%s/@@pfas-method-studies" % purl]]}
 

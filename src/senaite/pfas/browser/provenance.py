@@ -3,8 +3,8 @@
 
 The record behind one value in Data Review, with the imported rows and the
 export lines it was computed from, as JSON for the drawer
-(static/provenance.js). Staff only: the rows name samples and files.
-Read-only.
+(static/provenance.js). Every staff role reads it, the export's own lines
+included; a client never does: the rows name samples and files. Read-only.
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -14,7 +14,7 @@ import logging
 from Products.Five.browser import BrowserView
 
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import ANALYST_ROLES, MANAGER_ROLES, has_role_at_portal, refuse
+from senaite.pfas.browser.perms import is_staff, refuse
 
 logger = logging.getLogger("senaite.pfas.provenance")
 
@@ -24,8 +24,7 @@ class PFASProvenanceView(BrowserView):
     def __call__(self):
         flatten_form(self.request)
         self.request.response.setHeader("Content-Type", "application/json")
-        if not (has_role_at_portal(self.context, MANAGER_ROLES)
-                or has_role_at_portal(self.context, ANALYST_ROLES)):
+        if not is_staff(self.context):
             return refuse(self.request, json.dumps({"error": "Staff only."}))
         batch_id = (self.request.form.get("batch_id") or "").strip()
         key = (self.request.form.get("key") or "").strip()

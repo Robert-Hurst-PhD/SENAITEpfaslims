@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """A partial restore of one method's whole configuration from a backup. The
 bundle (tools/backup/method_bundle.py, decrypted by a key holder) holds the
-method's profile, its logbook definitions, its code in
-each EDD profile and its specifications in each project, as they were at the
-backup.
+method's profile, its code in each EDD profile and its specifications in
+each project, as they were at the backup. A bundle made while the logbook
+definitions existed still carries them under "logbook_defs": the field is
+checked, never restored (the definitions are retired).
 
 The site admin sees the before/after first (plan); applied with a reason,
 each part that differs goes through its own tracked saver -- the method
-profile, the logbook definition, the EDD profile, the project -- so each is a
+profile, the EDD profile, the project -- so each is a
 Configuration History entry, all noted "restored from backup <point> (<time>):
-<reason>". A logbook definition made since the backup is left (logbooks may
-hold entries); an EDD code or project specification added since is removed.
+<reason>". An EDD code or project specification added since is removed.
 A bundle is applied once.
 
     bundle_id(bundle) / check_bundle(bundle)  -> the bundle, or ValueError
@@ -18,7 +18,7 @@ A bundle is applied once.
     apply(bundle, current, reason, who, savers, done) -> {"parts", "at"}
     current_of(portal, method_id, bundle) / zope_savers(portal) / applied(portal)
 
-`savers`: note(text); profile(method_id, value); logbook_def(key, value);
+`savers`: note(text); profile(method_id, value);
 edd_method_codes(key, method_id, value); project_specs(key, method_id, value).
 Python 2.7 and 3.
 """
@@ -34,9 +34,8 @@ from senaite.pfas import qc_consolidation
 APPLIED_KEY = "senaite.pfas.method_restores"
 FIELDS = ("method_id", "point", "taken_at", "profile", "logbook_defs",
           "edd_method_codes", "project_specs")
-PARTS = ("logbook_defs", "edd_method_codes", "project_specs")
-_PART_NAME = {"logbook_defs": "logbook_def", "edd_method_codes": "edd_method_codes",
-              "project_specs": "project_specs"}
+PARTS = ("edd_method_codes", "project_specs")
+_PART_NAME = {"edd_method_codes": "edd_method_codes", "project_specs": "project_specs"}
 
 
 def bundle_id(bundle):
@@ -98,8 +97,6 @@ def apply(bundle, current, reason, who, savers, done):
     for p in parts:
         if p["part"] == "profile":
             savers.profile(mid, bundle["profile"])
-        elif p["part"] == "logbook_def":
-            savers.logbook_def(p["key"], p["value"])
         elif p["part"] == "edd_method_codes":
             savers.edd_method_codes(p["key"], mid, p["value"])
         else:
@@ -115,11 +112,8 @@ def apply(bundle, current, reason, who, savers, done):
 def current_of(portal, method_id, bundle):
     """The method's configuration now, read as the bundle was made."""
     from senaite.pfas import edd_store, project_specs as ps
-    from senaite.pfas.browser import prep_logbooks as pl
     from senaite.pfas.method_profile_store import raw_profile
     profile = raw_profile(portal, method_id)
-    folder = pl._get_folder(portal)
-    defs = dict((k, pl._obj_to_dict(folder[k])) for k in (bundle.get("logbook_defs") or {}) if k in folder)
     edd = edd_store.get_edd_profiles(portal)
     codes = dict((pid, (edd[pid].get("method_codes") or {}).get(method_id))
                  for pid in (bundle.get("edd_method_codes") or {}) if pid in edd)
@@ -128,7 +122,7 @@ def current_of(portal, method_id, bundle):
         proj = ps.project_by_id(portal, pid)
         if proj is not None:
             specs[pid] = ps.get_specs(proj).get(method_id)
-    return {"profile": profile, "logbook_defs": defs, "edd_method_codes": codes, "project_specs": specs}
+    return {"profile": profile, "edd_method_codes": codes, "project_specs": specs}
 
 
 class zope_savers(object):
@@ -146,10 +140,6 @@ class zope_savers(object):
         save_profile(self.portal, method_id, value)
         # the panel is the cache of the services' Method links, not the bundle's
         refresh_analyte_sets(self.portal, [method_id])
-
-    def logbook_def(self, key, value):
-        from senaite.pfas.browser import prep_logbooks as pl
-        pl._save(self.portal, dict(value, uid=key))
 
     def edd_method_codes(self, key, method_id, value):
         from senaite.pfas import edd_store

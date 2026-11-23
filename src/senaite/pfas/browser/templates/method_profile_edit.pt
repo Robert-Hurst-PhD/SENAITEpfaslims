@@ -12,7 +12,6 @@
   <tal:t metal:fill-slot="header-title"
          tal:content="view/display_name">Method Profile</tal:t>
 
-  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <form method="get" action="@@pfas-method-profile-edit"
           tal:condition="python:view.method_id() and not view.delete_requested()">
@@ -49,11 +48,11 @@
     <div class="alert alert-success" tal:condition="view/saved">
       <tal:n condition="view/note"><span tal:replace="view/note">Removed 13C8-FOSA</span>.</tal:n>
       Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
-      The pipeline worker will use the new values on the next batch run.
+      The pipeline worker will use the new values on the next run.
     </div>
     <p class="form-note" tal:define="lc view/last_change" tal:condition="lc">
       Last changed by <strong tal:content="lc/who">user</strong>
-      on <span tal:content="python:lc['at'] if view.zone_active() else lc['at'] + u' UTC'">date</span>
+      on <span tal:content="lc/at">date</span>
       (<span tal:content="python:len(lc['changes'])">1</span> setting(s))
       &middot; <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">History</a>
     </p>
@@ -116,22 +115,51 @@
            tab's sections, each closed until opened ──────────────────────── -->
       <div class="pfas-pane is-active" id="pane-analytes">
         <div><!-- a wide grid: the full content width -->
-          <p class="pane-intro">One row per analyte, in method order. Marked &#10007; in a matrix, an analyte is left out of it everywhere; a reported cell shows its RL.</p>
+          <p class="pane-intro">One row per analyte, alphabetical, beside its card. Left out of a matrix, an analyte is left out of it everywhere.</p>
+          <!-- each analyte reported in a matrix names what quantifies it:
+               the tab's Save is refused while one has no Quantified by -->
+          <div tal:replace="structure view/analytes_link_warning"></div>
           <!-- the Engine flag "inclusion is to be confirmed": a banner until
                the lab confirms the analyte set (form#analytes-confirm turns
-               it off and the history records who and when), then a note -->
+               it off and the history records who and when); the list's
+               Analyte set confirmation card shows the state either way -->
           <div class="pfas-banner is-warn" role="status" tal:condition="view/analyte_matrix_needs_verification">
-            <span><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> <strong>Lab verification required.</strong> Check this method&#8217;s analyte set against the published method&#8217;s target list, and decide which analytes are reportable in each matrix, before production use.</span>
-            <span class="pfas-banner-end"><button type="submit" class="btn btn-sm btn-primary" form="analytes-confirm">Confirmed</button></span>
+            <span><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('warn', hidden=True)" /> <strong>Lab confirmation required.</strong> Check this method&#8217;s analyte set against the published method&#8217;s target list, and decide which analytes are reportable in each matrix, before production use.</span>
+            <span class="pfas-banner-end"><button type="submit" class="btn btn-sm btn-primary" form="analytes-confirm">Confirm analyte set</button></span>
           </div>
-          <tal:c condition="not:view/analyte_matrix_needs_verification">
-            <p class="form-note" tal:define="note view/analyte_set_confirmed"><span tal:replace="note"></span>
-              <button type="submit" class="btn btn-sm btn-secondary" form="analytes-verify">Verify again</button></p>
-          </tal:c>
+          <!-- the analytes in two views of the same fields: the list, each
+               analyte beside its card, grouped Regulated, Other, then the
+               Method settings; or the sheet. The sheet holds every analyte
+               input (a card's tile and the row's menu write it through the
+               row's drawer), hidden in the list view, never disabled or
+               moved. -->
+          <!-- Analytes opens in Table, every other tab in List; a choice
+               made is remembered (data-view-store) -->
+          <div class="pfas-pill-row">
+            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                 data-view-switch="analytes" data-view-store="pfas_analytes_view">
+              <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="false">List</button>
+              <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="true">Table</button>
+            </div>
+          </div>
+          <!-- the list; its Method settings card holds Surrogate recovery in
+               a diluted sample with its posted input, drawn once -->
+          <div class="mp-an-view" data-view-of="analytes" data-view="list" hidden="hidden">
+            <div tal:replace="structure view/analytes_list_html"></div>
+          </div>
           <!-- Saved ON ITS OWN: every control posts to form#section-analytes
                through the form= attribute, with each section's stamp. -->
-          <div tal:define="sheet view/analytes_sheet">
-            <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
+          <div class="mp-an-view" data-view-of="analytes" data-view="table">
+            <tal:c condition="not:view/analyte_matrix_needs_verification">
+              <p class="form-note" tal:define="note view/analyte_set_confirmed"><span tal:replace="note"></span>
+                <button type="submit" class="btn btn-sm btn-secondary" form="analytes-verify">Confirm again</button></p>
+            </tal:c>
+            <div tal:define="sheet view/analytes_sheet">
+              <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
+            </div>
+            <!-- the List's Method settings, here too: the dilution setting's
+                 tile writes the one input the List's card holds -->
+            <div tal:replace="structure view/analytes_table_settings_html"></div>
           </div>
           <p class="form-note" tal:condition="not:view/standard_lot_options">No reference-standard lots are in the Reagent Inventory yet, so there are no CoA lots to pick.</p>
           <tal:n define="notes view/per_analyte_notes" condition="notes">
@@ -140,14 +168,16 @@
             <div class="pfas-sec-b">
               <p class="pane-intro">Copy each note where it belongs, then discard it.</p>
               <div class="table-wrap">
-                <table class="pfas-table" data-col-resize="method-profile-edit-1">
-                  <thead><tr><th>Analyte</th><th>Note</th><th></th></tr></thead>
+                <!-- Discard (the row's menu) posts the Analytes tab's form with
+                     discard_note set to the row's analyte -->
+                <table class="pfas-table" data-col-resize="method-profile-edit-1" tal:define="rm context/@@pfas-row-menu">
+                  <thead><tr><th>Analyte</th><th>Note</th></tr></thead>
                   <tbody>
-                    <tr tal:repeat="n notes">
+                    <tr tal:repeat="n notes"
+                        tal:attributes="data-row-actions python:rm.actions(
+                                            (u'Discard', 'form', 'section-analytes', {'values': {'discard_note': n['analyte']}, 'danger': True}))">
                       <td tal:content="n/label"></td>
                       <td tal:content="n/notes"></td>
-                      <td><button type="submit" class="btn-sm btn-secondary" name="discard_note" form="section-analytes"
-                                  tal:attributes="value n/analyte">Discard</button></td>
                     </tr>
                   </tbody>
                 </table>
@@ -159,17 +189,52 @@
       </div><!-- /pane-analytes -->
 
       <!-- ── Tab: Isotope standards: each standard the method uses, its
-           role, its link, what it quantifies and its SUR limits, as one grid -->
+           role, its link, what it quantifies and its SUR limits, as a list
+           beside each standard's card or as one grid -->
       <div class="pfas-pane" id="pane-standards">
         <div><!-- a wide grid: the full content width -->
-          <p class="pane-intro">One row per isotope standard the method uses: SUR for an extracted standard, IS for an injection standard.</p>
+          <p class="pane-intro">Each isotope standard the method uses: SUR for an extracted standard, IS for an injection standard.</p>
+          <!-- each surrogate names the internal standard it is linked to:
+               the tab's Save is refused while one has no Linked to -->
+          <div tal:replace="structure view/standards_link_warning"></div>
+          <!-- the standards in two views of the same fields: the list, SUR
+               then IS, each standard beside its card, or the grid; the grid
+               holds every posted field (a card's tile and the node's menu
+               write it through the row's drawer), hidden in the list view,
+               never disabled or moved. -->
+          <div class="pfas-pill-row">
+            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                 data-view-switch="standards" data-view-store="pfas_standards_view">
+              <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+              <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+            </div>
+          </div>
+          <div class="mp-std-view" data-view-of="standards" data-view="list">
+            <div tal:replace="structure view/standards_list_html"></div>
+          </div>
           <!-- Saved ON ITS OWN: every control posts to form#section-standards
                through the form= attribute, with each section's stamp. A
                standard is added (Add, above the grid) or removed (Remove,
                the ticked rows; a row's menu) by its own form. -->
-          <div tal:define="sheet view/standards_sheet">
+          <div class="mp-std-view" data-view-of="standards" data-view="table" hidden="hidden"
+               tal:define="sheet view/standards_sheet">
+            <!-- the rules this tab holds, above the grid: each rule's state
+                 and the criteria the Engine requires of the IS response
+                 windows, posting to form#section-standards (the list's
+                 group cards write them); the windows themselves are held in
+                 the grid's internal standard rows -->
+            <div class="mp-std-rules">
+              <h4 class="cf-grid-title">Rules</h4>
+              <tal:r define="sheet view/standards_rules_sheet">
+                <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
+              </tal:r>
+            </div>
             <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
           </div>
+          <!-- the tab's other settings, in the Table view alone: each group's
+               card in the list shows every one of their fields and edits it
+               through nameless copies (Edit settings) -->
+          <div class="mp-std-view" data-view-of="standards" data-view="table" hidden="hidden">
           <details class="pfas-sec" data-sec="sur">
             <summary><span class="pfas-sec-t">Surrogates</span><span class="pfas-sec-s" tal:content="python:view.section_summary('sur')"></span><tal:h define="hid python:view.section_help('sur')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b">
@@ -181,56 +246,96 @@
               </div>
             </div>
           </details>
-          <details class="pfas-sec" data-sec="engine_fallback">
-            <summary><span class="pfas-sec-t">Window the method text states</span><span class="pfas-sec-s" tal:content="python:view.section_summary('engine_fallback')"></span><tal:h define="hid python:view.section_help('engine_fallback')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
-            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('engine_fallback'); cf_form string:section-standards; cf_id string:engine_fallback">
-              <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
-            </div>
-          </details>
           <details class="pfas-sec" data-sec="surscope">
             <summary><span class="pfas-sec-t">Surrogate failure</span><span class="pfas-sec-s" tal:content="python:view.section_summary('surscope')"></span><tal:h define="hid python:view.section_help('surscope')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('surscope'); cf_form string:section-standards; cf_flat python:True; cf_sec python:True">
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
-          <details class="pfas-sec" data-sec="engine_notes_sur">
-            <summary><span class="pfas-sec-t">Flag notes</span><span class="pfas-sec-s" tal:content="python:view.section_summary('engine_notes_sur')"></span><tal:h define="hid python:view.section_help('engine_notes_sur')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
-            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('engine_notes_sur'); cf_form string:section-standards; cf_id string:engine_notes_sur">
-              <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          <details class="pfas-sec" data-sec="lrr">
+            <summary><span class="pfas-sec-t">How results are corrected</span><span class="pfas-sec-s" tal:content="python:view.section_summary('lrr')"></span><tal:h define="hid python:view.section_help('lrr')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
+            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('lrr'); cf_form string:section-standards; cf_flat python:True; cf_sec python:True">
+              <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
+          <details class="pfas-sec" data-sec="flags_std">
+            <summary><span class="pfas-sec-t">Flags</span><span class="pfas-sec-s" tal:content="python:view.section_summary('flags_std')"></span><tal:h define="hid python:view.section_help('flags_std')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
+            <div class="pfas-sec-b">
+              <div tal:define="cf_groups python:view.section_groups('flags_std'); cf_form string:section-standards; cf_id string:flags_std">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
+            </div>
+          </details>
+          </div>
         </div>
       </div><!-- /pane-standards -->
 
-      <!-- ── Tab: QC criteria: the rules, one row per rule with its one
-           state, each rule's limits in the region its row opens; then the
-           applied window grid as the recovery editor; then the batch size ─ -->
+      <!-- ── Tab: QC criteria: the rules in two views of the same fields.
+           List: the rule groups, each group's card holding its limits as
+           tiles. Table: one row per rule with its one state, each rule's
+           limits in the region its row opens, then the applied window grid
+           as the recovery editor and the worksheet size ─────────────────── -->
       <div class="pfas-pane" id="pane-qc">
         <div tal:define="eds view/rule_editors"><!-- a wide grid: the full content width -->
           <!-- Saved ON ITS OWN: every control posts to form#section-qc
                through the form= attribute, with each section's stamp. A
                closed region or section still holds, and posts, every field
                it draws. -->
-          <details class="pfas-sec" data-sec="rules">
+          <!-- the List | Table switch above the Rules section, as every tab
+               draws it, outside the fold; the section arrives open -->
+          <div class="pfas-pill-row">
+            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                 data-view-switch="rules" data-view-store="pfas_rules_view">
+              <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+              <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+            </div>
+          </div>
+          <details class="pfas-sec" data-sec="rules" open="open">
             <summary><span class="pfas-sec-t">Rules</span><span class="pfas-sec-s" tal:content="python:view.section_summary('rules')"></span><tal:h define="hid python:view.section_help('rules')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b">
-              <p class="pane-intro">One state per rule. A limit is on because it has a value; a blank cell is no limit.</p>
-              <!-- the two ways a state is drawn, each in its own style -->
-              <p class="pfas-legend"><span class="pfas-legend-state is-inherited">outlined</span>: the method&#8217;s default &#183; <span class="pfas-legend-state is-set">filled</span>: set on this method</p>
-              <div tal:define="sheet view/rules_table">
-                <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
+              <p class="pane-intro">Each limit has its own state. Right-click a limit to change it.</p>
+              <!-- the rules in two views of the same fields: the list, each
+                   rule beside its card and each QC type of Analyte
+                   recoveries opening into its tiers, or the table; the
+                   table holds every posted state (the card's segment writes
+                   it), hidden in the list view, never disabled or moved. -->
+              <!-- the two ways a state is drawn, true of the list's glyphs and
+                   the table's placards alike: the Enforced glyph outlined and
+                   filled (limit_placard.GLYPH_SVG_DEFAULT, GLYPH_SVG) -->
+              <p class="pfas-legend"><span class="pfas-legend-g is-inherited"><svg class="pfas-glyph" viewBox="0 0 16 16" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>outlined: the method&#8217;s default &#183; <span class="pfas-legend-g is-set"><svg class="pfas-glyph" viewBox="0 0 16 16" focusable="false" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="currentColor"/></svg></span>filled: set on this method</p>
+              <div class="mp-rules-view" data-view-of="rules" data-view="list">
+                <!-- a tier removed from its card: Undo until Save, as in the grid's bar -->
+                <div class="pfas-pill-row" data-qc-resets="data-qc-resets" hidden="hidden" aria-live="polite"></div>
+                <div tal:replace="structure view/rules_list_html"></div>
               </div>
-              <tal:ed repeat="ed eds">
-                <section class="mp-rule-editor" tal:condition="not:ed/sec"
-                         tal:attributes="id ed/id; hidden python:None if ed['open'] else 'hidden'">
-                  <metal:r use-macro="template/macros/qc-region" />
-                </section>
-              </tal:ed>
+              <!-- the Table view holds the rule table and the flags, each
+                   rule's region (its row's Edit opens it); after this
+                   section, in both views, the window grid's fold -->
+              <div class="mp-rules-view" data-view-of="rules" data-view="table" hidden="hidden"
+                   tal:define="sheet view/rules_table">
+                <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
+                <!-- each rule's flag (its card's Flag tile writes these) -->
+                <div tal:define="cf_groups python:view.section_groups('flags_qc'); cf_form string:section-qc; cf_id string:flags_qc">
+                  <div class="section-group-hdr">Flags</div>
+                  <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+                </div>
+                <tal:ed repeat="ed eds">
+                  <section class="mp-rule-editor" tal:condition="not:ed/sec"
+                           tal:attributes="id ed/id; hidden python:None if ed['open'] else 'hidden'">
+                    <metal:r use-macro="template/macros/qc-region" />
+                  </section>
+                </tal:ed>
+              </div>
             </div>
           </details>
+          <!-- under the Rules section, in both views: the regions drawn as
+               sections of their own (the window per analyte and matrix),
+               each in its fold; what in it is the Table view's (the tier,
+               group, cell and spike level collections) shows with the rule
+               table -->
           <tal:ed repeat="ed eds">
           <details class="pfas-sec" tal:condition="ed/sec" tal:attributes="id ed/id; data-sec ed/sec">
-            <summary><span class="pfas-sec-t" tal:content="ed/title">Analyte recoveries</span><span class="pfas-sec-s" tal:content="python:view.section_summary(ed['sec'])"></span><tal:h define="hid python:view.section_help(ed['sec'])"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
+            <summary><span class="pfas-sec-t" tal:content="ed/title">Window per analyte and matrix</span><span class="pfas-sec-s" tal:content="python:view.section_summary(ed['sec'])"></span><tal:h define="hid python:view.section_help(ed['sec'])"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b">
               <metal:r use-macro="template/macros/qc-region" />
             </div>
@@ -243,14 +348,28 @@
           <tal:defs condition="nothing">
           <metal:r define-macro="qc-region">
             <div class="section-group-hdr" tal:condition="python:ed['title'] and not ed['sec']" tal:content="ed/title">Calibration r&#178;</div>
+            <!-- the analyte recoveries: the analyte grid, the editor, on the
+                 QC type its segment shows; each type's tiers, beside their
+                 cards, are drawn under the type in the Rules list -->
             <tal:w condition="python:ed['id'] == 'qc-ed-windows'">
-              <p class="pane-intro">The window each analyte gets in each matrix, from the tiers below; click a cell to see the tier that sets it.</p>
               <div tal:replace="structure view/windows_controls"></div>
+              <!-- a tier removed on Save, from the grid or the Rules list: Undo until then -->
               <div class="pfas-pill-row" id="qc-resets" hidden="hidden" aria-live="polite"></div>
-              <div id="qc-windows" tal:define="sheet view/windows_sheet">
-                <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
-              </div>
             </tal:w>
+            <div class="mp-qc-view" tal:omit-tag="python:ed['id'] != 'qc-ed-windows'">
+            <tal:w condition="python:ed['id'] == 'qc-ed-windows'">
+              <p class="pane-intro">The window each analyte gets in each matrix, from the tiers; click a cell to see what sets it or to set it there.</p>
+              <tal:g replace="structure view/windows_box" />
+            </tal:w>
+            <!-- the window grid's own editors are the Table view's: its
+                 sheet tools and every collection the grid is drawn from -->
+            <div class="mp-rules-view" data-view-of="rules" data-view="table" hidden="hidden"
+                 tal:omit-tag="python:ed['id'] != 'qc-ed-windows'">
+            <div class="pfas-sheet-tools" tal:define="others view/copy_tier_methods"
+                 tal:condition="python:others and ed['id'] == 'qc-ed-windows'">
+              <button type="button" class="btn-sm btn-secondary" data-copy-tiers="tiers-copy"
+                      tal:attributes="data-methods others">Copy tiers from method</button>
+            </div>
             <tal:p repeat="part ed/parts">
               <tal:k condition="python:part['kind'] == 'section'">
                 <div tal:define="cf_groups python:view.section_part(part); cf_form string:section-qc; cf_flat python:True;
@@ -312,20 +431,9 @@
                           tal:condition="rec/any" tal:attributes="data-rec rec/json">Fill blank Low / Mid / High</button>
                 </div>
               </tal:k>
-              <tal:k condition="python:part['kind'] == 'required'">
-                <div class="mp-required field-row field-row-wide" tal:define="req python:view.required_rows(part['group'])"
-                     tal:condition="req">
-                  <span class="pfas-label">Required</span>
-                  <input type="hidden" value="1" form="section-qc" tal:attributes="name python:'required_present.' + part['group']" />
-                  <div class="pfas-pill-row">
-                    <label class="cb-label pfas-switch" tal:repeat="r req">
-                      <input type="checkbox" value="1" form="section-qc"
-                             tal:attributes="name python:'required.%s.%s' % (part['group'], r['key']); checked python:'checked' if r['on'] else None" />
-                      <span class="pfas-switch-track"></span><span tal:content="r/label">R&#178; Minimum</span></label>
-                  </div>
-                </div>
-              </tal:k>
             </tal:p>
+            </div>
+            </div>
           </metal:r>
           </tal:defs>
         </div>
@@ -336,21 +444,46 @@
            matrix shares in its heading row ───────────────────────────── -->
       <div class="pfas-pane" id="pane-matrices">
         <div><!-- a wide grid: the full content width -->
-          <p class="pane-intro">One row per matrix; the heading row holds the ranges every matrix shares.</p>
+          <p class="pane-intro">All matrices holds the ranges every matrix shares; each matrix holds its own values.</p>
+          <div class="alert alert-warn" tal:define="sc view/storage_conflicts" tal:condition="sc">
+            Storage ranges that clash:
+            <ul><li tal:repeat="w sc" tal:content="w">unit</li></ul></div>
+          <!-- the matrices in two views of the same fields: the list, All
+               matrices beside each matrix's card, or the grid; the grid
+               holds every posted field (a card's tile and the node's menu
+               write it through the row's drawer), hidden in the list view,
+               never disabled or moved. -->
+          <div class="pfas-pill-row">
+            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                 data-view-switch="matrices" data-view-store="pfas_matrices_view">
+              <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+              <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+            </div>
+          </div>
+          <div class="mp-mtx-view" data-view-of="matrices" data-view="list">
+            <div tal:replace="structure view/matrices_list_html"></div>
+          </div>
           <!-- Saved ON ITS OWN: every control posts to form#section-matrices
                through the form= attribute, with each section's stamp. A
                matrix joins from Add (above the grid, posted with the grid)
-               and leaves by Remove (the ticked rows, form#matrices-remove). -->
-          <div tal:define="sheet view/matrices_sheet">
+               and leaves by Remove (the ticked rows, or a row's menu:
+               form#matrices-remove). -->
+          <div class="mp-mtx-view" data-view-of="matrices" data-view="table" hidden="hidden"
+               tal:define="sheet view/matrices_sheet">
             <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
+            <p class="pfas-legend"><span class="pfas-legend-val">&#8212;</span> none: not judged</p>
           </div>
-          <p class="pfas-legend"><span class="pfas-legend-val">&#8212;</span> no holding time</p>
+          <!-- Sample correction, in the Table view alone: the list's
+               Correction group (Sample basis, Method blank) shows and edits
+               every one of its fields through nameless copies -->
+          <div class="mp-mtx-view" data-view-of="matrices" data-view="table" hidden="hidden">
           <details class="pfas-sec" data-sec="scorr">
             <summary><span class="pfas-sec-t">Sample correction</span><span class="pfas-sec-s" tal:content="python:view.section_summary('scorr')"></span><tal:h define="hid python:view.section_help('scorr')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('scorr'); cf_form string:section-matrices; cf_flat python:True; cf_sec python:True">
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
+          </div>
         </div>
       </div><!-- /pane-matrices -->
 
@@ -360,6 +493,22 @@
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
       <div class="pfas-pane" id="pane-run">
         <div class="page-body">
+      <!-- the tab in two views of the same fields: the list, Run,
+           Extraction, Channels and Reporting each row beside its card; or
+           the folds, which hold every posted
+           field (a card's copies write them), hidden in the list view, never
+           disabled or moved. -->
+      <div class="pfas-pill-row">
+        <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+             data-view-switch="run" data-view-store="pfas_run_view">
+          <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+          <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+        </div>
+      </div>
+      <div class="mp-run-view" data-view-of="run" data-view="list">
+        <div tal:replace="structure view/run_list_html"></div>
+      </div>
+      <div class="mp-run-view" data-view-of="run" data-view="table" hidden="hidden">
       <!-- ── Run template (per-method, editable) ───────────────────────── -->
       <tal:tpl tal:define="rte view/run_template_editor;
                            tpl python:rte and rte['tpl'];
@@ -377,28 +526,31 @@
                  tal:attributes="value python:u','.join(c['code'] for c in tpl['sequence_labelled'])"/>
           <input type="hidden" name="bracket_qc" form="section-run" tal:attributes="value python:tpl.get('bracket_qc')"/>
 
-          <div class="pfas-field is-spaced">
+          <div class="pfas-form-field is-spaced">
             <!-- each step's run-order number and the injection positions it
                  takes; numbers follow a drag -->
-            <table class="pfas-table rb-seq" data-col-resize="method-profile-edit-rb-seq">
+            <table class="pfas-table rb-seq" data-col-resize="method-profile-edit-rb-seq" tal:define="rm context/@@pfas-row-menu; ti context/@@pfas-type-icons">
               <thead><tr><th class="rb-grip-col"><span class="pfas-sr-hide">Move</span></th><th>#</th><th>Step</th><th>Code</th>
-                <th>Injections</th><th class="rb-del-col"><span class="pfas-sr-hide">Remove</span></th></tr></thead>
+                <th>Injections</th></tr></thead>
               <tbody id="seq-chips" tal:attributes="data-levels tpl/n_levels">
+                <!-- a removable step's menu: Remove step (seq-remove, below) -->
                 <tr tal:repeat="c tpl/sequence_labelled"
                     tal:attributes="data-code c/code; data-kind c/kind; data-n c/injections;
-                                    class python:'pfas-seqrow ' + c['kind']">
+                                    class python:'pfas-seqrow ' + c['kind'];
+                                    data-row-actions python:rm.actions(
+                                        (u'Remove step', 'event', 'seq-remove', {'danger': True}) if c['removable'] else None)">
                   <td><span class="grip" title="Drag to reorder" aria-hidden="true"></span></td>
                   <td class="rb-n">1</td>
-                  <td class="lbl" tal:content="c/label">Method Blank</td>
+                  <!-- the step's type icon beside its words; the scripts read the words (.lbl) -->
+                  <td class="rb-step"><span class="pfas-type-cell"><tal:i replace="structure python:ti.svg('Sample' if c['kind'] == 'samples' else c['code'], hidden=True)"/><span class="lbl" tal:content="c/label">Method Blank</span></span></td>
                   <td class="code" tal:content="python:c['code'] if c['code'] != 'SAMPLES' else u''">MB</td>
                   <td class="rb-pos">1</td>
-                  <td><button type="button" class="del btn-sm btn-secondary" title="Remove"
-                              tal:condition="c/removable">&times;</button></td>
                 </tr>
               </tbody>
             </table>
             <div class="pfas-seq-add">
               <!-- choosing what to add changes nothing until it is added -->
+              <label for="seq-add">Add to the run</label>
               <select id="seq-add" form="pfas-no-form">
                 <option value="">&mdash; add QC / calibrators &mdash;</option>
                 <option tal:repeat="v vocab" tal:attributes="value v/code"
@@ -447,13 +599,20 @@
           g.className = "grip"; g.title = "Drag to reorder";
           cell(row).appendChild(g);
           cell(row, "rb-n", "");
-          cell(row, "lbl", label);
+          /* the step's type icon beside its words, as the drawn rows have it */
+          var step = cell(row, "rb-step"), typed = document.createElement("span"), words = document.createElement("span");
+          var T = ((window.PFAS || {}).components || {}).type;
+          typed.className = "pfas-type-cell";
+          var icon = T ? T.icon(kind === "samples" ? "Sample" : code, null, false, true) : "";
+          if (icon) { typed.insertAdjacentHTML("afterbegin", icon); }
+          words.className = "lbl";
+          words.textContent = label;
+          typed.appendChild(words);
+          step.appendChild(typed);
           cell(row, "code", code);
           cell(row, "rb-pos", "");
-          var d = document.createElement("button");
-          d.type = "button"; d.className = "del btn-sm btn-secondary"; d.title = "Remove";
-          d.textContent = "\u00d7";
-          cell(row).appendChild(d);
+          /* its menu: Remove step, as the drawn rows have it */
+          row.setAttribute("data-row-actions", JSON.stringify([{ label: "Remove step", event: "seq-remove", danger: true }]));
           return row;
         }
         /* run-order numbers and the injection positions each step takes */
@@ -489,24 +648,26 @@
                            .replace(/\s*\([^)]*\)\s*$/, "");
             var kind = (sel.value === "CAL") ? "cal" : "qc";
             var n = (sel.value === "CAL") ? parseInt(list.getAttribute("data-levels") || "0", 10) : 1;
-            list.appendChild(makeRow(sel.value, label, kind, n));
+            var added = makeRow(sel.value, label, kind, n);
+            list.appendChild(added);
+            var C = (window.PFAS || {}).components || {};
+            if (C.rows) { C.rows.init(added); }
             renumber();
             edited();
           });
         }
-        // delete
-        list.addEventListener("click", function (e) {
-          var b = e.target.closest ? e.target.closest("button.del") : null;
-          if (!b) return;
-          var row = b.closest("tr");
-          if (row.getAttribute("data-kind") === "samples") return;
-          row.closest("tr").remove();
+        // remove: a step's menu (Remove step); never the samples, never a read-only template
+        list.addEventListener("pfas:row-action", function (e) {
+          var row = e.detail ? e.detail.row : null;
+          if (!row || e.detail.name !== "seq-remove") return;
+          if (row.getAttribute("data-kind") === "samples" || list.closest(".is-readonly")) return;
+          row.remove();
           renumber();
           edited();
         });
         // drag reorder: SortableJS (mouse and touch); read-only templates stay put
         Sortable.create(list, {
-          draggable: ".pfas-seqrow", handle: ".grip", filter: "button.del", preventOnFilter: false,
+          draggable: ".pfas-seqrow", handle: ".grip",
           animation: 150, ghostClass: "dragging",
           disabled: !!list.closest(".is-readonly"),
           onEnd: function () { renumber(); edited(); }
@@ -514,6 +675,10 @@
         renumber();
         serialize();
         form.addEventListener("submit", serialize);
+        /* the List view's Run template card reorders these rows itself,
+           then says so here: renumbered, serialised, an unsaved change */
+        window.PFAS = window.PFAS || {};
+        window.PFAS.runTemplate = { moved: function () { renumber(); edited(); } };
       });
       </script>
 
@@ -521,6 +686,20 @@
           <details class="pfas-sec" data-sec="qc_comp">
             <summary><span class="pfas-sec-t">QC composition</span><span class="pfas-sec-s" tal:content="python:view.section_summary('qc_comp')"></span><tal:h define="hid python:view.section_help('qc_comp')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('qc_comp'); cf_form string:section-run; cf_flat python:True; cf_sec python:True">
+              <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+            </div>
+          </details>
+          <!-- what shapes a run: the worksheet size, the run rules and the
+               new calibration curve, saved with this tab -->
+          <details class="pfas-sec" data-sec="xbatch">
+            <summary><span class="pfas-sec-t">Worksheet size</span><span class="pfas-sec-s" tal:content="python:view.section_summary('xbatch')"></span><tal:h define="hid python:view.section_help('xbatch')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
+            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('xbatch'); cf_form string:section-run; cf_flat python:True; cf_sec python:True">
+              <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+            </div>
+          </details>
+          <details class="pfas-sec" data-sec="run_rules">
+            <summary><span class="pfas-sec-t">Run rules</span><span class="pfas-sec-s" tal:content="python:view.section_summary('run_rules')"></span><tal:h define="hid python:view.section_help('run_rules')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
+            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('run_rules'); cf_form string:section-run; cf_flat python:True">
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
@@ -533,16 +712,15 @@
           <details class="pfas-sec" data-sec="stages">
             <summary><span class="pfas-sec-t">Extraction stages</span><span class="pfas-sec-s" tal:content="python:view.section_summary('stages')"></span><tal:h define="hid python:view.section_help('stages')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b" tal:define="stages_json view/extraction_stages_json">
-              <p class="pane-intro">Each batch&#8217;s Guided Extraction follows these stages; drag a stage to reorder.</p>
+              <p class="pane-intro">Each worksheet&#8217;s guided extraction follows these stages; drag a stage to reorder.</p>
               <!-- one row per stage, drawn by method_profile_edit.js from the
-                   list below; Edit opens the stage's drawer -->
+                   list below; the row (or Edit, its menu) opens the stage's drawer -->
               <table class="pfas-table pfas-cf mp-stages" data-sheet="stages">
                 <thead><tr><th class="mp-stage-order">Order</th><th>Stage</th><th>Records per sample</th>
-                  <th>Creates solution</th><th>Pedigree</th>
-                  <th class="mp-stage-act"><span class="pfas-sr-hide">Edit</span></th></tr></thead>
+                  <th>Creates solution</th><th>Pedigree</th></tr></thead>
                 <tbody id="stage-list">
                   <tr class="pfas-empty-row" tal:attributes="hidden python:'hidden' if stages_json.strip() != '[]' else None">
-                    <td colspan="6">No stages yet. Add the first stage.</td></tr>
+                    <td colspan="5">No stages yet. Add the first stage.</td></tr>
                 </tbody>
               </table>
               <p class="pfas-legend"><span class="pfas-legend-val">&#8212;</span> nothing recorded per sample</p>
@@ -562,6 +740,10 @@
             <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('dil'); cf_form string:section-run; cf_flat python:True; cf_sec python:True">
               <p class="pane-intro">How an over-range sample may be diluted. A project can override these in Project Specs.</p>
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+              <!-- the state of each limit box this tab holds (the lowest EIS
+                   recovery's): its card's placard writes it -->
+              <input type="hidden" form="section-run" data-kind="rule" tal:repeat="h view/run_limit_states"
+                     tal:attributes="name python:h[0]; value python:h[1]" />
             </div>
           </details>
           <details class="pfas-sec" data-sec="solv_spe">
@@ -570,30 +752,50 @@
               <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
             </div>
           </details>
+          <!-- Reporting: each row of the list opens its card; these folds,
+               which hold every posted field, are the Table view's -->
           <details class="pfas-sec" data-sec="intg">
             <summary><span class="pfas-sec-t">Integration</span><span class="pfas-sec-s" tal:content="python:view.section_summary('intg')"></span><tal:h define="hid python:view.section_help('intg')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b">
               <!-- Results come from, then what applies to the raw-data choices
                    only: hidden for Instrument software, never disabled, so a
-                   save posts them unchanged -->
+                   save posts them unchanged. Those in two views of the same
+                   fields: the list, the method defaults the parent and each
+                   compound that sets its own a child, with every compound's
+                   transitions; or today's form and table, which hold every
+                   posted field (the list's Edit writes them), hidden in the
+                   list view, never disabled or moved -->
               <div tal:define="cf_groups python:view.section_groups('intg'); cf_form string:section-run;
                                intg_head python:cf_groups[:1]; intg_rest python:cf_groups[1:]">
                 <div tal:define="cf_groups intg_head; cf_flat python:True">
                   <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
                 </div>
-                <div data-show-if="f__mode" data-show-values="validation lims" tal:define="cf_groups intg_rest; cf_flat python:True">
-                  <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+                <div data-show-if="f__mode" data-show-values="validation lims">
+                  <div class="pfas-pill-row">
+                    <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                         data-view-switch="integration" data-view-store="pfas_integration_view">
+                      <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+                      <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+                    </div>
+                  </div>
+                  <div class="mp-intg-view" data-view-of="integration" data-view="list">
+                    <div tal:replace="structure view/integration_list_html"></div>
+                  </div>
+                  <div class="mp-intg-view" data-view-of="integration" data-view="table" hidden="hidden">
+                    <div tal:define="cf_groups intg_rest; cf_flat python:True">
+                      <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+                    </div>
+                    <div tal:define="cf_groups python:view.section_groups('intg_an'); cf_form string:section-run; cf_id string:intg_an">
+                      <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div data-show-if="f__mode" data-show-values="validation lims"
-                   tal:define="cf_groups python:view.section_groups('intg_an'); cf_form string:section-run; cf_id string:intg_an">
-                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
               </div>
               <div class="section-group-hdr">Change log</div>
               <p class="pane-intro">Every change to where results come from, the method defaults or a compound&#8217;s smoothing, area or S/N, with who and when.</p>
               <table class="pfas-table pfas-log" data-col-resize="method-profile-edit-pfas-log" tal:define="log view/integration_log">
                 <thead>
-                  <tr><th>When<tal:z condition="not:view/zone_active"> (UTC)</tal:z></th><th>Who</th><th>Setting</th><th>From</th><th>To</th></tr>
+                  <tr><th>When</th><th>Who</th><th>Setting</th><th>From</th><th>To</th></tr>
                 </thead>
                 <tbody>
                   <tr tal:repeat="r log">
@@ -611,20 +813,42 @@
           <details class="pfas-sec" data-sec="rf">
             <summary><span class="pfas-sec-t">Certificate format</span><span class="pfas-sec-s" tal:content="python:view.section_summary('rf')"></span><tal:h define="hid python:view.section_help('rf')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('rf'); cf_form string:section-run; cf_id string:rf">
-              <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              <!-- the settings in two views of the same fields: the list, All
+                   matrices beside each matrix's card (what it sets for
+                   itself), or the table, which holds every posted field
+                   (a card's Edit writes it), hidden in the list view, never
+                   disabled or moved -->
+              <div class="pfas-pill-row">
+                <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                     data-view-switch="report-format" data-view-store="pfas_report_format_view">
+                  <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+                  <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+                </div>
+              </div>
+              <div class="mp-rf-view" data-view-of="report-format" data-view="list">
+                <div tal:replace="structure view/report_format_list_html"></div>
+              </div>
+              <div class="mp-rf-view" data-view-of="report-format" data-view="table" hidden="hidden">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
             </div>
           </details>
           <details class="pfas-sec" data-sec="al">
             <summary><span class="pfas-sec-t">Action levels &amp; MCLs</span><span class="pfas-sec-s" tal:content="python:view.section_summary('al')"></span><tal:h define="hid python:view.section_help('al')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('al'); cf_form string:section-run; cf_id string:al">
               <p class="pane-intro">
-                The limits naming this method&#8217;s matrices; set one to <em>Not evaluated</em> to leave it off this method&#8217;s certificates.
+                The limits naming this method&#8217;s matrices. Right-click one and choose Off to leave it off its certificates.
                 <a class="btn-sm btn-secondary"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Open Regulatory Limits</a>
+                   tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Go to Regulatory Limits</a>
               </p>
-              <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              <!-- the table, a row per limit and matrix, holding every
+                   posted state -->
+              <div class="mp-al-full">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
             </div>
           </details>
+      </div><!-- /the Table view -->
         </div>
       </div><!-- /pane-run -->
 
@@ -632,6 +856,21 @@
            own (form#section-engine) -->
       <div class="pfas-pane" id="pane-engine">
         <div><!-- the one frame every tab shares -->
+          <!-- the tab in two views of the same fields: the list, a node and
+               a card per group (Names, Matrices, Results, Studies), or the
+               folds, which hold every posted field (a card's copies write
+               them), hidden in the list view, never disabled or moved -->
+          <div class="pfas-pill-row">
+            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="View" data-quiet="data-quiet"
+                 data-view-switch="engine" data-view-store="pfas_engine_view">
+              <button type="button" class="pfas-seg-item" data-value="list" aria-pressed="true">List</button>
+              <button type="button" class="pfas-seg-item" data-value="table" aria-pressed="false">Table</button>
+            </div>
+          </div>
+          <div class="mp-eng-view" data-view-of="engine" data-view="list">
+            <div tal:replace="structure view/engine_list_html"></div>
+          </div>
+          <div class="mp-eng-view" data-view-of="engine" data-view="table" hidden="hidden">
           <details class="pfas-sec" data-sec="names">
             <summary><span class="pfas-sec-t">Method &amp; names</span><span class="pfas-sec-s" tal:content="python:view.section_summary('names')"></span><tal:h define="hid python:view.section_help('names')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
             <div class="pfas-sec-b">
@@ -665,9 +904,11 @@
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
-          <details class="pfas-sec" data-sec="engine">
-            <summary><span class="pfas-sec-t">Calibration</span><span class="pfas-sec-s" tal:content="python:view.section_summary('engine')"></span><tal:h define="hid python:view.section_help('engine')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
-            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('engine'); cf_form string:section-engine; cf_flat python:True; cf_sec python:True">
+          <!-- the labelled compounds' fit is on Isotope standards, with the
+               surrogates' settings (section engine_sur) -->
+          <details class="pfas-sec" data-sec="engine_rec">
+            <summary><span class="pfas-sec-t">Recoveries</span><span class="pfas-sec-s" tal:content="python:view.section_summary('engine_rec')"></span><tal:h define="hid python:view.section_help('engine_rec')"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
+            <div class="pfas-sec-b" tal:define="cf_groups python:view.section_groups('engine_rec'); cf_form string:section-engine; cf_flat python:True; cf_sec python:True">
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
@@ -677,6 +918,7 @@
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </details>
+          </div>
         </div>
       </div><!-- /pane-engine -->
     </form>
@@ -685,7 +927,7 @@
     <form id="section-analytes" method="POST" class="pfas-section-form"
           data-tab-label="Analytes"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="ami,iso,rl,salt,sur" />
+      <input type="hidden" name="_section" value="ami,iso,rl,salt,sur,dilrec" />
       <input type="hidden" name="_pane" value="pane-analytes" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__ami" tal:attributes="value python:view.section_stamp('ami')" />
@@ -693,6 +935,7 @@
       <input type="hidden" name="section_stamp__rl" tal:attributes="value python:view.section_stamp('rl')" />
       <input type="hidden" name="section_stamp__salt" tal:attributes="value python:view.section_stamp('salt')" />
       <input type="hidden" name="section_stamp__sur" tal:attributes="value python:view.section_stamp('sur')" />
+      <input type="hidden" name="section_stamp__dilrec" tal:attributes="value python:view.section_stamp('dilrec')" />
     </form>
     <!-- Confirmed (the Analytes tab's banner): the Engine flag's one field,
          posted off through its own section, so a save of the grid never
@@ -706,7 +949,7 @@
       <input type="hidden" name="section_stamp__engine_ami" tal:attributes="value python:view.section_stamp('engine_ami')" />
       <input type="hidden" name="f__inclusion_needs_verification" value="" />
     </form>
-    <!-- Verify again (beside the confirmed note): the same field posted on,
+    <!-- Confirm again (beside the confirmed note): the same field posted on,
          so the banner returns and the history records who and when -->
     <form id="analytes-verify" method="POST" data-unsaved-skip="data-unsaved-skip"
           data-tab-label="Analytes"
@@ -720,16 +963,19 @@
     <form id="section-standards" method="POST" class="pfas-section-form"
           data-tab-label="Isotope standards"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="ls,eis_grid,cal_sur,engine_sur,engine_fallback,surscope,engine_notes_sur" />
+      <input type="hidden" name="_section" value="ls,cmp,eis_grid,cal_sur,engine_sur,surscope,cal_is,lrr,flags_std,salt_std" />
       <input type="hidden" name="_pane" value="pane-standards" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__ls" tal:attributes="value python:view.section_stamp('ls')" />
+      <input type="hidden" name="section_stamp__cmp" tal:attributes="value python:view.section_stamp('cmp')" />
+      <input type="hidden" name="section_stamp__cal_is" tal:attributes="value python:view.section_stamp('cal_is')" />
       <input type="hidden" name="section_stamp__eis_grid" tal:attributes="value python:view.section_stamp('eis_grid')" />
       <input type="hidden" name="section_stamp__cal_sur" tal:attributes="value python:view.section_stamp('cal_sur')" />
       <input type="hidden" name="section_stamp__engine_sur" tal:attributes="value python:view.section_stamp('engine_sur')" />
-      <input type="hidden" name="section_stamp__engine_fallback" tal:attributes="value python:view.section_stamp('engine_fallback')" />
       <input type="hidden" name="section_stamp__surscope" tal:attributes="value python:view.section_stamp('surscope')" />
-      <input type="hidden" name="section_stamp__engine_notes_sur" tal:attributes="value python:view.section_stamp('engine_notes_sur')" />
+      <input type="hidden" name="section_stamp__flags_std" tal:attributes="value python:view.section_stamp('flags_std')" />
+      <input type="hidden" name="section_stamp__lrr" tal:attributes="value python:view.section_stamp('lrr')" />
+      <input type="hidden" name="section_stamp__salt_std" tal:attributes="value python:view.section_stamp('salt_std')" />
     </form>
     <!-- A standard joins or leaves the method by its own action: the
          server refuses to remove one that still quantifies a native. -->
@@ -747,6 +993,8 @@
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__ls" tal:attributes="value python:view.section_stamp('ls')" />
     </form>
+    <!-- what every rule card's Flag tile offers in its window -->
+    <script type="application/json" id="pfas-flag-choices" tal:content="structure view/flag_choices_json">{}</script>
     <form id="section-qc" method="POST" class="pfas-section-form"
           data-tab-label="QC criteria"
           tal:attributes="action string:@@pfas-method-profile-edit">
@@ -761,12 +1009,13 @@
     <form id="section-matrices" method="POST" class="pfas-section-form"
           data-tab-label="Matrices"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="mtx,rtemp,hold,mf,nom,scorr" />
+      <input type="hidden" name="_section" value="mtx,rtemp,hold,mxtemp,mf,nom,scorr" />
       <input type="hidden" name="_pane" value="pane-matrices" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__mtx" tal:attributes="value python:view.section_stamp('mtx')" />
       <input type="hidden" name="section_stamp__rtemp" tal:attributes="value python:view.section_stamp('rtemp')" />
       <input type="hidden" name="section_stamp__hold" tal:attributes="value python:view.section_stamp('hold')" />
+      <input type="hidden" name="section_stamp__mxtemp" tal:attributes="value python:view.section_stamp('mxtemp')" />
       <input type="hidden" name="section_stamp__mf" tal:attributes="value python:view.section_stamp('mf')" />
       <input type="hidden" name="section_stamp__nom" tal:attributes="value python:view.section_stamp('nom')" />
       <input type="hidden" name="section_stamp__scorr" tal:attributes="value python:view.section_stamp('scorr')" />
@@ -780,13 +1029,25 @@
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__mtx" tal:attributes="value python:view.section_stamp('mtx')" />
     </form>
+    <!-- Copy tiers from method: the differences are listed first; Replace
+         posts this form with the method chosen -->
+    <form id="tiers-copy" method="POST" data-unsaved-skip="data-unsaved-skip"
+          data-tab-label="QC criteria"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="action" value="copy_tiers" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="source" value="" />
+      <input type="hidden" tal:repeat="st view/tier_stamps" tal:attributes="name python:st[0]; value python:st[1]" />
+    </form>
     <form id="section-run" method="POST" class="pfas-section-form"
           data-tab-label="Run &amp; reporting"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="qc_comp,solv,solv_spe,lbl,dil,intg,intg_an,rf,al" />
+      <input type="hidden" name="_section" value="qc_comp,xbatch,run_rules,solv,solv_spe,lbl,dil,intg,intg_an,rf,al" />
       <input type="hidden" name="_pane" value="pane-run" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__qc_comp" tal:attributes="value python:view.section_stamp('qc_comp')" />
+      <input type="hidden" name="section_stamp__xbatch" tal:attributes="value python:view.section_stamp('xbatch')" />
+      <input type="hidden" name="section_stamp__run_rules" tal:attributes="value python:view.section_stamp('run_rules')" />
       <input type="hidden" name="section_stamp__solv" tal:attributes="value python:view.section_stamp('solv')" />
       <input type="hidden" name="section_stamp__solv_spe" tal:attributes="value python:view.section_stamp('solv_spe')" />
       <input type="hidden" name="section_stamp__lbl" tal:attributes="value python:view.section_stamp('lbl')" />
@@ -799,13 +1060,14 @@
     <form id="section-engine" method="POST" class="pfas-section-form"
           data-tab-label="Engine"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="engine,engine_names,engine_mcodes,qcnames,engine_studies" />
+      <input type="hidden" name="_section" value="engine,engine_names,engine_mcodes,qcnames,engine_rec,engine_studies" />
       <input type="hidden" name="_pane" value="pane-engine" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__engine" tal:attributes="value python:view.section_stamp('engine')" />
       <input type="hidden" name="section_stamp__engine_names" tal:attributes="value python:view.section_stamp('engine_names')" />
       <input type="hidden" name="section_stamp__engine_mcodes" tal:attributes="value python:view.section_stamp('engine_mcodes')" />
       <input type="hidden" name="section_stamp__qcnames" tal:attributes="value python:view.section_stamp('qcnames')" />
+      <input type="hidden" name="section_stamp__engine_rec" tal:attributes="value python:view.section_stamp('engine_rec')" />
       <input type="hidden" name="section_stamp__engine_studies" tal:attributes="value python:view.section_stamp('engine_studies')" />
     </form>
 
@@ -825,17 +1087,16 @@
         }
         if (window.pfasUnsavedNote) window.pfasUnsavedNote();
       }
-      document.addEventListener('pfas:seg', function (e) { retarget(e.detail.item); });
+      /* only the tab strip's own items retarget Save: a segment in a dialog
+         or a card says pfas:seg too, and switches no tab */
+      document.addEventListener('pfas:seg', function (e) {
+        var item = e.detail && e.detail.item;
+        if (item && item.closest && item.closest('#method-profile-tabs')) { retarget(item); }
+      });
       /* The pinned action bar is drawn AFTER this script, so the Save button
          does not exist yet on a deep link: retarget once the page is parsed. */
       document.addEventListener('DOMContentLoaded', function () {
         retarget(document.querySelector('#method-profile-tabs [aria-selected="true"]'));
-      });
-      /* a button that opens another tab: data-goto names the pane */
-      document.addEventListener('click', function (e) {
-        var g = e.target.closest ? e.target.closest('[data-goto]') : null;
-        var t = g ? document.querySelector('#method-profile-tabs [data-pane="' + g.getAttribute('data-goto') + '"]') : null;
-        if (t) { e.preventDefault(); t.click(); }
       });
 
       /* Unsaved changes on a form the Save button does not submit are lost on
@@ -844,7 +1105,9 @@
          footer with what changed, counted by kind ("2 cells, 1 tier", each
          control's data-kind; a row's fields are one row). A control counts
          while it differs from the value the page was drawn with: typed back,
-         or a choice pressed away and back, it is no change. Save is greyed
+         or a choice pressed away and back, it is no change. A value Save
+         stores differently from how it was drawn (data-saves-as: a stored RL
+         rounded as it prints) counts from the start. Save is greyed
          while the tab shown has nothing to save, and Cancel reads Discard
          while anything is unsaved. The first submit that would drop another
          form's changes is refused (a second click saves anyway and discards
@@ -854,9 +1117,12 @@
         var changed = {};
         var warned = false;
         /* the order a note lists the kinds in (config_forms.CHANGE_KINDS) */
-        var KINDS = ['cell', 'flag', 'tier', 'level', 'row', 'rule', 'setting', 'standard', 'matrix', 'label'];
-        /* kinds counted once per row, whichever of its fields changed */
-        var BY_ROW = { tier: 1, level: 1, row: 1, rule: 1, standard: 1, matrix: 1, label: 1 };
+        var KINDS = ['cell', 'cell setting', 'flag', 'tier', 'level', 'row', 'rule', 'setting', 'standard', 'matrix', 'label',
+                     'composite'];
+        /* kinds counted once per row, whichever of its fields changed (a cell
+           setting is a row of the Set on one cell list, not a grid cell) */
+        var BY_ROW = { 'cell setting': 1, tier: 1, level: 1, row: 1, rule: 1, standard: 1, matrix: 1, label: 1,
+                       composite: 1 };
         /* the value each control was drawn with: a box's tick, a list's
            drawn option, a field's value; a hidden field (what a segment
            writes, a serialised list) keeps no default of its own, so its
@@ -885,6 +1151,9 @@
           if (boxed(el)) return el.checked ? 'on' : '';
           return el.value === undefined ? '' : String(el.value);
         }
+        function pending(el) {
+          return el.hasAttribute ? el.hasAttribute('data-saves-as') : false;
+        }
         /* the form a control saves with: its own when it is a tab's; a
            control drawn in a pane with no form of its own saves with its
            tab's; one naming another form (a
@@ -903,17 +1172,24 @@
           return KINDS.indexOf(k) === -1 ? 'setting' : k;
         }
         /* the controls of one counted unit: the control, or the row's
-           controls of the same kind */
+           controls of the same kind; a unit drawn in no row (a composite
+           standard's hidden inputs) is the controls sharing its data-unit */
         function members(unit, kind) {
+          if (typeof unit === 'string') {
+            return Array.prototype.filter.call(document.querySelectorAll('[data-unit]'), function (c) {
+              return c.getAttribute('data-unit') === unit && kindOf(c) === kind;
+            });
+          }
           if (unit.tagName !== 'TR') return [unit];
           return Array.prototype.filter.call(unit.querySelectorAll('input[name], select[name], textarea[name]'),
                                              function (c) { return kindOf(c) === kind; });
         }
         function record(id, el) {
           var kind = kindOf(el);
-          var row = BY_ROW[kind] ? (el.closest ? el.closest('tr') : null) : null;
+          var row = BY_ROW[kind] ? ((el.closest ? el.closest('tr') : null) ||
+                                    (el.getAttribute ? el.getAttribute('data-unit') : null)) : null;
           var unit = row || el;
-          var differs = members(unit, kind).some(function (c) { return current(c) !== initial(c); });
+          var differs = members(unit, kind).some(function (c) { return current(c) !== initial(c) || pending(c); });
           var list = (changed[id] || []).filter(function (c) { return c.unit !== unit; });
           if (differs) list.push({ kind: kind, unit: unit });
           changed[id] = list;
@@ -973,13 +1249,56 @@
             return label(id) + ': ' + what(id);
           }).join(' \u00b7 in ') : 'No unsaved changes';
           if (note.classList) note.classList.toggle('is-dirty', ids.length !== 0);
+          roll(note, ids);
         };
+        /* the same words, each count its own box: a count that changed
+           rolls in, up or down, as a stepper's value does (.pfas-roll) */
+        var shown = {};
+        function roll(note, ids) {
+          var now = {}, was = shown;
+          ids.forEach(function (id) {
+            KINDS.forEach(function (k) {
+              var n = (changed[id] || []).filter(function (c) { return c.kind === k; }).length;
+              if (n) now[id + '|' + k] = n;
+            });
+          });
+          shown = now;
+          var d = note.ownerDocument;
+          if (!ids.length || note.nodeType !== 1 || !d || !d.createTextNode) return;
+          note.textContent = 'Unsaved changes in ';
+          ids.forEach(function (id, i) {
+            note.appendChild(d.createTextNode((i ? ' \u00b7 in ' : '') + label(id) + ': '));
+            KINDS.filter(function (k) { return now[id + '|' + k]; }).forEach(function (k, j) {
+              var key = id + '|' + k, n = now[key], b = d.createElement('span');
+              b.className = 'pfas-roll' + (n === was[key] ? '' : (n > (was[key] || 0) ? ' is-up' : ' is-down'));
+              b.textContent = String(n);
+              if (j) note.appendChild(d.createTextNode(', '));
+              note.appendChild(b);
+              note.appendChild(d.createTextNode(counted(n, k).slice(String(n).length)));
+            });
+          });
+        }
+        /* the values Save rounds, counted as the page is drawn */
+        function rounded() {
+          if (!document.querySelectorAll) return;
+          Array.prototype.forEach.call(document.querySelectorAll('input[data-saves-as]'), function (el) {
+            var f = owner(el);
+            if (f && f.id) record(f.id, el);
+          });
+          window.pfasUnsavedNote();
+        }
+        document.addEventListener('DOMContentLoaded', rounded);
         document.addEventListener('input', track, true);
         document.addEventListener('change', track, true);
         function track(e) {
           var f = owner(e.target);
           if (!f || !f.id || isAction(f)) return;
           record(f.id, e.target);
+          /* a value typed over one Save rounds: its "Saves as" hint no longer applies */
+          var hint = pending(e.target) ? e.target.nextElementSibling : null;
+          if (hint && hint.classList && hint.classList.contains('pfas-hint')) {
+            hint.hidden = current(e.target) !== initial(e.target);
+          }
           warned = false;
           window.pfasUnsavedNote();
         }
@@ -1036,6 +1355,10 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
+    <!-- the salt factor calculator draws its equation as the value drawer does -->
+    <link rel="stylesheet" type="text/css"
+          tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/provenance.css?v=${context/@@pfas-macros/asset_version}" />
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/provenance.js?v=${context/@@pfas-macros/asset_version}"></script>
     <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=${context/@@pfas-macros/asset_version}"></script>
 
   </div><!-- /content slot -->

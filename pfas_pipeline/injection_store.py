@@ -40,6 +40,35 @@ def _t(v):
     return str(v)
 
 
+def begin_import(batch_id, path, db_path: str = None, side: str = "reported", raw: bool = False) -> dict:
+    """Before an import writes the worksheet's rows: the import is the file
+    `path` by name and checksum, on its `side` (the reported one, or the
+    side kept for the comparison); rows that side's stores hold from another
+    import are kept as superseded copies (qc_schema.begin_import). Returns {table: rows kept},
+    or None when the database cannot be opened (no store is written then
+    either). A failure to keep what is stored is raised: nothing is
+    replaced."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    from .addon import load
+    schema = load("qc_schema")
+    try:
+        conn = sqlite3.connect(db_path or DB_PATH)
+    except sqlite3.Error as e:
+        import logging
+        logging.getLogger(__name__).error("the QC database cannot be opened: %s", e)
+        return None
+    try:
+        schema.ensure(conn)
+        return schema.begin_import(conn, batch_id or "", os.path.basename(str(path)), h.hexdigest(),
+                                   datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"), side=side, raw=raw)
+    finally:
+        conn.close()
+
+
 def persist_injection_results(batch, db_path: str = None) -> int:
     """Write one row per injection × compound for a processed Batch. Replaces
     any existing rows for the same batch_id (idempotent re-import)."""

@@ -4,15 +4,25 @@
    normal equations and Cramer's rule; the concentration read back off a curve
    by the closed-form inverse instead of bisection; R² computed with the SAME
    weights as the fit (none = the plain R²; 1/x and 1/x² = the weighted R² the
-   instrument software reports for a weighted curve).
+   instrument software reports for a weighted curve). The worker fits and
+   reads every curve the same way (senaite.pfas quant_fit).
 
      fit(points, {type: 'Linear'|'Quadratic'|'Average RF',
                   weight: ''|'1/x'|'1/x2',
                   origin: 'exclude'|'include'|'force'})
        -> {f(x), inverse(y), coef: {c0, c1, c2}, type, weight, origin}  or null
+     refusal(points, opts) -> 'turns' for a quadratic refused, else null
      r2(points, model)  -> number or null
+     sampleReading(model, y, bottom, top) -> {x, place}
 
-   'include' adds the point (0, 0); 'force' fits with no intercept.
+   Origin, for a line and a quadratic alike: 'exclude' fits a constant term;
+   'force' fits none, adds no point and keeps the calibrators' weights;
+   'include' adds the point (0, 0) weighted as the lowest calibrator, so the
+   curve does not change with the concentration unit. An Average RF passes
+   through the origin by definition: its origin is 'force' whatever is
+   asked, unweighted, its R² that of the line through the origin with every
+   weight 1. A quadratic must rise across its calibration range, from its
+   lowest calibrator to its highest; one that turns within it is not drawn.
    Loaded in the browser after static/vendor/ml-matrix-6.12.1.umd.js (global
    mlMatrix; MIT, licence beside it) and in Node tests from the same file. */
 (function (root, factory) {
@@ -38,19 +48,24 @@
     return 'linear';
   }
 
-  function points(pts, origin) {
+  /* the calibrators, each with its weight; under 'include' the origin
+     first, weighted as the lowest calibrator */
+  function points(pts, origin, weight) {
     var out = (pts || []).filter(function (p) {
       return p && isFinite(p.x) && isFinite(p.y);
-    });
-    if (origin === 'include') out = [{x: 0, y: 0}].concat(out);
+    }).map(function (p) { return {x: p.x, y: p.y, w: weightOf(p.x, weight)}; });
+    if (origin === 'include' && out.length) {
+      var low = Math.min.apply(null, out.map(function (p) { return p.x; }));
+      out = [{x: 0, y: 0, w: weightOf(low, weight)}].concat(out);
+    }
     return out;
   }
 
   /* Weighted least squares: minimise sum w (y - X b)^2 via QR of sqrt(w) X. */
-  function wls(pts, weight, powers) {
+  function wls(pts, powers) {
     var rows = [], rhs = [];
     pts.forEach(function (p) {
-      var s = Math.sqrt(weightOf(p.x, weight));
+      var s = Math.sqrt(p.w);
       rows.push(powers.map(function (k) { return s * Math.pow(p.x, k); }));
       rhs.push([s * p.y]);
     });
@@ -82,40 +97,60 @@
       });
       return ok.length ? Math.min.apply(null, ok) : null;
     };
+    /* an Average RF is a line through the origin, unweighted */
+    var avg = kind === 'avgrf';
     return {f: f, inverse: inverse, coef: coef, type: kind,
-            weight: opts.weight || '', origin: opts.origin || 'exclude'};
+            weight: avg ? '' : (opts.weight || ''), origin: avg ? 'force' : (opts.origin || 'exclude')};
   }
 
-  function fit(pts, opts) {
+  /* the slope c1 + 2·c2·x above zero at the lowest and the highest
+     calibrator, and so everywhere between */
+  function risesAcross(coef, low, high) {
+    return coef.c1 + 2 * coef.c2 * low > 0 && coef.c1 + 2 * coef.c2 * high > 0;
+  }
+
+  /* {m: the fit, why: 'turns' for a quadratic refused}; both null when
+     nothing can be fitted */
+  function fitWhy(pts, opts) {
     opts = opts || {};
-    var kind = kindOf(opts.type), origin = opts.origin || 'exclude';
-    var p = points(pts, origin);
-    if (!p.length) return null;
+    var kind = kindOf(opts.type), origin = kind === 'avgrf' ? 'force' : (opts.origin || 'exclude');
+    var p = points(pts, origin, kind === 'avgrf' ? '' : opts.weight);
+    if (!p.length) return {m: null, why: null};
     var coef;
     if (kind === 'avgrf') {
       var rfs = p.filter(function (q) { return q.x > 0; })
                  .map(function (q) { return q.y / q.x; });
-      if (!rfs.length) return null;
+      if (!rfs.length) return {m: null, why: null};
       coef = {c0: 0, c1: rfs.reduce(function (a, b) { return a + b; }, 0) / rfs.length, c2: 0};
     } else {
       var force = origin === 'force';
       var powers = kind === 'quadratic' ? (force ? [1, 2] : [0, 1, 2]) : (force ? [1] : [0, 1]);
       if (p.length < powers.length) {
-        if (kind === 'quadratic') return fit(pts, {type: 'Linear', weight: opts.weight, origin: origin});
-        return null;
+        if (kind === 'quadratic') return fitWhy(pts, {type: 'Linear', weight: opts.weight, origin: origin});
+        return {m: null, why: null};
       }
-      coef = wls(p, opts.weight || '', powers);
-      if (!coef) return null;
+      coef = wls(p, powers);
+      if (!coef) return {m: null, why: null};
+      if (kind === 'quadratic') {
+        var xs = p.filter(function (q) { return q.x > 0; }).map(function (q) { return q.x; });
+        if (!risesAcross(coef, Math.min.apply(null, xs), Math.max.apply(null, xs))) {
+          return {m: null, why: 'turns'};
+        }
+      }
     }
-    return model(coef, kind, opts);
+    return {m: model(coef, kind, opts), why: null};
   }
 
-  /* R² with the fit's own weights. */
+  function fit(pts, opts) { return fitWhy(pts, opts).m; }
+  function refusal(pts, opts) { return fitWhy(pts, opts).why; }
+
+  /* R² with the fit's own weights; an Average RF's with every weight 1 and
+     no added point. */
   function r2(pts, m) {
     if (!m) return null;
-    var p = points(pts, m.origin);
+    var p = points(pts, m.origin, m.weight);
     if (p.length < 2) return null;
-    var w = p.map(function (q) { return weightOf(q.x, m.weight); });
+    var w = p.map(function (q) { return q.w; });
     var sw = w.reduce(function (a, b) { return a + b; }, 0);
     var ybar = p.reduce(function (a, q, i) { return a + w[i] * q.y; }, 0) / sw;
     var ssTot = 0, ssRes = 0;
@@ -141,5 +176,20 @@
     return {points: (pts || []).map(function (p) { return readout(m, p, null); }), r2: r2(pts, m)};
   }
 
-  return {fit: fit, r2: r2, weightOf: weightOf, readout: readout, calculation: calculation};
+  /* A native's reading in a sample. place 'above' for a ratio above the
+     curve's response at the highest calibrator (the reading kept where the
+     curve reaches it), 'below' for a quadratic's ratio below its response
+     at the lowest: the reading on the curve between zero and that
+     calibrator, on the rising branch (null where there is none), a number
+     the worker keeps only at or above the MDL; a straight line reads as
+     inverse() does. */
+  function sampleReading(m, y, bottom, top) {
+    if (!m || y == null) return {x: null, place: null};
+    if (m.coef.c2 !== 0 && bottom != null && y < m.f(bottom)) return {x: m.inverse(y), place: 'below'};
+    var atTop = top != null ? m.f(top) : null;
+    return {x: m.inverse(y), place: (atTop != null && y > atTop + 1e-9 * Math.abs(atTop)) ? 'above' : null};
+  }
+
+  return {fit: fit, refusal: refusal, r2: r2, weightOf: weightOf, readout: readout,
+          calculation: calculation, sampleReading: sampleReading};
 }));

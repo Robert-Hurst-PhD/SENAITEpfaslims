@@ -33,6 +33,13 @@ class PFASTopbarView(BrowserView):
 class PFASToolbarManager(ToolbarViewletManager):
     custom_template = ViewPageTemplateFile("templates/core_topbar.pt")
 
+    def context_views(self):
+        """Core's content tabs (View, Manage portlets, Add): left out on a
+        page that declares `hide_plone_toolbar`, as on every PFAS page."""
+        if getattr(self.__parent__, "hide_plone_toolbar", False):
+            return u""
+        return self.base_render()
+
     def page_title(self):
         """The object's title on its default view (a batch is "B-001", not
         its "Samples" listing); on any other view the view's own title (Audit

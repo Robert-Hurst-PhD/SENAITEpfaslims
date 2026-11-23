@@ -27,12 +27,12 @@
 
   <form method="GET" class="pfas-filterbar"
         tal:attributes="action string:${purl}/@@pfas-lab-settings">
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <label for="q">Search</label>
       <input type="text" name="q" id="q" class="pfas-input pfas-input-wide" placeholder="holding time, tolerance, wording&hellip;"
              tal:attributes="value view/query" />
     </div>
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <label for="tier">Who may change it</label>
       <select name="tier" id="tier" class="pfas-select">
         <option value="">Anyone who may configure</option>
@@ -66,11 +66,10 @@
         <table class="pfas-table" data-col-resize="lab-settings-1">
           <thead><tr>
             <th>Setting</th><th>Default</th><th>Who may change it</th>
-            <th class="row-plus-cell"><span class="pfas-sr-hide">Editor</span></th>
           </tr></thead>
           <tbody>
             <tal:rows tal:repeat="r g/rows">
-            <tr>
+            <tr tal:attributes="data-row-open r/owner_href">
               <td>
                 <div class="pfas-cell-name" tal:content="r/label">Label</div>
                 <div class="pfas-muted" tal:condition="r/help|nothing"
@@ -83,10 +82,6 @@
               </td>
               <td class="pfas-muted"
                   tal:content="python:'Lab manager / QAO' if r['tier'] == 'lab' else 'System admin'">Lab</td>
-              <td>
-                <a class="btn-sm btn-secondary" tal:condition="r/owner_href"
-                   tal:attributes="href r/owner_href; title string:${r/owner_view}">Open editor</a>
-              </td>
             </tr>
             </tal:rows>
           </tbody>

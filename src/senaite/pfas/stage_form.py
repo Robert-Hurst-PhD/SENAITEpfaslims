@@ -22,7 +22,7 @@ questions, `stage["fields"]`. Two families:
 The keys every other part of the system reads -- reagent_roles,
 consumables, equipment, confirmations, captures_samples, creates_solution,
 capture_pedigree -- are DERIVED from the fields when a stage is saved
-(apply_fields), so the sidecar, FM-ENV-003, the traceability chain and the
+(apply_fields), so the sidecar, the extraction record, the traceability chain and the
 review read those keys. A stage with no "fields" has them derived from its
 keys (stage_fields), in the guide's block order; nothing is written until a
 manager saves the stage.

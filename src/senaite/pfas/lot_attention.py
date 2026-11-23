@@ -46,7 +46,7 @@ def reasons(expiry=None, today=None, quantity=None, low_stock=None, coa=None, lo
     if coa is False:
         out.append(u"No CoA on file")
     if logbook is False:
-        out.append(u"No preparation logbook linked")
+        out.append(u"No preparation record linked")
     exp, now = _day(expiry), _day(today) or lab_time.today()
     if exp is not None and now <= exp <= now + timedelta(days=EXPIRY_WINDOW_DAYS):
         out.append(u"Expires within %d days" % EXPIRY_WINDOW_DAYS)

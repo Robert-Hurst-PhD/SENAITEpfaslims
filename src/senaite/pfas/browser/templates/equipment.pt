@@ -8,24 +8,31 @@
   <metal:fill fill-slot="header-title">Equipment</metal:fill>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-equipment-types">Equipment types</a>
-    <a class="btn-sm btn-primary" tal:attributes="href view/add_url">+ Add equipment</a>
+    <a class="btn-sm btn-primary" tal:attributes="href view/add_url">+ New equipment</a>
   </tal:r>
 
   <div metal:fill-slot="content">
   <div class="page-body" tal:define="rows view/rows">
 
-    <p class="form-note">Each item is a SENAITE instrument; its type sets what it owes. Internal checks are kept here, certificates in SENAITE. <tal:h define="hid string:equipment-types"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+    <p class="form-note">Each item is a SENAITE instrument; its type sets what it owes. <tal:h define="hid string:equipment-types"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
     <p class="form-note" tal:condition="not:rows">No equipment yet.</p>
 
-    <table class="pfas-table" data-col-resize="equipment-1" tal:condition="rows">
+    <table class="pfas-table" data-col-resize="equipment-1" tal:condition="rows" tal:define="rm context/@@pfas-row-menu">
       <thead>
-        <tr><th>Equipment</th><th>Type</th><th>Location</th><th>Internal check</th>
-            <th>External certificate</th><th>Status</th>
-            <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr>
+        <tr><th>Equipment</th><th>Type</th><th>Location</th><th>Equipment check</th>
+            <th>External certificate</th><th>Status</th></tr>
       </thead>
       <tbody>
-        <tr tal:repeat="r rows">
+        <tr tal:repeat="r rows"
+            tal:attributes="data-row-open r/url;
+                            data-row-actions python:rm.actions(
+                                (u'Set check frequency', 'href', u'%s#et-type-%s' % (view.types_url(), r['type_uid']),
+                                 {'note': u'Opens Equipment types at %s' % r['type_title']}) if not r['due']['internal'] and r['type_uid'] else None,
+                                (u'Equipment checks', 'href', view.checklist_url()) if r['daily'] else None,
+                                (u'Settings', 'href', u'%s/@@pfas-equipment-settings?uid=%s' % (view.portal_url(), r['id'])),
+                                (u'Edit', 'href', u'%s/base_edit' % r['url']),
+                                (u'Records', 'href', r['records_url']))">
           <td><strong tal:content="r/name">Balance 1</strong>
               <div class="cf-hint" tal:condition="r/serial_number" tal:content="r/serial_number">123</div>
               <span class="badge badge-archived" tal:condition="not:r/active">inactive</span></td>
@@ -37,7 +44,12 @@
               <div tal:content="python:'last %s' % (i['last'] or 'none')">last 2026-09-01</div>
               <div class="cf-hint" tal:condition="i/due" tal:content="string:due ${i/due}">due 2026-12-01</div>
             </tal:i>
-            <span class="cf-hint" tal:condition="not:i">no frequency set</span>
+            <tal:n condition="not:i">
+              <span class="cf-hint">No frequency: set on its type</span>
+            </tal:n>
+            <div tal:condition="r/daily">
+              <span class="cf-hint" tal:content="string:Daily check: ${r/daily_label}">Daily</span>
+            </div>
           </td>
           <td tal:define="x r/due/external">
             <tal:x condition="x">
@@ -45,21 +57,8 @@
             </tal:x>
             <span class="cf-hint" tal:condition="not:x">not required</span>
           </td>
-          <td><span tal:attributes="class python:'badge ' + {'ok': 'badge-active', 'due_soon': 'badge-quarantine', 'overdue': 'badge-expired', 'missing': 'badge-expired'}.get(r['due']['status'], 'badge-archived')"
-                    tal:content="r/status_label">OK</span></td>
-          <td class="row-plus-cell">
-            <details class="row-more">
-              <summary class="row-plus" aria-label="Actions for this equipment" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <a class="btn-sm btn-secondary" title="Name, serial, type, location and certificates (SENAITE)"
-                   tal:attributes="href string:${r/url}/base_edit">Edit</a>
-                <a class="btn-sm btn-secondary" title="Sensor, temperature range, weight points"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-equipment-settings?uid=${r/id}">Settings</a>
-                <a class="btn-sm btn-secondary" tal:condition="r/records_url" title="Its checks and calibrations"
-                   tal:attributes="href r/records_url">Records</a>
-              </div>
-            </details>
-          </td>
+          <td tal:define="ic context/@@pfas-icons; mk python:{'badge-quarantine': 'warn', 'badge-expired': 'fail'}.get(r['status_cls'])"><tal:m
+              tal:condition="mk" tal:replace="structure python:ic.tip(mk, r['status_label'])" /></td>
         </tr>
       </tbody>
     </table>

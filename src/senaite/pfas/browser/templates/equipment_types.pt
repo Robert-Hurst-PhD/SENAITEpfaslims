@@ -8,7 +8,7 @@
   <metal:fill fill-slot="header-title">Equipment Types</metal:fill>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-equipment">Equipment</a>
-    <a class="btn-sm btn-primary" tal:condition="view/can_configure" tal:attributes="href view/add_type_url">+ Add type</a>
+    <a class="btn-sm btn-primary" tal:condition="view/can_configure" tal:attributes="href view/add_type_url">+ New type</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -33,19 +33,19 @@
       <input type="hidden" name="action" value="save_types" tal:condition="view/can_configure" />
       <!-- read-only for roles that cannot save -->
       <fieldset class="pfas-ro" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
-      <table class="pfas-table pfas-table-form" data-col-resize="equipment-types-1">
-        <!-- each column is as wide as what it holds (a kind's longest name,
-             a unit, a number, a switch, the two-word correction choice);
-             the type's name takes the rest, so a smaller screen never cuts
-             a choice short -->
-        <colgroup><col /><col width="176" /><col width="96" /><col width="96" /><col width="212" /><col width="96" /><col width="104" /><col width="96" /></colgroup>
+      <table class="pfas-table pfas-table-form is-sticky-first is-name-rest" data-col-resize="equipment-types-1">
+        <!-- each column of controls is as wide as its longest value (the
+             longest kind, a number, a switch, the two-word correction
+             choice, the unit list's own "Choose") or its longest heading
+             word; the type's name takes what is left and wraps -->
+        <colgroup><col class="is-name" /><col width="268" /><col width="76" /><col width="86" /><col width="202" /><col width="84" /><col width="120" /><col width="80" /></colgroup>
         <thead>
           <tr><th>Type</th><th>Kind</th><th>Check every (days)</th>
               <th class="is-center">Correction factor</th><th>Correction</th><th class="is-center">External certificate</th><th>Unit</th>
               <th>Tolerance (%)</th></tr>
         </thead>
         <tbody>
-          <tr tal:repeat="t types">
+          <tr tal:repeat="t types" tal:attributes="id string:et-type-${t/uid}">
             <td><strong tal:content="t/title">Balance</strong>
                 <div class="cf-hint" tal:condition="not:t/req/configured">not set up yet</div></td>
             <td><select tal:attributes="name string:kind.${t/uid}; aria-label string:Kind, ${t/title}">
@@ -142,28 +142,30 @@
       </div>
         <div class="pfas-card">
           <h3 class="pfas-card-head">Eye wash station</h3>
-          <div class="field-row"><label>Temperature range (&deg;C)</label>
+          <div class="pfas-form-field"><label>Temperature range (&deg;C)</label>
             <div data-range="data-range" data-scale="0,50" data-unit="&#176;C">
               <input type="number" step="0.1" name="eyewash_temp_min" aria-label="Eye wash lowest temperature" tal:attributes="value d/eyewash_temp_min" />
               <input type="number" step="0.1" name="eyewash_temp_max" aria-label="Eye wash highest temperature" tal:attributes="value d/eyewash_temp_max" /></div></div>
         </div>
         <div class="pfas-card">
           <h3 class="pfas-card-head">Type 1 water</h3>
-          <div class="field-row"><span class="pfas-label">Conductivity unit</span>
-            <input type="hidden" name="water_conductivity_unit" id="et-wunit" tal:attributes="value d/water_conductivity_unit|string:uS/cm" />
-            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Conductivity unit" data-field="data-field" data-quiet="data-quiet" data-input="et-wunit">
-              <button type="button" class="pfas-seg-item" tal:repeat="c view/conductivity_units"
-                      tal:attributes="data-value python:c[0]; aria-pressed python:'true' if c[0] == (d.get('water_conductivity_unit') or 'uS/cm') else 'false'"
-                      tal:content="python:c[1]">uS/cm</button>
-            </div></div>
-          <label class="field-row">Maximum conductivity (&micro;S/cm)
-            <input type="number" step="0.01" name="water_conductivity_max" tal:attributes="value d/water_conductivity_max" /></label>
-          <label class="field-row">Maximum TOC (ppb)
-            <input type="number" step="1" name="water_toc_max" tal:attributes="value d/water_toc_max" /></label>
+          <div class="pfas-form-row">
+            <div class="pfas-form-field"><span class="pfas-label">Conductivity unit</span>
+              <input type="hidden" name="water_conductivity_unit" id="et-wunit" tal:attributes="value d/water_conductivity_unit|string:uS/cm" />
+              <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Conductivity unit" data-field="data-field" data-quiet="data-quiet" data-input="et-wunit">
+                <button type="button" class="pfas-seg-item" tal:repeat="c view/conductivity_units"
+                        tal:attributes="data-value python:c[0]; aria-pressed python:'true' if c[0] == (d.get('water_conductivity_unit') or 'uS/cm') else 'false'"
+                        tal:content="python:c[1]">uS/cm</button>
+              </div></div>
+            <label class="pfas-form-field">Maximum conductivity (&micro;S/cm)
+              <input type="number" step="0.01" name="water_conductivity_max" tal:attributes="value d/water_conductivity_max" /></label>
+            <label class="pfas-form-field">Maximum TOC (ppb)
+              <input type="number" step="1" name="water_toc_max" tal:attributes="value d/water_toc_max" /></label>
+          </div>
         </div>
         <div class="pfas-card">
           <h3 class="pfas-card-head">Thermometers</h3>
-          <label class="field-row">Correction factor tolerance (&deg;C)
+          <label class="pfas-form-field">Correction factor tolerance (&deg;C)
             <input type="number" step="0.1" name="study_tolerance" tal:attributes="value d/study_tolerance" /></label>
         </div>
       <div class="pfas-card">
@@ -182,8 +184,8 @@
       </div>
       <form method="post" tal:attributes="action string:${purl}/@@pfas-equipment-types">
         <input type="hidden" name="action" value="save_api_key" />
-        <div class="field-grid page-body-narrow">
-          <label>API key
+        <div class="pfas-form-row page-body-narrow">
+          <label class="pfas-form-field">API key
             <input type="text" name="api_key" placeholder="paste generated key here"
                    tal:attributes="value view/api_key" /></label>
         </div>

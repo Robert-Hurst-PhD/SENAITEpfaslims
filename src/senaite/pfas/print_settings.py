@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Print template settings — single source for how EVERY printable form renders
-(logbooks FM-ENV-25x, CoC / sample receipt, extraction reports, SOP copies).
+(records, CoC / sample receipt, extraction reports, SOP copies).
 
 Editable at Configuration → Print Settings (@@pfas-print-settings); consumed by
 the shared `printhead` macro in pfas_macros.pt, so a standard form and a CoC
@@ -31,10 +31,8 @@ DEFAULTS = {
     "lab_email":       "",
     "logo_url":        "",
     "accreditation":   "",
-    "footer_text":     "Controlled document — printed copies are uncontrolled unless stamped.",
-    "show_form_code":  True,          # FM-ENV-xxx block top-right
-    "show_print_date": True,
-    "show_page_footer": True,
+    # no footer text, page footer or print date setting: every controlled
+    # print carries the control block and its own footer line (print_doc)
     # QA sign-off attestation (rendered on SOPs, prep logs, prepared standards):
     # who signs as Quality Assurance Officer, stored as the LabContact's
     # initials (staff pool key); their uploaded Signature image is the stamp.
@@ -97,7 +95,8 @@ def get_print_settings(portal):
     try:
         raw = IAnnotations(portal).get(PRINT_SETTINGS_KEY)
         if raw:
-            out.update(json.loads(raw))
+            # a key no longer in DEFAULTS is a retired setting: not read back
+            out.update((k, v) for k, v in json.loads(raw).items() if k in DEFAULTS)
     except (ValueError, TypeError) as exc:
         logger.warning("get_print_settings: %s", exc)
     out.update(lab_identity.print_fields(portal))

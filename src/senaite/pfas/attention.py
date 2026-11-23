@@ -64,12 +64,12 @@ def items(facts):
         if codes:
             out.append({"level": "warn", "title": "EDD codes missing in %s" % profile,
                         "detail": "No state code for %s: EDDs carrying them are refused." % ", ".join(codes),
-                        "actions": [("EDD Export", "@@pfas-edd-config")],
+                        "actions": [("EDD settings", "@@pfas-edd-config")],
                         "help": "edd-qualifiers"})
     n = facts.get("unverified") or 0
     if n:
-        out.append({"level": "warn", "title": "%d regulatory limit%s not verified" % (n, "" if n == 1 else "s"),
-                    "detail": "An unverified limit never reaches a certificate.",
+        out.append({"level": "warn", "title": "%d regulatory limit%s not confirmed" % (n, "" if n == 1 else "s"),
+                    "detail": "An unconfirmed limit never reaches a certificate.",
                     "actions": [("Regulatory Limits", "@@pfas-regulatory-limits")],
                     "help": "action-level"})
     for title in facts.get("methods_changed") or []:

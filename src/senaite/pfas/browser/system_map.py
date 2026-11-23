@@ -255,8 +255,11 @@ class _MapData(object):
         except Exception as exc:                            # noqa: BLE001
             logger.warning("system map: %s equipment: %s", ws_id, exc)
         try:
-            from senaite.pfas.browser.logbooks import _get_logbook
-            serials.append((_get_logbook(ws, "253") or {}).get("balance_sn") or u"")
+            # the balance on a sample processing record made before the
+            # guided extraction took that stage over
+            from zope.annotation.interfaces import IAnnotations
+            old = json.loads(IAnnotations(ws).get(u"senaite.pfas.logbook.253") or u"{}")
+            serials.append((old.get("balance_sn") if isinstance(old, dict) else u"") or u"")
         except Exception:                                   # noqa: BLE001
             pass
         by_serial = dict(((u.get("serial_number") or u"").strip(), u["id"]) for u in self.units()
@@ -288,12 +291,8 @@ class _MapData(object):
         return smd.matrix_children(self._ws_rows(rows), nid)
 
     def _lab_name(self):
-        try:
-            # a byte string: traversal reads a unicode "@@name" as an attribute "@"
-            ps = self.context.restrictedTraverse(str("@@pfas-macros")).print_settings()
-            return ps.get("lab_name") or u"Laboratory"
-        except Exception:                                   # noqa: BLE001
-            return u"Laboratory"
+        from senaite.pfas import lab_identity
+        return lab_identity.lab_name() or u"Laboratory"
 
     def children(self, nid):
         nid = nid or u"lab"

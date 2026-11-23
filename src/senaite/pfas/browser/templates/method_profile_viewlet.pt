@@ -19,7 +19,6 @@
       <div class="pfas-mlink-label">PFAS Method Profile</div>
       <div class="pfas-mlink-title">
         <span tal:content="view/profile_title">FDA 32-PFAS in Food</span>
-        <span class="pfas-mlink-id" tal:content="view/profile_id">FDA_32PFAS</span>
       </div>
       <div class="pfas-mlink-meta">
         Governs <strong tal:content="view/n_services">32</strong> analytes ·

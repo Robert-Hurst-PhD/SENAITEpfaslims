@@ -7,12 +7,16 @@
   <title metal:fill-slot="title">Time &amp; Language</title>
   <metal:fill fill-slot="header-title">Time &amp; Language</metal:fill>
 
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:condition="view/can_configure" tal:define="sb_form string:time-language-form"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
   <div metal:fill-slot="content">
   <div class="page-body-narrow">
     <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
     <div class="alert alert-error" tal:condition="view/failed">Not saved: choose one of the languages offered, and a listed time zone.</div>
 
-    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-time-language">
+    <form method="post" id="time-language-form" tal:attributes="action string:${view/portal_url}/@@pfas-time-language">
       <input type="hidden" name="action" value="save" tal:condition="view/can_configure" />
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
       <div class="pfas-settings-grid">
@@ -22,7 +26,7 @@
       The language every page is shown in, for everyone. Changing it here
       replaces any language a browser chose before.
     </p>
-      <div class="field-row">
+      <div class="pfas-form-field">
         <label for="language">Site language</label>
         <select name="language" id="language" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
           <option tal:repeat="l view/languages"
@@ -33,21 +37,22 @@
       </div>
       <div class="pfas-card" id="sec-timezone">
         <h3 class="pfas-card-head">Laboratory time zone</h3>
-      <div class="field-row">
-        <label for="timezone">Time zone of the instrument's clock</label>
-        <select name="timezone" id="timezone" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
-          <option value="">Default: UTC</option>
-          <option tal:repeat="z view/timezones"
-                  tal:attributes="value z; selected python:'selected' if z == view.timezone() else None"
-                  tal:content="z">America/New_York</option>
-        </select>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field">
+          <label for="timezone">Time zone of the instrument's clock</label>
+          <select name="timezone" id="timezone" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+            <option value="">Default: UTC</option>
+            <option tal:repeat="z view/timezones"
+                    tal:attributes="value z; selected python:'selected' if z == view.timezone() else None"
+                    tal:content="z">America/New_York</option>
+          </select>
+        </div>
+        <div class="pfas-form-field"><span>Now in lab time</span> <strong tal:content="view/lab_now">2026-11-03 09:00</strong></div>
+        <div class="pfas-form-field"><span>UTC</span> <strong tal:content="view/utc_now">2026-11-03 14:00</strong></div>
       </div>
-      <div class="field-row"><span>Now in lab time</span> <strong tal:content="view/lab_now">2026-11-03 09:00</strong></div>
-      <div class="field-row"><span>UTC</span> <strong tal:content="view/utc_now">2026-11-03 14:00</strong></div>
       <p class="form-note">Every time is shown in this zone; records stay stored in UTC.</p>
       </div>
       </div>
-      <div class="form-actions"><button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button></div>
     </form>
   </div>
   </div>

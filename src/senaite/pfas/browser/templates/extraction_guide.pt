@@ -65,14 +65,13 @@
                   border-bottom:1px solid var(--s-border); }
 
     /* ── Reagent confirmation rows ───────────────────────────── */
-    .reagent-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+    .reagent-row { display:flex; gap:12px; align-items:center;
                    padding:10px 0; border-bottom:1px solid var(--line); }
+    .reagent-row > .pfas-form-row { flex:1 1 auto; min-width:0; margin:0; }
     .reagent-row:last-child { border-bottom:0; }
-    .reagent-role { font-weight:var(--fw-strong); font-size:var(--fs-base); min-width:200px; flex:1; }
+    .reagent-role { font-weight:var(--fw-strong); font-size:var(--fs-base); }
     .reagent-lot-sel, .reagent-role-field { font-size:var(--fs-base); padding:7px 10px;
                          border:1px solid var(--s-input-border); border-radius:6px; }
-    .reagent-lot-sel { flex:2 1 320px; max-width:100%; }
-    .reagent-role-field { min-width:200px; flex:1; }
     .reagent-miss { flex-basis:100%; font-size:var(--fs-sm); color:var(--s-danger, var(--s-danger)); }
     .reagent-hint { font-size:var(--fs-sm); color:var(--s-muted, var(--s-secondary)); margin:-6px 0 8px; }
     .reagent-add { margin-top:6px; }
@@ -82,7 +81,7 @@
     .sol-actions { margin-top:10px; display:flex; gap:8px; }
     .stage-analyst-field { font-size:var(--fs-base); padding:9px 12px; border:1px solid var(--s-input-border);
                            border-radius:6px; width:300px; max-width:100%; }
-    .receive-box { flex-basis:100%; border:1px dashed var(--s-input-border); border-radius:6px;
+    .receive-box { border:1px dashed var(--s-input-border); border-radius:6px;
                    padding:10px 12px; font-size:var(--fs-sm); }
     .receive-grid { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
     .receive-grid input, .receive-grid select { flex:1 1 160px; padding:6px 8px;
@@ -179,7 +178,7 @@
 <body>
   <tal:t metal:fill-slot="header-title">Guided Extraction</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="btn-sm btn-secondary btn-back" tal:attributes="href view/batch_url">Batch</a>
+    <a class="btn-sm btn-secondary btn-back" tal:attributes="href view/batch_url">Worksheet</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -211,26 +210,51 @@
          START SCREEN — no session yet
          ════════════════════════════════════════════════════════════ -->
     <tal:pick tal:condition="not:view/batch_uid">
-    <div class="eg-start">
-      <h2>Choose a batch</h2>
-      <p>Open batches, the ones in progress first.</p>
-      <table class="pfas-table eg-batch-table" data-col-resize="extraction-guide-eg-batch-table">
-        <thead><tr><th>Batch</th><th>Method</th><th>Extraction</th><th></th></tr></thead>
+    <div class="eg-start" tal:define="pg view/queue_paging; rows view/batch_choices">
+      <h2>Choose a worksheet</h2>
+      <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+            tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+        <input type="hidden" name="show" tal:attributes="value view/queue_show" />
+        <div class="pfas-form-field"><span>Show</span>
+          <nav class="pfas-seg" aria-label="Show">
+            <a class="pfas-seg-item" tal:repeat="o view/queue_shows"
+               tal:attributes="href o/url; aria-selected python:'true' if o['on'] else 'false'"
+               tal:content="o/label">Not finished</a>
+          </nav></div>
+        <div class="pfas-form-field"><label for="eg-q">Search</label>
+          <input type="search" name="q" id="eg-q" class="pfas-input pfas-input-wide"
+                 placeholder="Worksheet, CoC or method" tal:attributes="value view/queue_q" /></div>
+        <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
+      </form>
+      <table class="pfas-table eg-batch-table" data-col-resize="extraction-guide-eg-batch-table" tal:condition="rows" tal:define="rm context/@@pfas-row-menu">
+        <thead><tr><th>Worksheet</th><th>Method</th><th>Extraction</th></tr></thead>
         <tbody>
-          <tr tal:repeat="r view/batch_choices">
-            <td><strong tal:content="r/id">B-1</strong> <span tal:content="r/title">title</span></td>
+          <tal:rw tal:repeat="r rows">
+          <tr tal:define="act python:view.queue_action(r)"
+              tal:attributes="data-row-open python:view.queue_open_url(r);
+                              data-row-actions python:rm.actions((act['label'], 'href', act['url']) if act and act['url'] != view.queue_open_url(r) else None)">
+            <td><strong tal:content="r/id">B-1</strong>
+                <span tal:content="r/title">title</span></td>
             <td tal:content="r/method_label">FDA</td>
             <td tal:content="r/label">Not started</td>
-            <td><a class="btn-sm btn-primary row-action"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${r/uid}"
-                   tal:content="python:{'not_started': 'Start', 'in_progress': 'Continue'}.get(r['state'], 'Open')">Start</a></td>
           </tr>
+          </tal:rw>
         </tbody>
       </table>
+      <p class="form-note" tal:condition="not:rows" tal:content="view/queue_empty_text">None.</p>
+      <metal:p use-macro="context/@@pfas-macros/macros/paging" />
     </div>
     </tal:pick>
 
-    <tal:start tal:condition="python:view.batch_uid() and not view.session()">
+    <tal:empty tal:condition="python:view.batch_uid() and not view.session() and not view.has_samples()">
+    <div class="eg-start">
+      <h2>No samples</h2>
+      <p tal:content="string:Batch: ${view/batch_title}"></p>
+      <a class="btn btn-primary" tal:attributes="href string:${view/batch_url}/@@pfas-worksheet-samples">Add samples</a>
+    </div>
+    </tal:empty>
+
+    <tal:start tal:condition="python:view.batch_uid() and not view.session() and view.has_samples()">
     <div class="eg-start">
       <h2>Start Extraction</h2>
       <p tal:content="string:Batch: ${view/batch_title}"></p>
@@ -239,13 +263,9 @@
         <input type="hidden" name="action"    value="start" />
         <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
 
-        <label>Method</label>
-        <select name="method_id" tal:define="bm view/batch_method_id">
-          <tal:opts tal:repeat="pair view/available_methods">
-            <option tal:attributes="value python:pair[0]; selected python:pair[0] == bm"
-                    tal:content="python:pair[1]"></option>
-          </tal:opts>
-        </select>
+        <span>Method</span>
+        <tal:mc tal:define="mc_choices python:[{'value': p[0], 'label': p[1]} for p in view.available_methods()];
+                            mc_value view/batch_method_id; mc_label string:Method; mc_id string:eg-method; mc_name string:method_id"><metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></tal:mc>
 
         <label>Lead analyst</label>
         <input type="text" name="analyst" placeholder="Your name" required="required"
@@ -261,12 +281,14 @@
          ════════════════════════════════════════════════════════════ -->
     <tal:done tal:condition="python: view.session() and view.is_finalized()">
     <div class="eg-done">
-      <div class="check">&#10003;</div>
+      <div class="check"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', hidden=True, size='lg')" /></div>
       <h2>Extraction Complete</h2>
-      <p class="eg-lead">
-        All stages recorded. Generate the traceability PDF below.
+      <p class="eg-lead" tal:define="gap view/finalised_gap">
+        <tal:all tal:condition="not:gap">All stages recorded.</tal:all>
+        <tal:gap tal:condition="gap" tal:content="string:Finalised, ${gap}."></tal:gap>
+        Print the batch record below.
       </p>
-      <a class="btn-lg btn-primary" tal:attributes="href view/pdf_url" target="_blank">Download Extraction Logbook PDF</a>
+      <a class="btn-lg btn-primary" tal:attributes="href view/pdf_url" target="_blank">Download the batch record PDF</a>
       <br/><br/>
       <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
         >View Reagent Inventory</a>
@@ -316,7 +338,7 @@
         <ul class="bench-alerts" tal:define="mc view/method_conflicts" tal:condition="mc">
           <li class="bench-warn" tal:repeat="c mc">
             <strong>Method disagrees:</strong>
-            <span tal:content="python:u'%s says %s; this batch is %s.' % (c[0], c[1], view._method_id())">x</span></li>
+            <span tal:content="python:u'%s says %s; this batch is %s.' % (c[0], view.method_name(c[1]), view.method_name(view._method_id()))">x</span></li>
         </ul>
 
         <!-- ── A completed stage read-only (?stage=N), or the Review &amp; finalize
@@ -393,19 +415,22 @@
         </form>
         </tal:v>
 
-        <!-- review: sign off -->
-        <form method="post" class="eg-card" tal:condition="rv"
+        <!-- review: sign off. Finalise opens the sign dialog; its Sign posts
+             the form as the signed-in person, the extraction's preparer -->
+        <tal:fin tal:condition="rv">
+        <form method="post" class="eg-card" id="egFinalizeForm"
               tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
           <h3>Finalize</h3>
           <input type="hidden" name="action" value="finalize" />
           <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
-          <input type="hidden" name="analyst" tal:attributes="value view/current_user_name" />
-          <p class="summary-line">Signed off by <strong tal:content="view/current_user_name">name</strong>.
+          <p class="summary-line">Signed as preparer by <strong tal:content="view/current_user_name">name</strong>.
             Creates the extraction logbook PDF.</p>
           <div class="stage-actions">
-            <button type="submit" class="btn-lg btn-success">Finalize &amp; create PDF</button>
+            <button type="button" class="btn-lg btn-success" data-modal-open="esig-finalize">Finalise and create PDF</button>
           </div>
         </form>
+        <div tal:define="esig view/finalize_esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div>
+        </tal:fin>
         </tal:d>
         </tal:summary>
 
@@ -417,7 +442,7 @@
           <div class="stage-title" tal:content="python:stage.get('name','')"></div>
           <div class="stage-desc"  tal:content="python:stage.get('description','')"></div>
           <div class="stage-desc" tal:condition="python:view.is_processing_stage(stage)">
-            This stage is the Sample Processing Log (<tal:f replace="view/processing_form_code"/>).</div>
+            This stage is the processing stage: the test portion is taken here.</div>
         </div>
 
         <!-- Action image for this stage (uploaded on the method profile's
@@ -457,7 +482,7 @@
                their questions' places, the lab's own questions between them -->
           <tal:lay tal:repeat="it python:view.stage_layout(stage)">
           <tal:b tal:condition="python:it.get('block') == 'samples'">
-  <!-- ── Per-sample table: written to FM-ENV-003's samples rows ── -->
+  <!-- ── Per-sample table: written to the extraction record's samples rows ── -->
             <tal:smp tal:define="card python:__import__('json').loads(view.sample_card_json())"
                      tal:condition="card/column">
             <div class="eg-card" id="sample-card">
@@ -582,14 +607,27 @@
           <tal:q tal:condition="python:it.get('field')">
             <div tal:define="field python:it['field']"
                  tal:attributes="class python:'eg-question' if field.get('type') == 'section' else 'eg-card eg-question'">
-              <tal:m metal:use-macro="context/@@pfas-logbook-macros/macros/logbook_field" />
+              <tal:m metal:use-macro="context/@@pfas-record-macros/macros/logbook_field" />
             </div>
           </tal:q>
           </tal:lay>
 
+          <!-- ── Additional equipment: a device that performed the stage (an SPE
+               system, an evaporator, a pipetting robot) is recorded here; the
+               analyst still records and signs the stage ── -->
+          <div class="eg-card" id="extra-equipment-card">
+            <h3>Additional equipment</h3>
+            <p class="reagent-hint">You still sign the stage.</p>
+            <div class="eq-grid" id="eq-extra"></div>
+            <datalist id="eq-register">
+              <option tal:repeat="u view/equipment_register" tal:attributes="value u/serial" tal:content="u/name">DEMO SPE system</option>
+            </datalist>
+            <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addExtraEquipment()">+ Add equipment</button>
+          </div>
+
           <!-- ── Deviations / observations ── -->
           <div class="eg-card" id="deviation-card">
-            <h3>Deviations / Observations</h3>
+            <h3 id="deviations-title">Deviations / Observations</h3>
             <div class="alert alert-danger" id="cannot-complete"
                  tal:define="blocks python:view.stage_draft().get('blocks') or []"
                  tal:attributes="hidden python:not blocks or None">
@@ -606,7 +644,7 @@
                 <li tal:repeat="w warns" tal:content="w">Methanol: no lot recorded</li>
               </ul>
             </div>
-            <textarea class="deviation-field" name="deviations" id="deviations-field"
+            <textarea class="deviation-field" name="deviations" id="deviations-field" aria-labelledby="deviations-title"
                       placeholder="Document any deviations from SOP, unusual observations, or corrective actions taken..."
                       tal:content="python:view.stage_draft().get('deviations') or ''"></textarea>
           </div>
@@ -615,7 +653,7 @@
           <div class="stage-actions">
             <button class="btn-lg btn-success btn-complete" type="submit"
                     onclick="return prepStageSubmit()">
-              &#10003; Complete Stage
+              Complete Stage
               <tal:next tal:condition="python:(stage.get('order',0) or 0) &lt; view.total_stages()">
                 &amp; Next Stage
               </tal:next>
@@ -637,12 +675,12 @@
          ════════════════════════════════════════════════════════════ -->
     <tal:spk tal:condition="python: view.session()">
     <div class="eg-card dilution-card" id="spike-card">
-      <h3>Batch QC</h3>
-      <p class="reagent-hint"><a class="btn-sm" tal:attributes="href view/members_url">Batch QC &amp; parents</a></p>
-      <table class="pfas-table" data-col-resize="extraction-guide-3" tal:define="rows view/qc_members" tal:condition="rows">
+      <h3>Worksheet QC</h3>
+      <p class="reagent-hint"><a class="btn-sm" tal:attributes="href view/members_url">Worksheet QC &amp; parents</a></p>
+      <table class="pfas-table" data-col-resize="extraction-guide-3" tal:define="rows view/qc_members; ti context/@@pfas-type-icons" tal:condition="rows">
         <thead><tr><th>Injection name</th><th>QC</th><th>Made from</th><th>Level</th><th>Added</th></tr></thead>
         <tbody><tr tal:repeat="r rows">
-          <td tal:content="r/injection">WS-1-LFSM1</td><td tal:content="r/role">LFSM</td>
+          <td tal:content="r/injection">WS-1-LFSM1</td><td tal:content="structure python:ti.cell(r['role'])">LFSM</td>
           <td tal:content="python:r.get('parent_injection') or '—'">DW-0001</td>
           <td tal:content="python:r.get('level') or '—'">Mid</td>
           <td tal:content="python:('%s %s' % (r['amount'], r.get('unit') or '')) if r.get('amount') else 'method level'">100 ng/g</td>
@@ -654,12 +692,36 @@
     <!-- ════════════════════════════════════════════════════════════
          DILUTIONS: logged whenever they are made, also after the
          extraction is finalized (a dilution follows the run). Appended to
-         FM-ENV-003, never edited.
+         the extraction record, never edited. The optional stage: a
+         dilution Data Review asked for is made here, its prep entered
+         under the method's dilution rules (dilution_make.py); it is not
+         in the stage plan, so finalising never waits on it.
          ════════════════════════════════════════════════════════════ -->
-    <tal:dil tal:condition="python: view.session() and view.mode() in ('review', 'done')">
+    <tal:dil tal:define="asked view/dilution_requests"
+             tal:condition="python: view.session() and (view.mode() in ('review', 'done') or asked)">
     <div class="eg-card dilution-card" id="dilution-card">
       <h3>Dilutions</h3>
       <p class="reagent-hint">Re-injected diluted after reading above the calibration range; the diluted result is added with its own analysis time. <tal:h define="hid string:dilution"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+      <tal:asked tal:condition="asked">
+      <table class="pfas-table" data-col-resize="extraction-guide-5">
+        <thead><tr><th>Injection</th><th>Asked for</th><th>Why</th><th>Status</th><th>Made as</th></tr></thead>
+        <tbody tal:define="rm context/@@pfas-row-menu"><tr tal:repeat="r asked"
+            tal:attributes="data-row-actions python:rm.actions((u'Make', 'modal', u'make-%s' % r['id']) if r['status'] == 'open' else None)">
+          <td class="pfas-mono" tal:content="r/injection">DW-0001</td>
+          <td tal:content="r/asked">Dilution 1:10</td>
+          <td tal:content="python:r.get('reason') or '—'">over range</td>
+          <td><span tal:attributes="class python:'badge badge-ok' if r['status'] in ('made', 'run') else 'badge badge-pending'"
+                    tal:content="python:r['status'].capitalize()">Open</span></td>
+          <td class="pfas-mono" tal:content="python:r.get('new_injection') or '—'">DW-0001_DIL10</td>
+        </tr></tbody>
+      </table>
+      <tal:dialogs tal:repeat="r asked" tal:define="opts view/make_options">
+        <tal:mk define="make_url string:${view/portal_url}/@@pfas-extraction-guide; make_action string:make_dilution;
+                        make_hidden python:[('batch_uid', view.batch_uid())]">
+          <metal:d use-macro="context/@@pfas-dilution-make-macros/macros/make-dialog" />
+        </tal:mk>
+      </tal:dialogs>
+      </tal:asked>
       <table class="pfas-table" data-col-resize="extraction-guide-4" tal:define="rows view/dilution_rows" tal:condition="rows">
         <thead><tr><th>Diluted from</th><th>Injection name</th><th>Fold</th><th>Route</th><th>Aliquot</th><th>Logged by</th><th>Logged</th></tr></thead>
         <tbody><tr tal:repeat="r rows">
@@ -705,19 +767,17 @@
     return (Date.parse(d + 'T00:00:00Z') - Date.parse(t + 'T00:00:00Z')) / 864e5;
   }
   function todayISO() { return PFAS.components.labToday() || new Date().toISOString().slice(0,10); }
+  /* out of date when its expiry is before the lab's day: a lot expiring
+     today is still in date (lot_expiry.py judges it again) */
   function isExpired(d) {
     var n = daysFromLabToday(d);
-    if (n !== null) return n <= 0;
-    return d && new Date(d) < new Date();
+    if (n !== null) return n < 0;
+    return !!d && DAY_RE.test(d) && d < todayISO();
   }
   function expClass(d) {
     if (!d) return '';
     var n = daysFromLabToday(d);
-    if (n !== null) return n <= 0 ? 'exp-expired' : (n <= 30 ? 'exp-warn' : '');
-    var exp = new Date(d);
-    var now = new Date();
-    if (exp < now) return 'exp-expired';
-    if ((exp-now) < 30*24*3600*1000) return 'exp-warn';
+    if (n !== null) return n < 0 ? 'exp-expired' : (n <= 30 ? 'exp-warn' : '');
     return '';
   }
 
@@ -775,9 +835,9 @@
   }
 
   function lotLabel(l) {
-    return l.name + ' \u00b7 lot ' + l.lot + (l.expiry ? ' \u00b7 exp ' + l.expiry : '') +
-           (l.left ? ' \u00b7 ' + l.left : '') +
-           (l.kind === 'prepared_standard' ? ' \u00b7 prepared' : '');
+    /* the select shows the lot number only: the item is the row's heading
+       (or the group the option sits in) and the expiry is read under it */
+    return l.lot || l.name;
   }
 
   function lotOptions(r) {
@@ -792,9 +852,30 @@
       info.suggested.forEach(function(k) { sugg[k] = 1; if (LOT_BY_KEY[k]) html += opt(LOT_BY_KEY[k]); });
       html += '\u003c/optgroup>';
     }
-    html += '\u003coptgroup label="All usable lots">';
-    LOTS.forEach(function(l) { if (!sugg[l.key]) html += opt(l); });
-    return html + '\u003c/optgroup>';
+    /* every other usable lot, under the name of its item, so a lot number
+       is never read without the item it belongs to */
+    var groups = [], by = {};
+    LOTS.forEach(function(l) {
+      if (sugg[l.key]) return;
+      if (!by[l.name]) { by[l.name] = []; groups.push(l.name); }
+      by[l.name].push(l);
+    });
+    groups.forEach(function(name) {
+      html += '\u003coptgroup label="' + esc(name) + '">';
+      by[name].forEach(function(l) { html += opt(l); });
+      html += '\u003c/optgroup>';
+    });
+    return html;
+  }
+
+  /* the chosen lot's expiry on a line under its select, with a chip that
+     says whether it is in date (amber within 30 days of its expiry) */
+  function lotLine(r) {
+    if (!r.key || !r.expiry) return '';
+    var ec = expClass(r.expiry);
+    var chip = ec === 'exp-expired' ? ['badge-fail', 'Out of date'] : [ec === 'exp-warn' ? 'badge-warn' : 'badge-ok', 'In date'];
+    return '\u003cspan class="pfas-hint reagent-lot-line">exp ' + esc(r.expiry) +
+           ' \u003cspan class="badge ' + chip[0] + '">' + chip[1] + '\u003c/span>\u003c/span>';
   }
 
   function renderReagents() {
@@ -804,30 +885,38 @@
     reagentData.forEach(function(r, i) {
       var el = boxes[r.group] || boxes.reagent;
       if (!el) return;
-      var ec = expClass(r.expiry);
       var div = document.createElement('div');
       div.className = 'reagent-row';
-      div.innerHTML =
-        (r.role ? '\u003cspan class="reagent-role">' + esc(r.role) + '\u003c/span>'
-                : '\u003cinput class="reagent-role-field" type="text" placeholder="What is it for?"' +
-                  ' value="' + esc(r.role) + '" oninput="reagentData[' + i + '].role=this.value;syncReagents()"/>') +
-        '\u003cselect class="reagent-lot-sel" onchange="pickLot(' + i + ',this.value)">' + lotOptions(r) + '\u003c/select>' +
+      /* the fields on the form grid; the remove mark after the grid, at the
+         same place on every row */
+      div.innerHTML = '\u003cdiv class="pfas-form-row">' +
+        (r.role ? '\u003cspan class="reagent-role is-full">' + esc(r.role) + '\u003c/span>'
+                : '\u003clabel class="pfas-form-field">\u003cspan>Used for\u003c/span>' +
+                  '\u003cinput class="reagent-role-field" type="text"' +
+                  ' value="' + esc(r.role) + '" oninput="reagentData[' + i + '].role=this.value;syncReagents()"/>\u003c/label>') +
+        '\u003cdiv class="pfas-form-field is-wide">\u003clabel for="eg-lot-' + i + '">Lot\u003c/label>' +
+        '\u003cdiv class="pfas-inline is-wrap">' +
+        '\u003cselect id="eg-lot-' + i + '" class="reagent-lot-sel" onchange="pickLot(' + i + ',this.value)">' + lotOptions(r) + '\u003c/select>' +
         '\u003cbutton type="button" class="btn-sm btn-secondary" title="Scan the label" onclick="scanReagentLot(' + i + ')">Scan\u003c/button>' +
         '\u003cbutton type="button" class="btn-sm btn-secondary" title="A lot that is not in the inventory yet" onclick="openReceive(' + i + ')">New lot\u003c/button>' +
-        (ec ? '\u003cspan class="' + ec + '">' + (ec === 'exp-expired' ? 'EXPIRED' : 'Expires ' + esc(r.expiry)) + '\u003c/span>' : '') +
+        '\u003c/div>' + lotLine(r) + '\u003c/div>' +
+        /* the unit is part of the caption, so it is read in full and stays
+           in view while the amount is typed */
+        '\u003clabel class="pfas-form-field">\u003cspan>Quantity used' +
+               ((LOT_BY_KEY[r.key] || {}).unit ? ' \u003cspan class="pfas-unit">(' + esc(LOT_BY_KEY[r.key].unit) + ')\u003c/span>' : '') + '\u003c/span>' +
         '\u003cinput class="reagent-qty-field" type="text" title="Amount used, e.g. 5 mL"' +
-               ' placeholder="Qty used' + ((LOT_BY_KEY[r.key] || {}).unit ? ' (' + esc(LOT_BY_KEY[r.key].unit) + ')' : '') + '"' +
                ' value="' + esc(r.qty_used) + '"' +
-               ' oninput="reagentData[' + i + '].qty_used=this.value;syncReagents()"/>' +
+               ' oninput="reagentData[' + i + '].qty_used=this.value;syncReagents()"/>\u003c/label>' +
         (r.kind === 'reagent' ?
+          '\u003clabel class="pfas-form-field">\u003cspan>Lot status\u003c/span>' +
           '\u003cselect class="reagent-status-sel' + (r.new_status ? ' flagged' : '') + '"' +
                   ' onchange="flagReagent(' + i + ',this.value)">' +
             '\u003coption value="">Lot OK\u003c/option>' +
             '\u003coption value="exhausted"' + (r.new_status === 'exhausted' ? ' selected' : '') + '>Lot used up\u003c/option>' +
             '\u003coption value="quarantine"' + (r.new_status === 'quarantine' ? ' selected' : '') + '>Quarantine this lot\u003c/option>' +
-          '\u003c/select>' : '') +
-        '\u003cbutton type="button" class="pfas-row-remove" title="Remove this row" onclick="reagentData.splice(' + i + ',1);renderReagents()">&#215;\u003c/button>' +
-        (r.receiving ? receiveForm(i, r.receiving) : '');
+          '\u003c/select>\u003c/label>' : '') +
+        (r.receiving ? receiveForm(i, r.receiving) : '') + '\u003c/div>' +
+        '\u003cbutton type="button" class="pfas-row-remove" title="Remove this row" onclick="reagentData.splice(' + i + ',1);renderReagents()">&#215;\u003c/button>';
       el.appendChild(div);
     });
     syncReagents();
@@ -891,7 +980,7 @@
       return '\u003cinput type="' + (type || 'text') + '" placeholder="' + ph + '" value="' + esc(rc[k] || '') + '"' +
              ' oninput="reagentData[' + i + '].receiving.' + k + '=this.value"/>';
     };
-    return '\u003cdiv class="receive-box">\u003cstrong>Receive a new lot into the inventory\u003c/strong>' +
+    return '\u003cdiv class="receive-box is-full">\u003cstrong>Receive a new lot into the inventory\u003c/strong>' +
       '\u003cdiv class="receive-grid">' + f('name', 'Item name') + f('lot', 'Lot number') +
       f('expiry', 'Expiry', 'date') + f('conditions', 'Storage conditions') +
       // a core Supplier (core_lists.py)
@@ -955,9 +1044,11 @@
       var known = eq.units.some(function(u) { return u.serial === cur; });
       var div = document.createElement('div');
       div.className = 'eq-field';
-      var html = '\u003clabel>' + esc(label) + '\u003c/label>';
+      /* the equipment's name labels the control under it: the list of
+         units when there is one, else the serial number box */
+      var html = '\u003clabel for="eq-' + (eq.units.length ? 'unit' : 'sn') + '-' + i + '">' + esc(label) + '\u003c/label>';
       if (eq.units.length) {
-        html += '\u003cselect onchange="pickUnit(' + i + ',this.value)">' +
+        html += '\u003cselect id="eq-unit-' + i + '" onchange="pickUnit(' + i + ',this.value)">' +
           '\u003coption value="">\u2014 choose the ' + esc(eq.family) + ' \u2014\u003c/option>' +
           eq.units.map(function(u) {
             return '\u003coption value="' + esc(u.serial) + '"' + (u.serial === cur ? ' selected' : '') + '>' +
@@ -974,7 +1065,8 @@
         html += '\u003cspan class="eq-hint">No ' + esc(eq.family) + ' registered under Equipment\u003c/span>';
       }
       if (!eq.units.length || (cur && !known) || eq.other) {
-        html += '\u003cinput type="text" placeholder="Serial number" value="' + esc(known ? '' : cur) + '"' +
+        html += '\u003cinput type="text" id="eq-sn-' + i + '" placeholder="Serial number"' +
+                ' aria-label="' + esc(label) + ', serial number" value="' + esc(known ? '' : cur) + '"' +
                 ' oninput="equipmentSNs[EQUIPMENT[' + i + '].label]=this.value;syncEquipment()"/>';
       }
       div.innerHTML = html;
@@ -988,9 +1080,52 @@
     eq.other = (serial === '__other__');
     equipmentSNs[eq.label] = eq.other ? '' : serial;
     renderEquipment();
+    if (SAMPLE_CARD.column === 'spe_port') renderSamples();
+  }
+
+  /* Additional equipment: any label the stage does not plan, kept in the
+     same label -> serial map the stage stores */
+  var extraEquipment = Object.keys(equipmentSNs).filter(function(label) {
+    return !(EQUIPMENT || []).some(function(eq) { return eq.label === label; });
+  }).map(function(label) { return {name: label, serial: equipmentSNs[label] || ''}; });
+
+  function addExtraEquipment() {
+    extraEquipment.push({name: '', serial: ''});
+    renderExtraEquipment();
+  }
+
+  function removeExtraEquipment(i) {
+    extraEquipment.splice(i, 1);
+    renderExtraEquipment();
+  }
+
+  function renderExtraEquipment() {
+    var el = document.getElementById('eq-extra');
+    if (!el) return;
+    el.innerHTML = '';
+    extraEquipment.forEach(function(x, i) {
+      var div = document.createElement('div');
+      div.className = 'eq-field';
+      div.innerHTML =
+        '\u003clabel for="eq-extra-name-' + i + '">Equipment\u003c/label>' +
+        '\u003cinput type="text" id="eq-extra-name-' + i + '" placeholder="Name" value="' + esc(x.name) + '"' +
+        ' oninput="extraEquipment[' + i + '].name=this.value;syncEquipment()"/>' +
+        '\u003cinput type="text" list="eq-register" placeholder="Serial number" aria-label="Serial number"' +
+        ' value="' + esc(x.serial) + '" oninput="extraEquipment[' + i + '].serial=this.value;syncEquipment()"/>' +
+        '\u003cbutton type="button" class="btn-sm btn-secondary" onclick="removeExtraEquipment(' + i + ')">Remove\u003c/button>';
+      el.appendChild(div);
+    });
+    syncEquipment();
   }
 
   function syncEquipment() {
+    var planned = {};
+    (EQUIPMENT || []).forEach(function(eq) { planned[eq.label] = equipmentSNs[eq.label] || ''; });
+    extraEquipment.forEach(function(x) {
+      var name = (x.name || '').trim();
+      if (name && !(name in planned)) planned[name] = (x.serial || '').trim();
+    });
+    equipmentSNs = planned;
     var el = document.getElementById('equipment_sns_json_field');
     if (el) el.value = JSON.stringify(equipmentSNs);
   }
@@ -1112,6 +1247,15 @@
       parents.push({uid: r.inventory_uid || '', name: r.name || r.role || '',
                     lot: r.lot || '', qty: r.qty_used || '', unit: ''});
     });
+    /* a lot out of date today is used only with a reason: the stage's
+       deviation note, kept on that parent and checked again when saved */
+    var late = reagentData.filter(function(r) { return (r.lot || r.inventory_uid) && isExpired(r.expiry); });
+    var reason = ((document.getElementById('deviations-field') || {}).value || '').trim();
+    if (late.length && !reason) {
+      alert('Out of date: ' + late.map(function(r) { return (r.name || r.role || '') + ' lot ' + (r.lot || ''); }).join('; ') +
+            '.\n\nWrite the reason it is used in the deviation note, then save the solution again.');
+      return;
+    }
     if (!parents.length) {
       alert('Record the reagent lots this solution was made from first.\n\n' +
             'A prepared standard with no parentage cannot be traced back to the ' +
@@ -1126,6 +1270,7 @@
                   sol_volume:s.volume_ml, sol_storage:s.storage||'',
                   sol_expiry:s.expiry||'', sol_analyst:s.analyst||'',
                   parent_reagents_json:JSON.stringify(parents),
+                  sol_expired_reason:late.length ? reason : '',
                   /* The stage's equipment serials, so the solution records what it
                      was MADE WITH without asking the analyst a second time — the
                      information is already on this page. The handler resolves each
@@ -1311,23 +1456,48 @@
   /* ═══════════════════════════════════════════════════════════════════
      INIT
      ═══════════════════════════════════════════════════════════════════ */
-  /* Per-sample table (FM-ENV-003 samples rows): this stage records one
+  /* Per-sample table (the extraction record's samples rows): this stage records one
      column; the server merges it by sample id. */
   var sampleRows = ((SAMPLE_CARD && SAMPLE_CARD.rows) || []).map(function(r) {
     return {sample_id: r.sample_id, matrix_type: r.matrix_type || '',
             value: (r[SAMPLE_CARD.column] || ''), unit: r.amount_unit || 'g'};
   });
 
+  /* the SPE manifold's ports: the one picked on this stage, else the one
+     an earlier stage recorded (SAMPLE_CARD.ports); none listed, the port
+     is typed */
+  function portChoices() {
+    var found = null;
+    (EQUIPMENT || []).forEach(function(eq) {
+      if (found || eq.family !== 'SPE manifold') return;
+      var u = eq.units.filter(function(x) { return x.serial === equipmentSNs[eq.label]; })[0];
+      if (u && u.ports && u.ports.length) found = u.ports;
+    });
+    return found || SAMPLE_CARD.ports || [];
+  }
+
+  function portCell(r, i, ports) {
+    var on = ports.some(function(p) { return p.toUpperCase() === String(r.value || '').toUpperCase(); });
+    return '\u003cselect aria-label="SPE port" onchange="sampleRows[' + i + '].value=this.value;syncSamples()">' +
+      '\u003coption value="">\u2014\u003c/option>' +
+      ports.map(function(p) {
+        return '\u003coption value="' + esc(p) + '"' + (p.toUpperCase() === String(r.value || '').toUpperCase() ? ' selected' : '') + '>' + esc(p) + '\u003c/option>';
+      }).join('') +
+      (r.value && !on ? '\u003coption value="' + esc(r.value) + '" selected>' + esc(r.value) + ' (not on the manifold)\u003c/option>' : '') +
+      '\u003c/select>';
+  }
+
   function renderSamples() {
     var tb = document.getElementById('sample-rows');
     if (!tb) return;
     var amount = SAMPLE_CARD.column === 'amount';
+    var ports = SAMPLE_CARD.column === 'spe_port' ? portChoices() : [];
     tb.innerHTML = sampleRows.map(function(r, i) {
       return '\u003ctr>\u003ctd>' + (r.isNew ?
           '\u003cinput type="text" value="' + esc(r.sample_id) + '" oninput="sampleRows[' + i + '].sample_id=this.value;syncSamples()"/>' :
           esc(r.sample_id)) + '\u003c/td>\u003ctd>' + esc(r.matrix_type) + '\u003c/td>' +
-        '\u003ctd>\u003cinput ' + (SAMPLE_CARD.column === 'spe_port' ? 'type="text" size="6"' : 'type="number" step="any" min="0"') + ' value="' + esc(r.value) + '"' +
-        ' oninput="sampleRows[' + i + '].value=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd>' + (ports.length ? portCell(r, i, ports) : '\u003cinput ' + (SAMPLE_CARD.column === 'spe_port' ? 'type="text" size="6"' : 'type="number" step="any" min="0"') + ' value="' + esc(r.value) + '"' +
+        ' oninput="sampleRows[' + i + '].value=this.value;syncSamples()"/>') + '\u003c/td>' +
         (amount ? '\u003ctd>\u003cselect onchange="sampleRows[' + i + '].unit=this.value;syncSamples()">' +
           ['g', 'mL'].map(function(u) { return '\u003coption' + (u === r.unit ? ' selected' : '') + '>' + u + '\u003c/option>'; }).join('') +
           '\u003c/select>\u003c/td>' : '') + '\u003c/tr>';
@@ -1358,6 +1528,11 @@
       if (!cur) out.push(eq.label + ': no balance chosen');
       else if (!u) out.push(eq.label + ': no registered balance has serial ' + cur + ' (register it under Equipment)');
       else if (!u.ok) out.push(eq.label + ' (' + u.name + '): ' + u.note);
+    });
+    /* a lot not in the inventory traces to nothing (bench_queue.stage_lot_blocks) */
+    reagentData.forEach(function(r) {
+      if (r.lot && !r.inventory_uid)
+        out.push((r.role || r.name || 'Item') + ': lot ' + r.lot + ' is not in the inventory. Pick it from the inventory, or receive it first.');
     });
     return out;
   }
@@ -1409,6 +1584,7 @@
     });
     renderReagents();
     renderEquipment();
+    renderExtraEquipment();
     renderSamples();
     renderSolutions();
     renderPedigree();

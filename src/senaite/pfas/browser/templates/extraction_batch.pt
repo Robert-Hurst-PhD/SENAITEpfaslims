@@ -4,19 +4,20 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Extraction batch</title>
+  <title metal:fill-slot="title">Extraction worksheet</title>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Extraction batch</tal:t>
-  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="string:${context/getId} · ${view/method_id}">WS-1 · EPA_537_1</span></tal:c>
+  <tal:t metal:fill-slot="header-title">Extraction worksheet</tal:t>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="python:u'%s · %s' % (context.getId(), view.method_name(view.method_id()))">WS-1 · EPA 537.1 Drinking Water</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href view/guide_url">Guided extraction</a>
   </tal:r>
 
   <metal:fill fill-slot="content"
-              tal:define="msg view/message; edit view/can_edit; unit view/unit; probs view/problems">
+              tal:define="msg view/message; may view/can_edit; edit view/may_change_members; locked view/finalised; unit view/unit; probs view/problems">
     <p class="dr-msg" tal:condition="python:msg[0]" tal:content="python:msg[0]">Saved</p>
     <p class="dr-msg text-danger" tal:condition="python:msg[1]" tal:content="python:msg[1]">Error</p>
+    <p class="bench-sub" tal:condition="locked">Finalised: read only.</p>
 
     <!-- 1. Samples: the worksheet's (core's Add Analyses selects them) -->
     <section class="bench-block">
@@ -26,7 +27,9 @@
       <table class="pfas-table" data-col-resize="extraction-batch-1" tal:condition="view/sample_members">
         <thead><tr><th>Injection name</th><th>Client sample ID</th><th>Matrix</th></tr></thead>
         <tbody><tr tal:repeat="m view/sample_members">
-          <td tal:content="m/injection">DW-0001</td><td tal:content="m/client_sid">C-1</td><td tal:content="m/matrix">Drinking Water</td>
+          <td><tal:n tal:content="m/injection">DW-0001</tal:n>
+            <tal:rx tal:define="rx python:view.reextraction_of(m)" tal:condition="rx"> <span class="pfas-tag"
+              tal:content="python:u'Re-extraction of %s' % rx">Re-extraction of WS-358</span></tal:rx></td><td tal:content="m/client_sid">C-1</td><td tal:content="m/matrix">Drinking Water</td>
         </tr></tbody>
       </table>
     </section>
@@ -34,8 +37,9 @@
     <!-- 2. QC: populated from the method profile / project plan -->
     <section class="bench-block">
       <h2 class="bench-h">2. QC</h2>
-      <p class="bench-sub">The method asks for: <strong tal:content="view/plan_text">MB 1</strong>.
-        <tal:z define="size view/size_text" condition="size">Batch size: <span tal:replace="size">9 of 20 samples</span>.</tal:z>
+      <p class="bench-sub">The method asks for: <strong tal:define="ti context/@@pfas-type-icons"
+          tal:content="structure python:ti.cells(view.plan_text())">MB 1</strong>.
+        <tal:z define="size view/size_text" condition="size">Worksheet size: <span tal:replace="size">9 of 20 samples</span>.</tal:z>
         <tal:s condition="view/shortfall">Missing: <span tal:replace="python:', '.join('%s %d' % (r, n) for r, n in sorted(view.shortfall().items()))">LFSM 1</span>.</tal:s></p>
       <form method="post" tal:condition="python:edit and view.shortfall()"
             tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
@@ -45,57 +49,85 @@
       </form>
     </section>
 
-    <!-- 3. Parents and levels -->
-    <section class="bench-block" tal:condition="view/qc_members">
+    <!-- 3. Parents and levels: always numbered in its place; until the
+         batch has QC there is nothing to set and it says so -->
+    <section class="bench-block" id="eb-levels">
       <h2 class="bench-h">3. Parents and levels</h2>
+      <p class="bench-sub" tal:condition="not:view/qc_members">Add QC first; spike levels are set here.</p>
+      <tal:qc condition="view/qc_members">
       <p class="bench-sub">Amount in <span tal:replace="python:unit or 'the matrix unit'">ng/L</span>.</p>
-      <form method="post" tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
+      <form method="post" id="eb-qc-form" tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
         <input type="hidden" name="action" value="save" />
         <input tal:replace="structure context/@@authenticator/authenticator" />
         <table class="pfas-table" data-col-resize="extraction-batch-2">
-          <thead><tr><th>Injection name</th><th>QC</th><th>Made from</th><th>Level or lot</th><th>Added</th><th></th></tr></thead>
-          <tbody><tr tal:repeat="m view/qc_members">
+          <thead><tr><th>Injection name</th><th>QC</th><th>Made from</th><th>Level or lot</th><th>Added</th><th>Spike lot</th><th>Volume (&#181;L)</th></tr></thead>
+          <tbody tal:define="rm context/@@pfas-row-menu; ti context/@@pfas-type-icons"><tr tal:repeat="m view/qc_members"
+              tal:attributes="data-row-actions python:rm.actions((u'Remove', 'form', 'eb-qc-form', {'danger': True, 'values': {'remove': m['id']}}) if edit else None)">
             <td tal:content="m/injection">WS-1-LFSM1</td>
-            <td tal:content="python:view.role_title(m['role'])">Matrix spike (LFSM)</td>
+            <td tal:content="structure python:ti.cell(m['role'], view.role_title(m['role']))">Matrix spike (LFSM)</td>
             <td>
-              <select tal:condition="python:view.needs_parent(m)" tal:attributes="name string:${m/id}.parent; disabled python:None if edit else 'disabled'">
+              <span tal:condition="python:not edit and view.needs_parent(m)" tal:content="python:view.member_name(m.get('parent'))">DW-0001</span>
+              <select tal:condition="python:edit and view.needs_parent(m)" tal:attributes="name string:${m/id}.parent">
                 <option value="">Choose a sample&#8230;</option>
                 <option tal:repeat="s view/sample_members" tal:attributes="value s/id; selected python:'selected' if s['id'] == m.get('parent') else None" tal:content="s/injection">DW-0001</option>
               </select>
-              <select tal:condition="python:m['role'] == 'LFSMD'" tal:attributes="name string:${m/id}.lfsm_of; disabled python:None if edit else 'disabled'">
+              <span tal:condition="python:not edit and m['role'] == 'LFSMD'" tal:content="python:view.member_name(m.get('lfsm_of'))">WS-1-LFSM1</span>
+              <select tal:condition="python:edit and m['role'] == 'LFSMD'" tal:attributes="name string:${m/id}.lfsm_of">
                 <option value="">Duplicate of&#8230;</option>
                 <option tal:repeat="l view/lfsm_members" tal:attributes="value l/id; selected python:'selected' if l['id'] == m.get('lfsm_of') else None" tal:content="l/injection">WS-1-LFSM1</option>
               </select>
               <span tal:condition="python:not view.needs_parent(m) and m['role'] != 'LFSMD'">&#8212;</span>
             </td>
             <td>
-              <select tal:condition="python:view.spiked(m) and m['role'] != 'LFSMD'" tal:attributes="name string:${m/id}.level; disabled python:None if edit else 'disabled'">
+              <span tal:condition="python:not edit and view.spiked(m) and m['role'] != 'LFSMD'" tal:content="python:m.get('level') or '—'">Mid</span>
+              <select tal:condition="python:edit and view.spiked(m) and m['role'] != 'LFSMD'" tal:attributes="name string:${m/id}.level">
                 <option value="">Level&#8230;</option>
                 <option tal:repeat="lv view/levels" tal:attributes="value python:lv[0]; selected python:'selected' if lv[0] == m.get('level') else None"
                         tal:content="python:lv[0] + (' (%g %s)' % (lv[1], unit) if lv[1] else ' (no level set)')">Mid</option>
               </select>
               <span tal:condition="python:m['role'] == 'LFSMD'" tal:content="python:m.get('level') or '—'">Mid</span>
-              <select tal:condition="python:m['role'] == 'MxB'" tal:attributes="name string:${m/id}.lot; disabled python:None if edit else 'disabled'">
+              <span tal:condition="python:not edit and m['role'] == 'MxB'" tal:content="python:view.lot_name(m)">DEMO milk QC-1</span>
+              <select tal:condition="python:edit and m['role'] == 'MxB'" tal:attributes="name string:${m/id}.lot">
                 <option value="">Blank-matrix lot&#8230;</option>
                 <option tal:repeat="l python:view.lot_options(m)" tal:attributes="value l/uid; selected python:'selected' if l['uid'] == m.get('lot') else None"
                         tal:content="string:${l/name} ${l/lot_number}">DEMO milk QC-1</option>
               </select>
               <label tal:condition="python:m['role'] == 'MB'">
                 <input type="radio" name="subtract_mb"
-                       tal:attributes="value m/id; checked python:'checked' if m.get('subtract') else None; disabled python:None if edit else 'disabled'" />
+                       tal:attributes="value m/id; checked python:'checked' if m.get('subtract') else None; disabled python:None if may else 'disabled'" />
                 Subtract</label>
               <span tal:condition="python:not view.spiked(m) and m['role'] not in ('MxB', 'MB')">&#8212;</span>
             </td>
             <td>
-              <input type="number" min="0" step="any" tal:condition="python:view.spiked(m) and m['role'] != 'LFSMD'"
-                     tal:attributes="name string:${m/id}.amount; value m/amount; placeholder python:unit or 'unit not set'; disabled python:None if edit else 'disabled'" />
+              <span tal:condition="python:not edit and view.spiked(m) and m['role'] != 'LFSMD'" tal:content="python:('%s %s' % (m['amount'], m.get('unit') or '')).strip() if m.get('amount') else '—'">160 ng/L</span>
+              <input type="number" min="0" step="any" tal:condition="python:edit and view.spiked(m) and m['role'] != 'LFSMD'"
+                     tal:attributes="name string:${m/id}.amount; value m/amount; placeholder python:unit or 'unit not set'" />
               <span tal:condition="python:m['role'] == 'LFSMD'" tal:content="python:('%s %s' % (m['amount'], m.get('unit') or '')) if m.get('amount') else 'its LFSM'">its LFSM</span>
             </td>
-            <td><button class="btn-sm btn-secondary" type="submit" name="remove" tal:condition="edit"
-                        tal:attributes="value m/id">Remove</button></td>
+            <td>
+              <span tal:condition="python:not edit and view.records_spike(m)" tal:define="ic context/@@pfas-icons; v python:m.get('spike_lot')"><tal:v tal:condition="v" tal:replace="v">50</tal:v><span
+                class="pfas-not-recorded" tal:condition="not:v"><tal:m tal:replace="structure python:ic.svg('warn', hidden=True)" />Not recorded</span></span>
+              <select tal:condition="python:edit and view.records_spike(m)" tal:attributes="name string:${m/id}.spike_lot">
+                <option value="">Spike lot&#8230;</option>
+                <option tal:repeat="l python:view.spike_lot_options(m)" tal:attributes="value python:l[0]; selected python:'selected' if l[0] == m.get('spike_lot') else None"
+                        tal:content="python:l[1]">DEMO spike mix DEMO-PS-SPK-1</option>
+              </select>
+              <span tal:condition="python:view.follows_lfsm(m)" tal:content="python:view.follows_lfsm(m)[0]">Its LFSM: DEMO-PS-SPK-1</span>
+              <span tal:condition="python:not view.records_spike(m) and not view.follows_lfsm(m)" tal:define="ic context/@@pfas-icons"><span class="pfas-not-recorded" tal:condition="python:view.spiked(m)"><tal:m
+                tal:replace="structure python:ic.svg('warn', hidden=True)" />Not recorded</span><tal:d tal:condition="python:not view.spiked(m)">—</tal:d></span>
+            </td>
+            <td>
+              <span tal:condition="python:not edit and view.records_spike(m)" tal:define="ic context/@@pfas-icons; v python:m.get('spike_volume_ul')"><tal:v tal:condition="v" tal:replace="v">50</tal:v><span
+                class="pfas-not-recorded" tal:condition="not:v"><tal:m tal:replace="structure python:ic.svg('warn', hidden=True)" />Not recorded</span></span>
+              <input type="number" min="0" step="any" tal:condition="python:edit and view.records_spike(m)"
+                     tal:attributes="name string:${m/id}.spike_volume_ul; value m/spike_volume_ul" />
+              <span tal:condition="python:view.follows_lfsm(m)" tal:content="python:view.follows_lfsm(m)[1]">Its LFSM: 50</span>
+              <span tal:condition="python:not view.records_spike(m) and not view.follows_lfsm(m)" tal:define="ic context/@@pfas-icons"><span class="pfas-not-recorded" tal:condition="python:view.spiked(m)"><tal:m
+                tal:replace="structure python:ic.svg('warn', hidden=True)" />Not recorded</span><tal:d tal:condition="python:not view.spiked(m)">—</tal:d></span>
+            </td>
           </tr></tbody>
         </table>
-        <button class="btn-sm btn-primary" type="submit" tal:condition="edit">Save</button>
+        <button class="btn-sm btn-primary" type="submit" tal:condition="python:edit or (may and [m for m in view.qc_members() if m['role'] == 'MB'])">Save</button>
       </form>
       <form method="post" class="dilution-form section-gap" tal:condition="edit"
             tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
@@ -108,6 +140,7 @@
         <li tal:repeat="p probs" tal:content="p">WS-1-LFSM1: choose the spike level.</li>
       </ul>
       <p class="bench-sub" tal:condition="not:probs">Ready for labels.</p>
+      </tal:qc>
     </section>
 
     <!-- 4. Labels: issued once every QC has its sample and level -->
@@ -118,7 +151,7 @@
         <tal:i condition="ls/issued">&#183; issued <span tal:replace="ls/at">at</span>
           <strong tal:condition="not:ls/current">&#183; out of date</strong></tal:i>
       </p>
-      <form method="post" class="dilution-form" tal:condition="python:edit and not probs and not ls['current']"
+      <form method="post" class="dilution-form" tal:condition="python:may and not probs and not ls['current'] and (ls['issued'] or not locked)"
             tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
         <input type="hidden" name="action" value="issue_labels" />
         <input tal:replace="structure context/@@authenticator/authenticator" />
@@ -132,21 +165,24 @@
     <section class="bench-block" tal:condition="view/requests">
       <h2 class="bench-h">5. Requests from review</h2>
       <table class="pfas-table" data-col-resize="extraction-batch-3">
-        <thead><tr><th>Injection</th><th>Asked for</th><th>Why</th><th>Asked by</th><th>Status</th><th>Made as</th><th></th></tr></thead>
-        <tbody><tr tal:repeat="r view/requests">
+        <thead><tr><th>Injection</th><th>Asked for</th><th>Why</th><th>Asked by</th><th>Status</th><th>Made as</th></tr></thead>
+        <tbody tal:define="rm context/@@pfas-row-menu"><tr tal:repeat="r view/requests"
+            tal:attributes="data-row-actions python:rm.actions((u'Mark as made', 'form', u'eb-made-%s' % r['id']) if (may and r['status'] == 'open') else None)">
           <td tal:content="r/injection">DW-0012</td>
           <td tal:content="python:('Dilution 1 in %s' % r['fold']) if r['kind'] == 'dilution' else 'Re-injection'">Dilution</td>
           <td tal:content="r/reason">why</td><td tal:content="r/requested_by">AN1</td>
           <td tal:content="r/status">open</td><td tal:content="python:r.get('new_injection') or '—'">DW-0012-D10</td>
-          <td><form method="post" tal:condition="python:edit and r['status'] == 'open'"
-                    tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
-                <input type="hidden" name="action" value="made" />
-                <input type="hidden" name="request" tal:attributes="value r/id" />
-                <input tal:replace="structure context/@@authenticator/authenticator" />
-                <button class="btn-sm btn-primary" type="submit">Made</button>
-              </form></td>
         </tr></tbody>
       </table>
+      <tal:rv tal:repeat="r view/requests">
+        <form method="post" hidden="hidden" tal:condition="python:may and r['status'] == 'open'"
+              tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch; id string:eb-made-${r/id}">
+          <input type="hidden" name="action" value="made" />
+          <input type="hidden" name="request" tal:attributes="value r/id" />
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <button class="btn-sm btn-primary" type="submit">Made</button>
+        </form>
+      </tal:rv>
     </section>
   </metal:fill>
 </body>

@@ -3,8 +3,13 @@
 
 A revision freezes everything the Certificate of Analysis is drawn from:
 
-    print_settings   the lab's Print Settings (identity, accreditation,
-                     statements, sign-off, quality-system statement inputs)
+    print_settings   the lab's Print Settings (contact, logo, accreditation,
+                     statements, sign-off, quality-system statement inputs);
+                     never the laboratory's name, address, phone and
+                     e-mail, which a certificate prints from core's
+                     Laboratory record (RECORD_KEYS: a revision issued while
+                     it carried them prints the record's, and is not changed
+                     by them); the accreditation line stays the revision's
     report_formats   each method's Reporting-tab format {method: {...}}
     format_defaults  the built-in default of each format setting added after
                      revisions were first issued (report_format
@@ -18,10 +23,13 @@ rendered from the ISSUED revision, never from the live draft, and each
 issued certificate records the revision it used. "Unissued changes" = the
 live draft's fingerprint differs from the issued one; what differs is listed.
 
-    snapshot(print_settings, report_formats, layout, designed=None) -> dict
+    snapshot(print_settings, report_formats, layout, designed=None,
+             report_tiers=None) -> dict
         designed: the designed certificate layout (pdfme template),
         present ONLY when the lab has one -- an absent design adds no key, so
         the fingerprint of an install without one is unchanged
+        report_tiers: the lab's saved tier catalogue, likewise present ONLY
+        once saved
     fingerprint(snap) -> str
     changes(issued_snap, draft_snap) -> ["what differs", ...]
     status(records, draft_fp) -> {"rev", "issued_at", "unissued", "none_issued"}
@@ -46,10 +54,29 @@ def _report_format():
 
 # not part of what a revision prints differently by: see the module docstring
 _NOT_FINGERPRINTED = ("format_defaults",)
+# what a certificate prints from core's Laboratory record, whatever revision
+# is issued: never frozen in one, never what tells two revisions apart. The
+# accreditation line is not among them: it stays fixed in each revision
+RECORD_KEYS = ("lab_name", "lab_address", "lab_phone", "lab_email")
 
 
-def snapshot(print_settings, report_formats, layout, designed=None):
-    ps = copy.deepcopy(print_settings or {})
+def _without_record(print_settings):
+    return dict((k, v) for k, v in (print_settings or {}).items() if k not in RECORD_KEYS)
+
+
+def with_record(settings, live):
+    """`settings` (a revision's Print Settings) with the laboratory's name,
+    address, phone and e-mail as core's Laboratory record gives them now
+    (`live`, the live Print Settings)."""
+    out = dict(settings or {})
+    for k in RECORD_KEYS:
+        out[k] = (live or {}).get(k) or u""
+    return out
+
+
+def snapshot(print_settings, report_formats, layout, designed=None,
+             report_tiers=None):
+    ps = copy.deepcopy(_without_record(print_settings))
     for k in _STAMPS:
         ps.pop(k, None)
     # no logo adds no fingerprint key, so such an install's fingerprint is
@@ -62,6 +89,10 @@ def snapshot(print_settings, report_formats, layout, designed=None):
             "format_defaults": _report_format().recorded_defaults()}
     if designed is not None:
         snap["designed_layout"] = copy.deepcopy(designed)
+    # a never-saved catalogue adds no key, so such an install's fingerprint
+    # is unchanged
+    if report_tiers is not None:
+        snap["report_tiers"] = copy.deepcopy(report_tiers)
     return snap
 
 
@@ -85,6 +116,8 @@ def certificate_layout_problem(snap):
 
 def fingerprint(snap):
     snap = dict((k, v) for k, v in (snap or {}).items() if k not in _NOT_FINGERPRINTED)
+    if "print_settings" in snap:
+        snap["print_settings"] = _without_record(snap["print_settings"])
     raw = json.dumps(snap, sort_keys=True, default=lambda o: u"%s" % o)
     if not isinstance(raw, bytes):
         raw = raw.encode("utf-8")
@@ -95,7 +128,7 @@ def changes(issued, draft):
     """What the draft changes, in words a Manager can check before issuing."""
     issued, draft = issued or {}, draft or {}
     out = []
-    a, b = issued.get("print_settings") or {}, draft.get("print_settings") or {}
+    a, b = _without_record(issued.get("print_settings")), _without_record(draft.get("print_settings"))
     for k in sorted(set(a) | set(b)):
         if a.get(k) != b.get(k):
             out.append(u"Print setting %s" % k)
@@ -110,33 +143,41 @@ def changes(issued, draft):
             out.append(u"Designed certificate layout withdrawn (back to the standard certificate)")
         else:
             out.append(u"Designed certificate layout")
+    if issued.get("report_tiers") != draft.get("report_tiers"):
+        out.append(u"Certificate tiers")
     return out
 
 
 def printed_settings(snap, live):
     """The Print Settings a certificate prints: the issued revision's, or the
     live ones when no revision is issued (publishing is then held by its own
-    guard)."""
+    guard); the laboratory's name, address, phone and e-mail are always the
+    record's."""
     if snap is None:
         return dict(live or {})
-    return dict(snap.get("print_settings") or {})
+    return with_record(snap.get("print_settings"), live)
 
 
 def lab_address_problem(snap, rev, live):
-    """Why a certificate would print no laboratory address, or None. An
-    address entered on the Laboratory page reaches certificates only with
-    the next issued revision."""
+    """Why a certificate would print no laboratory address, or None. The
+    address is core's Laboratory record's, issued revision or not."""
     if (printed_settings(snap, live).get("lab_address") or u"").strip():
         return None
-    if snap is not None and ((live or {}).get("lab_address") or u"").strip():
-        return (u"the laboratory address is not in the issued reporting template "
-                u"(revision %s): issue a new revision (Reporting Template) to carry "
-                u"the address entered on the Laboratory page" % rev)
     return u"the laboratory address is not set (Laboratory)"
 
 
 def next_number(records):
     return max([r.get("rev", 0) for r in records or []] or [0]) + 1
+
+
+def revision_for_draft(records, draft_fp):
+    """The revision a certificate drawn from the draft would carry: the
+    issued one while the draft is unchanged, else the one issuing it would
+    make."""
+    cur = current(records)
+    if cur is not None and issued_fingerprint(cur) == draft_fp:
+        return cur["rev"]
+    return next_number(records)
 
 
 def current(records):
@@ -149,7 +190,16 @@ def status(records, draft_fp):
     if cur is None:
         return {"rev": None, "issued_at": u"", "unissued": True, "none_issued": True}
     return {"rev": cur["rev"], "issued_at": cur.get("issued_at") or u"",
-            "unissued": cur.get("fingerprint") != draft_fp, "none_issued": False}
+            "unissued": issued_fingerprint(cur) != draft_fp, "none_issued": False}
+
+
+def issued_fingerprint(record):
+    """An issued revision's fingerprint as fingerprint() reads it now, from
+    the snapshot it keeps (a revision issued while it carried the record's
+    name and address is not a change); the stored one without a snapshot."""
+    if record.get("snapshot") is not None:
+        return fingerprint(record["snapshot"])
+    return record.get("fingerprint")
 
 
 # ── storage shell (portal annotation; one small list) ─────────────────────────
@@ -206,3 +256,16 @@ def certificate_format(snap, method_id, profile, matrix, live_settings):
 def issued_snapshot(portal):
     cur = current(records(portal))
     return (cur or {}).get("snapshot"), (cur or {}).get("rev")
+
+
+def issued_tiers(portal):
+    """(the report tiers the issued revision carries, its revision number).
+    A revision without the key carries the shipped tiers; with no revision
+    issued the rev is None."""
+    from senaite.pfas import report_tiers
+    snap, rev = issued_snapshot(portal)
+    found = (snap or {}).get("report_tiers")
+    if found is None:
+        found = report_tiers.DEFAULTS
+    # a revision issued before a part was renamed names its old key
+    return report_tiers.carry_over_parts(found)[0], rev

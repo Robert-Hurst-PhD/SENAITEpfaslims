@@ -11,6 +11,7 @@ from Products.Five.browser import BrowserView
 from senaite.pfas.browser.view_helpers import ViewHelpers
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.queue_list import QueueList
 from zope.interface import implementer
 
 logger = logging.getLogger("senaite.pfas.browser.workspace_home")
@@ -29,10 +30,10 @@ LANDINGS = (
     (("LabManager", "Manager"), u"QC Management", "@@pfas-qc-management", "qc"),
     (("Analyst", "Verifier"),   u"Data Review",   "@@pfas-data-review-home", "qc"),
     (("LabClerk",),             u"Bench",         "@@pfas-bench", "bench"),
-    (("Client",),               u"Sample Tracker", "@@pfas-track", ""),
+    (("Client",),               u"Client Tracker", "@@pfas-track", ""),
 )
 # anyone else (no lab role): the public tracker, never a staff board
-DEFAULT_LANDING = (u"Sample Tracker", "@@pfas-track", "")
+DEFAULT_LANDING = (u"Client Tracker", "@@pfas-track", "")
 
 
 def _my_notices(context):
@@ -191,7 +192,7 @@ class PFASQCManagementView(ViewHelpers, BrowserView):
             for mid in sorted(list_method_ids(portal)):
                 recs = mr.records(portal, mid)
                 prof = raw_profile(portal, mid) or {}
-                if recs and mr.status(recs, mr.fingerprint(prof, method_toggles(prof, mid)))["unissued"]:
+                if recs and mr.status(recs, mr.fingerprints(prof, method_toggles(prof, mid)))["unissued"]:
                     changed.append(prof.get("display_name") or mid)
             facts["methods_changed"] = changed
         except Exception as exc:                            # noqa: BLE001
@@ -236,13 +237,13 @@ class PFASQCManagementView(ViewHelpers, BrowserView):
                 "url":   u"{0}/@@pfas-data-review".format(base),
                 "icon":  u"ico-data-review",
                 "title": u"Data Review",
-                "desc":  u"Worksheets awaiting analyst sign-off or manager approval",
+                "desc":  u"Worksheets awaiting analyst sign-off or manager verification",
             },
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
-                "icon":  u"ico-warning",
+                "icon":  u"ico-deviation",
                 "title": u"Deviations / CARs",
-                "desc":  u"Non-conformance tracking, root cause, corrective actions",
+                "desc":  u"Deviations, root cause and corrective actions",
             },
             {
                 "url":   u"{0}/@@pfas-facility-qc".format(base),
@@ -252,18 +253,19 @@ class PFASQCManagementView(ViewHelpers, BrowserView):
             },
             {
                 "url":   u"{0}/@@pfas-sop".format(base),
-                "icon":  u"ico-book",
+                "icon":  u"ico-regulatory",
                 "title": u"Controlled Documents",
                 "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
         ]
 
 
-class PFASBenchHomeView(ViewHelpers, BrowserView):
-    """Bench landing: the extraction queue, what needs attention, then the
-    Bench tiles (phase 1)."""
+class PFASBenchHomeView(QueueList, ViewHelpers, BrowserView):
+    """Bench landing: what needs attention, the extraction queue one page at
+    a time (what is not finished first), then the Bench tiles."""
 
     template = ViewPageTemplateFile("templates/pfas_bench.pt")
+    QUEUE_VIEW = u"@@pfas-bench"
 
     def __call__(self):
         flatten_form(self.request)
@@ -272,25 +274,18 @@ class PFASBenchHomeView(ViewHelpers, BrowserView):
     def notices(self):
         return _my_notices(self.context)
 
-    def extractions(self):
-        """Open batches with where their extraction stands, in progress first."""
-        from senaite.pfas.browser.extraction_guide import extraction_queue
-        try:
-            return extraction_queue(_portal(self.context), self.request)
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("bench extraction queue: %s", exc)
-            return []
-
     def run_requests(self):
         """Open dilution / re-injection requests from review, on the open
         extraction batches: the bench is told here."""
         from bika.lims import api
-        from senaite.pfas import extraction_batch
+        from senaite.pfas import extraction_batch, retired
         out = []
         try:
             for brain in api.search({"portal_type": "Worksheet", "review_state": "open"},
                                     "senaite_catalog_worksheet"):
                 ws = api.get_object(brain)
+                if retired.is_retired(ws):
+                    continue
                 for r in extraction_batch.load_requests(ws):
                     if r.get("status") == u"open":
                         out.append(dict(r, worksheet=ws.getId(),
@@ -370,35 +365,52 @@ class PFASBenchHomeView(ViewHelpers, BrowserView):
             },
             {
                 "url":   u"{0}/@@pfas-homogenisation".format(base),
-                "icon":  u"ico-extraction",
+                "icon":  u"ico-homogenise",
                 "title": u"Homogenisation",
                 "desc":  u"{0} sample(s) awaiting homogenisation".format(self.awaiting_homogenisation()),
             },
             {
                 "url":   u"{0}/@@pfas-run-builder".format(base),
-                "icon":  u"ico-instrument-setup",
+                "icon":  u"ico-sequence",
                 "title": u"Run Builder",
-                "desc":  u"{0} batch(es) ready to build".format(self.ready_to_build()),
+                "desc":  u"{0} worksheet(s) ready to build".format(self.ready_to_build()),
             },
             {
-                "url":   u"{0}/@@pfas-logbook-batches".format(base),
-                "icon":  u"ico-book-open",
-                "title": u"Logbooks",
-                "desc":  u"Fill in and correct FM-ENV logbooks for a batch",
+                "url":   u"{0}/@@pfas-batch-records".format(base),
+                "icon":  u"ico-batch-record",
+                "title": u"Batch records",
+                "desc":  u"Each worksheet\u2019s record from receipt to release",
             },
             {
                 "url":   u"{0}/@@pfas-sop".format(base),
-                "icon":  u"ico-book",
+                "icon":  u"ico-regulatory",
                 "title": u"Controlled Documents",
                 "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
-                "icon":  u"ico-warning",
+                "icon":  u"ico-deviation",
                 "title": u"Deviations / CARs",
-                "desc":  u"Non-conformance tracking, root cause, corrective actions",
+                "desc":  u"Deviations, root cause and corrective actions",
             },
         ]
+
+
+def waiting_for_review(rows, store):
+    """The queue's rows waiting for review: submitted for review, or open
+    with the run's QC results on record (`store`, the QC store, None when it
+    cannot be read: then only the submitted ones)."""
+    out = []
+    for r in rows or []:
+        if r.get("under_review"):
+            out.append(r)
+            continue
+        try:
+            if store is not None and store.has_qc_results(r.get("id")):
+                out.append(r)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("review landing: %s: %s", r.get("id"), exc)
+    return out
 
 
 class PFASDataReviewHomeView(ViewHelpers, BrowserView):
@@ -413,20 +425,32 @@ class PFASDataReviewHomeView(ViewHelpers, BrowserView):
     def notices(self):
         return _my_notices(self.context)
 
+    def waiting(self):
+        """The worksheets waiting for review, from Data Review's own queue
+        (recent_worksheets): one submitted for review, or one still open
+        whose run is imported (its QC results on record). None when the
+        queue cannot be read."""
+        try:
+            from senaite.pfas.browser.data_review import PFASDataReviewView
+            review = PFASDataReviewView(self.context, self.request)
+            rows = review.recent_worksheets()
+            store = review._store() if review.db_available else None
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("review landing: %s", exc)
+            return None
+        return waiting_for_review(rows, store)
+
+    def queue_url(self):
+        return u"{0}/@@pfas-data-review".format(_portal(self.context).absolute_url())
+
     def sections(self):
         base = _portal(self.context).absolute_url()
         return [
             {
-                "url":   u"{0}/@@pfas-data-review".format(base),
-                "icon":  u"ico-data-review",
-                "title": u"Data Review",
-                "desc":  u"Worksheets awaiting analyst sign-off or manager approval",
-            },
-            {
                 "url":   u"{0}/@@pfas-deviations".format(base),
-                "icon":  u"ico-warning",
+                "icon":  u"ico-deviation",
                 "title": u"Deviations / CARs",
-                "desc":  u"Non-conformance tracking, root cause, corrective actions",
+                "desc":  u"Deviations, root cause and corrective actions",
             },
             {
                 "url":   u"{0}/@@pfas-control-chart".format(base),

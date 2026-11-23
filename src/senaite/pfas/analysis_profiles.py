@@ -92,6 +92,7 @@ def _by_sampletype(api, mine):
 def sync_method(portal, method_id, profile=None):
     """Write the method's Analysis Profiles. Returns [line] of what was done
     or could not be (a matrix with no Sample Type gets no profile)."""
+    from senaite.pfas.doc_fields import utext
     from bika.lims import api
     from senaite.pfas import method_profile_store as mps
     from senaite.pfas.method_bridge import get_core_method
@@ -139,7 +140,7 @@ def sync_method(portal, method_id, profile=None):
         obj = api.get_object_by_uid(uid, default=None)
         if obj is not None and api.is_active(obj):
             api.do_transition_for(obj, "deactivate")
-            report.append(u"%s: profile deactivated (matrix left the method)" % obj.Title())
+            report.append(u"%s: profile deactivated (matrix left the method)" % utext(obj.Title()))
     from persistent.mapping import PersistentMapping
     store[method_id] = PersistentMapping(mine)
     return report

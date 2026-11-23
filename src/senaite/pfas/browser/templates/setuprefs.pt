@@ -20,13 +20,9 @@
       <form method="POST" action=""
             tal:attributes="action string:${view/portal_url}/@@pfas-setup-references">
         <input type="hidden" name="action" value="save_ref_method" />
-        <select name="ref_method" class="pfas-select">
-          <option value="">&#8212; QC rules store (default) &#8212;</option>
-          <option tal:repeat="m view/method_options"
-                  tal:attributes="value m;
-                                  selected python:m == view.reference_method()"
-                  tal:content="m">FDA_32PFAS</option>
-        </select>
+        <tal:mc tal:define="mc_choices python:[{'value': u'', 'label': u'QC rules store'}] + [{'value': m, 'label': view.method_name(m)} for m in view.method_options()];
+                            mc_value python:view.reference_method() or u''; mc_label string:Reference range source;
+                            mc_id string:ref-method; mc_name string:ref_method"><metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></tal:mc>
         <button class="btn btn-primary" type="submit">
           Save
         </button>

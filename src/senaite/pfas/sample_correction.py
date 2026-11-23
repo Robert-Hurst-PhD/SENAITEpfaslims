@@ -7,7 +7,7 @@
     "lims"        back-calculated here, per sample:
                   C_sample = C_extract x final volume / sample amount, scaled
                   to the method's reporting unit; amount and final volume are
-                  the ones logged in the guided extraction (FM-ENV-003)
+                  the ones logged in the extraction record
 
     factor_for(row, reported_unit) -> float or None
 

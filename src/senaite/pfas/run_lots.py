@@ -29,9 +29,12 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
+from senaite.pfas.lot_expiry import expired_on
+
 FIELD = u"lot__%s"
-# bench_inventory's kind for a prepared lot (its REAGENT, PREPARED)
-PREPARED = u"prepared_standard"
+# a lot's inventory kind (bench_inventory's items) and the word a page shows
+REAGENT, PREPARED = u"reagent", u"prepared_standard"
+KIND_LABELS = {REAGENT: u"Reagent", PREPARED: u"Prepared standard"}
 
 
 def slots(n_levels, channels, qc_names=None, new_curve=True, prefix=u"LC"):
@@ -58,7 +61,7 @@ def from_form(form, slot_list):
 
 
 def from_entry(entry, slot_list):
-    """An FM-ENV-002 entry's lots on the calibration levels they were made for."""
+    """A series preparation's lots on the calibration levels they were made for."""
     keys = set(k for k, _l in slot_list)
     out = {}
     for row, uid in zip(entry.get("rows") or [], entry.get("lots") or []):
@@ -73,8 +76,8 @@ PURCHASED_SOLVENT = u"Mobile Phase / Solvent"
 
 
 def levels_by_uid(entries):
-    """{lot uid: the level its prep entry row was made for} ("CAL-3", "QCS",
-    a channel name); a prep entry's rows and lots are in step."""
+    """{lot uid: the level its preparation record row was made for} ("CAL-3",
+    "QCS", a channel name); a record's rows and lots are in step."""
     out = {}
     for e in entries or []:
         for row, uid in zip(e.get("rows") or [], e.get("lots") or []):
@@ -99,8 +102,8 @@ def slot_of(level, slot_list, qc_names=None):
 
 
 def lots_for_slot(key, items, levels, slot_list, qc_names=None):
-    """The usable `items` made for slot `key`, newest verified first, then
-    the lots pending verification (marked "pending"). An LC channel also
+    """The usable `items` made for slot `key`, newest accepted first, then
+    the lots pending acceptance (marked "pending"). An LC channel also
     takes purchased solvent loaded as it is. Nothing else is offered: a
     slot no lot was made for is empty."""
     picked = []
@@ -119,22 +122,24 @@ def lots_for_slot(key, items, levels, slot_list, qc_names=None):
 
 
 def series_options(entries, slot_list):
-    """[{"id", "label"}]: the calibration sittings (FM-ENV-002 entries) that
-    made every level the run loads, in the order given (newest first)."""
+    """[{"id", "label"}]: the calibration series preparations that made
+    every level the run loads, in the order given (newest first), each
+    named by its recipe's code and its record id."""
     levels = set(k for k, _l in slot_list or [] if k.startswith(u"CAL-"))
     out = []
     for e in entries or []:
         made = set((r.get("level") or u"").strip() for r in e.get("rows") or [])
         if levels and levels <= made:
             out.append({"id": e.get("id") or u"",
-                        "label": u"%s \u00b7 prepared %s \u00b7 %d levels" % (
-                            e.get("id") or u"", e.get("prepared_date") or u"?", len(levels))})
+                        "label": u"%s \u00b7 %s \u00b7 prepared %s \u00b7 %d levels" % (
+                            (e.get("recipe") or {}).get("code") or u"?", e.get("id") or u"",
+                            e.get("prepared_date") or u"?", len(levels))})
     return out
 
 
 def from_series(form, entries, slot_list):
     """The build form's lots, the calibration levels filled from the chosen
-    sitting (one Calibration series box)."""
+    series preparation (one Calibration series box)."""
     chosen = from_form(form, slot_list)
     want = (u"%s" % ((form or {}).get("cal_series") or u"")).strip()
     for e in entries or []:
@@ -164,9 +169,10 @@ def problems(chosen, slot_list, lots_by_key, run_date):
             out.append(u"%s: lot %s is quarantined." % (label, number))
         elif status in (u"exhausted", u"archived"):
             out.append(u"%s: lot %s is used up." % (label, number))
-        elif not expiry:
+        elif not expiry and not lot.get("no_expiry"):
+            # a lot whose category has no expiry is not missing a date
             out.append(u"%s: lot %s has no expiry date." % (label, number))
-        elif expiry < run_date or status == u"expired":
+        elif expired_on(expiry, run_date) or status == u"expired":
             out.append(u"%s: lot %s expired on %s." % (label, number, expiry))
     return out
 
@@ -267,7 +273,7 @@ def late_injections(last_acquired, solvents):
     out = []
     for ch, lot in sorted((solvents or {}).items()):
         exp = _d(lot.get("expiry"))
-        if exp and last > exp:
+        if expired_on(exp, last):
             out.append({"channel": ch, "lot": lot.get("lot") or u"", "expiry": exp,
                         "reason": u"injected after %s lot %s expired (%s)" % (ch, lot.get("lot") or u"", exp)})
     return out
@@ -308,3 +314,20 @@ def injection_list(manifest):
         out.append([r.get("vial"), r.get("name") or u"", row_lot(r, std), r.get("description") or u"",
                     r.get("type") or u""])
     return out
+
+
+# what the run-against-plan section says of a run whose plan was never stored
+NO_RUN_PLAN = u"No run plan stored"
+
+
+def against_plan(manifest, acquired):
+    """The run the Run Builder stored (its manifest's rows) against the
+    injections acquired: {"stored", "planned", "actual", "not_run",
+    "unplanned"}. Without a stored plan nothing is planned and nothing is
+    called unplanned: "stored" says the plan is missing, never zero."""
+    planned = [r.get("name") for r in (manifest or {}).get("rows") or []
+               if isinstance(r, dict) and r.get("name")]
+    actual = sorted(set(a for a in acquired or [] if a))
+    return {"stored": bool(planned), "planned": planned, "actual": actual,
+            "not_run": [p for p in planned if p not in actual],
+            "unplanned": [a for a in actual if planned and a not in planned]}

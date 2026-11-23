@@ -67,6 +67,12 @@ class PFASCoCView(ViewHelpers, BrowserView):
         from senaite.pfas.browser.perms import is_staff
         return is_staff(api.get_portal())
 
+    def may_receive(self):
+        """Receiving changes records: a role that may change records, never
+        the read-only inspector (the receipt page's own rule)."""
+        from senaite.pfas.browser.perms import may_write
+        return may_write(api.get_portal())
+
     def my_client(self):
         try:
             return api.get_current_client()
@@ -108,6 +114,45 @@ class PFASCoCView(ViewHelpers, BrowserView):
         else:
             recs = []
         return sorted(recs, key=lambda r: r["number"], reverse=True)
+
+    # the list's Show filter: what the lab has not received yet first
+    SHOW = ((u"", u"Not received"), (u"received", u"Received"), (u"all", u"All"))
+
+    def list_show(self):
+        v = (self.request.form.get("show") or u"").strip()
+        return v if v in [k for k, _l in self.SHOW] else u""
+
+    def list_q(self):
+        return (self.request.form.get("q") or u"").strip()
+
+    def list_url(self, show=None, page=None):
+        from senaite.pfas.browser.list_paging import list_url
+        return list_url(u"%s/@@pfas-coc" % self.portal_url(),
+                        [("show", self.list_show() if show is None else show), ("q", self.list_q()),
+                         ("page", page if page and page > 1 else None)])
+
+    def list_shows(self):
+        return [{"label": l, "url": self.list_url(show=k), "on": k == self.list_show()} for k, l in self.SHOW]
+
+    def list_paging(self):
+        if not hasattr(self, "_list_pg"):
+            from senaite.pfas.browser.list_paging import page_number, paging
+            self._list_kept = cr.list_filter(self.records(), self.list_show(), self.list_q())
+            self._list_pg = paging(len(self._list_kept), page_number(self.request.form),
+                                   lambda p: self.list_url(page=p))
+        return self._list_pg
+
+    def list_rows(self):
+        pg = self.list_paging()
+        return self._list_kept[pg["start"]:pg["end"]]
+
+    def list_empty_text(self):
+        if not self.records():
+            return u"No CoC yet."
+        if self.list_q():
+            return u"No CoC matches this search."
+        return {u"": u"Every CoC has been received.", u"received": u"No CoC has been received yet."}.get(
+            self.list_show(), u"No CoC yet.")
 
     def clients(self):
         return [(api.get_uid(c), api.get_title(c))
@@ -155,7 +200,7 @@ class PFASCoCView(ViewHelpers, BrowserView):
 
     def subtype_options(self):
         """Every sub-type as a row's select offers it: its type and the
-        profiles turned off (coc_subtypes.js shows those that fit the row)."""
+        profiles turned off (coc_row_detail.js shows those that fit the row)."""
         return [{"id": x["id"], "name": x["name"], "type": uid, "off": u" ".join(x.get("off") or [])}
                 for uid, subs in sorted(self.subtypes_by_type().items()) for x in subs]
 
@@ -166,13 +211,22 @@ class PFASCoCView(ViewHelpers, BrowserView):
             return ce.rows_from_form(self.request.form)
         return (self.record() or {}).get("rows") or []
 
+    def detail_summary(self, row):
+        """The row's detail dialog in words (coc_entry.detail_summary)."""
+        ch = self.choices()
+        names = {"subtype": dict((o["id"], o["name"]) for o in self.subtype_options())}
+        for key, src in (("sampling_point", "points"), ("container", "containers"),
+                         ("preservation", "preservations"), ("homogenisation", "homogenisation")):
+            names[key] = dict((o[0], o[1]) for o in ch[src])
+        return ce.detail_summary(row, names)
+
     def header(self):
         rec = self.record() or {}
         if self.errors and self.request.form.get("action") in ("save", "submit"):
             return ce.header_from_form(self.request.form)
-        h = dict((k, rec.get(k) or u"") for k in ce.HEADER_KEYS)
-        h["sampler"] = h["sampler"] or self.user_name()
-        return h
+        # Sampled by starts empty: the person entering the CoC is not the
+        # sampler unless they say so ("This is me")
+        return dict((k, rec.get(k) or u"") for k in ce.HEADER_KEYS)
 
     # ── actions ───────────────────────────────────────────────────────────
 
@@ -193,6 +247,13 @@ class PFASCoCView(ViewHelpers, BrowserView):
         if client is None:
             self.errors.append(u"Choose the client.")
             return self.template()
+        if not self.is_staff():
+            from senaite.pfas import coc_limits
+            reached, cap = coc_limits.cap_for(api.get_portal(), api.get_uid(client), _now())
+            if reached:
+                self.errors.append(u"You have started %d CoCs today, the most allowed. "
+                                   u"Submit one you have open, or try again tomorrow." % cap)
+                return self.template()
         rec = cr.issue(api.get_portal(), api.get_uid(client), api.get_title(client), origin,
                        self.user_name(), _now())
         return self._redirect(rec["number"])

@@ -19,7 +19,7 @@ STATUS_OPENED     = u"opened"
 STATUS_EXHAUSTED  = u"exhausted"
 STATUS_EXPIRED    = u"expired"
 STATUS_QUARANTINE = u"quarantine"
-STATUS_PENDING    = u"pending"      # new lots: verified before use (lot_status)
+STATUS_PENDING    = u"pending"      # new lots: accepted before use (lot_status)
 
 # Reagent-grade water produced by the lab's own Type 1 system is the ONE lot
 # class with no manufacturer to trace to. Its provenance is the Type 1 water QC

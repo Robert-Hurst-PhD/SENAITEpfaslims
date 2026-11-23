@@ -127,7 +127,13 @@ DEVIATION_GATES = {
     "complete_ca": TIER_CONFIG,
     "mark_notification_sent": TIER_CONFIG,
     "close_deviation": TIER_CONFIG,
+    "reopen_deviation": TIER_CONFIG,
+    "claim_file": TIER_CONFIG,
 }
+# every action on an existing record: none changes a closed one
+_RECORD_ACTIONS = ("update_scale_rootcause", "add_corrective_action", "complete_ca",
+                   "acknowledge_training", "mark_notification_sent", "close_deviation",
+                   "claim_file")
 
 
 # the scale and root-cause fields an edit may change (each change is kept)
@@ -150,8 +156,14 @@ class PFASDeviationView(ViewHelpers, BrowserView):
             if denied is not None:
                 return denied
             disable_csrf(self.request)
+            if action in _RECORD_ACTIONS:
+                refused = self._closed_refusal()
+                if refused is not None:
+                    return refused
             if action == "file_deviation":
                 return self._handle_file()
+            if action == "reopen_deviation":
+                return self._handle_reopen()
             if action == "update_scale_rootcause":
                 return self._handle_update_scale()
             if action == "add_corrective_action":
@@ -164,6 +176,8 @@ class PFASDeviationView(ViewHelpers, BrowserView):
                 return self._handle_notification_sent()
             if action == "close_deviation":
                 return self._handle_close()
+            if action == "claim_file":
+                return self._handle_claim_file()
         return self.index()
 
     # ── Data helpers ──────────────────────────────────────────────────────────
@@ -184,6 +198,12 @@ class PFASDeviationView(ViewHelpers, BrowserView):
         # (perms.ALLOWED_ROLES), so the two cannot drift apart again.
         return has_role_at_portal(self.context, ALLOWED_ROLES)
 
+    def closure_needs_notes(self, dev):
+        """True for a worksheet's missing-data record: it closes only with
+        notes (qc_deviation.close_record)."""
+        from senaite.pfas.qc_deviation import needs_closure_notes
+        return needs_closure_notes(dev)
+
     def can_edit(self):
         """Any lab role may edit open/in-progress records; only managers may
         close. The Regulatory Inspector reads them and changes nothing."""
@@ -200,17 +220,18 @@ class PFASDeviationView(ViewHelpers, BrowserView):
 
     # ── Template data methods ─────────────────────────────────────────────────
 
+    # the Status filter: what is not closed first; "all" shows every record
+    STATUSES = ((u"", u"Not closed"), (u"open", u"Open"), (u"in_progress", u"In progress"),
+                (u"closed", u"Closed"), (u"all", u"All"))
+    TYPES = ((u"", u"All"), (u"deviation", u"Deviations"), (u"car", u"CARs"))
+
     def list_deviations(self):
-        registry = _get_registry(self._portal())
-        ftype  = self.request.form.get("filter_type", "")
-        fstatus = self.request.form.get("filter_status", "")
+        """The records the filters keep, newest first, each with the
+        criterion and the worksheets it names (qc_deviation.list_rows)."""
+        from senaite.pfas.qc_deviation import list_rows
         result = []
-        for dev in reversed(registry):
-            if ftype and dev.get("type") != ftype:
-                continue
-            if fstatus and dev.get("status") != fstatus:
-                continue
-            dev = dict(dev)
+        for dev in list_rows(_get_registry(self._portal()), self.filter_status(),
+                             self.filter_type(), self.filter_q(), self.method_name):
             dev["risk_colour"] = _risk_colour(dev.get("risk_score", 0))
             dev["risk_label"]  = _risk_label(dev.get("risk_score", 0))
             dev["event_label"] = _event_label(dev.get("event_type", ""))
@@ -221,6 +242,18 @@ class PFASDeviationView(ViewHelpers, BrowserView):
             )
             result.append(dev)
         return result
+
+    def paging(self):
+        from senaite.pfas.browser.list_paging import page_number, paging
+        if not hasattr(self, "_pg"):
+            self._shown = self.list_deviations()
+            self._pg = paging(len(self._shown), page_number(self.request.form),
+                              lambda p: self.filter_url(page=p))
+        return self._pg
+
+    def shown_deviations(self):
+        pg = self.paging()
+        return self._shown[pg["start"]:pg["end"]]
 
     def current_deviation(self):
         dev_id = self.request.form.get("dev_id", "").strip()
@@ -344,7 +377,7 @@ class PFASDeviationView(ViewHelpers, BrowserView):
                 if ws_method_id == method_id:
                     created_str = ""
                     try:
-                        created_str = self.lab_at(ws.created(), str(ws.created())[:10], u"%Y/%m/%d")
+                        created_str = lab_time.show(ws.created(), "utc", u"%Y-%m-%d")
                     except Exception:
                         pass
                     results.append({
@@ -366,18 +399,25 @@ class PFASDeviationView(ViewHelpers, BrowserView):
         return self.request.form.get("tab", "overview")
 
     def filter_type(self):
-        return self.request.form.get("filter_type", "")
+        t = self.request.form.get("filter_type", "")
+        return t if t in [k for k, _l in self.TYPES] else u""
 
     def filter_status(self):
-        return self.request.form.get("filter_status", "")
+        st = self.request.form.get("filter_status", "")
+        return st if st in [k for k, _l in self.STATUSES] else u""
 
-    def filter_url(self, status=None, type_=None):
-        """The list with one filter changed and the other kept (None keeps,
-        "" clears)."""
+    def filter_q(self):
+        return (self.request.form.get("q") or u"").strip()
+
+    def filter_url(self, status=None, type_=None, page=None):
+        """The list with one filter changed and the others kept (None keeps,
+        "" clears); a filter change goes back to the first page."""
+        from senaite.pfas.browser.list_paging import list_url
         st = self.filter_status() if status is None else status
         ty = self.filter_type() if type_ is None else type_
-        q = "&".join("%s=%s" % (k, v) for k, v in (("filter_status", st), ("filter_type", ty)) if v)
-        return "%s/@@pfas-deviations%s" % (self.portal_url(), ("?" + q) if q else "")
+        return list_url(u"%s/@@pfas-deviations" % self.portal_url(),
+                        [("filter_status", st), ("filter_type", ty), ("q", self.filter_q()),
+                         ("page", page if page and page > 1 else None)])
 
     def msg(self):
         return self.request.form.get("msg", "")
@@ -394,11 +434,17 @@ class PFASDeviationView(ViewHelpers, BrowserView):
             "acknowledged":     "Training acknowledgment recorded.",
             "notif_sent":       "Notification marked as sent.",
             "closed":           "Record closed.",
+            "reopened":         "Record reopened.",
+            "closed_read_only": "This record is closed. A manager reopens it, with a reason, before it changes.",
+            "reason_required":  "Give the reason for reopening.",
+            "not_closed":       "This record is not closed.",
             "permission_denied":"Permission denied.",
             "incomplete_cas":   "All corrective actions must be complete before closing.",
+            "notes_required":   "Give the closure notes: say why the data are missing.",
             "bad_request":      "Invalid request.",
             "description_required": "A description is required to file a deviation/CAR.",
             "not_found":        "Record not found.",
+            "file_claimed":     "Instrument file claimed: it is kept.",
         }
         return msgs.get(self.msg(), self.msg())
 
@@ -455,7 +501,7 @@ class PFASDeviationView(ViewHelpers, BrowserView):
             "severity":    severity,
             "risk_score":  score,
             "risk_colour": _risk_colour(score),
-            "affected_worksheets": [],
+            "affected_worksheets": [w.strip() for w in (_one("affected_worksheets") or "").split(",") if w.strip()],
             "affected_date_from":  "",
             "affected_date_to":    "",
             "scale_description":   "",
@@ -480,10 +526,13 @@ class PFASDeviationView(ViewHelpers, BrowserView):
         for dev in registry:
             if dev["dev_id"] == dev_id:
                 before = dict((k, dev.get(k)) for k in _SCALE_FIELDS)
-                dev["affected_worksheets"] = [
-                    w.strip() for w in form.get("affected_worksheets", "").split(",")
-                    if w.strip()
-                ]
+                # the worksheets a record holds at Data Review change only
+                # when the form sends the list; a post without it keeps them
+                if "affected_worksheets" in form:
+                    dev["affected_worksheets"] = [
+                        w.strip() for w in form.get("affected_worksheets", "").split(",")
+                        if w.strip()
+                    ]
                 dev["affected_date_from"]  = form.get("affected_date_from", "")
                 dev["affected_date_to"]    = form.get("affected_date_to", "")
                 dev["scale_description"]   = form.get("scale_description", "").strip()
@@ -670,26 +719,103 @@ class PFASDeviationView(ViewHelpers, BrowserView):
             # "closed" was reported for an id that matched nothing, and the
             # whole registry rewritten
             return self._redirect("?msg=not_found&msg_type=error")
+        from senaite.pfas.qc_deviation import close_record
         for dev in registry:
             if dev["dev_id"] != dev_id:
                 continue
-            open_cas = [
-                ca for ca in dev.get("corrective_actions", [])
-                if ca.get("status") != "complete"
-            ]
-            if open_cas:
+            refused = close_record(dev, self._current_user_id(), self._now_iso(), notes)
+            if refused:
                 return self._redirect(
-                    "?dev_id={0}&tab=closure&msg=incomplete_cas&msg_type=error".format(dev_id)
+                    "?dev_id={0}&tab=closure&msg={1}&msg_type=error".format(dev_id, refused)
                 )
-            dev["status"]        = "closed"
-            dev["closed_by"]     = self._current_user_id()
-            dev["closed_at"]     = self._now_iso()
-            dev["closure_notes"] = notes
             break
         _save_registry(portal, registry)
         return self._redirect(
             "?dev_id={0}&tab=closure&msg=closed&msg_type=success".format(dev_id)
         )
+
+    # ── Instrument files a CAR uses (instrument_files) ──────────────────────
+
+    def _run_files(self, ws_id):
+        """The files uploaded for the worksheet `ws_id` (Run Builder's run
+        files), by name; a file deleted is there no more to claim."""
+        from bika.lims import api
+        from senaite.pfas.annotation_store import read_json
+        from senaite.pfas.browser.run_builder import RUN_FILES_KEY
+        found = api.search({"portal_type": "Worksheet", "id": ws_id}, "senaite_catalog_worksheet")
+        if not found:
+            return []
+        return [e.get("file") for e in read_json(found[0].getObject(), RUN_FILES_KEY, [])
+                if e.get("file") and not e.get("deleted")]
+
+    def claimable_files(self, dev):
+        """[(worksheet id, file)] of the record's affected worksheets not yet
+        claimed by it."""
+        held = set((c.get("worksheet"), c.get("file")) for c in dev.get("claimed_files") or [])
+        out = []
+        for ws_id in dev.get("affected_worksheets") or []:
+            for name in self._run_files(ws_id):
+                if (ws_id, name) not in held:
+                    out.append((ws_id, name))
+        return out
+
+    def _handle_claim_file(self):
+        """A CAR claims an instrument file of a worksheet it names as
+        affected: the file is then kept whatever else would allow its
+        deletion (instrument_files.claim)."""
+        if not self.can_manage():
+            return self._redirect("?msg=permission_denied&msg_type=error")
+        from senaite.pfas import instrument_files
+        from senaite.pfas.config_history import actor, now
+        form = self.request.form
+        dev_id = form.get("dev_id", "").strip()
+        ws_id, _sep, name = (form.get("claim_file") or u"").partition(u"|")
+        portal = self._portal()
+        registry = _get_registry(portal)
+        for dev in registry:
+            if dev.get("dev_id") != dev_id:
+                continue
+            why = instrument_files.claim(dev, name, ws_id, self._run_files, actor(), now())
+            if why:
+                from six.moves.urllib.parse import quote
+                return self._redirect("?dev_id={0}&tab=actions&msg={1}&msg_type=error".format(
+                    dev_id, quote(why.encode("utf-8"), safe="")))
+            _save_registry(portal, registry)
+            return self._redirect("?dev_id={0}&tab=actions&msg=file_claimed&msg_type=success".format(dev_id))
+        return self._redirect("?msg=not_found&msg_type=error")
+
+    def _closed_refusal(self):
+        """The redirect that refuses a change to a closed record, or None:
+        a closed record is read-only until a manager reopens it."""
+        from senaite.pfas.qc_deviation import closed_refusal
+        dev_id = self.request.form.get("dev_id", "").strip()
+        for dev in _get_registry(self._portal()):
+            if dev.get("dev_id") == dev_id:
+                why = closed_refusal(dev)
+                if why:
+                    return self._redirect("?dev_id={0}&tab=closure&msg={1}&msg_type=error".format(dev_id, why))
+                break
+        return None
+
+    def _handle_reopen(self):
+        """A manager reopens a closed record, with a reason; its history
+        keeps the closure it undoes."""
+        if not self.can_manage():
+            return self._redirect("?msg=permission_denied&msg_type=error")
+        from senaite.pfas.config_history import actor, now
+        from senaite.pfas.qc_deviation import reopen_record
+        dev_id = self.request.form.get("dev_id", "").strip()
+        portal = self._portal()
+        registry = _get_registry(portal)
+        for dev in registry:
+            if dev.get("dev_id") != dev_id:
+                continue
+            why = reopen_record(dev, actor(), now(), self.request.form.get("reopen_reason", u""))
+            if why:
+                return self._redirect("?dev_id={0}&tab=closure&msg={1}&msg_type=error".format(dev_id, why))
+            _save_registry(portal, registry)
+            return self._redirect("?dev_id={0}&tab=closure&msg=reopened&msg_type=success".format(dev_id))
+        return self._redirect("?msg=not_found&msg_type=error")
 
     def _handle_notification(self):
         """Return a printable HTML notification letter (no sidebar/chrome)."""
@@ -740,7 +866,7 @@ class PFASDeviationView(ViewHelpers, BrowserView):
             subject_line = "Sample Data Impact Notification"
             action_para = (
                 u"<p>Please be advised that the results for the samples listed "
-                u"below may have been affected by the above non-conformance. "
+                u"below may have been affected by the above deviation. "
                 u"Our laboratory quality officer has reviewed the potential "
                 u"impact and determined the following:</p>"
             )
@@ -817,7 +943,7 @@ class PFASDeviationView(ViewHelpers, BrowserView):
 <p style="white-space:pre-wrap">{notif_text}</p>
 
 <h2>Corrective Action</h2>
-<p>Our quality management team has investigated this non-conformance and
+<p>Our quality management team has investigated this deviation and
 implemented corrective actions to prevent recurrence. A full corrective
 action report is maintained in our quality management system (Ref: {dev_id}).</p>
 

@@ -4,8 +4,8 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Delivered EDDs</title>
-  <tal:t metal:fill-slot="header-title">Delivered EDDs</tal:t>
+  <title metal:fill-slot="title">EDD downloads</title>
+  <tal:t metal:fill-slot="header-title">EDD downloads</tal:t>
 </head>
 <body>
   <div metal:fill-slot="content">
@@ -14,77 +14,92 @@
     <tal:dashboard>
 
       <div class="pfas-page-head">
-        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-edd-config">EDD Configuration</a>
-        <h2>Batch EDD Dashboard</h2>
+        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-edd-config">EDD settings</a>
       </div>
+      <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+            tal:attributes="action string:${view/portal_url}/@@pfas-edd-batches">
+        <input type="hidden" name="show" tal:attributes="value view/show" />
+        <div class="pfas-form-field"><span>Show</span>
+          <nav class="pfas-seg" aria-label="Show">
+            <a class="pfas-seg-item" tal:repeat="o view/shows"
+               tal:attributes="href o/url; aria-selected python:'true' if o['on'] else 'false'"
+               tal:content="o/label">Made</a>
+          </nav></div>
+        <div class="pfas-form-field"><label for="edd-q">Search</label>
+          <input type="search" name="q" id="edd-q" class="pfas-input pfas-input-wide"
+                 placeholder="Batch or client" tal:attributes="value view/q" /></div>
+        <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
+      </form>
 
-      <tal:empty tal:condition="not:view/recent_batches">
-        <p class="pfas-lead">No batches found.</p>
-      </tal:empty>
+      <tal:rows tal:define="pg view/paging; rows view/recent_batches">
+      <p class="pfas-empty" tal:condition="not:rows" tal:content="view/empty_text">None.</p>
 
-      <table class="pfas-table" data-col-resize="edd-batches-1" tal:condition="view/recent_batches">
+      <table class="pfas-table" data-col-resize="edd-batches-1" tal:condition="rows" tal:define="rm context/@@pfas-row-menu">
         <thead>
           <tr>
             <th>Batch ID</th>
             <th>Client</th>
             <th>Created</th>
             <th>EDD</th>
-            <th>EDD Status</th>
             <th>EDD profile</th>
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr tal:repeat="b view/recent_batches">
+          <!-- the row's menu: Download (or Build now) with the client and
+               profile chosen in the row, Why refused, Client reporting -->
+          <tr tal:repeat="b rows"
+              tal:attributes="data-row-actions python:rm.actions(
+                                  ((u'Download EDD' if b['edd_key'] == 'made' else u'Build now'), 'form', u'edd-dl-%s' % b['batch_id'],
+                                   {'note': (None if b['edd_key'] == 'made' else u'Builds the file now with the profile chosen in this row')}) if b['edd_key'] != 'off' else None,
+                                  (u'Why refused', 'href', b['preview_url']) if b['edd_key'] == 'refused' else None,
+                                  (u'Client reporting', 'href', b['client_url']) if b['edd_key'] == 'off' and b['client_url'] else None)">
             <td><span class="pfas-id" tal:content="b/batch_id">B-001</span></td>
-            <td tal:content="b/client_title">Client A</td>
-            <td tal:content="b/created">2026-06-15</td>
             <td>
-              <span tal:condition="b/edd_enabled">Enabled</span>
-              <span tal:condition="not:b/edd_enabled" class="pfas-muted">Off</span>
+              <span tal:condition="not:b/clients" tal:content="b/client_title">Client A</span>
+              <!-- a batch of several clients' samples: the EDD is built for the one chosen -->
+              <select name="client" class="pfas-select" tal:condition="b/clients"
+                      tal:attributes="aria-label string:Client for the EDD of ${b/batch_id}; form string:edd-dl-${b/batch_id}">
+                <option tal:repeat="c b/clients" tal:content="python:c[1]"
+                        tal:attributes="value python:c[0]">Client A</option>
+              </select>
             </td>
+            <td tal:content="b/created">2026-06-15</td>
+            <!-- what the EDD is, and the step that state asks for, in words -->
             <td>
-              <tal:nostored tal:condition="not:b/has_edd">
-                <span class="cf-hint">Not generated</span>
-              </tal:nostored>
-              <tal:stored tal:condition="b/has_edd">
-                <tal:blocking tal:condition="b/edd_blocking">
-                  <span class="badge badge-fail"
-                        tal:content="string:${b/edd_blocking} BLOCKING">1 BLOCKING</span>
-                </tal:blocking>
-                <tal:warn tal:condition="python:b['has_edd'] and not b['edd_blocking'] and b['edd_error_count']">
-                  <span class="badge badge-warn"
-                        tal:content="string:${b/edd_error_count} warnings">2 warnings</span>
-                </tal:warn>
-                <tal:ok tal:condition="python:b['has_edd'] and not b['edd_blocking'] and not b['edd_error_count']">
-                  <span>Clean</span>
-                </tal:ok>
-                <br/>
-                <span class="pfas-muted"
-                      tal:content="b/edd_generated">2026-06-15</span>
-              </tal:stored>
+              <span tal:attributes="class python:{'made': 'badge badge-ok', 'refused': 'badge badge-fail'}.get(b['edd_key'], 'cf-hint')"
+                    tal:content="b/edd_text">Not made yet</span>
+              <div class="pfas-muted" tal:condition="b/has_edd" tal:content="b/edd_generated">2026-06-15</div>
+              <!-- the last issue of the file: an e-mail that attached it, or a download -->
+              <div tal:define="ls b/last_sent" tal:condition="ls"
+                   tal:attributes="title ls/file"
+                   tal:content="ls/text">Sent to client@demo.example, 2026-06-15 14:02</div>
             </td>
             <!-- the export's profile: the client's preselected, any other
                  chosen here; it belongs to the Download form (form=) -->
             <td>
               <select name="profile" class="pfas-select"
-                      tal:attributes="aria-label string:EDD profile for ${b/batch_id}; form string:edd-dl-${repeat/b/index}">
+                      tal:condition="python:b['edd_key'] != 'off'"
+                      tal:attributes="aria-label string:EDD profile for ${b/batch_id}; form string:edd-dl-${b/batch_id}">
                 <option tal:repeat="p view/profile_options" tal:content="p/name"
                         tal:attributes="value p/id; selected python:'selected' if p['id'] == b['edd_profile'] else None">profile</option>
               </select>
             </td>
-            <td>
-              <div class="pfas-row-actions">
-                <form method="get" class="pfas-inline"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-edd-export; id string:edd-dl-${repeat/b/index}">
-                  <input type="hidden" name="batch_id" tal:attributes="value b/batch_id" />
-                  <button type="submit" class="btn-sm btn-primary">Download EDD</button>
-                </form>
-              </div>
-            </td>
           </tr>
         </tbody>
       </table>
+      <!-- each row's Download form, sent from its menu; the row's client
+           and profile choices belong to it (form=) -->
+      <tal:f tal:repeat="b rows">
+      <form method="get" class="pfas-inline" hidden="hidden" tal:condition="python:b['edd_key'] != 'off'"
+            tal:attributes="action string:${view/portal_url}/@@pfas-edd-export; id string:edd-dl-${b/batch_id}">
+        <input type="hidden" name="batch_id" tal:attributes="value b/batch_id" />
+        <button type="submit" tal:attributes="class python:'btn-sm btn-primary' if b['edd_key'] == 'made' else 'btn-sm btn-secondary';
+                                              title python:'Builds the file now with the profile chosen in this row' if b['edd_key'] != 'made' else None"
+                tal:content="python:'Download EDD' if b['edd_key'] == 'made' else 'Build now'">Download EDD</button>
+      </form>
+      </tal:f>
+      <metal:p use-macro="context/@@pfas-macros/macros/paging" />
+      </tal:rows>
 
     </tal:dashboard>
 

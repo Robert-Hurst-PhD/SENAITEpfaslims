@@ -21,6 +21,7 @@ from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.qc_lists import StoreListsMixin
 from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 from senaite.pfas.browser.perms import refuse
+from senaite.pfas.browser.view_helpers import MethodNames
 
 logger = logging.getLogger("senaite.pfas.browser.calibrations")
 
@@ -48,7 +49,7 @@ def calibration_qc_rows(store, batch_id):
     return store.get_qc_for_run(None, batch_id=batch_id, qc_types=["Calibration"])
 
 
-class PFASCalibrationsView(StoreListsMixin, BrowserView):
+class PFASCalibrationsView(StoreListsMixin, MethodNames, BrowserView):
     """
     Browser view for PFAS calibration curve review and approval.
 
@@ -162,7 +163,7 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
         if method in cache:
             return cache[method]
         out = {"r2": None, "cal_pct": None, "CAL": {}, "ICV": {}, "CCV": {}, "level_unit": u"",
-               "origin": None, "weighting": None}
+               "origin": None, "weighting": None, "fit": None}
         if method:
             try:
                 from senaite.pfas.method_profile_store import get_profile
@@ -170,8 +171,9 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
                 portal = getToolByName(self.context, "portal_url").getPortalObject()
                 profile = get_profile(portal, method) or {}
                 iv = profile.get("instrument_verification") or {}
-                from senaite.pfas.qc.rules import method_toggles
-                judge_r2 = method_toggles(profile, method).get("cal_r2", True)
+                from senaite.pfas import limit_states
+                # the r2 box's own state (limit_states): Off, r2 is not judged
+                judge_r2 = limit_states.box_state(profile, "cal_r2") != "off"
             except Exception:                                   # noqa: BLE001
                 iv, judge_r2, profile = {}, True, {}
             cal, ccv, icv = (iv.get("calibration") or {}), (iv.get("ccv") or {}), (iv.get("icv") or {})
@@ -197,6 +199,7 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
             from senaite.pfas import calibration_fit
             out["origin"] = calibration_fit.origin(cal)
             out["weighting"] = calibration_fit.weighting(cal)
+            out["fit"] = calibration_fit.fit_label(calibration_fit.fit(cal))
         cache[method] = out
         return out
 
@@ -335,6 +338,8 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
                     "instrument_id": cal.get("instrument_id", ""),
                     "analyst":       cal.get("analyst", ""),
                     "method":        cal.get("method", ""),
+                    # what the page prints: the method's one name, never its id
+                    "method_name":   self.method_name(cal.get("method", "")),
                     "analytes":      [],
                 }
             # Pre-fetch levels for each analyte
@@ -485,6 +490,33 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
             return {}
         return rc.dropped_rules(rows)
 
+    def _keyword(self, name):
+        """An analyte's keyword (compound_library.listed_namer; an isomer
+        peak keeps its own name), the name as stored when the library
+        cannot be read."""
+        if not hasattr(self, "_namer"):
+            try:
+                from senaite.pfas import compound_library, compound_library_store
+                self._namer = compound_library.listed_namer(compound_library_store.library(), ())
+            except Exception as e:                              # noqa: BLE001
+                logger.warning("calibration analyte names not resolved: %s", e)
+                self._namer = lambda n: n
+        return self._namer(name) or name
+
+    def _by_keyword(self, by_analyte):
+        """{analyte: value} keyed by keyword; lists under two names of one
+        analyte are joined, texts joined with "; "."""
+        out = {}
+        for name, value in sorted((by_analyte or {}).items()):
+            kw = self._keyword(name)
+            if kw not in out:
+                out[kw] = list(value) if isinstance(value, list) else value
+            elif isinstance(value, list):
+                out[kw] = out[kw] + list(value)
+            elif value:
+                out[kw] = u"; ".join(filter(None, [out[kw], value]))
+        return out
+
     # {analyte: [{injection, level, reason}]}: the calibrators taken off each
     # curve by hand, from the raw run's curve provenance. The page that holds
     # the raw run (Data Review) sets it; the archive has none.
@@ -506,15 +538,26 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
             # By date alone, every worksheet run that day was drawn on one
             # chart (110 bars and 55 solvent-blank chips; UI )
             bid = scope.get("batch_id") or run.get("batch_id")
+            # the archive shows a run's approval; it is given on its
+            # worksheet's Data Review, which the run's button opens
+            if not scope and run.get("batch_id"):
+                run["review_url"] = u"%s/worksheets/%s/@@pfas-data-review?tab=calibration" % (
+                    self.portal_url(), run["batch_id"])
             qc_by_analyte = self._qc_for_run(None if bid else run["run_date"], bid)
             rules = self._rules_for_run(run)
             run["rule_hold"] = rc.hold_reason(rules)
+            # a curve and its run's QC rows meet by the analyte's keyword: a
+            # curve keeps the export's name, a QC result may be stored under
+            # either (_by_keyword)
+            qc_by_kw, rules_by_kw = self._by_keyword(qc_by_analyte), self._by_keyword(rules)
             for cal in run["analytes"]:
-                cal["qc"] = qc_by_analyte.get(cal["analyte"], [])
+                kw = self._keyword(cal["analyte"])
+                cal["qc"] = qc_by_kw.get(kw, [])
                 # the curve's own rule: the worker's sentence, and the
                 # calibrators taken off by hand with the reason each was
-                cal["rule_fail"] = rules.get(cal["analyte"], u"")
-                cal["dropped"] = ((self.excluded_by_hand or {}).get(cal["analyte"], [])
+                cal["rule_fail"] = rules_by_kw.get(kw, u"")
+                cal["dropped"] = (((self.excluded_by_hand or {}).get(cal["analyte"])
+                                   or self._by_keyword(self.excluded_by_hand).get(kw, []))
                                   if cal["rule_fail"] else [])
                 cal["fit_type_override"] = cal.get("fit_type_override", "")
                 cal["weight_override"] = cal.get("weight_override", "")
@@ -527,9 +570,11 @@ class PFASCalibrationsView(StoreListsMixin, BrowserView):
                 # the unit the method's calibration levels are in (ppt in the
                 # sample, or ng/mL in the extract): every chart label uses it
                 cal["level_unit"] = self.method_limits(cal.get("method"))["level_unit"]
-                # the curve card starts from the method's Origin and Weighting;
-                # "" is None in the card's weighting select, null = not set
+                # the curve card starts from the method's Curve fit, Origin
+                # and Weighting; the fit in the card's words; "" is None in
+                # the card's weighting select, null = not set
                 ml = self.method_limits(cal.get("method"))
+                cal["profile_fit"] = ml.get("fit")
                 cal["profile_origin"] = ml["origin"]
                 cal["profile_weight"] = None if ml["weighting"] is None else (
                     u"" if ml["weighting"] == u"none" else ml["weighting"])

@@ -38,6 +38,16 @@ def _shown_revision(rec):
     return dict(rec, issued_at=print_doc.lab_or(at, at)) if at else rec
 
 
+def issuing_revision(method, rev, at, by, reason):
+    """The method as the revision being issued prints it: its revision line
+    names that revision, issued now, and its issued revisions begin with
+    it (the records hold it only once it is issued, after the print)."""
+    issued = {"rev": rev, "issued_at": at, "issued_by": by, "reason": reason or u""}
+    out = dict(method, revision=dict(method.get("revision") or {}, unissued=False, **issued))
+    out["revisions"] = [issued] + [r for r in method.get("revisions") or [] if r.get("rev") != rev]
+    return out
+
+
 class PFASSettingsReportView(ViewHelpers, BrowserView):
 
     print_template = ViewPageTemplateFile("templates/settings_report_print.pt")
@@ -80,8 +90,12 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
 
     def print_css(self):
         c = self._control()
+        # this print has no design revision (an issued design prints through
+        # designed_pdf instead): its foot line says the layout is built in, and
+        # still names who printed it, when, and that a copy is uncontrolled
         return print_doc.document_css(c["doc_id"], c["revision"], c["user"], c["generated"],
-                                      size="A4 landscape", margin="14mm 12mm 16mm")
+                                      size="A4 landscape", margin="14mm 12mm 16mm",
+                                      layout=print_doc.BUILT_IN_LAYOUT)
 
     def print_head(self):
         c = self._control()
@@ -97,12 +111,43 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         from senaite.pfas import method_revisions as mr
         from senaite.pfas.qc.rules import method_toggles
         recs = mr.records(api.get_portal(), mid)
-        st = mr.status(recs, mr.fingerprint(profile, method_toggles(profile, mid)))
+        st = mr.status(recs, mr.fingerprints(profile, method_toggles(profile, mid)))
         return _shown_revision(st), [_shown_revision(r) for r in sorted(recs, key=lambda r: -r.get("rev", 0))]
+
+    @staticmethod
+    def section_parts(section):
+        """A settings section as the tables it prints (settings_report.
+        section_parts): a wide one in parts, none past the page's edge."""
+        return sr.section_parts(section)
 
     @property
     def body_macros(self):
         return self.body_template.macros
+
+    @staticmethod
+    def _recorded_lots(portal, profiles, listed):
+        """{lot id: the copy of its number and name the method's
+        configuration history recorded} for each salt row's lot the
+        inventory no longer lists (method_profile_sections.recorded_lots):
+        the report names the lot a factor's CoA came from even when the row
+        lost its own copy. Read only; {} when the history cannot be read."""
+        from senaite.pfas import config_history
+        from senaite.pfas import method_profile_sections as mps
+        from senaite.pfas.browser.method_profiles import lots_named_by
+        known = set(o.get("uid") for o in listed or [])
+        out = {}
+        for mid, p in sorted(profiles.items()):
+            if not [u for u in lots_named_by([p]) if u and u not in known]:
+                continue
+            try:
+                found = mps.recorded_lots(config_history.entries(
+                    portal, store="method_profile", key=mid, limit=100000), p)
+            except Exception:                               # noqa: BLE001
+                logger.warning("configuration history of %s not read", mid, exc_info=True)
+                continue
+            for uid, copy_ in found.items():
+                out.setdefault(uid, copy_)
+        return out
 
     def report(self):
         if getattr(self, "_report", None) is not None:
@@ -114,10 +159,15 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         env = project_specs.site_env()
         reg = regulatory_limits.get_store(portal)
         env["regulatory"] = reg
+        # the inventory's standard lots: a salt factor's CoA lot prints by
+        # its name and lot number, as the method's page shows it
+        from senaite.pfas.browser.method_profiles import lots_named_by, standard_lots
         from senaite.pfas.qc.rules import method_toggles
         only = self.method_id()
         profiles = dict((mid, raw_profile(portal, mid) or {}) for mid in sorted(list_method_ids(portal))
                         if not only or mid == only)
+        env["standard_lots"] = standard_lots(portal, lots_named_by(profiles.values()))
+        env["recorded_lots"] = self._recorded_lots(portal, profiles, env["standard_lots"])
         methods = []
         for mid, p in sorted(profiles.items()):
             m = sr.method_report(p, env, method_toggles(p, mid))
@@ -133,9 +183,13 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         lab = [(u"Certificate statement, internal quality system", ps.get("coa_qs_internal")),
                (u"Certificate statement, under a QAPP", ps.get("coa_qs_qapp")),
                (u"Laboratory name on reports", ps.get("lab_name")),
-               (u"Footer", ps.get("footer_text")),
                (u"Sign-off layout", ps.get("coa_signature_style"))]
         equipment = self._equipment()
+        from senaite.pfas import report_tiers
+        labels = dict((k, l) for k, l, _s in report_tiers.PARTS)
+        tiers = [{"id": t.get("id"), "name": t.get("name"),
+                  "parts": [labels.get(p.get("key"), p.get("key")) for p in t.get("parts") or []]}
+                 for t in report_tiers.get_catalogue(portal)]
         user = api.get_current_user()
         self._report = {
             "title": (u"%s \u2014 QC settings" % methods[0]["name"]) if only and methods
@@ -151,7 +205,12 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
             "programs": reg.get("programs") or {},
             "projects": projects,
             "lab": [(k, v) for k, v in lab if v],
+            "lab_name": ps.get("lab_name") or u"", "lab_address": ps.get("lab_address") or u"",
+            # the Help entry listing every value's source, as the printed
+            # report gives it
+            "value_sources": u"%s/@@pfas-help?entry=value-sources" % portal.absolute_url(),
             "equipment": equipment,
+            "report_tiers": tiers,
         }
         return self._report
 
@@ -167,7 +226,7 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         for b in api.search({"portal_type": "InstrumentType", "sort_on": "sortable_title"},
                             "senaite_catalog_setup"):
             t = api.get_object(b)
-            types.append({"uid": api.get_uid(t), "title": api.get_title(t),
+            types.append({"uid": api.get_uid(t), "title": api.safe_unicode(api.get_title(t)),
                           "req": eq.type_requirements(t)})
         insts = []
         for u in fq.list_units(active_only=False):
@@ -207,6 +266,7 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
                 eff, stale = project_specs.effective(prof, scopes, None, env=env)
                 per_method.append({
                     "method_id": mid,
+                    "name": prof.get("display_name") or mid,
                     "scopes": sorted(u"All matrices" if s == project_specs.ALL else s for s in scopes),
                     "departures": project_specs.departures(prof, eff, mid),
                     "stale": stale})
@@ -228,11 +288,17 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
 
     def _render_pdf(self):
         # an issued design (Document Templates) is the settings report from then on
-        from senaite.pfas import report_documents
-        from senaite.pfas.browser.report_designs import designed_pdf
-        pdf = designed_pdf("settings_report", report_documents.settings_data(self.report()))
-        if pdf is not None:
-            return pdf
+        from senaite.pfas import document_templates as dt
+        from senaite.pfas import report_documents as rd
+        from senaite.pfas.browser.report_designs import designed_pdf, issued_design
+        data = rd.settings_data(self.report())
+        design = issued_design("settings_report")
+        if design is not None:
+            # a heading prints only with something under it
+            omit = rd.empty_fields(data, rd.SETTINGS_OMIT_EMPTY)
+            if omit:
+                design = dt.subset_design(design, omit)
+            return designed_pdf("settings_report", data, design=design)
         html = self.print_template()
         from weasyprint import HTML
         return HTML(string=html).write_pdf()
@@ -248,7 +314,7 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
             pdf = mr.read_pdf(mid, rev)
         except (ValueError, IOError, OSError):
             self.request.response.setStatus(404)
-            return "No issued revision %s of %s." % (rev, mid)
+            return "No issued revision %s of %s." % (rev, self.method_name(mid))
         return self._send(pdf, "%s-settings-rev%d.pdf" % (mid, rev))
 
     def _issue(self):
@@ -265,18 +331,21 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         from senaite.pfas.qc.rules import method_toggles
         recs = mr.records(portal, mid)
         fp = mr.fingerprint(profile, method_toggles(profile, mid))
-        if recs and mr.status(recs, fp)["unissued"] is False:
+        both = mr.fingerprints(profile, method_toggles(profile, mid))
+        if recs and mr.status(recs, both)["unissued"] is False:
             self.request.response.redirect(back + "?error=%s" % quote_text(
-                u"%s: nothing changed since Revision %s" % (mid, mr.status(recs, fp)["rev"])))
+                u"%s: nothing changed since Revision %s" % (self.method_name(mid), mr.status(recs, both)["rev"])))
             return ""
         user = api.get_current_user()
         who = (user.getProperty("fullname") or user.getId()) if user else u""
         when = datetime.now().strftime("%Y-%m-%d %H:%M")
         rev = mr.next_number(recs)
         reason = (self.request.form.get("reason") or u"").strip()
-        self.report()["revision_label"] = self._label(None, {"rev": rev, "at": print_doc.lab_or(when, when),
-                                                             "by": who}) + (
+        shown_at = print_doc.lab_or(when, when)
+        rep = self.report()
+        rep["revision_label"] = self._label(None, {"rev": rev, "at": shown_at, "by": who}) + (
             u" \u2014 %s" % reason if reason else u"")
+        rep["methods"] = [issuing_revision(m, rev, shown_at, who, reason) for m in rep["methods"]]
         from senaite.pfas.browser.report_designs import DesignedReportError
         try:
             pdf = self._render_pdf()

@@ -19,10 +19,15 @@ Storage:
     portal annotation  EDD_PROFILES_KEY  {profile id: json}
     client annotation  CLIENT_KEY        {edd_enabled, edd_profile,
                                           per_report_override_default,
-                                          fields: {client field: value}}
+                                          fields: {client field: value},
+                                          report_tier, certificate_mono,
+                                          interim_certificates}
     sample annotation  SAMPLE_TYPE_KEY   retired: a sample's sample-type code
                                          override (retire_sample_type_overrides)
-    batch annotation   EXPORT_KEY        the export generated for a batch
+    batch annotation   EXPORT_KEY        the export generated for a batch, and
+                                         "deliveries": each report e-mail that
+                                         attached it [{recipients, sent_at,
+                                         filename, sha256}], append-only
 
 Format-specific content (the default profile's seed, its forms and its
 refresh) is in edd_profiles. Python 2.7.
@@ -49,6 +54,15 @@ DEFAULT_CLIENT = {
     "edd_profile": DEFAULT_PROFILE_ID,
     "per_report_override_default": True,
     "fields": {},
+    # the report tier a sample of this client reports at when it has none of
+    # its own (report_tiers.tier_id_of)
+    "report_tier": "T1",
+    # the client's certificates print in black and white: the same layout
+    # and words, meaning carried by text, weight and rules, never by colour
+    "certificate_mono": False,
+    # the client takes an interim certificate, released when the Analyst
+    # submits the run (interim_certificates); the final follows verification
+    "interim_certificates": False,
 }
 
 
@@ -152,12 +166,13 @@ def new_edd_profile(portal, name, format_id):
 
 def clients_using(portal, profile_id):
     """The titles of the clients whose EDD settings name the profile."""
+    from senaite.pfas.doc_fields import utext
     from bika.lims import api
     out = []
     for brain in api.search({"portal_type": [str("Client")]}):
         client = brain.getObject()
         if get_client_settings(client).get("edd_profile") == profile_id:
-            out.append(client.Title())
+            out.append(utext(client.Title()))
     return sorted(out)
 
 
@@ -288,8 +303,9 @@ def refresh_value_lists(portal, profile_id, upload_bytes):
 # ── Clients ───────────────────────────────────────────────────────────────────
 
 def get_client_settings(client_obj):
-    """A client's EDD settings ({edd_enabled, edd_profile,
-    per_report_override_default, fields})."""
+    """A client's reporting settings ({edd_enabled, edd_profile,
+    per_report_override_default, fields, report_tier, certificate_mono,
+    interim_certificates})."""
     from zope.annotation.interfaces import IAnnotations
     raw = IAnnotations(client_obj).get(CLIENT_KEY)
     try:
@@ -303,11 +319,12 @@ def get_client_settings(client_obj):
 
 
 def save_client_settings(client_obj, data):
+    from senaite.pfas.doc_fields import utext
     # the change history; track() decides if its failure blocks the save
     from senaite.pfas import config_history
     config_history.track(None, 'client_edd', client_obj.getId(),
                          lambda: get_client_settings(client_obj),
-                         label=u"Client EDD settings: %s" % client_obj.Title())
+                         label=u"Client EDD settings: %s" % utext(client_obj.Title()))
     from zope.annotation.interfaces import IAnnotations
     IAnnotations(client_obj)[CLIENT_KEY] = json.dumps(data)
 
@@ -320,7 +337,122 @@ def is_edd_enabled(client_obj):
     return bool(get_client_settings(client_obj).get("edd_enabled"))
 
 
+def certificate_mono(client_obj):
+    """True when the client's certificates print in black and white."""
+    if client_obj is None:
+        return False
+    return bool(get_client_settings(client_obj).get("certificate_mono"))
+
+
 # ── Seed on install ───────────────────────────────────────────────────────────
+
+# ── a batch's EDD as the Delivered EDDs list shows it ──────────────────────
+
+# made: stored at publication and clean or with warnings; refused: stored
+# with a blocking error and no file; none: not made yet; off: its client
+# takes no EDD
+EDD_MADE, EDD_REFUSED, EDD_NONE, EDD_OFF = u"made", u"refused", u"none", u"off"
+EDD_SHOW = ((u"", u"Made"), (u"none", u"Not made"), (u"all", u"All"))
+
+
+# ── Deliveries: each report e-mail that attached a batch's EDD ───────────────
+
+DELIVERIES = "deliveries"
+
+
+DOWNLOAD = u"download"
+
+
+def delivery_entry(recipients, sent_at, filename, data, kind=None, by=None, interim=False):
+    """One delivery: the addresses reached (a "Name <address>" read as
+    its address), when (UTC ISO), the file's name and the SHA-256 of the
+    exact bytes attached. A download is a delivery too: `kind` DOWNLOAD,
+    `by` the user who took the file, no recipients. An EDD that went with
+    an interim certificate is marked `interim`."""
+    import hashlib
+    from email.utils import parseaddr
+    addrs = sorted(set((parseaddr(r)[1] or r).strip() for r in recipients or [] if (r or u"").strip()))
+    if not isinstance(data, bytes):
+        data = (data or u"").encode("utf-8")
+    entry = {"recipients": addrs, "sent_at": sent_at, "filename": filename or u"",
+             "sha256": hashlib.sha256(data).hexdigest()}
+    if kind:
+        entry["kind"] = kind
+    if by:
+        entry["by"] = by
+    if interim:
+        entry["interim"] = True
+    return entry
+
+
+def delivered_to(entry):
+    """Whom a delivery reached, as a list says it: the addresses e-mailed,
+    or "Downloaded by <user>"."""
+    if (entry or {}).get("kind") == DOWNLOAD:
+        return u"Downloaded by %s" % ((entry or {}).get("by") or u"—")
+    return u", ".join((entry or {}).get("recipients") or []) or u"—"
+
+
+def with_delivery(stored, entry):
+    """The batch's EDD record with `entry` appended to its deliveries: a
+    copy; the list only grows. A batch with no record gets one holding
+    only its deliveries."""
+    out = dict(stored or {})
+    out[DELIVERIES] = list(out.get(DELIVERIES) or []) + [entry]
+    return out
+
+
+def carry_deliveries(old, new):
+    """`new` (an EDD record about to replace `old`) with old's deliveries:
+    storing the EDD again never loses what was sent."""
+    kept = (old or {}).get(DELIVERIES)
+    if kept:
+        new = dict(new)
+        new[DELIVERIES] = list(kept)
+    return new
+
+
+def last_delivery(stored):
+    """The latest delivery on a batch's EDD record, or None."""
+    sent = (stored or {}).get(DELIVERIES) or []
+    return sent[-1] if sent else None
+
+
+def edd_state(stored, enabled):
+    """(key, text) of a batch's EDD: what the list says of it, its next
+    step in the words. `stored` is the batch's EDD record (or None)."""
+    if stored and not (set(stored) - set([DELIVERIES])):
+        # never stored at publication, but sent with a report or downloaded
+        if all(d.get("kind") == DOWNLOAD for d in stored.get(DELIVERIES) or []):
+            return EDD_MADE, u"Downloaded"
+        return EDD_MADE, u"Sent with the report"
+    if stored:
+        blocking = int(stored.get("blocking_count") or 0)
+        if blocking:
+            return EDD_REFUSED, u"Refused: %d blocking. Fix them, then build it again." % blocking
+        warnings = int(stored.get("error_count") or 0)
+        return EDD_MADE, (u"Made at publication, %d warnings" % warnings if warnings
+                          else u"Made at publication")
+    if not enabled:
+        return EDD_OFF, u"Off for this client. Turn it on in Client reporting."
+    return EDD_NONE, u"Not made yet: made when a sample of the batch is published."
+
+
+def edd_filter(rows, show=u"", q=u""):
+    """The batches a list shows: `show` "" those with an EDD made, "none"
+    those without one (not made, refused or off), "all" every one; `q` a
+    word in the batch or the client."""
+    q = (q or u"").strip().lower()
+    out = []
+    for r in rows or []:
+        made = r.get("edd_key") == EDD_MADE
+        if (show == u"" and not made) or (show == u"none" and made):
+            continue
+        if q and q not in (u"%s %s" % (r.get("batch_id") or u"", r.get("client_title") or u"")).lower():
+            continue
+        out.append(r)
+    return out
+
 
 def seed_defaults(portal):
     """The default profile saved when the lab has none. Idempotent: never

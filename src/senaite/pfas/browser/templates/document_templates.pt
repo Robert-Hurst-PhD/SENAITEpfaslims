@@ -8,6 +8,10 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Document Templates</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <button type="button" class="btn-sm btn-primary" tal:condition="python:view.can_configure() and view.new_kinds()"
+            onclick="document.getElementById('dt-new').classList.add('open')">+ New template</button>
+  </tal:r>
 
   <metal:fill fill-slot="content"
               tal:define="msg view/message; can view/can_configure;
@@ -20,14 +24,14 @@
     <!-- filters left, the page's one "New" action right; it opens a dialog -->
     <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="dt-status">Status</label>
         <select name="status" id="dt-status" class="pfas-select">
           <option value="active" tal:attributes="selected python:'selected' if view.status_filter() == 'active' else None">Active</option>
           <option value="archived" tal:attributes="selected python:'selected' if view.status_filter() == 'archived' else None">Archived</option>
         </select>
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="dt-kind">Kind</label>
         <select name="kind" id="dt-kind" class="pfas-select">
           <option tal:repeat="f view/KIND_FILTERS" tal:attributes="value python:f[0]; selected python:'selected' if view.kind_filter() == f[0] else None"
@@ -35,117 +39,132 @@
         </select>
       </div>
       <span class="pfas-filterbar-spacer"></span>
-      <button type="button" class="btn btn-primary" tal:condition="python:can and view.new_kinds()"
-              onclick="document.getElementById('dt-new').classList.add('open')">+ New template</button>
     </form>
 
     <tal:t tal:define="rows view/table">
     <p class="bench-sub" tal:condition="not:rows">No document matches the filters.</p>
     <div class="table-wrap" tal:condition="rows">
-    <table class="pfas-table" data-col-resize="document-templates-1">
-      <thead><tr><th>Document</th><th>Kind</th><th>Size</th><th>Status</th><th>Draft</th>
-        <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
+    <table class="pfas-table" data-col-resize="document-templates-1" tal:define="rm context/@@pfas-row-menu">
+      <thead><tr><th>Document</th><th>Kind</th><th>Size</th><th>Status</th><th>Issued by</th><th>Draft</th></tr></thead>
       <tbody>
-        <tr tal:repeat="r rows" tal:attributes="class python: 'dt-archived' if r.get('archived') else None">
+        <!-- a designed document opens in the designer; a kind not designed yet
+             offers Design, which creates it; the rest is the row's menu -->
+        <tr tal:repeat="r rows"
+            tal:attributes="class python: 'dt-archived' if r.get('archived') else None;
+                            data-row-open python: None if r['placeholder'] else u'%s/@@pfas-document-designer?id=%s' % (view.portal_url(), r['id']);
+                            data-dt-revs python: u'dt-revs-%s' % r['id'] if r.get('history') else None;
+                            data-dt-title python: u'%s: issued revisions' % r['title'] if r.get('history') else None;
+                            data-row-actions python: rm.actions(
+                                (u'Design', 'form', u'dt-design-%s' % r['kind_id']) if r['placeholder'] and can else None,
+                                (u'Issue on Reporting Template', 'href', u'%s/@@pfas-report-template' % view.portal_url(),
+                                 {'note': u'The certificate design is issued with the Reporting Template'}) if not r['placeholder'] and r['issued_with'] else None,
+                                (u'Issue', 'modal', u'dt-issue-%s' % r['id'],
+                                 {'off': None if (r['status']['unissued'] and not r['problems']) else (u'Fix the problems first' if r['problems'] else u'No changes to issue')})
+                                 if not r['placeholder'] and can and not r['archived'] and not r['issued_with'] else None,
+                                (u'Start a draft from the starting layout', 'form', u'dt-starter-%s' % r['id'],
+                                 {'note': u'Nothing prints from it until it is issued'})
+                                 if not r['placeholder'] and can and r['has_starter'] and not r['archived'] else None,
+                                (u'Revisions', 'event', u'dt-revisions') if not r['placeholder'] and r.get('history') else None,
+                                (u'Restore', 'form', u'dt-archive-%s' % r['id']) if not r['placeholder'] and can and r['archived'] else None,
+                                (u'Archive', 'form', u'dt-archive-%s' % r['id'], {'danger': True}) if not r['placeholder'] and can and not r['archived'] else None)">
           <td><strong tal:content="r/title">Vial label</strong>
             <div class="cf-hint dt-problem" tal:repeat="p r/problems" tal:content="p">lot (2) is not a label data field</div>
             <div class="cf-hint dt-problem" tal:condition="r/issued_problems">
               The issued revision no longer fits and will not print:
-              <tal:p repeat="p r/issued_problems"><span tal:replace="p">x</span> </tal:p></div></td>
+              <tal:p repeat="p r/issued_problems"><span tal:replace="p">x</span> </tal:p></div>
+            <div class="cf-hint" tal:repeat="t r/optional_missing" tal:content="t">Optional table not placed: Signatures</div></td>
           <td tal:content="r/kind">Labels</td>
           <td tal:content="r/size">2" x 1"</td>
           <td>
             <span class="badge badge-draft" tal:condition="r/placeholder">Form as on screen</span>
             <tal:real tal:condition="not:r/placeholder" tal:define="st r/status">
-              <span class="badge badge-archived" tal:condition="r/archived">Archived</span>
-              <tal:live condition="not:r/archived">
-                <span class="badge badge-quarantine" tal:condition="st/none_issued">Not issued</span>
-                <tal:i condition="not:st/none_issued">
-                  <span class="badge badge-active" tal:content="string:Issued rev ${st/rev}">Issued rev 1</span>
-                  <span class="badge badge-opened" tal:condition="st/unissued">Unissued changes</span>
-                </tal:i>
-              </tal:live>
+              <span class="pfas-doc-state" tal:define="ic context/@@pfas-icons"><tal:a condition="r/archived"><tal:m
+                tal:replace="structure python:ic.tip('doc-superseded', u'Archived')" /></tal:a><tal:live condition="not:r/archived"><tal:n
+                condition="st/none_issued" tal:replace="structure python:ic.tip('doc-draft', u'Not issued')" /><tal:i
+                condition="not:st/none_issued"><tal:m tal:replace="structure python:ic.tip('doc-issued', u'Issued rev %s, unissued changes' % st['rev'], mark='warn', size='lg') if st['unissued'] else ic.tip('doc-issued', u'Issued rev %s' % st['rev'])" /><span
+                tal:content="string:rev ${st/rev}">rev 1</span></tal:i></tal:live></span>
             </tal:real>
           </td>
+          <!-- who issued the revision in force, and when, said in words -->
+          <td><tal:i tal:condition="python: not r['placeholder'] and r['status'].get('issued_by')">
+                <span tal:content="python: r['status']['issued_by']">DEMO</span>
+                <div class="cf-hint" tal:condition="python: r['status'].get('issued_on')"
+                     tal:content="python: u'Issue date: %s' % r['status']['issued_on']"></div></tal:i></td>
           <td><span tal:condition="not:r/placeholder"
-                    tal:content="python: '%s %s' % (view.lab_at(r['draft_at'], r['draft_at'][:16].replace('T', ' ')), r['draft_by'])">2026-10-04 AN1</span></td>
-          <td class="row-plus-cell">
-            <details class="row-more">
-              <summary class="row-plus" aria-label="Actions for this document" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <!-- a document not designed yet: Design creates it -->
-                <tal:can condition="view/can_configure">
-                <form method="post" tal:condition="r/placeholder"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
-                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
-                  <input type="hidden" name="action" value="new" />
-                  <input type="hidden" name="kind" tal:attributes="value r/kind_id" />
-                  <input type="hidden" name="title" tal:attributes="value r/title" />
-                  <input type="hidden" name="size" tal:attributes="value r/default_size" />
-                  <button class="btn-sm btn-secondary" type="submit">Design</button>
-                </form>
-                </tal:can>
-                <tal:real tal:condition="not:r/placeholder">
-                <a class="btn-sm btn-secondary"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-document-designer?id=${r/id}"
-                   tal:content="python: 'Design' if can else 'View'">Design</a>
-                <a class="btn-sm btn-secondary" tal:condition="r/issued_with"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-report-template"
-                   title="The certificate design is issued with the Reporting Template">Issue on Reporting Template</a>
-                <tal:can condition="view/can_configure">
-                <form method="post" class="mp-issue-form" tal:condition="python: not r['archived'] and not r['issued_with']"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
-                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
-                  <input type="hidden" name="id" tal:attributes="value r/id" />
-                  <input type="hidden" name="action" value="issue" />
-                  <label class="mp-issue-label">Issue: what this revision changes
-                    <input type="text" name="note" required="required" class="pfas-input" /></label>
-                  <button class="btn-sm btn-primary" type="submit"
-                          tal:attributes="disabled python: None if (r['status']['unissued'] and not r['problems']) else 'disabled'">Issue</button>
-                </form>
-                <!-- a draft only: what prints stays the issued revision -->
-                <form method="post" tal:condition="python: r['has_starter'] and not r['archived']"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-document-templates"
-                      onsubmit="return confirm('Replace the draft with the current starting layout? The issued revision stays as it is.');">
-                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
-                  <input type="hidden" name="id" tal:attributes="value r/id" />
-                  <input type="hidden" name="action" value="from_starter" />
-                  <button class="btn-sm btn-secondary" type="submit"
-                          title="Writes a draft to preview and issue; nothing prints from it until then">Start a draft from the starting layout</button>
-                </form>
-                </tal:can>
-                <button type="button" class="btn-sm btn-secondary" tal:condition="r/history"
-                        tal:attributes="data-revs string:dt-revs-${repeat/r/index};
-                                        data-title python:u'%s: issued revisions' % r['title']">Revisions</button>
-                <tal:can condition="view/can_configure">
-                <form method="post"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
-                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
-                  <input type="hidden" name="id" tal:attributes="value r/id" />
-                  <input type="hidden" name="action" tal:attributes="value python: 'restore' if r['archived'] else 'archive'" />
-                  <button type="submit" tal:attributes="class python:'btn-sm btn-secondary' if r['archived'] else 'btn-sm btn-danger'"
-                          tal:content="python: 'Restore' if r['archived'] else 'Archive'">Archive</button>
-                </form>
-                </tal:can>
-                </tal:real>
-              </div>
-            </details>
-            <template tal:condition="r/history" tal:attributes="id string:dt-revs-${repeat/r/index}">
-              <table class="pfas-table" data-col-resize="document-templates-2">
-                <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Note</th></tr></thead>
-                <tbody><tr tal:repeat="h r/history">
-                  <td tal:content="h/rev">1</td>
-                  <td tal:content="python: view.lab_at(h.get('issued_at'), (h.get('issued_at') or u'')[:16].replace('T', ' '))">2026-10-04 12:00</td>
-                  <td tal:content="python: h.get('issued_by')">admin</td>
-                  <td tal:content="python: h.get('note')">first issue</td>
-                </tr></tbody>
-              </table>
-            </template>
-          </td>
+                    tal:content="python: u'Saved %s by %s' % (view.lab_at(r['draft_at'], r['draft_at'][:16].replace('T', ' ')), r['draft_by'])">Saved</span></td>
         </tr>
       </tbody>
     </table>
     </div>
+
+    <!-- the row menu's forms and dialogs: Design, Issue (asks what the
+         revision changes), a draft from the starting layout, Archive / Restore -->
+    <tal:can condition="view/can_configure">
+    <tal:f repeat="r rows">
+    <form method="post" hidden="hidden" tal:condition="r/placeholder"
+          tal:attributes="action string:${view/portal_url}/@@pfas-document-templates; id string:dt-design-${r/kind_id}">
+      <input type="hidden" name="_authenticator" tal:attributes="value token" />
+      <input type="hidden" name="action" value="new" />
+      <input type="hidden" name="kind" tal:attributes="value r/kind_id" />
+      <input type="hidden" name="title" tal:attributes="value r/title" />
+      <input type="hidden" name="size" tal:attributes="value r/default_size" />
+      <button class="btn-sm btn-secondary" type="submit">Design</button>
+    </form>
+    <tal:real tal:condition="not:r/placeholder">
+    <div class="pfas-modal" tal:condition="python: not r['archived'] and not r['issued_with']"
+         tal:attributes="id string:dt-issue-${r/id}">
+      <div class="pfas-modal-box is-narrow">
+        <h2 tal:content="python: u'Issue %s' % r['title']">Issue Vial label</h2>
+        <form method="post" class="mp-issue-form"
+              tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
+          <input type="hidden" name="_authenticator" tal:attributes="value token" />
+          <input type="hidden" name="id" tal:attributes="value r/id" />
+          <input type="hidden" name="action" value="issue" />
+          <label class="mp-issue-label">Issue: what this revision changes
+            <input type="text" name="note" required="required" class="pfas-input" /></label>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button class="btn btn-primary" type="submit"
+                    tal:attributes="disabled python: None if (r['status']['unissued'] and not r['problems']) else 'disabled'">Issue</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <!-- a draft only: what prints stays the issued revision -->
+    <form method="post" hidden="hidden" tal:condition="python: r['has_starter'] and not r['archived']"
+          tal:attributes="action string:${view/portal_url}/@@pfas-document-templates; id string:dt-starter-${r/id}"
+          onsubmit="return confirm('Replace the draft with the current starting layout? The issued revision stays as it is.');">
+      <input type="hidden" name="_authenticator" tal:attributes="value token" />
+      <input type="hidden" name="id" tal:attributes="value r/id" />
+      <input type="hidden" name="action" value="from_starter" />
+      <button class="btn-sm btn-secondary" type="submit">Start a draft from the starting layout</button>
+    </form>
+    <form method="post" hidden="hidden"
+          tal:attributes="action string:${view/portal_url}/@@pfas-document-templates; id string:dt-archive-${r/id}">
+      <input type="hidden" name="_authenticator" tal:attributes="value token" />
+      <input type="hidden" name="id" tal:attributes="value r/id" />
+      <input type="hidden" name="action" tal:attributes="value python: 'restore' if r['archived'] else 'archive'" />
+      <button type="submit" tal:attributes="class python:'btn-sm btn-secondary' if r['archived'] else 'btn-sm btn-danger'"
+              tal:content="python: 'Restore' if r['archived'] else 'Archive'">Archive</button>
+    </form>
+    </tal:real>
+    </tal:f>
+    </tal:can>
+
+    <!-- a document's issued revisions, shown in the drawer by its row's menu -->
+    <tal:h repeat="r rows">
+    <template tal:condition="r/history" tal:attributes="id string:dt-revs-${r/id}">
+      <table class="pfas-table" data-col-resize="document-templates-2">
+        <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Note</th></tr></thead>
+        <tbody><tr tal:repeat="h r/history">
+          <td tal:content="h/rev">1</td>
+          <td tal:content="python: view.lab_at(h.get('issued_at'), (h.get('issued_at') or u'')[:16].replace('T', ' '))">2026-10-04 12:00</td>
+          <td tal:content="python: h.get('issued_by')">admin</td>
+          <td tal:content="python: h.get('note')">first issue</td>
+        </tr></tbody>
+      </table>
+    </template>
+    </tal:h>
     </tal:t>
 
     <!-- + New template: a dialog -->
@@ -155,17 +174,19 @@
         <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
           <input type="hidden" name="_authenticator" tal:attributes="value token" />
           <input type="hidden" name="action" value="new" />
-          <div class="pfas-form-field"><label for="dt-new-kind">Kind</label>
-            <select name="kind" id="dt-new-kind" class="pfas-select" onchange="dtSizes(this.value)">
-              <option tal:repeat="k view/new_kinds" tal:attributes="value k/id" tal:content="k/title">Labels</option>
-            </select></div>
-          <div class="pfas-form-field"><label for="dt-new-title">Name</label>
-            <input type="text" name="title" id="dt-new-title" required="required" class="pfas-input" /></div>
-          <div class="pfas-form-field"><label for="dt-new-size">Size</label>
-            <select name="size" id="dt-new-size" class="pfas-select">
-              <tal:k tal:repeat="k view/new_kinds"><option tal:repeat="z k/sizes"
-                     tal:attributes="value z/id; data-kind k/id" tal:content="z/title">2x1</option></tal:k>
-            </select></div>
+          <div class="pfas-form-row">
+            <div class="pfas-form-field"><label for="dt-new-kind">Kind</label>
+              <select name="kind" id="dt-new-kind" class="pfas-select" onchange="dtSizes(this.value)">
+                <option tal:repeat="k view/new_kinds" tal:attributes="value k/id" tal:content="k/title">Labels</option>
+              </select></div>
+            <div class="pfas-form-field"><label for="dt-new-title">Name</label>
+              <input type="text" name="title" id="dt-new-title" required="required" class="pfas-input" /></div>
+            <div class="pfas-form-field"><label for="dt-new-size">Size</label>
+              <select name="size" id="dt-new-size" class="pfas-select">
+                <tal:k tal:repeat="k view/new_kinds"><option tal:repeat="z k/sizes"
+                       tal:attributes="value z/id; data-kind k/id" tal:content="z/title">2x1</option></tal:k>
+              </select></div>
+          </div>
           <div class="form-actions is-end">
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('dt-new').classList.remove('open')">Cancel</button>
             <button type="submit" class="btn btn-primary">Create</button>
@@ -174,7 +195,7 @@
       </div>
     </div>
     <script>
-    /* the size list follows the kind; "Revisions" opens the drawer */
+    /* the size list follows the kind; a row's "Revisions" opens the drawer */
     function dtSizes(kind) {
       var sel = document.getElementById('dt-new-size'), first = null;
       Array.prototype.forEach.call(sel.options, function (o) {
@@ -187,13 +208,11 @@
     (function () {
       var k = document.getElementById('dt-new-kind');
       if (k) dtSizes(k.value);
-      document.addEventListener('click', function (ev) {
-        var btn = ev.target.closest ? ev.target.closest('[data-revs]') : null;
-        if (!btn) return;
-        var tpl = document.getElementById(btn.getAttribute('data-revs'));
-        var d = btn.closest('details');
-        if (d) d.removeAttribute('open');
-        if (tpl) window.PFAS.components.drawer.open(btn.getAttribute('data-title'), tpl.content.cloneNode(true));
+      document.addEventListener('pfas:row-action', function (ev) {
+        var row = ev.detail && ev.detail.row;
+        if (!row || ev.detail.name !== 'dt-revisions') return;
+        var tpl = document.getElementById(row.getAttribute('data-dt-revs'));
+        if (tpl) window.PFAS.components.drawer.open(row.getAttribute('data-dt-title'), tpl.content.cloneNode(true));
       });
     })();
     </script>

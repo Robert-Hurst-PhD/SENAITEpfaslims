@@ -66,7 +66,7 @@ class PFASPipelineImport(object):
 
     def Import(self, context, request):
         from bika.lims import api
-        from senaite.pfas import extraction_batch
+        from senaite.pfas import extraction_batch, retired
         from senaite.pfas.browser.run_builder import PFASRunBuilderView
         form = request.form
         infile = form.get("instrument_results_file")
@@ -81,6 +81,8 @@ class PFASPipelineImport(object):
         for brain in api.search({"portal_type": "Worksheet", "review_state": "open"},
                                 "senaite_catalog_worksheet"):
             ws = api.get_object(brain)
+            if retired.is_retired(ws):
+                continue
             inst = ws.getInstrument() if hasattr(ws, "getInstrument") else None
             if instrument_uid and inst is not None and api.get_uid(inst) != instrument_uid:
                 continue
@@ -90,7 +92,7 @@ class PFASPipelineImport(object):
         ws, hits = match_worksheet(text, candidates)
         if ws is None:
             return json.dumps({"errors": [
-                "No single extraction batch's injection names were found in this file. "
+                "No single worksheet's injection names were found in this file. "
                 "Upload it from the Run Builder for its worksheet."], "log": [], "warns": []})
         view = PFASRunBuilderView(api.get_portal(), request)
         note, error = view.deliver(ws.getId(), infile.filename, data)

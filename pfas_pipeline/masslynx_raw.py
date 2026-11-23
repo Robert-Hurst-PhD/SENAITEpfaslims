@@ -20,21 +20,18 @@ modulo 8, with the mantissa still normalised (2048 or more); read as stored,
 the apex would be a trough. `exponents` restores the lost 8: a word whose
 mantissa is 2048 or more, following a word at exponent 7 or higher, takes
 whichever of its exponent and its exponent + 8 lies closer (as a ratio) to
-the value before it. With m the trace's maximum, a trace whose apex is still
-a trough is flagged overflowed: m at least 4e7 and a point between the first
-and the last point at or above half of m below 0.3 * m (the span above
-half-maximum of a real peak never dips), because its area is not the peak's.
+the value before it.
 
     is_masslynx(folder) -> bool
     files(folder) -> {lower-cased name: path}
     transitions(folder) -> [(function number, q1, q3)]
     trace(folder, function_number) -> (rt minutes, intensity)
     exponents(raw) -> each word's exponent of 4, the lost 8 restored
-    overflowed(y) -> bool
     acquired(folder) -> ISO 8601 string or None
-    read_chromatograms(folder) -> [{"id", "q1", "q3", "name", "t", "y", "overflowed"}]
+    read_chromatograms(folder) -> [{"id", "q1", "q3", "name", "t", "y"}]
 
-The records have the keys of `raw_mzml.read_chromatograms` plus `overflowed`.
+The records have the keys of `raw_mzml.read_chromatograms`. A reading above
+the highest calibrator is judged as above the calibration range, never here.
 Pure reading, no vendor code. Python 3.
 """
 from __future__ import annotations
@@ -55,10 +52,6 @@ POINTS_AT, POINTS_MASK = 4, 0x3FFFFF
 # a normalised mantissa: every word above exponent 0 holds one of at least NORMALISED
 NORMALISED = 2048
 EXPONENT_BITS = 8
-# a wrapped apex: from m >= WRAP_FLOOR, a dip below DIP_SHARE of m inside the span above SPAN_SHARE of m
-WRAP_FLOOR = 4e7
-SPAN_SHARE = 0.50
-DIP_SHARE = 0.30
 MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 
 
@@ -156,22 +149,6 @@ def exponents(raw) -> np.ndarray:
     return out
 
 
-def overflowed(y: np.ndarray) -> bool:
-    """With m the maximum: m >= 4e7 and a point between the first and the
-    last point at or above 0.5 * m that is below 0.3 * m. A real peak never
-    dips inside its span above half-maximum; an apex the reading could not
-    restore is a trough there. A maximum above CEILING is a restored value,
-    not an overflow."""
-    y = np.asarray(y, dtype=float)
-    if y.size == 0:
-        return False
-    top = float(y.max())
-    if top < WRAP_FLOOR:
-        return False
-    above = np.flatnonzero(y >= SPAN_SHARE * top)
-    return bool((y[above[0]:above[-1] + 1] < DIP_SHARE * top).any())
-
-
 def acquired(folder: str) -> Optional[str]:
     """The acquisition time from `_header.txt` as ISO 8601, or None when the
     header, the date or the time is absent or unreadable."""
@@ -197,11 +174,11 @@ def acquired(folder: str) -> Optional[str]:
 
 
 def read_chromatograms(folder: str) -> list[dict]:
-    """One record per function, with the keys of `raw_mzml.read_chromatograms`
-    plus `overflowed`; time in minutes."""
+    """One record per function, with the keys of `raw_mzml.read_chromatograms`;
+    time in minutes."""
     records = []
     for number, q1, q3 in transitions(folder):
         t, y = trace(folder, number)
         records.append({"id": "function %d" % number, "q1": q1, "q3": q3, "name": "",
-                        "t": t.tolist(), "y": y.tolist(), "overflowed": overflowed(y)})
+                        "t": t.tolist(), "y": y.tolist()})
     return records

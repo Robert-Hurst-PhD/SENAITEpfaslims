@@ -19,15 +19,22 @@ from senaite.pfas.browser.view_helpers import ViewHelpers
 GATES = {"save": TIER_CONFIG}
 
 
-def rows_from_form(form):
-    """[{"key", "label", "active"}] from t__<n>__<field> names, in order."""
+def rows_from_form(form, flags=()):
+    """[{"key", "label", "active", <flag>...}] from t__<n>__<field> names, in
+    order; `flags` the list's switches (vocab_store.FLAGS)."""
     by = {}
     for k, v in (form or {}).items():
         parts = (u"%s" % k).split(u"__")
         if len(parts) == 3 and parts[0] == u"t" and parts[1].isdigit():
             by.setdefault(int(parts[1]), {})[parts[2]] = v
-    return [{"key": by[i].get("key") or u"", "label": by[i].get("label") or u"",
-             "active": by[i].get("active") == u"on"} for i in sorted(by)]
+    out = []
+    for i in sorted(by):
+        row = {"key": by[i].get("key") or u"", "label": by[i].get("label") or u"",
+               "active": by[i].get("active") == u"on"}
+        for flag in flags:
+            row[flag] = by[i].get(flag) == u"on"
+        out.append(row)
+    return out
 
 
 class PFASVocabulariesView(ViewHelpers, GateMixin, BrowserView):
@@ -44,7 +51,8 @@ class PFASVocabulariesView(ViewHelpers, GateMixin, BrowserView):
             name = self.list_name()
             if name:
                 portal = api.get_portal()
-                data, self.errors = vs.edit(vs.get(portal), name, rows_from_form(req.form),
+                data, self.errors = vs.edit(vs.get(portal), name,
+                                            rows_from_form(req.form, [f for f, _t in self.flags()]),
                                             req.form.get("new_label") or u"")
                 if not self.errors:
                     vs.save(portal, data)
@@ -63,6 +71,13 @@ class PFASVocabulariesView(ViewHelpers, GateMixin, BrowserView):
 
     def title(self):
         return vs.LISTS[self.list_name()][0] if self.list_name() else u"Lists"
+
+    def flags(self):
+        """The switches each term of this list carries: [(flag, title)]."""
+        return list(vs.FLAGS.get(self.list_name(), ()))
+
+    def locked_off(self, key, flag):
+        return vs.locked_off(self.list_name(), key, flag)
 
     def terms(self):
         return vs.terms(vs.get(api.get_portal()), self.list_name()) if self.list_name() else []

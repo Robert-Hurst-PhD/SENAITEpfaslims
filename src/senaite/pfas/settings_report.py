@@ -143,6 +143,13 @@ def section_dump(section, profile, env=None):
                 out.append([label] + cells)
         return {"title": section.title, "columns": [t.row_heading] + [c.label for c in t.columns],
                 "rows": out}
+    if section.id == u"cmp":
+        # a composite standard prints by its name, built from its members;
+        # its id is never shown
+        from senaite.pfas import composite_standards as cmp
+        return {"title": section.title, "columns": [u"Composite", u"Members", u"Averaged as"],
+                "rows": [[cmp.name(profile, cid), u", ".join(cmp.members(profile, cid)),
+                          cmp.AVERAGED_WORDS[u"area"]] for cid in cmp.ordered(profile)]}
     if isinstance(section, cf.Collection):
         c = cf._bound(section, profile)
         return {"title": section.title, "columns": [f.label for f in c.columns],
@@ -154,6 +161,32 @@ def section_dump(section, profile, env=None):
         v = _text(_choice_label(f, vals[f.name], profile, env), f)
         rows.append([f.label, (v + (u" " + f.unit if v and f.unit else u""))])
     return {"title": section.title, "columns": [u"Setting", u"Value"], "rows": rows}
+
+
+# the most columns a settings table prints on the landscape page beside its
+# first column; a wider section prints in further tables, each with the
+# first column again
+SECTION_COLUMNS = 8
+
+
+def section_parts(section, limit=SECTION_COLUMNS):
+    """[{"columns", "rows"}] of a dumped section (section_dump): the section
+    itself when it has at most `limit` columns after the first, else one
+    table per run of `limit` columns, each led by the first column, so no
+    column is printed past the page's edge. Every column and every cell
+    appears once (the first column in each part); a short row is filled."""
+    columns = list((section or {}).get("columns") or [])
+    rows = [list(r) for r in (section or {}).get("rows") or []]
+    rest = columns[1:]
+    if len(rest) <= limit:
+        return [{"columns": columns, "rows": rows}]
+    out = []
+    for start in range(0, len(rest), limit):
+        end = start + limit
+        out.append({"columns": columns[:1] + rest[start:end],
+                    "rows": [r[:1] + (r[1:] + [u""] * len(rest))[start:end][:len(rest[start:end])]
+                             for r in rows]})
+    return out
 
 
 def _tier_text(t):
@@ -177,7 +210,8 @@ def _scope_text(profile, tier, scopes):
 
 def qc_application(profile):
     """One row per QC type the method stores (or the table names): enabled,
-    evaluated, how, and each tier as text with its scope and source."""
+    evaluated, how, and each tier as text with its scope. No tier names a
+    source: the sources are on the Help page (value_sources)."""
     qca = profile.get("qc_acceptance") or {}
     groups, scopes = dict(mps.GROUP_CHOICES), dict(mps.SCOPE_CHOICES)
     rows = []
@@ -196,9 +230,7 @@ def qc_application(profile):
             tiers.append({"name": t.get("name") or u"", "criterion": _tier_text(t),
                           "applies": u"%s; %s%s" % (groups.get(t.get("analyte_group") or u"all", t.get("analyte_group")),
                                                    _scope_text(profile, t, scopes),
-                                                   (u"; " + when) if when else u""),
-                          "source": t.get("citation") or (u"VERIFY against the method"
-                                                          if t.get("verify_against_method") else u"method profile")})
+                                                   (u"; " + when) if when else u"")})
         rows.append({"code": code, "criterion": criterion, "enabled": entry.get("enabled", True) is not False,
                      "evaluated": evaluated, "how": how, "tiers": tiers})
     return rows
@@ -230,7 +262,7 @@ def method_report(profile, env=None, toggles=None):
 def _section_order():
     """The editor's tab order; any section not named here follows."""
     first = ["cal", "cal_levels", "cal_scale", "rl", "mtx", "corr", "salt", "mf", "rf", "al", "groups", "tiers", "tiers_lfb",
-             "dup", "lfsmd", "ls", "sur", "iso", "eis_grid"]
+             "dup", "lfsmd", "ls", "cmp", "sur", "iso", "eis_grid"]
     return first + sorted(k for k in mps.SECTIONS if k not in first)
 
 

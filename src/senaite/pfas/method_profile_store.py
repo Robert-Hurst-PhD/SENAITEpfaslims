@@ -36,6 +36,7 @@ PROFILES_EXPORT_PATH = os.environ.get(
 # the install seed's surrogate links (analyte_reference.py), copied once
 # into each shipped method's own Surrogate Map
 from senaite.pfas.analyte_reference import derive_surrogate_map as _derive_surrogate_map
+from senaite.pfas import rule_flags as _rule_flags
 
 
 
@@ -152,8 +153,12 @@ _EPA1633A_NIS_WINDOW_NOTE = (u"EPA 1633A §14.9: the NIS areas in field and QC s
 # Table 10, the target analytes with no EIS of their own: the EIS used for
 # quantification, by the library's keywords (Table 10 spells ADONA and
 # 9Cl-PF3ONS, the compounds' published names). PFTrDA is quantified on the
-# average of 13C2-PFTeDA and 13C2-PFDoA, which one link cannot say, so it
-# is left to the lab.
+# average of the areas of 13C2-PFTeDA and 13C2-PFDoA (section 15.2 Note;
+# Table 10 footnote 3): a composite standard of the two
+# (composite_standards), both at one concentration in every calibrator
+# (Table 4). The id is fixed so every new install names the same composite;
+# a profile already stored is never given it (method_engine.NOT_BACKFILLED).
+_EPA1633A_PFTRDA_COMPOSITE = "composite-1633a0f1"
 _EPA1633A_SHARED_EIS = [
     ("PFPeS", "13C3-PFHxS"), ("PFHpS", "13C8-PFOS"), ("PFNS", "13C8-PFOS"), ("PFDS", "13C8-PFOS"),
     ("PFDoS", "13C8-PFOS"), ("DONA", "13C3-HFPO-DA"), ("PFMPA", "13C5-PFPeA"), ("PFMBA", "13C5-PFPeA"),
@@ -240,9 +245,10 @@ DEFAULT_PROFILES = {
                     {"conc": 10.0, "name": "CAL-9"},
                     {"conc": 20.0, "name": "CAL-10"},
                 ],
-                "levels_source": "Lab instruction 2026-10-02: 0.039 to 20 ng/mL, each point double the last (10 points).",
+                # 0.039 to 20 ng/mL, each point double the last (10 points), as the lab entered it
                 "origin": "exclude",
                 "weighting": "1/x",
+                "fit": "linear",
             },
             "ccv": {
                 "frequency": 6,
@@ -470,9 +476,6 @@ DEFAULT_PROFILES = {
                 "consumables": ["1 mL Syringe", "LC Vials"],
             },
         ],
-        # Ordered logbooks required for a batch using this method.
-        # 250 = Solvent/Reagent Prep, 252 = Extraction Log (Guided), 251 = Cal Prep, 253 = Sample Processing
-        "required_logbooks": ["252", "253"],
         "blank_role_name": "MB",
         "engine": {
             "aliases": ["FDA", "FDA32", "C-010.04"],
@@ -494,8 +497,8 @@ DEFAULT_PROFILES = {
                 "tier_low_level": "low-level window (<= {0:g} x RL)",
                 "tier_no_std": "No matched labeled standard (Table 10-1 footnote a)",
             },
+            # the FDA method's surrogate window, guidance only (the lab's value)
             "surrogate_fallback": {
-                "citation": "Surrogate recovery is guidance only (FDA §2024.10.1(5))",
                 "max": 150.0,
                 "min": 50.0,
             },
@@ -588,6 +591,7 @@ DEFAULT_PROFILES = {
                 "level_unit": "ppt",
                 "origin": "force",
                 "weighting": "1/x",
+                "fit": "linear",
             },
             "ccv": {
                 "frequency": 10,
@@ -605,7 +609,7 @@ DEFAULT_PROFILES = {
                 "vs_ical_avg_max": 150.0,
                 "vs_last_ccv_min": 70.0,
                 "vs_last_ccv_max": 140.0,
-                "notes": "Both ICAL avg AND last CCV conditions must hold (§9.3.4)",
+                "notes": "Both ICAL avg AND last CCV conditions must hold",
             },
             "confirmation": {
                 "rrt_tol_pct": None,
@@ -629,8 +633,7 @@ DEFAULT_PROFILES = {
                 # above it the analyte's data for the batch are invalid
                 "tiers": [{"name": "default", "analyte_group": "all",
                            "matrix_scope": "all", "max_conc_x_rl": 1.0 / 3,
-                           "fails_at_limit": True,
-                           "citation": "EPA 537.1 v2.0 §9.3.1"}],
+                           "fails_at_limit": True}],
             },
             "LFB": {
                 "enabled": True,
@@ -639,11 +642,10 @@ DEFAULT_PROFILES = {
                         "name": "low_level",
                         "analyte_group": "all",
                         "matrix_scope": "all",
-                        "description": "Low level, no more than 2 x MRL (§9.3.3)",
+                        "description": "Low level, no more than 2 x MRL",
                         "recovery_min": 50.0,
                         "recovery_max": 150.0,
                         "rsd_max": None,
-                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.3",
                         "low_level_x_rl": 2.0,
                     },
                     {"name": "mid_high", "analyte_group": "all",
@@ -664,8 +666,7 @@ DEFAULT_PROFILES = {
                     },
                     {
                         "analyte_group": "all",
-                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.6.3",
-                        "description": "Within 2 x MRL (§9.3.6.3)",
+                        "description": "Within 2 x MRL",
                         "low_level_x_rl": 2.0,
                         "matrix_scope": "all",
                         "name": "low_level",
@@ -687,8 +688,7 @@ DEFAULT_PROFILES = {
                     },
                     {
                         "analyte_group": "all",
-                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.7.4",
-                        "description": "Within 2 x MRL (§9.3.7.4)",
+                        "description": "Within 2 x MRL",
                         "low_level_x_rl": 2.0,
                         "matrix_scope": "all",
                         "name": "low_level",
@@ -707,8 +707,7 @@ DEFAULT_PROFILES = {
                     },
                     {
                         "analyte_group": "all",
-                        "citation": "EPA 537.1 v2.0 (EPA/600/R-20/006, March 2020) §9.3.7.2",
-                        "description": "Within 2 x MRL (§9.3.7.2, field duplicate)",
+                        "description": "Within 2 x MRL, field duplicate",
                         "low_level_x_rl": 2.0,
                         "matrix_scope": "all",
                         "name": "low_level",
@@ -849,7 +848,6 @@ DEFAULT_PROFILES = {
                 "consumables": ["1 mL LC Vials"],
             },
         ],
-        "required_logbooks": ["252", "253"],
         "blank_role_name": "LRB",
         "engine": {
             "aliases": ["537", "537.1", "EPA537"],
@@ -863,21 +861,22 @@ DEFAULT_PROFILES = {
             },
             "rule_notes": {
                 "confirmation_rule": "RT within ±0.05 min of expected; no qual-ion ratio criterion in 537.1",
-                "is_rule": "Both conditions must hold (§9.3.4); on failure re-inject a second aliquot in a fresh vial",
+                "is_rule": "Both conditions must hold; on failure re-inject a second aliquot in a fresh vial",
             },
-            "surrogate_fallback": {"citation": "§9.3.5 surrogates 70–130%", "max": 130.0, "min": 70.0},
+            # EPA 537.1 v2.0 §9.3.5.1: surrogate recovery 70-130 %
+            "surrogate_fallback": {"max": 130.0, "min": 70.0},
             "surrogate_guidance_only": False,
         },
         "extract_holding_times": {"Drinking Water": 28, "Groundwater": 28, "Surface Water": 28},
         "idc": {
             "asymmetry": [0.8, 1.5],
             "elements": [
-                ["isomers", "Branched / linear isomer profile (§9.2.1)"],
-                ["lsb", "Low system background (§9.2.2)"],
-                ["pa", "Precision and accuracy (§9.2.3, §9.2.4)"],
-                ["qcs", "Calibration confirmation, QCS = the ICV (§9.2.7)"],
-                ["asymmetry", "Peak asymmetry (§9.2.5)"],
-                ["mrl", "MRL confirmation (§9.2.6)"],
+                ["isomers", "Branched / linear isomer profile"],
+                ["lsb", "Low system background"],
+                ["pa", "Precision and accuracy"],
+                ["qcs", "Calibration confirmation, QCS = the ICV"],
+                ["asymmetry", "Peak asymmetry"],
+                ["mrl", "MRL confirmation"],
             ],
         },
         "isomers": {
@@ -979,9 +978,11 @@ DEFAULT_PROFILES = {
                     {"conc": 25.6, "name": "CAL-8"},
                     {"conc": 51.2, "name": "CAL-9"},
                 ],
-                "levels_source": "EPA Method 1633A (December 2024) Table 4: each analyte from its CS1 to its highest listed standard, each point double the last (lab instruction 2026-10-02).",
+                # EPA 1633A Table 4: each analyte from its CS1 to its highest listed
+                # standard, each point double the last
                 "origin": "exclude",
                 "weighting": "1/x",
+                "fit": "linear",
             },
             "ccv": {
                 "frequency": 10,
@@ -1028,6 +1029,8 @@ DEFAULT_PROFILES = {
                      "recovery_min": 40.0, "recovery_max": 130.0, "rsd_max": None},
                 ],
             },
+            # LFSM, LFSMD and Dup: the lab's values; EPA 1633A sets no
+            # matrix-spike or duplicate criterion (§9.7, §9.9)
             "LFSM": {
                 "enabled": True,
                 "tiers": [
@@ -1038,7 +1041,6 @@ DEFAULT_PROFILES = {
                         "recovery_min": 40.0,
                         "recovery_max": 130.0,
                         "rsd_max": None,
-                        "citation": "The lab's value: EPA 1633A sets no matrix-spike or duplicate criterion (§9.7, §9.9).",
                     },
                 ],
             },
@@ -1052,7 +1054,6 @@ DEFAULT_PROFILES = {
                         "recovery_min": 40.0,
                         "recovery_max": 130.0,
                         "rpd_max": 30.0,
-                        "citation": "The lab's value: EPA 1633A sets no matrix-spike or duplicate criterion (§9.7, §9.9).",
                     },
                 ],
             },
@@ -1064,7 +1065,6 @@ DEFAULT_PROFILES = {
                         "analyte_group": "all",
                         "matrix_scope": "all",
                         "rpd_max": 30.0,
-                        "citation": "The lab's value: EPA 1633A sets no matrix-spike or duplicate criterion (§9.7, §9.9).",
                     },
                 ],
             },
@@ -1183,7 +1183,10 @@ DEFAULT_PROFILES = {
         "matrix_factors": [],
         # Table 10: each analyte's EIS, and the EIS used for one without its own
         "surrogate_map": [{"analyte": n, "surrogate_is": l}
-                          for n, l in _EPA1633A_EIS + _EPA1633A_SHARED_EIS],
+                          for n, l in _EPA1633A_EIS + _EPA1633A_SHARED_EIS +
+                          [("PFTrDA", _EPA1633A_PFTRDA_COMPOSITE)]],
+        "composite_standards": {
+            _EPA1633A_PFTRDA_COMPOSITE: {"members": ["13C2-PFDoA", "13C2-PFTeDA"], "averaged": "area"}},
         "supported_matrices": list(_EPA1633A_MATRICES),
         # EPA 1633A: 40 analytes per EPA 820-R-24-007 Table 1, December 2024
         "master_analyte_set": list(_EPA1633A_ANALYTE_KEYWORDS),
@@ -1284,7 +1287,6 @@ DEFAULT_PROFILES = {
                 "consumables": ["LC Vials", "PTFE Syringe Filter"],
             },
         ],
-        "required_logbooks": ["252", "253"],
         "blank_role_name": "MB",
         "engine": {
             "aliases": ["1633", "1633A", "EPA1633"],
@@ -1411,6 +1413,12 @@ DEFAULT_PROFILES = {
     },
 }
 
+# The seeds as written: each rule's note on its own flag (rule_flags), the
+# Engine's notes above moved there word for word.
+for _seed in DEFAULT_PROFILES.values():
+    _rule_flags.migrate(_seed)
+del _seed
+
 
 # ── ZODB annotation store + Dexterity content path ────────────────────────────
 
@@ -1449,6 +1457,15 @@ def _load_saved(method_id, raw):
             "The method profile %s cannot be read. Restore it from Configuration "
             "History (Configuration > Configuration History) before it is used." % method_id)
     _migrate_spike_levels(saved, DEFAULT_PROFILES.get(method_id))
+    # the Engine's flag notes, stored before the rules held their flags
+    _rule_flags.migrate(saved)
+    # each limit box's state, seeded once from the rule, QC type or blank
+    # state it had (limit_states.migrate: the old keys are kept)
+    from senaite.pfas import limit_states
+    limit_states.migrate(saved)
+    # a matrix's own temperature ranges, normalised (never created)
+    from senaite.pfas import matrix_temperature
+    matrix_temperature.migrate(saved)
     return saved
 
 
@@ -1660,6 +1677,11 @@ def export_profiles_to_file(portal, path=None, extra_service=None):
                     if key not in profile and key not in _NOT_BACKFILLED:
                         profile[key] = copy.deepcopy(default_val)
                 _migrate_spike_levels(profile, dflt)
+                # the worker reads each box's state as stored, seeded once
+                from senaite.pfas import limit_states
+                limit_states.migrate(profile)
+                from senaite.pfas import matrix_temperature
+                matrix_temperature.migrate(profile)
                 all_profiles[method_id] = profile
             except (ValueError, TypeError):
                 pass

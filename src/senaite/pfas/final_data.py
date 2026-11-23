@@ -26,6 +26,8 @@ from __future__ import absolute_import, unicode_literals
 
 import re
 
+from senaite.pfas import isomers
+
 
 def _norm(text):
     return re.sub(r"[^a-z0-9]", u"", (u"%s" % (text or u"")).lower())
@@ -67,9 +69,14 @@ def _parts_line(ps, key, fmt):
 def text(ps, fmt=u"%.4g"):
     """(value, parts): ("0.42", u"") for one peak; for an isomer sum the
     sum of its parts as the value, the parts on their own line,
-    ("6.12", "lr 4.896 · br 1.224"); (u"", u"") when none."""
-    vals = [p["result"] for p in ps or [] if p.get("result") is not None]
-    value = (fmt % sum(vals)) if vals else u""
+    ("6.12", "lr 4.896 · br 1.224"), no value for a sum of zero
+    (isomers.total); (u"", u"") when none."""
+    ps = ps or []
+    if [p for p in ps if p["part"]]:
+        number = isomers.total([p["result"] for p in ps])
+    else:
+        number = ps[0]["result"] if ps else None
+    value = (fmt % number) if number is not None else u""
     return value, _parts_line(ps, "result", fmt)
 
 

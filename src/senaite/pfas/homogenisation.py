@@ -61,10 +61,10 @@ def parse_methods(rows, existing):
         if not title and not mid:
             continue
         if not title:
-            errors.append(u"A method needs a name (it can be retired instead).")
+            errors.append(u"A technique needs a name (it can be retired instead).")
             continue
         if title.lower() in titles or title.lower() == NONE_TITLE.lower():
-            errors.append(u"Two methods are named “%s”." % title)
+            errors.append(u"Two techniques are named “%s”." % title)
             continue
         titles.add(title.lower())
         if mid not in known:
@@ -193,7 +193,7 @@ def _shown_at(at):
 
 
 def stage_rows(samples, methods):
-    """What the processing stage (FM-ENV-004) confirms per sample:
+    """What the processing stage confirms per sample:
     `samples` = [(sample_id, request, records)]. Each row carries the
     request, the record in force and `warning` -- a requested method with
     no record, which needs a note at the stage."""
@@ -240,6 +240,21 @@ def type_default(sample_type):
     if sample_type is None:
         return u""
     return _ann(sample_type).get(DEFAULT_KEY) or u""
+
+
+def homogenised_titles():
+    """The Sample Types whose default homogenisation is a method (not blank,
+    not "Not homogenised"), by title; None when they cannot be read (every
+    matrix is then treated as homogenised)."""
+    import logging
+    from bika.lims import api
+    try:
+        brains = api.search({"portal_type": "SampleType"}, "senaite_catalog_setup")
+        return sorted(api.safe_unicode(api.get_title(b)) for b in brains
+                      if type_default(api.get_object(b)) not in (u"", NONE_ID))
+    except Exception as exc:                                # noqa: BLE001
+        logging.getLogger("senaite.pfas.homogenisation").warning("homogenised matrices: %s", exc)
+        return None
 
 
 def set_type_default(sample_type, mid):

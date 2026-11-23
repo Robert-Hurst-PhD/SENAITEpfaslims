@@ -17,9 +17,16 @@ value through the same getter, diffs, and writes one entry. So:
   * a save that changes nothing records nothing.
 
 STORAGE
-One OOBTree on the portal, keyed "<ISO timestamp>-<uuid>" so concurrent saves
-never contend on a counter; each value is one JSON entry. ZODB, not SQLite:
-an entry must commit or roll back WITH the change it describes.
+The table config_history of the shared results database (PFAS_QC_DB,
+config_history_db), one row per entry, keyed "<ISO timestamp>-<uuid>" so
+concurrent saves never contend on a counter; each row holds the JSON entry.
+An entry commits or rolls back WITH the change it describes: the entries of a
+transaction wait in a data manager that joins it and writes them when the
+transaction votes, last of its resources, so a save that aborts or meets a
+conflict writes no row, and a strict store's save fails when its row cannot
+be written. The entries kept on the portal before the move (HISTORY_KEY)
+stay there; move_from_annotation copies them into the table and verifies
+the copy; until the copy is verified both are read.
 
 The diff, apply and conflict functions are pure (no Zope) and shared with
 tools/config_save_audit.py. Python 2.7 compatible.
@@ -29,12 +36,19 @@ from __future__ import absolute_import, print_function
 import copy
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
 
 logger = logging.getLogger("senaite.pfas.config_history")
 
+# the entries kept on the portal before the move to the results database
 HISTORY_KEY = "senaite.pfas.config_history"
+# set once every entry of HISTORY_KEY is verified in the table:
+# {"at", "count", "checksum"}
+MOVED_KEY = "senaite.pfas.config_history_moved"
+# the results database; None reads PFAS_QC_DB
+DB_PATH = None
 
 # Keys nobody edits: timestamps, seeding markers and values the system derives.
 # A change to one of these alone records nothing (they would bury real edits).
@@ -53,7 +67,8 @@ HISTORY_ONLY_IGNORED = frozenset()
 # acceptance criteria, the instrument maps and the certificate wording.
 # Elsewhere a missing entry is logged.
 STRICT_STORES = frozenset(["method_profile", "import_profile", "qc_qualifiers",
-                          "lab_identity", "person_roles", "lab_timezone"])
+                          "lab_identity", "person_roles", "lab_timezone",
+                          "report_tiers"])
 
 
 class HistoryNotRecorded(Exception):
@@ -330,7 +345,8 @@ def _who(reg):
 
 
 def _write_entries(reg):
-    """Before-commit hook. A strict store's failure is RAISED, which aborts
+    """Before-commit hook: each tracked change becomes an entry for the
+    transaction's writer. A strict store's failure is RAISED, which aborts
     the transaction and with it the save; any other store's is logged."""
     for (store, key), item in sorted(reg.items.items()):
         try:
@@ -372,20 +388,142 @@ def _write_one(reg, store, key, item):
     _append(item["portal"], entry)
 
 
-def _btree(portal, create=True):
-    from zope.annotation.interfaces import IAnnotations
-    ann = IAnnotations(portal)
-    tree = ann.get(HISTORY_KEY)
-    if tree is None and create:
-        from BTrees.OOBTree import OOBTree
-        tree = ann[HISTORY_KEY] = OOBTree()
-    return tree
+def db_path():
+    return DB_PATH or os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
+
+
+def _connect():
+    """A connection that writes: the schema made or brought up first."""
+    import sqlite3
+    from senaite.pfas import qc_schema
+    path = db_path()
+    folder = os.path.dirname(path)
+    if folder and not os.path.isdir(folder):
+        os.makedirs(folder)
+    conn = sqlite3.connect(path, timeout=30, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    qc_schema.ensure(conn)
+    return conn
+
+
+def _reader():
+    """A connection that reads, or None where there is no table yet: a read
+    never makes the database or its schema."""
+    import sqlite3
+    from senaite.pfas import config_history_db as hdb
+    path = db_path()
+    if not os.path.isfile(path):
+        return None
+    conn = sqlite3.connect(path, timeout=30)
+    if not hdb.has_table(conn):
+        conn.close()
+        return None
+    return conn
+
+
+def _write_now(entries):
+    """Write (id, JSON text) pairs at once, in one transaction of their own."""
+    from senaite.pfas import config_history_db as hdb
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            hdb.insert(conn, entries)
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+
+
+class _Writer(object):
+    """The data manager holding one transaction's entries. It votes last
+    (sortKey), and writes them then: a conflict or a failure of any other
+    resource's vote leaves the table untouched, and a failure here aborts
+    the transaction when an entry is a strict store's."""
+
+    transaction_manager = None
+
+    def __init__(self):
+        self.entries = []
+
+    def sortKey(self):
+        return "~senaite.pfas.config_history"
+
+    def savepoint(self):
+        return _WriterSavepoint(self)
+
+    def abort(self, txn):
+        self.entries = []
+
+    def tpc_begin(self, txn):
+        pass
+
+    def commit(self, txn):
+        pass
+
+    def tpc_vote(self, txn):
+        if not self.entries:
+            return
+        pairs = [(e["id"], json.dumps(e, sort_keys=True)) for e in self.entries]
+        try:
+            _write_now(pairs)
+        except Exception as exc:                                    # noqa: BLE001
+            strict = [e for e in self.entries if e.get("store") in STRICT_STORES]
+            if strict:
+                raise HistoryNotRecorded(
+                    u"The change to %s %s was not saved: its history entry could not be "
+                    u"written (%s)." % (strict[0].get("store"), strict[0].get("key"), exc))
+            logger.error("config_history: %d entries not written: %s", len(pairs), exc)
+        self.entries = []
+
+    def tpc_finish(self, txn):
+        self.entries = []
+
+    def tpc_abort(self, txn):
+        self.entries = []
+
+
+class _WriterSavepoint(object):
+
+    def __init__(self, writer):
+        self.writer, self.n = writer, len(writer.entries)
+
+    def rollback(self):
+        del self.writer.entries[self.n:]
+
+
+def _writer():
+    """This transaction's writer, joined on first use; None outside Zope."""
+    try:
+        import transaction
+    except ImportError:
+        return None
+    txn = transaction.get()
+    try:
+        return txn.data(_Writer)
+    except KeyError:
+        pass
+    w = _Writer()
+    txn.join(w)
+    txn.set_data(_Writer, w)
+    return w
 
 
 def _append(portal, entry):
     eid = "%s-%s" % (entry["at"].replace(" ", "T"), uuid.uuid4().hex[:8])
     entry["id"] = eid
-    _btree(portal)[eid] = json.dumps(entry, sort_keys=True)
+    try:
+        w = _writer()
+    except ValueError:
+        # the transaction is past joining (an after-commit step): what the
+        # entry describes is already committed, so it is written at once
+        w = None
+    if w is None:
+        _write_now([(eid, json.dumps(entry, sort_keys=True))])
+    else:
+        w.entries.append(entry)
     return eid
 
 
@@ -393,6 +531,80 @@ def append(portal, entry):
     """Write an entry directly (used for reverts, which are their own act)."""
     entry.setdefault("at", now())
     return _append(portal, entry)
+
+
+# ── the entries kept on the portal before the move ──────────────────────────
+
+def _btree(portal, create=False):
+    """The portal's own entries, or None. Only read: no entry is written
+    here any more."""
+    from zope.annotation.interfaces import IAnnotations
+    return IAnnotations(portal).get(HISTORY_KEY)
+
+
+def moved(portal):
+    """The verified move's record ({"at", "count", "checksum"}), or None."""
+    try:
+        from zope.annotation.interfaces import IAnnotations
+        raw = IAnnotations(portal).get(MOVED_KEY)
+    except Exception:                                               # noqa: BLE001
+        return None
+    try:
+        return json.loads(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _legacy(portal):
+    """The portal's entries while their move is not verified, else None."""
+    if portal is None or moved(portal):
+        return None
+    try:
+        return _btree(portal)
+    except Exception:                                               # noqa: BLE001
+        return None
+
+
+def move_from_annotation(portal, apply=True):
+    """Copy every entry kept on the portal into the table, then verify the
+    copy by count and checksum over the portal's entries. Run again it adds
+    nothing (a row already there is left as it is). Only a verified copy is
+    marked moved (MOVED_KEY); the portal's entries are never removed here.
+    With apply False nothing is written: the report says what the table
+    holds now. Returns the report (config_history_db.verify, plus "copied",
+    "applied" and "marked")."""
+    from senaite.pfas import config_history_db as hdb
+    tree = _btree(portal)
+    pairs = [(eid, tree[eid]) for eid in tree.keys()] if tree else []
+    copied = 0
+    if apply:
+        conn = _connect()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                copied = hdb.insert(conn, pairs, ignore=True)
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            report = hdb.verify(pairs, conn)
+        finally:
+            conn.close()
+    else:
+        conn = _reader()
+        try:
+            report = hdb.verify(pairs, conn)
+        finally:
+            if conn is not None:
+                conn.close()
+    report.update(copied=copied, applied=bool(apply), marked=False)
+    if apply and report["ok"]:
+        from zope.annotation.interfaces import IAnnotations
+        IAnnotations(portal)[MOVED_KEY] = json.dumps(
+            {"at": now(), "count": report["count_source"], "checksum": report["sum_source"]},
+            sort_keys=True)
+        report["marked"] = True
+    return report
 
 
 def _keep(e, store, key, since, until):
@@ -410,45 +622,95 @@ def _keep(e, store, key, since, until):
     return True
 
 
-def _newest(portal, store=None, key=None, since=None, until=None):
-    """The matching entries, newest first, read one at a time."""
-    tree = _btree(portal, create=False)
+def _legacy_entries(portal, store, key, since, until):
+    tree = _legacy(portal)
     if not tree:
-        return
-    for eid in reversed(list(tree.keys())):
+        return []
+    out = []
+    for eid in tree.keys():
         e = json.loads(tree[eid])
         if _keep(e, store, key, since, until):
-            yield e
+            out.append(e)
+    return out
+
+
+def _merged(portal, store, key, since, until):
+    """Every matching entry of the table and of the portal's unmoved ones,
+    each once, newest first."""
+    from senaite.pfas import config_history_db as hdb
+    by_id = dict((e.get("id"), e) for e in _legacy_entries(portal, store, key, since, until))
+    conn = _reader()
+    if conn is not None:
+        try:
+            for e in hdb.select(conn, store, key, since, until):
+                by_id[e.get("id")] = e
+        finally:
+            conn.close()
+    return [by_id[k] for k in sorted(by_id, key=lambda x: u"%s" % x, reverse=True)]
 
 
 def entries(portal, store=None, key=None, limit=200, since=None, until=None, offset=0):
     """Newest first, optionally for one store and/or key and a time window
     (since / until: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS", UTC), skipping the
     first `offset` that match."""
-    out, skipped = [], 0
-    for e in _newest(portal, store, key, since, until):
-        if skipped < offset:
-            skipped += 1
-            continue
-        out.append(e)
-        if len(out) >= limit:
-            break
-    return out
+    from senaite.pfas import config_history_db as hdb
+    if _legacy(portal):
+        return _merged(portal, store, key, since, until)[offset:offset + limit]
+    conn = _reader()
+    if conn is None:
+        return []
+    try:
+        return hdb.select(conn, store, key, since, until, limit=limit, offset=offset)
+    finally:
+        conn.close()
 
 
 def count(portal, store=None, key=None, since=None, until=None):
     """How many entries match (for paging)."""
-    tree = _btree(portal, create=False)
-    if not tree:
+    from senaite.pfas import config_history_db as hdb
+    if _legacy(portal):
+        return len(_merged(portal, store, key, since, until))
+    conn = _reader()
+    if conn is None:
         return 0
-    return len([1 for eid in tree.keys() if _keep(json.loads(tree[eid]), store, key, since, until)])
+    try:
+        return hdb.count(conn, store, key, since, until)
+    finally:
+        conn.close()
 
 
 def get_entry(portal, eid):
-    tree = _btree(portal, create=False)
-    if not tree or eid not in tree:
-        return None
-    return json.loads(tree[eid])
+    from senaite.pfas import config_history_db as hdb
+    conn = _reader()
+    if conn is not None:
+        try:
+            found = hdb.get(conn, eid)
+        finally:
+            conn.close()
+        if found is not None:
+            return found
+    tree = _legacy(portal)
+    if tree and eid in tree:
+        return json.loads(tree[eid])
+    return None
+
+
+def _newest(portal, store=None, key=None, since=None, until=None):
+    """The matching entries, newest first."""
+    if _legacy(portal):
+        for e in _merged(portal, store, key, since, until):
+            yield e
+        return
+    from senaite.pfas import config_history_db as hdb
+    conn = _reader()
+    if conn is None:
+        return
+    try:
+        rows = hdb.select(conn, store, key, since, until)
+    finally:
+        conn.close()
+    for e in rows:
+        yield e
 
 
 def last_change(portal, store, key, path=None):

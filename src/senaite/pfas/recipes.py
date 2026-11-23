@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Recipes: what is made on a prep log and how.
+"""Recipes: what the lab prepares and how.
 
-A logbook template is the form; a recipe is what is made on it -- what it
-is made from, how much is taken into what final volume, the steps and the
-shelf life -- and names its log (FM-ENV-001 or 002). Recipes are site-wide:
-a reagent shared by methods is one recipe that each method lists. Each is
-revised like a logbook template: a Draft is edited, made Active (the prior
-Active revision is archived), and never edited once active; a lot is pinned
-to the revision it was made by.
+A recipe says what is made -- what it is made from, how much is taken into
+what final volume, the steps and the shelf life -- and has a kind and a
+short code; making it leaves a preparation record (prep_entries.py).
+Recipes are site-wide: a reagent shared by methods is one recipe that lists
+each method. A Draft is edited, made Active (the prior Active revision is
+archived), and never edited once active; a lot is pinned to the revision it
+was made by.
 
     store = {recipe id: [revision, ...]}
-    revision = {"revision", "status": draft|active|archived, "name", "log",
+    revision = {"revision", "status": draft|active|archived, "name", "kind", "code",
                 "methods", "made_from": [{"kind": purchased|recipe, "ref",
                 "take", "take_unit"}], "final_volume", "final_unit", "unit",
                 "series": {"levels": [...], "mode": serial|independent},
@@ -30,7 +30,10 @@ KEY = "senaite.pfas.recipes"
 DRAFT, ACTIVE, ARCHIVED = u"draft", u"active", u"archived"
 SEEDED = ()
 
-_FIELDS = ("name", "log", "methods", "made_from", "final_volume", "final_unit", "unit",
+KINDS = (("reagent", "Reagent"), ("standard", "Standard"), ("series", "Calibration series"))
+CODE_RE = r"^[A-Z0-9][A-Z0-9-]{0,15}$"
+
+_FIELDS = ("name", "kind", "code", "methods", "made_from", "final_volume", "final_unit", "unit",
            "series", "steps", "shelf_life_days", "storage", "slot")
 
 
@@ -45,16 +48,62 @@ def _id_for(name, taken):
 from senaite.pfas.rounding import number as _num
 
 
-def problems(data):
-    """What a recipe needs before it is saved."""
+def normalise_code(text):
+    return (text or u"").strip().upper()
+
+
+def code_problems(code, store=None, rid=None):
+    """What is wrong with a code: its shape, or another recipe holding it in
+    any revision, archived included. Records and ledger rows carry the code
+    for ever, so a code once given to a recipe is never given to another."""
+    if not re.match(CODE_RE, code or u""):
+        return [u"Give the recipe a short code: letters, digits and hyphens, up to 16."]
+    for other in sorted(store or {}):
+        if other != rid and code in held_codes(store, other):
+            return [u"The code %s belongs to recipe %s." % (code, other)]
+    return []
+
+
+def held_codes(store, rid):
+    """The codes a recipe holds: every revision's own, archived included."""
+    return set(r.get("code") for r in revisions(store, rid) if r.get("code"))
+
+
+def code_of(store, rid):
+    """The newest revision's code."""
+    revs = revisions(store, rid)
+    return (revs[-1].get("code") or u"") if revs else u""
+
+
+def by_kind(store, kind):
+    """Recipes whose newest revision has this kind, active first."""
+    out = []
+    for rid in sorted(store or {}):
+        revs = revisions(store, rid)
+        if revs and revs[-1].get("kind") == kind:
+            out.append((revs[-1].get("status") != ACTIVE, rid))
+    return [rid for _n, rid in sorted(out)]
+
+
+def problems(data, store=None, rid=None):
+    """What a recipe needs before it is saved; `rid` is the recipe being
+    edited, whose own code is not a clash."""
     out = []
     if not (data.get("name") or u"").strip():
         out.append(u"Give the recipe a name.")
-    if not (data.get("log") or u"").strip():
-        out.append(u"Say which prep log it is made on.")
+    kind = data.get("kind")
+    if kind not in dict(KINDS):
+        out.append(u"Say what kind of recipe this is: reagent, standard or calibration series.")
+    out.extend(code_problems(normalise_code(data.get("code")), store, rid))
     if not data.get("made_from"):
         out.append(u"Say what it is made from.")
+    shelf = _num(data.get("shelf_life_days"))
+    if shelf is None or shelf <= 0:
+        # a lot's expiry is its recipe's shelf life from the prep date: no other default
+        out.append(u"Give the recipe a shelf life in days.")
     levels = (data.get("series") or {}).get("levels") or []
+    if kind == u"series" and not levels:
+        out.append(u"A calibration series needs its levels.")
     if levels:
         for lv in levels:
             f = _num(lv.get("final"))
@@ -99,7 +148,8 @@ def from_form(form):
               "equipment": _t(form, "step_equipment.%d" % i), "check": _t(form, "step_check.%d" % i)}
              for i in _idx(form, "step_text.") if _t(form, "step_text.%d" % i)]
     shelf = _t(form, "shelf_life_days")
-    return {"name": _t(form, "name"), "log": _t(form, "log"),
+    return {"name": _t(form, "name"), "kind": _t(form, "kind"),
+            "code": normalise_code(_t(form, "code")),
             "methods": [m for m in methods if m],
             "made_from": made, "final_volume": _num(_t(form, "final_volume")),
             "final_unit": _t(form, "final_unit") or u"mL", "unit": _t(form, "unit") or u"ng/mL",
@@ -179,14 +229,10 @@ def for_method(store, method_id):
     return out
 
 
-def shelf_life(rev, log_defaults):
-    """The recipe's shelf life in days, else its log's default (each prep
-    template's default expiry), else None."""
-    own = rev.get("shelf_life_days")
-    if own not in (None, u""):
-        return int(own)
-    d = (log_defaults or {}).get(rev.get("log"))
-    return int(d) if d not in (None, u"") else None
+def shelf_life(rev):
+    """The recipe's own shelf life in days, else None."""
+    own = (rev or {}).get("shelf_life_days")
+    return int(own) if own not in (None, u"") else None
 
 
 # ── storage (Plone) ───────────────────────────────────────────────────────

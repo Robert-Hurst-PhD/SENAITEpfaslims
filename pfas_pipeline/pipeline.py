@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import sqlite3
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -36,11 +37,13 @@ from .run_queue import RunQueue
 from .review_checks import REVIEW_CHECKS
 from .analyte_alias import keyword_for, keyword_of
 from .extraction_log import ExtractionLog
-from .qc_engine import single_transition_confirm_needed, KIND_OVER_RANGE, raw_is_deleted
+from .qc_engine import (single_transition_confirm_needed, KIND_OVER_RANGE, qualifiers_deleted, raw_is_deleted,
+                        ratio_held,
+                        COELUTION_FLAG, coelution_split)
 from .report import generate_batch_report
 from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
-    QUALIFIER_CONF, QUALIFIER_SATURATED,
+    QUALIFIER_CONF, QUALIFIER_NQ,
 )
 from .method_profiles import (
     reload_from_profiles,
@@ -55,6 +58,8 @@ from .method_profiles import (
     get_included_display_analytes as _get_included_analytes,
     get_isomer_summation as _get_isomer_summation,
     get_surrogate_map as _get_surrogate_map,
+    get_composites as _get_composites,
+    quantifying_members as _quantifying_members,
     get_integration,
     get_labelled_links,
     integration_mode,
@@ -260,6 +265,72 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
     return rows
 
 
+def row_factor(row):
+    """The product of the factors applied to a row's reading (salt, sample
+    basis): what a reading kept before them is multiplied by to stand
+    beside the row's number."""
+    return (getattr(row, "salt_factor", None) or 1.0) * (getattr(row, "matrix_factor", None) or 1.0)
+
+
+DILUTION_RECOVERY_UNSET = "choose how a dilution's surrogate recovery is taken"
+
+
+def field_dilution(name, dilutions):
+    """A dilution of a reported field sample (never of extracted QC, which
+    is not diluted)."""
+    entry = (dilutions or {}).get(name)
+    return bool(entry) and classify_injection(entry.get("parent") or "") == "Sample"
+
+
+def tag_quantitation(rows, method_id):
+    """Each native's record of what it was quantified on ({"standard",
+    "role"}) and, for one on a surrogate, the method's linked response
+    ratio ("on" / "off"): a raw run read it so (raw_run.linked_standard);
+    an export's number is the instrument's, quantified as its own method
+    says, and the LIMS recomputes or multiplies nothing. The readout names
+    the setting either way."""
+    from .method_profiles import get_linked_response_ratio, get_labelled_roles
+    if not method_id:
+        return rows
+    qmap = quantitation_map(method_id)
+    if not qmap:
+        return rows
+    mode = get_linked_response_ratio(method_id)
+    parts = _isomer_parts(method_id)
+    roles = get_labelled_roles(method_id)
+    for row in rows:
+        if not _is_native(row, parts):
+            continue
+        named = (qmap.get(row.compound_name) or qmap.get(keyword_for(row.compound_name) or "") or "").strip()
+        if not named:
+            continue
+        role = quantifying_role(method_id, named, roles)
+        row.quantified_on = {"standard": named, "role": role or ""}
+        if role == "surrogate":
+            row.linked_ratio = mode
+    return rows
+
+
+def dilution_recovery_flags(rows, method_id, dilutions):
+    """Under the linked response ratio with no choice of how a dilution's
+    surrogate recovery is taken: one advisory flag per diluted field
+    sample, filed on the sample it was diluted from, naming the choice to
+    make. Its recovery is then not judged; its results are not held."""
+    from .method_profiles import get_linked_response_ratio, get_dilution_recovery
+    if not method_id or get_linked_response_ratio(method_id) != "on" or get_dilution_recovery(method_id):
+        return []
+    flags = []
+    for inj in sorted(set(r.injection_name for r in rows)):
+        if not field_dilution(inj, dilutions):
+            continue
+        flags.append(QCFlag(
+            source="Dilution recovery", analyte="(surrogates)",
+            injection_name=dilution_routes.file_under(inj, dilutions), value=inj,
+            issue="(DILREC) %s: %s" % (inj, DILUTION_RECOVERY_UNSET), check_kind="dilution_recovery",
+            advisory=True))
+    return flags
+
+
 def _scale_row(row, factor, kind):
     """Multiply the row's three concentration fields by `factor`, keeping
     what they were before the FIRST correction and which factors were
@@ -366,6 +437,8 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     _analytes = _get_included_analytes(_method, _matrix) if _matrix else _get_analytes(_method)
     _non_iso = _get_non_iso_set(_method)
     _dil_in_software = _get_sample_correction(_method) == "instrument"
+    from .method_profiles import get_linked_response_ratio as _get_linked
+    _linked = _get_linked(_method) == "on"
     _subtract_blank = _get_blank_subtraction(_method) if _method else False
     # FDA §10.2(4) needs the method's confirmation rule, resolved once per
     # batch; a batch whose method has no exported profile refuses
@@ -378,6 +451,29 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         _conf_profile._profile_data() if _conf_profile is not None else {})
     from .method_profiles import get_labelled_roles as _labelled_roles
     _std_roles = _labelled_roles(_method)
+    _rl_matrix = (_addon("report_limits").canonical_matrix(_conf_profile._profile_data(), _matrix)
+                  if _conf_profile is not None else _matrix)
+
+    def _bloq(conc, qualifier, reported_name, row_rl=None, fold=None):
+        """The qualifier a numeric result reads: below quantitation is
+        decided by the reporting limit the certificate prints, for a single
+        analyte and a summed isomer alike -- the method's RL for the
+        REPORTED analyte in this matrix (typed, else its default from the
+        lowest calibrator), times a dilution's fold, judged on the value
+        rounded as the certificate rounds it. Only where the method has no
+        RL for the analyte does the instrument row's own limit decide.
+        A qualifier other than BLoQ (ALoQ, < LOD, ...) is kept."""
+        if conc is None or qualifier not in ("", QUALIFIER_BLOQ):
+            return qualifier
+        rl = (_conf_profile.reporting_limits(reported_name, _rl_matrix, getattr(batch, "acid_basis", None))[0]
+              if _conf_profile is not None else None)
+        if rl is None:
+            if not qualifier and row_rl is not None and conc < row_rl:
+                return QUALIFIER_BLOQ
+            return qualifier
+        rl = _addon("report_limits").scaled_rl(rl, fold)
+        judged = _conf_profile.judged_conc(conc, _matrix)
+        return QUALIFIER_BLOQ if judged is not None and judged < rl else ""
     # ...and the lab's switch for whether to prompt at all. The OBLIGATION is
     # method text; the PROMPT is optional, because PFBA can be confirmed by
     # routes other than the LC-HRMS the method cites (a second column, a
@@ -413,13 +509,39 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         the same compound. Returning the keyword also keeps the
         surrogate-failure lookup spelling-agnostic.
         """
-        configured = keyword_for(_sur_map.get(analyte_name) or "") or None
+        named = (_sur_map.get(analyte_name) or "").strip()
+        members = _quantifying_members(_method, named) if named else []
+        if named and members and members != [named]:
+            # a composite: the value was calculated on the mean of its
+            # members' areas only where the run quantified it so (a raw
+            # run's row names the composite); an export naming one member
+            # was not, which is a finding for review
+            given = (getattr(irow, "linked_is", None) or "").strip()
+            if given and given != named:
+                _is_mismatch[analyte_name] = (
+                    "averages " + _and_words(members),
+                    keyword_for(given) or given)
+            return named
+        # an id no composite of the profile holds names no compound
+        configured = (keyword_for(named) or None) if members else None
         reported = keyword_for(getattr(irow, "linked_is", None) or "") or None
         if configured and reported and configured != reported:
             # A method naming one surrogate while the instrument used another
             # is a finding for review, not something to resolve silently.
-            _is_mismatch[analyte_name] = (configured, reported)
+            _is_mismatch[analyte_name] = ("names " + configured, reported)
         return configured or reported
+
+    def _sur_failed(linked_is, sample_name):
+        """Whether the standard a result was quantified on failed in that
+        injection: for a composite, any of its members (each is half the
+        denominator, so either failure reaches the result)."""
+        if not linked_is:
+            return False
+        return any((keyword_for(m) or m, sample_name) in sur_injections
+                   for m in _quantifying_members(_method, linked_is) or [linked_is])
+
+    def _role_of(value):
+        return quantifying_role(_method, value, _std_roles)
 
     _isomer_pairs = _get_isomer_summation(_method)
     _isomer_by_linear: dict[str, dict] = {}
@@ -448,9 +570,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         return mb_conc.get(analyte)
 
     def _subtract_method_blank(result, qualifier, reported_name, iso_pair, compounds,
-                               sample_name):
+                               sample_name, fold=None):
         """(result, qualifier, amount subtracted or None). A summed analyte's
-        blank is the sum of its components' blanks."""
+        blank is the sum of its components' blanks; what is left is judged
+        against the printed RL (_bloq)."""
         names = ([iso_pair.get("linear")] + list(iso_pair.get("branched_list") or (
             [iso_pair["branched"]] if iso_pair.get("branched") else []))
             if iso_pair else [reported_name])
@@ -466,9 +589,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             return None, QUALIFIER_LOD, blank
         rls = [getattr(compounds.get(n), "reporting_limit", None) for n in names if n]
         rl = next((r for r in rls if r is not None), None)
-        if not qualifier and rl is not None and left < rl:
-            qualifier = QUALIFIER_BLOQ
-        return left, qualifier, blank
+        return left, _bloq(left, qualifier, reported_name, rl, fold), blank
 
     def _sum_isomer_pair(pair, compounds, sample_name):
         """Return (result, qualifier, flags) for an lr+br isomer pair."""
@@ -487,12 +608,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         if all(r is None for r in rows):
             return None, QUALIFIER_ND, []
 
-        # An isomer whose stored signal wrapped at the apex has lost its
-        # number: a sum without it is understated and N.D. is false, so the
-        # pair is Saturated, with no number.
-        if any(getattr(irow, "conc_qualifier", "") == QUALIFIER_SATURATED
+        # An isomer left unquantified by its standard's deleted peak has lost
+        # its number: a sum without it is understated and N.D. is false, so
+        # the pair is not quantified either.
+        if any(getattr(irow, "conc_qualifier", "") == QUALIFIER_NQ
                for irow in rows if irow is not None):
-            return None, QUALIFIER_SATURATED, []
+            return None, QUALIFIER_NQ, []
 
         total = 0.0
         blank_total = 0.0
@@ -522,11 +643,13 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             if resolved:
                 linked_is = resolved
 
-        if total == 0.0:
+        # an isomer above the range is a detection above it, whether or not
+        # it carries a number: the pair is never N.D. or BLoQ because of it
+        if total == 0.0 and not any_aloq:
             return None, (QUALIFIER_BLOQ if any_bloq else QUALIFIER_ND), []
 
         # < LOD: summed blank ≥ summed sample
-        if blank_total > 0.0 and blank_total >= total:
+        if blank_total > 0.0 and blank_total >= total and not any_aloq:
             return None, QUALIFIER_LOD, []
 
         flags_out: list[str] = []
@@ -535,10 +658,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             # One isomer off the top of the curve makes the SUM an
             # extrapolation too, so the pair is reported from the dilution.
             qualifier_out = QUALIFIER_ALOQ
-        elif reporting_limit is not None and total < reporting_limit:
-            qualifier_out = QUALIFIER_BLOQ
         else:
-            qualifier_out = ""
+            # the SUM against the reported analyte's printed RL, never one
+            # isomer's own limit
+            qualifier_out = _bloq(total, "", rep, reporting_limit)
         for irow in rows:
             if irow is None:
                 continue
@@ -549,9 +672,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                     flags_out.append(tag)
         if rep in _non_iso:
             flags_out.append(QUALIFIER_NC)
-        if linked_is and (linked_is, sample_name) in sur_injections:
+        if _sur_failed(linked_is, sample_name):
             flags_out.append("SUR")
-        return total, qualifier_out, flags_out
+        # above the range with no isomer giving a number: no sum to report
+        return (total if total or not any_aloq else None), qualifier_out, flags_out
 
     for sample_name, compounds in by_sample.items():
         for analyte in _analytes:
@@ -572,10 +696,11 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 if row is None or reported_conc(row) is None:
                     # No number. What that MEANS is the instrument's to say:
                     # "BLoQ" is a detection below the quantitation limit, not
-                    # "not detected". A saturated peak is a detection too: its
-                    # number is lost, not absent.
+                    # "not detected", nor is "N.Q.", a peak whose standard's
+                    # peak was deleted, nor "ALoQ", a detection above the
+                    # calibration range with no number to report.
                     qualifier = getattr(row, "conc_qualifier", "") or QUALIFIER_ND
-                    if qualifier not in (QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_SATURATED):
+                    if qualifier not in (QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_NQ, QUALIFIER_ALOQ):
                         qualifier = QUALIFIER_ND
                 else:
                     conc = reported_conc(row)
@@ -590,13 +715,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                             # an extrapolation, so it is not reportable as-is —
                             # it is the trigger for using the dilution.
                             qualifier = QUALIFIER_ALOQ
-                        elif (row.reporting_limit is not None and conc is not None
-                                and conc < row.reporting_limit):
-                            qualifier = QUALIFIER_BLOQ
+                        else:
+                            qualifier = _bloq(conc, "", analyte, row.reporting_limit)
                         if analyte in _non_iso:
                             flags.append(QUALIFIER_NC)
                         linked_is = _quantifying_is(analyte, row)
-                        if linked_is and (linked_is, sample_name) in sur_injections:
+                        if _sur_failed(linked_is, sample_name):
                             flags.append("SUR")
 
             # A neat injection that read ABOVE the quantitation limit has no
@@ -621,9 +745,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             # the lab's fold rule (Lab Workflow, Dilutions): with "only when
             # added" and no quantifying standard added, the reading already
             # is the undiluted one
-            if meta and dil_scale and not _dil_in_software and not dilution_routes.fold_applies(
-                    meta, _dil_settings, _std_roles.get(keyword_for(_sur_map.get(reported_name) or "") or "")):
-                dil_scale = 1.0
+            if meta and dil_scale and not _dil_in_software:
+                # the reading is the undiluted one (power 0), once diluted
+                # (1), or, linked through an internal standard not added
+                # back, twice (2): dilution_routes.fold_power
+                dil_scale = dil_scale ** dilution_routes.fold_power(
+                    meta, _dil_settings, _role_of(_sur_map.get(reported_name)), _linked)
             if meta and QUALIFIER_ALOQ in (qualifier or "") and not dil_scale:
                 logger.warning("Dilution %s of %s has no usable fold; the neat "
                                "ALoQ reading is kept", meta.get("injection"), sample_name)
@@ -641,6 +768,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                         analysed_at = _acq(next(iter((dil_rows.get(sample_name) or {}).values()), None))
                 elif drow is not None and reported_conc(drow) is not None:
                     neat_result, neat_qualifier = result, qualifier
+                    flags = list(flags)
                     result = reported_conc(drow) * dil_scale
                     qualifier = (drow.conc_qualifier
                                  if drow.conc_qualifier != QUALIFIER_ALOQ else "")
@@ -648,12 +776,48 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                     dil_factor = meta.get("factor")
                     neat_analysed_at = analysed_at
                     analysed_at = _acq(drow)
+                if source_injection != sample_name:
+                    # the diluted result against the RL times its fold, as
+                    # the certificate prints it
+                    qualifier = _bloq(result, qualifier, reported_name, fold=dil_factor)
+                # a qualifier the analyst deleted on the dilution that
+                # supplies the value confirms nothing, as on a neat injection
+                members = [reported_name] + ([iso_pair.get("linear")] + list(
+                    iso_pair.get("branched_list") or ([iso_pair["branched"]] if iso_pair.get("branched") else []))
+                    if iso_pair else [])
+                if (source_injection != sample_name and QUALIFIER_NC not in flags
+                        and any(qualifiers_deleted((dil_rows.get(sample_name) or {}).get(n)) for n in members
+                                if (dil_rows.get(sample_name) or {}).get(n) is not None)):
+                    flags.append(QUALIFIER_NC)
                 # a result from a re-spiked dilution is a method modification:
                 # marked for the QAO's qualifier when the method qualifies it
                 if (source_injection != sample_name
                         and dilution_routes.qualifies_respike(meta, _dil_settings)
                         and dilution_routes.RESPIKE_FLAG not in flags):
                     flags.append(dilution_routes.RESPIKE_FLAG)
+
+            # a value from a peak split from its co-eluting partner (the
+            # pair's fit, a failed fit, a drop or skim drawn on the pair) is
+            # an estimate: marked for the QAO's co-elution qualifier, judged
+            # on the injection that supplies the value and, for a summed
+            # analyte, on each of its peaks
+            supplied = (dil_rows.get(sample_name) or {}) if source_injection != sample_name else compounds
+            peaks_of = [reported_name] + ([iso_pair.get("linear")] + list(
+                iso_pair.get("branched_list") or ([iso_pair["branched"]] if iso_pair.get("branched") else []))
+                if iso_pair else [])
+            if (result is not None and COELUTION_FLAG not in flags
+                    and any(coelution_split(supplied.get(n)) for n in peaks_of if supplied.get(n) is not None)):
+                flags.append(COELUTION_FLAG)
+
+            # above the calibration range and reported from no dilution: the
+            # bound the certificate prints it above, the highest top among
+            # its rows that read ALoQ (each a true lower bound of a sum)
+            range_top = None
+            if qualifier == QUALIFIER_ALOQ and source_injection == sample_name:
+                tops = [compounds[n].range_top for n in peaks_of
+                        if compounds.get(n) is not None and compounds[n].conc_qualifier == QUALIFIER_ALOQ
+                        and getattr(compounds[n], "range_top", None) is not None]
+                range_top = max(tops) if tops else None
 
             # FDA §10.2(4): PFBA and PFPeA have one usable MS/MS transition, so
             # their identity cannot be confirmed by ion ratio the way every other
@@ -693,7 +857,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             if (_subtract_blank and result is not None
                     and qualifier not in (QUALIFIER_ND, QUALIFIER_LOD)):
                 result, qualifier, blank_subtracted = _subtract_method_blank(
-                    result, qualifier, reported_name, iso_pair, compounds, sample_name)
+                    result, qualifier, reported_name, iso_pair, compounds, sample_name, dil_factor)
 
             summary.append(SummaryResult(
                 analyte=reported_name,
@@ -709,6 +873,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 neat_analysed_at=neat_analysed_at,
                 blank_subtracted=blank_subtracted,
                 flags=flags,
+                range_top=range_top if qualifier == QUALIFIER_ALOQ else None,
+                # the instrument wrote BLoQ and gave no number for this
+                # result or one of its peaks (an imported row, never a raw
+                # run's own reading): it waits on the reviewer's reason
+                no_number=(source_injection == sample_name
+                           and any(instrument_gave_no_number(compounds.get(n)) for n in peaks_of)),
             ))
 
     # A method that names one quantifying surrogate while the instrument
@@ -719,12 +889,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         for analyte, (configured, reported) in sorted(_is_mismatch.items()):
             logger.warning(
                 "Surrogate map disagrees with the instrument for %s: method "
-                "profile says %s, %s reported %s",
+                "profile %s, %s reported %s",
                 analyte, configured, _method, reported)
         for row in summary:
             pair = _is_mismatch.get(row.analyte)
             if pair:
-                row.is_mismatch = ("method profile names {0}; instrument "
+                row.is_mismatch = ("method profile {0}; instrument "
                                    "reported {1}".format(*pair))
         # Also raised as a QC flag so it reaches Data Review and the QC Review
         # Report through the same channel as every other reviewer finding.
@@ -734,7 +904,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 analyte=analyte,
                 injection_name="",
                 value=reported,
-                issue="(ISMAP) method profile names {0}; instrument reported "
+                issue="(ISMAP) method profile {0}; instrument reported "
                       "{1}".format(configured, reported),
             ))
 
@@ -745,6 +915,21 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Main pipeline
 # ─────────────────────────────────────────────────────────────────────────────
+
+def quantifying_role(method_id, value, roles):
+    """The role ({keyword: role}, the method's grid) of the standard a
+    surrogate-map value names: a composite's members' one role (they share
+    it), None when there is none."""
+    found = set(roles.get(keyword_for(m) or m or "")
+                for m in _quantifying_members(method_id, (value or "").strip()))
+    return found.pop() if len(found) == 1 else None
+
+
+def _and_words(names):
+    """"A", "A and B", "A, B and C"."""
+    names = list(names)
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1] if names else ""
+
 
 def _acq(row):
     """An injection row's acquisition time as ISO text, or ""."""
@@ -760,6 +945,177 @@ def _iso(value):
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+class ReimportRefused(RuntimeError):
+    """A run delivered for a worksheet that takes no further import: the
+    watcher records the refusal and moves on, never retrying it."""
+
+
+# a worksheet in one of these states takes no run again: verified or
+# published, its record stands; rejected, its retest goes on a new worksheet
+REIMPORT_CLOSED_STATES = ("verified", "published", "rejected")
+
+
+def apply_identity(run_roles, identity):
+    """(roles, levels, applied) with a reviewer's identity corrections
+    (senaite.pfas.injection_identity.overlay, the run manifest's
+    "identity") over the run's roles: each corrected injection takes its
+    corrected role, a CCV its fixed level ({injection: "low" |
+    "standard"}); `applied` is {injection: its correction}, what the run
+    records it judged with."""
+    roles = dict(run_roles or {})
+    levels, applied = {}, {}
+    for inj, c in sorted((identity or {}).items()):
+        if not isinstance(c, dict) or not c.get("role"):
+            continue
+        roles[inj] = c["role"]
+        if c.get("level") in ("low", "standard"):
+            levels[inj] = c["level"]
+        applied[inj] = dict(c)
+    if applied:
+        logger.info("Identity corrected at review: %s", ", ".join(
+            "%s -> %s" % (k, v.get("to") or v.get("role")) for k, v in sorted(applied.items())))
+    return roles, levels, applied
+
+
+# the role of an injection a reviewer took out of the run
+NOT_JUDGED = "NotJudged"
+
+
+def drop_not_judged(rows, applied):
+    """The rows less those of an injection corrected to Not judged: no QC,
+    curve check or result uses it."""
+    out = set(inj for inj, c in (applied or {}).items() if (c or {}).get("role") == NOT_JUDGED)
+    if not out:
+        return rows
+    return [r for r in rows if r.injection_name not in out]
+
+
+def not_judged(names):
+    """{injection: a Not judged correction} for `names`: what drop_not_judged
+    takes them out by, with no identity correction recorded for them."""
+    return dict((n, {"role": NOT_JUDGED}) for n in names or ())
+
+
+def withhold(member_map, spike_map):
+    """(member_map, spike_map, withheld): the extraction batch's members
+    withheld for re-extraction (each marked "withheld" by the record in
+    force, under its name in force, its issued names and its re-injections)
+    taken out of both maps; `withheld` their names. Their rows are dropped
+    as a Not judged injection's are: nothing of theirs is judged, filed or
+    pushed."""
+    held = sorted(k for k, v in (member_map or {}).items() if (v or {}).get("withheld"))
+    members = dict((k, v) for k, v in (member_map or {}).items() if k not in held)
+    spikes = dict((k, v) for k, v in (spike_map or {}).items() if k not in held)
+    return members, spikes, held
+
+
+def follow_aliases(spike_map, member_map, present):
+    """The spike record with each parent and LFSM it names given as the
+    name the run carries: a member an amendment renamed ran under its
+    issued name (a member map key "alias_of" its name in force)."""
+    ran_as = {}
+    for k, v in (member_map or {}).items():
+        to = (v or {}).get("alias_of")
+        if to and k in present and to not in present:
+            ran_as[to] = k
+    out = {}
+    for k, v in (spike_map or {}).items():
+        v = dict(v or {})
+        for f in ("parent", "lfsm"):
+            if v.get(f) in ran_as:
+                v[f] = ran_as[v[f]]
+        out[k] = v
+    return out
+
+
+def applied_amendments(manifest_ids, member_ids):
+    """The extraction corrections a run is judged with: those the members
+    it read carry and the run manifest names, both. A worker that read
+    either answer without them applied none, so release keeps waiting."""
+    return sorted(set(manifest_ids or ()) & set(member_ids or ()))
+
+
+def _verdict_rows(batch):
+    """The run's QC verdict rows, as they are stored (qc_store._qc_rows);
+    [] when they cannot be formed (the store reports that itself)."""
+    from .qc_store import _qc_rows
+    try:
+        return _qc_rows(batch)
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("identity check: the QC rows could not be formed: %s", exc)
+        return []
+
+
+# the corrected roles no verdict is owed for
+_IDENTITY_UNJUDGED = ("Sample", NOT_JUDGED)
+
+
+def identity_gaps(applied, verdicts, method_id=""):
+    """An unevaluated QC result for each injection a reviewer corrected to a
+    QC role that the run gave no verdict as that role (`verdicts`, the QC
+    rows: an injection is named whole in a row's qc_level): it holds
+    release and names why, never a QC silently unjudged."""
+    judged = set()
+    for v in verdicts or []:
+        qt = (v.get("qc_type") or "").upper()
+        for token in re.split(r"[\s|]+", v.get("qc_level") or ""):
+            if token:
+                judged.add((qt, token))
+    out = []
+    for inj, c in sorted((applied or {}).items()):
+        role = (c or {}).get("role") or ""
+        if not role or role in _IDENTITY_UNJUDGED or (role.upper(), inj) in judged:
+            continue
+        out.append({"qc_type": role, "analyte": "", "method_id": method_id,
+                    "reason": "%s was corrected to %s at review, but the run gave it no %s verdict "
+                              "(no expected concentration in the export, or the method does not "
+                              "judge %s): it is not judged" % (inj, role, role, role)})
+    return out
+
+
+def reimport_refusal(worksheet, worksheet_id) -> str:
+    """Why a run cannot be imported into this worksheet (SENAITE's record
+    of it, with its review_state), or "" when it can."""
+    state = (worksheet or {}).get("review_state") or ""
+    if state not in REIMPORT_CLOSED_STATES:
+        return ""
+    if state == "rejected":
+        return ("%s is rejected: a run is not imported into it again; the retest goes on a "
+                "new worksheet" % worksheet_id)
+    return ("%s is %s: a run is not imported again once its worksheet is verified; import it "
+            "on a new worksheet" % (worksheet_id, state))
+
+
+# the worksheet's batch report, and an earlier import's, kept beside it
+BATCH_REPORT = "Batch Report"
+BATCH_REPORT_SUPERSEDED = "Batch Report superseded"
+
+
+def attach_batch_report(senaite, ws_uid, report_path, superseded=False):
+    """Attach the run's batch report to its worksheet. The worksheet's
+    attachment is the record: once SENAITE holds it, the copy written to
+    the output folder is removed, so one copy stands. Kept when the upload
+    did not give back an attachment (the folder copy is then the only one).
+    `superseded`, another import's rows were kept as superseded: its report
+    is kept too, relabelled "Batch Report superseded"; the same import
+    processed again (an analyst's raw edit) replaces its own report.
+    Returns the attachment's uid, or None."""
+    uid = senaite.attach_file(ws_uid, report_path, BATCH_REPORT,
+                              keep_as=BATCH_REPORT_SUPERSEDED if superseded else "")
+    if not uid:
+        logger.warning("The batch report stays at %s: it was not attached to "
+                       "the worksheet.", report_path)
+        return None
+    try:
+        Path(report_path).unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logger.error("The attached batch report %s could not be removed from "
+                     "the output folder: %s", report_path, exc)
+    return uid
 
 
 def run_pipeline(
@@ -817,6 +1173,14 @@ def run_pipeline(
             "<stem>_extraction.json sidecar, or call run_pipeline with the "
             "arguments.", Path(csv_path).name)
 
+    # A worksheet verified, published or rejected takes no run again: refused
+    # before anything is read or written. SENAITE out of reach raises here
+    # like any other push failure, and the watcher retries.
+    if senaite is not None and batch_id:
+        why = reimport_refusal(senaite.find_worksheet(batch_id), batch_id)
+        if why:
+            raise ReimportRefused(why)
+
     # The method profiles from the exported JSON, so manager changes in the
     # SENAITE UI take effect without a worker restart; senaite_batch_id (from
     # an explicit argument or the sidecar above) also applies that batch's
@@ -858,8 +1222,12 @@ def run_pipeline(
         raise RuntimeError(why)
 
     csv_path = Path(csv_path)
-    from .importer import set_member_roles
+    from .importer import set_member_roles, set_level_overrides
     set_member_roles({})                 # a run's member roles never leak into the next
+    set_level_overrides({})
+    identity_applied = {}                # {injection: the correction in force, as applied}
+    amendments_applied = []              # the extraction corrections the run is judged with
+    withheld = []                        # the members withheld for re-extraction
     member_map = {}                      # {injection: {"sample_uid", "role"}}
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -888,7 +1256,8 @@ def run_pipeline(
                     csv_path.name)
 
     raw_traces = []                      # a raw run's chromatograms, kept for review
-    rows = load_rows(csv_path, import_profile, method_id, traces=raw_traces)
+    acid_basis = list((sidecar or {}).get("acid_basis_analytes") or [])
+    rows = load_rows(csv_path, import_profile, method_id, traces=raw_traces, acid_basis=acid_basis)
     refuse_unreadable(rows, import_profile, csv_path)
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
@@ -897,11 +1266,13 @@ def run_pipeline(
     # extraction batch's earlier runs: they are processed together, so a
     # dilution meets its neat reading and the worksheet's QC is not replaced.
     for earlier in (sidecar.get("supplementary_of") or []) if sidecar else []:
-        path = csv_path.parent / earlier
-        if not path.exists():
+        # an earlier run imported is in the archive (instrument_files)
+        found = _addon("instrument_files").locate(str(csv_path.parent), earlier)
+        if found is None:
             raise RuntimeError("supplementary run %s: the earlier run %s is not in %s"
                                % (csv_path.name, earlier, csv_path.parent))
-        rows = load_rows(path, import_profile, method_id, traces=raw_traces) + rows
+        path = Path(found)
+        rows = load_rows(path, import_profile, method_id, traces=raw_traces, acid_basis=acid_basis) + rows
         logger.info("With the earlier run %s: %d rows", earlier, len(rows))
     if (import_profile or {}).get("labelled_from_columns"):
         made = labelled_rows(rows, method_id)
@@ -934,18 +1305,31 @@ def run_pipeline(
         # the extraction batch's members: what each LIMS-issued injection is,
         # and a sample's SENAITE uid
         member_map = prep.pop("_members", {}) or {}
+        # a member withheld for re-extraction is judged as nothing: out of
+        # the members and the spikes, its rows dropped below
+        member_map, spike_map, withheld = withhold(member_map, spike_map)
+        prep_amendments = prep.pop("_amendments", []) or []
         # every PLANNED injection's role, as the Run Builder built the row
         # (calibrators, ICV/QCS, CCV/CCC, solvent blank...), so a name may use
         # the method's own terms; the batch's members' own record wins.
         # An unplanned injection still falls back to the
         # name tokens and is reported as unplanned below.
-        run_roles = dict((senaite.get_run_manifest(senaite_batch_id, worksheet_id=batch_id or "")
-                          or {}).get("roles") or {})
+        run_manifest = senaite.get_run_manifest(senaite_batch_id, worksheet_id=batch_id or "") or {}
+        run_roles = dict(run_manifest.get("roles") or {})
         run_roles.update(dict((k, (v or {}).get("role") or "Sample") for k, v in member_map.items()))
+        # a reviewer's identity correction (Data Review) wins over both
+        run_roles, levels, identity_applied = apply_identity(run_roles, run_manifest.get("identity"))
+        set_level_overrides(levels)
         field_blanks = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "FRB")
         field_duplicates = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "FD")
         trip_blanks = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "TB")
         set_member_roles(run_roles)
+        # an injection corrected to Not judged keeps its record (its
+        # provenance below) but no QC or result uses it
+        rows = drop_not_judged(rows, identity_applied)
+        rows = drop_not_judged(rows, not_judged(withheld))
+        # the extraction corrections the members above carry and the manifest names
+        amendments_applied = applied_amendments(run_manifest.get("amendments"), prep_amendments)
         # a matrix blank's lot reference values (Matrix blanks)
         mxb_references = dict((k, v["reference"]) for k, v in member_map.items()
                               if (v or {}).get("reference"))
@@ -964,6 +1348,8 @@ def run_pipeline(
                          if (v or {}).get("replaces") and k in present)
             spike_map = dict((k, dict(v, parent=alias.get(v.get("parent"), v.get("parent"))))
                              for k, v in spike_map.items())
+        # a parent or LFSM an amendment renamed ran under its issued name
+        spike_map = follow_aliases(spike_map, member_map, present)
         logged_amounts = prep.pop("_samples", {}) or {}
         dilution_map = prep
         if spike_map:
@@ -1018,6 +1404,9 @@ def run_pipeline(
     if senaite is not None and (senaite_batch_id or batch_id):
         planned = (senaite.get_run_manifest(senaite_batch_id, worksheet_id=batch_id or "") or {}).get(
             "planned") or []
+        # a member withheld for re-extraction ran and is dropped: not a
+        # planned injection missing from the run
+        planned = [p for p in planned if p not in withheld]
     if planned:
         actual = this_file                   # this file, not the earlier runs it joins
         unplanned = sorted(actual - set(planned))
@@ -1061,6 +1450,7 @@ def run_pipeline(
         instrument_file=csv_path.name,
         injections=rows,
         dilutions=dilution_map,
+        acid_basis=list((sidecar or {}).get("acid_basis_analytes") or []),
         spikes=spike_map,
         field_blanks=field_blanks,
         field_duplicates=field_duplicates,
@@ -1086,6 +1476,12 @@ def run_pipeline(
         for name in sorted({r.injection_name for r in rows})
     ]
 
+    # a standard's row keeps its number and loses the instrument's ALoQ or
+    # BLoQ before it is judged
+    standard_tokens(batch.injections)
+    # a quadratic's sample below its lowest calibrator has a number only at
+    # or above the MDL, decided before the QC engine judges the numbers
+    raw_below_mdl(batch.injections, method_id, matrix, batch.acid_basis)
     queue = RunQueue(batch, review_plan, method_id=method_id)
     queue.auto_evaluate()
     # the run against its plan: each difference holds release until a
@@ -1110,12 +1506,21 @@ def run_pipeline(
     # 4b. Above the calibration range: the platform's own judgement (rule
     # switch over_range), so the summary reports the dilution or ALoQ
     batch.qc_flags.extend(over_range(batch.injections, method_id, matrix))
-    # a raw run's result the instrument could not measure: saturated, or
-    # above the highest calibrator still on its own curve
+    # a raw run's result above the highest calibrator still on its own curve
     batch.qc_flags.extend(raw_range(batch.injections, method_id))
+    # every other ALoQ (the instrument's own word): the top of its range
+    range_tops(batch.injections, method_id, matrix)
     # a raw run's native the analyst left unquantified by deleting its
     # isotope standard's peak: release waits for it
     batch.qc_flags.extend(raw_is_deleted(batch.injections))
+    # what each native was quantified on and the method's linked response
+    # ratio, for the readout; a raw result whose linked ratio could not be
+    # formed: release waits for it
+    tag_quantitation(batch.injections, method_id)
+    batch.qc_flags.extend(ratio_held(batch.injections))
+    # a diluted field sample whose surrogate recovery the method has not
+    # said how to take: flagged, not held
+    batch.qc_flags.extend(dilution_recovery_flags(batch.injections, method_id, dilution_map))
 
     # 5. Summary
     build_summary(batch)
@@ -1126,10 +1531,20 @@ def run_pipeline(
         _prov_profile = _gp(method_id) if method_id else None
         _prov.record_summary(batch, _prov_profile)
         _prov.record_file(batch, csv_path.name, import_profile)
+        _prov.record_identity(batch, identity_applied)
+        _prov.record_amendments(batch, amendments_applied)
     except Exception as exc:                                # noqa: BLE001
         logger.exception("value provenance of the summary could not be recorded for %s", batch.batch_id)
         batch.unconfigured.append({"qc_type": "Provenance", "analyte": "", "method_id": method_id,
                                    "reason": "the final values' provenance could not be recorded (%s)" % exc})
+
+    # a check standard a reviewer corrected the identity of that gave no
+    # verdict (no expected concentration) is never left silently unjudged
+    _gaps = identity_gaps(identity_applied, _verdict_rows(batch), method_id)
+    if _gaps:
+        if not hasattr(batch, "unconfigured"):
+            batch.unconfigured = []
+        batch.unconfigured.extend(_gaps)
 
     # 5a. FDA §10.2(4). build_summary has just decided what was detected, so the
     # confirmation checks can now be settled — PENDING where a single-transition
@@ -1143,11 +1558,23 @@ def run_pipeline(
             "confirmation before the identification can be reported as "
             "confirmed — see the identity_confirmation review checks", n_conf)
 
-    # 5a'. Validation: one side of a run is reported, the other is kept for
+    # 5a. Validation: one side of a run is reported, the other is kept for
     # the comparison -- its rows only, nothing judged, stored or pushed
     # the results source the run was built / uploaded under, else the method's
     mode = (sidecar or {}).get("integration_mode") or integration_mode(method_id)
     side = comparison_side(raw, mode, supplementary=bool((sidecar or {}).get("supplementary_of")))
+
+    # 5a'. A run imported again before it is verified keeps the earlier
+    # import's rows of its side as superseded copies; processing the same
+    # import again (an analyst's raw edit) keeps nothing. Rows that cannot be
+    # kept are not replaced: the import fails here, before any store is
+    # written, and is tried again
+    from .injection_store import begin_import
+    kept = begin_import(getattr(batch, "batch_id", "") or "", csv_path, side=side or "reported", raw=bool(raw))
+    if kept:
+        logger.info("%s: the earlier import's rows kept as superseded: %s", csv_path.name,
+                    ", ".join("%s %d" % kv for kv in sorted(kept.items()) if kv[1]))
+
     if side:
         from .injection_store import injection_dicts, persist_alt_results
         n_alt = persist_alt_results(getattr(batch, "batch_id", "") or "", side, injection_dicts(batch))
@@ -1240,7 +1667,8 @@ def run_pipeline(
             if buid:
                 senaite.push_qc_flags(buid, batch.qc_flags)
             if ws_uid:
-                senaite.attach_file(ws_uid, report_path, "Batch Report")
+                attach_batch_report(senaite, ws_uid, report_path,
+                                    superseded=bool(kept and any(kept.values())))
                 if extraction_log_path:
                     senaite.attach_file(ws_uid, extraction_log_path,
                                         "Extraction Log")
@@ -1336,7 +1764,7 @@ def run_pipeline(
                         batch.batch_id, ws_uid or "-", buid or "-")
         except Exception as e:                       # noqa: BLE001
             logger.error("SENAITE push failed: %s", e)
-            # raised: the watcher retries the whole run (a re-import replaces
+            # raised: the watcher retries the whole run (a re-import supersedes
             # its rows); a push that stopped partway never passes silently
             raise
 
@@ -1381,6 +1809,8 @@ def _save_watched(path, seen):
 WATCHED_TYPES = (".csv", ".txt", ".tsv", ".rawrun")
 # how often the watch loop asks SENAITE to send the due notice e-mails
 NOTICE_TICK_SECONDS = 900
+# how often the worker asks the add-on to sweep the instrument archive
+ARCHIVE_SWEEP_SECONDS = 86400
 
 
 def _watched(watch_dir):
@@ -1426,14 +1856,21 @@ def quantitation_map(method_id):
     return out
 
 
-def load_rows(path, import_profile, method_id, traces=None):
+def load_rows(path, import_profile, method_id, traces=None, acid_basis=None):
     """The run's rows: an export read with its import layout, or a raw run
     integrated and quantified with the method's Integration settings (its
-    traces into `traces`)."""
+    traces into `traces`), each labelled standard's stated amounts as acid
+    by its salt factor unless the run's calibration lots state it as the
+    acid (`acid_basis`, the run record's acid_basis_analytes). An export's
+    numbers are the instrument's: nothing of it is recomputed."""
     if is_raw_run(path):
+        from .method_profiles import get_linked_response_ratio, get_labelled_roles, get_labelled_salt_factors
         return load_raw_run(str(path), get_integration(method_id),
                             get_profile(method_id).calibration_rule, quantitation_map(method_id),
-                            traces=traces)
+                            traces=traces, composites=_get_composites(method_id),
+                            linked=get_linked_response_ratio(method_id) == "on",
+                            roles=get_labelled_roles(method_id),
+                            salt_factors=get_labelled_salt_factors(method_id), acid_basis=acid_basis)
     return load_instrument_csv(path, profile=import_profile)
 
 
@@ -1467,6 +1904,8 @@ def labelled_rows(rows, method_id):
         name = r.linked_is or sur.get(r.compound_name) or sur.get(keyword_for(r.compound_name) or "")
         if not name:
             continue
+        if _quantifying_members(method_id, name) != [name]:
+            continue                    # a composite is no one compound: no row is made for it
         name = labelled_display_name(keyword_of(name) or name)
         if (r.concat_id, name) in have:
             continue
@@ -1482,6 +1921,29 @@ def labelled_rows(rows, method_id):
             manual_integration=None, included_in_cal=False,
             derived_from="columns of " + (r.compound_name or "")))
     return out
+
+
+def standard_tokens(rows):
+    """A standard never reads ALoQ or BLoQ: a calibrator is a point of its
+    curve, judged on its deviation, and a check standard (ICV, CCV) on its
+    window. A vendor export's calibrator, ICV or CCV row loses the
+    instrument's word; its number is kept and judged as reported, and the
+    word is kept on the row's provenance (derived_from). A calibrator is
+    found by its role in the run plan, else, for a run with no role
+    recorded, by the export's "Standard". A raw row never carries one.
+    Returns the rows changed."""
+    from .qc_engine import STANDARD_TOKENS
+    changed = []
+    for r in rows:
+        if r.conc_qualifier not in STANDARD_TOKENS or (r.derived_from or "").startswith("raw:"):
+            continue
+        role = classify_injection(r.injection_name)
+        if role not in ("CAL", "ICV", "CCV") and not (role == "Sample" and r.sample_type == "Standard"):
+            continue
+        r.derived_from = "the instrument wrote %s" % r.conc_qualifier
+        r.conc_qualifier = ""
+        changed.append(r)
+    return changed
 
 
 def over_range(rows, method_id, matrix):
@@ -1516,6 +1978,8 @@ def over_range(rows, method_id, matrix):
             continue
         for r in group:
             r.conc_qualifier = QUALIFIER_ALOQ
+            # the group's sum is above this top: the bound it is reported above
+            r.range_top = top
             flags.append(QCFlag(
                 source="Calibration range", check_kind=KIND_OVER_RANGE, analyte=r.compound_name,
                 injection_name=r.injection_name, value="%g %s" % (total, unit),
@@ -1524,48 +1988,157 @@ def over_range(rows, method_id, matrix):
     return flags
 
 
-OVERFLOW_ABOVE_RANGE = "Overflow at the apex: the stored value is above the file's number range"
-
-
 def raw_range(rows, method_id):
-    """[QCFlag] for each native result of a raw run that is above what the
-    instrument measured: a peak found on a quantifier whose stored signal
-    wrapped at the apex keeps its number, which is understated; a reading
-    above the highest calibrator still on this run's curve (the curve's
-    top_conc: a saturated top calibrator is left off it) is an
-    extrapolation. Either row reads ALoQ, so the summary reports the
+    """[QCFlag] for each native result of a raw run above the calibration
+    range: its response ratio above the curve's response at the highest
+    calibrator still on this run's curve (the record's above_range, judged
+    in raw_run for every fit), with a reading or without one (a quadratic
+    the ratio never reaches). The row reads ALoQ, so the summary reports the
     dilution where there is one; an isomer peak is judged on its own curve
-    and makes its group ALoQ. A vendor export's row is not judged here: its
-    instrument wrote its own ALoQ. Not switched by over_range: switching
-    that rule off must not release an understated number unflagged."""
+    and makes its group ALoQ. Its range_top is the top calibrator on the
+    sample basis: the curve's top_conc times the factors the row was given.
+    A vendor export's row is not judged here: its instrument wrote its own
+    ALoQ. Not switched by over_range, which judges the method's levels: this
+    run's curve ends where its own calibrators do."""
     parts = _isomer_parts(method_id)
     flags = []
     for r in rows:
         derived = getattr(r, "derived_from", "") or ""
-        if not derived.startswith("raw:") or reported_conc(r) is None:
+        if not derived.startswith("raw:"):
+            continue
+        rec = json.loads(derived[len("raw:"):]) or {}
+        quant = rec.get("quant") or {}
+        curve = quant.get("curve") or {}
+        top = curve.get("top_conc")
+        # the curve's reading, before any correction to the sample basis: on
+        # a curve rising across its range, above the top calibrator exactly
+        # when the ratio is (a record written before above_range was kept)
+        reading = r.raw_calculated_conc if r.raw_calculated_conc is not None else r.calculated_conc
+        if top is None or not (quant.get("above_range")
+                               or (reading is not None and reading > top * (1 + 1e-9))):
             continue
         if not _is_native(r, parts) or not _has_sample_basis(r):
             continue
-        rec = json.loads(derived[len("raw:"):]) or {}
-        curve = (rec.get("quant") or {}).get("curve") or {}
-        top = curve.get("top_conc")
-        # the curve's reading, before any correction to the sample basis
-        reading = r.raw_calculated_conc if r.raw_calculated_conc is not None else r.calculated_conc
-        if rec.get("saturated"):
-            issue = "(ALoQ) " + OVERFLOW_ABOVE_RANGE
-        elif (top is not None and reading is not None and reading > top * (1 + 1e-9)
-              and r.conc_qualifier != QUALIFIER_ALOQ):
-            issue = "(ALoQ) above the highest calibrator on this run's curve, %s at %g" % (
-                curve.get("top_injection") or "", top)
-        else:
+        # over_range judged a number above the method's top level already
+        if r.conc_qualifier == QUALIFIER_ALOQ and reported_conc(r) is not None:
             continue
         r.conc_qualifier = QUALIFIER_ALOQ
+        r.range_top = top * row_factor(r)
+        value = reported_conc(r)
         flags.append(QCFlag(
             source="Calibration range", check_kind=KIND_OVER_RANGE, analyte=r.compound_name,
             injection_name=r.injection_name,
-            value=("%g %s" % (reported_conc(r), getattr(r, "conc_units", "") or "")).strip(),
-            issue=issue))
+            value=("%g %s" % (value, getattr(r, "conc_units", "") or "") if value is not None
+                   else "ratio %g" % quant.get("ratio")).strip(),
+            issue="(ALoQ) above the highest calibrator on this run's curve, %s at %g" % (
+                curve.get("top_injection") or "", top)))
     return flags
+
+
+def instrument_gave_no_number(row):
+    """An imported row the instrument wrote BLoQ with no number: its
+    concentration cell held only the word (a number beside it, or in the
+    concentration column with the word in Quantitation Status, is kept by
+    the importer and reported). A raw run's row is the LIMS's own reading
+    and never one."""
+    return bool(row is not None and row.conc_qualifier == QUALIFIER_BLOQ
+                and reported_conc(row) is None
+                and not (getattr(row, "derived_from", "") or "").startswith("raw:"))
+
+
+def raw_below_mdl(rows, method_id, matrix, acid_basis=None):
+    """A raw run's native in a sample below its quadratic's lowest
+    calibrator (the record's below, raw_run) has a number only at or above
+    the MDL: its reading on the rising branch between zero and that
+    calibrator, times the factors the row was given (the sample basis), is
+    judged rounded as the certificate rounds it against the MDL of the
+    analyte it is reported as, in the run's matrix. At or above it the row
+    takes that number, the lowest calibrator on the same basis its
+    reporting limit, as a straight line's reading there has; below it, with
+    no MDL set, or with no reading at or above zero, the row stays BLoQ with
+    no number. The record says which (quant.below_mdl, quant.mdl). An
+    isomer's peak is judged on its own reading; a dilution needs nothing
+    more, the MDL scaling with the fold as the reading does. Not switched
+    by the mdl_check rule, which flags detections below the MDL: this
+    decides whether there is a number at all. Runs before the QC engine,
+    which then judges the number the row has. Returns the rows given a
+    number."""
+    from .method_profiles import get_profile
+    from .run_queue import _units_compatible
+    quant_fit = _addon("quant_fit")
+    profile = get_profile(method_id) if method_id else None
+    parts = _isomer_parts(method_id)
+    rl_matrix = (_addon("report_limits").canonical_matrix(profile._profile_data(), matrix)
+                 if profile is not None else matrix)
+    kept = []
+    for r in rows:
+        derived = getattr(r, "derived_from", "") or ""
+        if not derived.startswith("raw:"):
+            continue
+        rec = json.loads(derived[len("raw:"):]) or {}
+        quant = rec.get("quant") or {}
+        if (not quant.get("below") or r.conc_qualifier != QUALIFIER_BLOQ
+                or not _is_native(r, parts) or not _has_sample_basis(r)):
+            continue
+        kw = parts.get(r.compound_name) or keyword_for(r.compound_name) or r.compound_name
+        mdl = profile.reporting_limits(kw, rl_matrix, acid_basis)[1] if profile is not None else None
+        reading = quant.get("below_reading")
+        factor = row_factor(r)
+        value = reading * factor if reading is not None else None
+        unit = (getattr(r, "conc_units", "") or "").strip()
+        if value is None:
+            verdict = quant_fit.BELOW_NO_ROOT
+        elif mdl is None:
+            verdict = quant_fit.BELOW_NO_MDL
+        elif not _units_compatible("" if unit.lower() == "nan" else unit,
+                                   profile.reporting_limits(kw, rl_matrix, acid_basis)[2]):
+            # never judged across units, as the MDL check is not
+            verdict = quant_fit.BELOW_OTHER_UNIT
+        else:
+            judged = profile.judged_conc(value, matrix)
+            verdict = (quant_fit.BELOW_AT_MDL if judged is not None and judged >= mdl
+                       else quant_fit.BELOW_UNDER_MDL)
+        quant["below_mdl"] = verdict
+        quant["mdl"] = mdl
+        if verdict == quant_fit.BELOW_AT_MDL:
+            bottom = (quant.get("curve") or {}).get("bottom_conc")
+            r.calculated_conc = r.measured_conc = value
+            r.raw_calculated_conc = r.raw_measured_conc = reading
+            r.reporting_limit = bottom * factor if bottom is not None else None
+            r.conc_qualifier = ""
+            kept.append(r)
+        rec["quant"] = quant
+        r.derived_from = "raw:" + json.dumps(rec, sort_keys=True)
+    return kept
+
+
+def range_tops(rows, method_id, matrix):
+    """The top of the calibration range on the sample basis (range_top) for
+    each native result that reads ALoQ and has none yet, as the instrument
+    wrote it: the highest concentration the run's calibrators state for the
+    compound times the factors the row was given. Where the run states none,
+    or the MS software applied the sample's factors itself, the method's top
+    level in the reporting unit (calibration_levels.derived_top); None where
+    neither is known."""
+    from .method_profiles import _profile_data_cache
+    from .qc_engine import calibrator_rows
+    parts = _isomer_parts(method_id)
+    data = (_profile_data_cache.get(method_id) or {}) if method_id else {}
+    software = bool(method_id) and _get_sample_correction(method_id) == "instrument"
+    stated = {}
+    for r in rows:
+        if r.conc_qualifier != QUALIFIER_ALOQ or getattr(r, "range_top", None) is not None:
+            continue
+        if not _is_native(r, parts) or not _has_sample_basis(r):
+            continue
+        if r.compound_name not in stated:
+            stated[r.compound_name] = [c.expected_conc for c in calibrator_rows(rows, r.compound_name)
+                                       if c.expected_conc]
+        if stated[r.compound_name] and not software:
+            r.range_top = max(stated[r.compound_name]) * (r.salt_factor or 1.0) * (r.matrix_factor or 1.0)
+        elif data and matrix:
+            kw = parts.get(r.compound_name) or keyword_for(r.compound_name) or r.compound_name
+            r.range_top = _addon("calibration_levels").derived_top(data, matrix, kw)
 
 
 def start_watcher(
@@ -1604,6 +2177,7 @@ def start_watcher(
     from . import import_log
     retries: dict[str, tuple] = {}            # name -> (attempts, next try at, mtime)
     next_notice_tick = 0.0
+    next_sweep = 0.0
 
     while True:
         time.sleep(poll_seconds)
@@ -1612,6 +2186,9 @@ def start_watcher(
         if senaite is not None and time.time() >= next_notice_tick:
             next_notice_tick = time.time() + NOTICE_TICK_SECONDS
             senaite.send_notice_reminders()
+        if senaite is not None and time.time() >= next_sweep:
+            next_sweep = time.time() + ARCHIVE_SWEEP_SECONDS
+            senaite.sweep_instrument_archive()
         for p in _watched(watch_dir):
             if seen.get(p.name) == p.stat().st_mtime_ns:
                 continue
@@ -1652,6 +2229,11 @@ def start_watcher(
             try:
                 run_pipeline(p, output_dir=output_dir, senaite=senaite,
                              extraction_log_path=ext_log)
+            except ReimportRefused as e:
+                # recorded once, never retried: the queue moves on
+                logger.warning("Refused %s: %s", p.name, e)
+                retries.pop(p.name, None)
+                _record_import(import_log, p.name, batch_id, "refused", attempts + 1, str(e))
             except Exception as e:                   # noqa: BLE001
                 logger.exception("Pipeline failed for %s: %s", p.name, e)
                 attempts += 1
@@ -1669,3 +2251,10 @@ def start_watcher(
             else:
                 retries.pop(p.name, None)
                 _record_import(import_log, p.name, batch_id, "imported", attempts + 1, "")
+                # processed: the export moves to the archive (instrument_files)
+                try:
+                    moved = _addon("instrument_files").archive(str(p))
+                    if moved:
+                        logger.info("%s moved to the archive", p.name)
+                except OSError as e:
+                    logger.error("%s not moved to the archive: %s", p.name, e)

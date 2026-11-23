@@ -13,6 +13,8 @@ code branches on (equipment kinds, QC roles, statuses) are not here.
                                    plus `keep`, a record's current value)
     options(stored, name)          pure: every term, withdrawn ones marked
     label(stored, name, key)       pure: a term's label (the key when unknown)
+    flagged(stored, name, flag)    pure: the keys whose switch (FLAGS) is on
+    locked_off(name, key, flag)    pure: a switch that cannot be on for a term
     edit(stored, name, rows, new)  pure: (stored', [problem])
     get(portal) / save(portal, d)  the annotation
 
@@ -44,16 +46,59 @@ LISTS = {
         u"Mobile Phase / Solvent", u"Extraction Reagent", u"Standard / Reference Material",
         u"Internal Standard", u"Buffer", u"Acid / Base", u"Salt",
         u"Reagent Water \u2014 in-house Type 1", u"Reagent Water \u2014 purchased",
-        u"Consumable", u"Other Reagent")]),
+        u"Consumable", u"Other Reagent", u"Material / Container")]),
     # stored as the string on each lot; prep logbooks filter lots by it
     "prepared_standard_types": (u"Prepared standard types", [(k, k) for k in (
         u"Calibration Standard", u"QC Check Standard", u"Surrogate Mix",
-        u"Internal Standard Mix", u"Matrix Spike", u"Solvent / Reagent", u"Other")]),
+        u"Internal Standard Mix", u"Matrix Spike", u"Solvent / Reagent", u"Mobile Phase",
+        u"Other")]),
 }
 
 
+# name -> ((flag, title), ...): a switch each term of that list carries, a
+# lab setting. A lot in a reagent category with "no_expiry" on never
+# expires (lot_expiry.NO_EXPIRY); one with "no_coa" on is not marked for
+# a missing CoA (a CoA stays optional for it).
+FLAGS = {
+    "reagent_categories": (("no_expiry", u"No expiry"), ("no_coa", u"No CoA")),
+}
+# the seed's switches that start on; every other starts off. Consumable
+# keeps an expiry: some consumables (an SPE cartridge) expire. A standard
+# or a reagent carries its supplier's CoA; a container or a consumable
+# need not.
+SEED_FLAGS = {
+    "reagent_categories": {u"Material / Container": {"no_expiry": True, "no_coa": True},
+                           u"Consumable": {"no_coa": True}},
+}
+# the switches that can never be on for a term: a standard, a reference
+# material and an internal standard always carry their supplier's CoA
+LOCKED_OFF = {
+    "reagent_categories": {u"Standard / Reference Material": ("no_coa",),
+                           u"Internal Standard": ("no_coa",)},
+}
+
+
+def locked_off(name, key, flag):
+    """Is `flag` one that cannot be switched on for this term?"""
+    return flag in LOCKED_OFF.get(name, {}).get(key, ())
+
+
+def _flags(name, key, saved=None):
+    """A term's switches: as saved, else the seed's; never on where locked off."""
+    seed = SEED_FLAGS.get(name, {}).get(key, {})
+    out = {}
+    for flag, _title in FLAGS.get(name, ()):
+        if locked_off(name, key, flag):
+            out[flag] = False
+        elif saved is not None and flag in saved:
+            out[flag] = bool(saved[flag])
+        else:
+            out[flag] = bool(seed.get(flag))
+    return out
+
+
 def _seed(name):
-    return [{"key": k, "label": l, "active": True} for k, l in LISTS[name][1]]
+    return [dict({"key": k, "label": l, "active": True}, **_flags(name, k)) for k, l in LISTS[name][1]]
 
 
 def terms(stored, name):
@@ -66,8 +111,8 @@ def terms(stored, name):
     for t in saved:
         if t.get("key") and t["key"] not in seen:
             seen.add(t["key"])
-            out.append({"key": t["key"], "label": t.get("label") or t["key"],
-                        "active": bool(t.get("active", True))})
+            out.append(dict({"key": t["key"], "label": t.get("label") or t["key"],
+                             "active": bool(t.get("active", True))}, **_flags(name, t["key"], t)))
     for t in _seed(name):                 # a seed term the saved list lacks
         if t["key"] not in seen:
             out.append(t)
@@ -123,10 +168,17 @@ def edit(stored, name, rows, new_label=u""):
             continue
         t["label"] = lab
         t["active"] = bool(r.get("active"))
+        for flag, title in FLAGS.get(name, ()):
+            if locked_off(name, t["key"], flag):
+                if r.get(flag):
+                    problems.append(u"%s: %s cannot be switched on." % (t["label"], title))
+                t[flag] = False
+                continue
+            t[flag] = bool(r.get(flag))
     new_label = (new_label or u"").strip()
     if new_label:
-        current.append({"key": _new_key(new_label, set(by_key)), "label": new_label,
-                        "active": True})
+        current.append(dict({"key": _new_key(new_label, set(by_key)), "label": new_label,
+                             "active": True}, **dict((f, False) for f, _t in FLAGS.get(name, ()))))
     labels = [t["label"].lower() for t in current]
     dup = sorted(set(l for l in labels if labels.count(l) > 1))
     if dup:
@@ -136,6 +188,11 @@ def edit(stored, name, rows, new_label=u""):
     out = dict(stored or {})
     out[name] = current
     return out, []
+
+
+def flagged(stored, name, flag):
+    """The keys of the terms of `name` whose switch `flag` is on."""
+    return set(t["key"] for t in terms(stored, name) if t.get(flag))
 
 
 def get(portal):

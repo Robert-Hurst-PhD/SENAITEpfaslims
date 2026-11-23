@@ -16,6 +16,15 @@ rule than its certificate prints with, is not published until
 the run is reprocessed (coa_qc_standards.BLOCKS_PUBLISHING).
 ReceiptComplianceGuard: a compliance sample received out of compliance with
 its method is not published; a resample is requested (receipt_compliance).
+ReportPackageGuard: a sample whose newest certificate, not yet issued,
+waits for its package (building, failed, or none at a tier that needs one)
+or, with no package, for its seal (pending or failed), is not published,
+by Send or by any other path (edd_email.report_refusal, seal_hold).
+SignatureGuard: a sample is not published without the publisher's own
+signature, given on Data Review before the certificate is generated; before
+its run is verified (prepublish) only on an interim signature.
+WorksheetMethodGuard: an analysis goes on a worksheet only when its
+sample's method is the worksheet's Method (worksheet_samples).
 Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
@@ -28,6 +37,12 @@ from zope.interface import implementer
 logger = logging.getLogger("senaite.pfas.guards")
 
 PUBLISH_TRANSITIONS = ("publish", "prepublish", "republish")
+# every transition that issues a certificate: the ones above and the ones
+# the register records an issue on (controlled_publications)
+PACKAGE_TRANSITIONS = ("publish", "prepublish", "publish_immediately", "republish")
+# the transitions the register records an issue on: each one is signed;
+# prepublish issues an interim certificate before verification
+SIGNATURE_TRANSITIONS = ("publish", "publish_immediately", "republish", "prepublish")
 
 
 @implementer(IGuardAdapter)
@@ -194,3 +209,192 @@ class ReceiptComplianceGuard(object):
         except Exception as exc:                            # noqa: BLE001
             logger.error("ReceiptComplianceGuard: %s", exc)
             return False
+
+
+def seal_hold(report):
+    """"Seal pending" or "Seal failed: <reason>" while the worker has not
+    sealed a certificate stored with no package; else None. A package is
+    sealed by its own build, and its record speaks for it."""
+    from senaite.pfas import report_packages
+    return report_packages.seal_refusal(report_packages.seal_record(report))
+
+
+def package_hold(reports, issued, refusal):
+    """(report, why) when the sample's newest certificate (the first of
+    `reports`, newest first) is not yet issued (`issued(report)`) and may
+    not be sent (`refusal(report)`, the refusal Send gives) or is not yet
+    sealed (seal_hold); else None. Only the newest counts: it is the one a
+    publication is issued in, and older drafts are superseded by it. An
+    issued newest certificate holds nothing: its package and its seal were
+    settled when it was issued."""
+    if not reports:
+        return None
+    newest = reports[0]
+    if issued(newest):
+        return None
+    # the bytes the authoriser's signature binds to are the sealed ones
+    why = refusal(newest) or seal_hold(newest)
+    return (newest, why) if why else None
+
+
+@implementer(IGuardAdapter)
+class ReportPackageGuard(object):
+    """A certificate goes out only with its package, sealed: no path that
+    issues it (Send, the reports listing's Publish, a republish) publishes
+    the sample while its newest certificate, not yet issued, has its
+    package building or failed, or needs a package and has no record, or,
+    with no package, waits for its seal or its seal failed. Older drafts
+    are superseded and not judged."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def guard(self, transition):
+        if transition not in PACKAGE_TRANSITIONS:
+            return True
+        from ZODB.POSException import ConflictError
+        try:
+            from bika.lims import api
+            from senaite.pfas.browser.controlled_publications import certificate_reports, report_issued
+            from senaite.pfas.browser.edd_email import report_refusal
+            held = package_hold(certificate_reports(self.context), report_issued, report_refusal)
+        except ConflictError:
+            raise                                           # Zope retries the request
+        except Exception as exc:                            # noqa: BLE001
+            # an error here must not silently allow what it exists to block
+            logger.error("ReportPackageGuard: %s", exc)
+            return False
+        if held:
+            # the listing that offers the transition may show no reason
+            logger.info("ReportPackageGuard: %s is not published (%s): %s: %s",
+                        api.get_id(self.context), transition, api.get_id(held[0]), held[1])
+            return False
+        return True
+
+
+@implementer(IGuardAdapter)
+class SignatureGuard(object):
+    """A certificate is issued only with its authoriser's signature: every
+    transition that issues one needs the publisher's own pending signature
+    on the sample, given on Data Review's Issue certificate card; while the
+    current revision is interim, another interim needs a reason
+    (controlled_publications.signature_refusal, which Send shows)."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def guard(self, transition):
+        if transition not in SIGNATURE_TRANSITIONS:
+            return True
+        from ZODB.POSException import ConflictError
+        try:
+            from senaite.pfas.browser.controlled_publications import _current_userid, signature_refusal
+            why = signature_refusal(self.context, _current_userid())
+        except ConflictError:
+            raise                                           # Zope retries the request
+        except Exception as exc:                            # noqa: BLE001
+            # an error here must not silently allow what it exists to block
+            logger.error("SignatureGuard: %s", exc)
+            return False
+        if why:
+            logger.info("SignatureGuard: not published (%s): %s", transition, why)
+            return False
+        return True
+
+
+def _request_worksheet(request):
+    """The worksheet an assign is asked from, as core's assign guard finds
+    it: the one core's addAnalysis names (ws_uid), else one the request
+    traversed. None outside a worksheet."""
+    from bika.lims import api
+    uid = request.get("ws_uid", "") if request is not None else ""
+    if uid:
+        obj = api.get_object_by_uid(uid, None)
+        if getattr(obj, "portal_type", None) == "Worksheet":
+            return obj
+    for obj in (request.get("PARENTS", []) if request is not None else []) or []:
+        if getattr(obj, "portal_type", None) == "Worksheet":
+            return obj
+    return None
+
+
+@implementer(IGuardAdapter)
+class WorksheetMethodGuard(object):
+    """An analysis goes on a worksheet only when its sample's method is the
+    worksheet's Method (worksheet_samples.assign_allowed): every way an
+    analysis is assigned asks this. Asked once per row of a listing, so the
+    worksheet's and each sample's method are read once per request."""
+
+    CACHE = "_pfas_worksheet_method_guard"
+
+    def __init__(self, context):
+        self.context = context
+
+    def guard(self, transition):
+        if transition != "assign":
+            return True
+        from ZODB.POSException import ConflictError
+        try:
+            from bika.lims import api
+            from senaite.pfas import worksheet_samples as wsm
+            from senaite.pfas.method_bridge import profile_id_for_method
+            request = api.get_request()
+            ws = _request_worksheet(request)
+            if ws is None:
+                return True                 # core's own guard refuses an assign outside a worksheet
+            cache = request.get(self.CACHE) if request is not None else None
+            if cache is None:
+                cache = {"ws": {}, "sample": {}, "profiles": None}
+                if request is not None:
+                    request.set(self.CACHE, cache)
+            ws_uid = api.get_uid(ws)
+            if ws_uid not in cache["ws"]:
+                m = ws.getMethod()
+                cache["ws"][ws_uid] = profile_id_for_method(m) if m is not None else u""
+            ws_method = cache["ws"][ws_uid]
+            if not ws_method:
+                return True
+            sample = self.context.getRequest()
+            s_uid = api.get_uid(sample)
+            if s_uid not in cache["sample"]:
+                if cache["profiles"] is None:
+                    cache["profiles"] = wsm.profile_methods(api.get_portal())
+                cache["sample"][s_uid] = wsm.sample_method_of(api.get_portal(), sample, cache["profiles"])[0]
+            return wsm.assign_allowed(ws_method, cache["sample"][s_uid])
+        except ConflictError:
+            raise                                           # Zope retries the request
+        except Exception as exc:                            # noqa: BLE001
+            # an error here must not silently allow what it exists to block
+            logger.error("WorksheetMethodGuard: %s", exc)
+            return False
+
+
+@implementer(IGuardAdapter)
+class ReopenGuard(object):
+    """Only Send back reopens a submitted or verified worksheet
+    (senaite.pfas.reopen_guard): the worksheet's retract, and an analysis's
+    retract on such a worksheet, run only inside a request Send back or the
+    identity retraction marked. Core offers a transition only when this
+    passes, so the plain Retract is hidden, and a URL firing it refused."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def guard(self, transition):
+        if transition != "retract":
+            return True
+        from bika.lims import api
+        from senaite.pfas import reopen_guard
+        try:
+            request = api.get_request()
+            if getattr(self.context, "portal_type", "") == "Worksheet":
+                kind, state = "worksheet", api.get_review_status(self.context)
+            else:
+                ws = self.context.getWorksheet()
+                kind, state = "analysis", (api.get_review_status(ws) if ws is not None else None)
+            return reopen_guard.allowed(kind, transition, state, reopen_guard.marked(request))
+        except Exception as exc:                            # noqa: BLE001
+            # fails closed: a reopen not understood is not made
+            logger.warning("reopen guard: %s", exc)
+            return False
+

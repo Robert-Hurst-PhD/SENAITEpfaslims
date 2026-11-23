@@ -28,7 +28,7 @@ class VirtualTile(object):
         self._title = title
         self._url = url
         self._description = description
-        self._icon = icon          # FontAwesome class, e.g. "fa-flask"
+        self._icon = icon          # unused: the picture is page_groups.ICONS
 
     def getId(self):
         return self._id
@@ -56,79 +56,75 @@ def _p(tool_id):
 
 
 # ── PFAS tool definitions ────────────────────────────────────────────────────
-# Each entry: (id, title, view_name, description, fa_icon_class)
+# Each entry: (id, title, view_name, description, unused); the tile's
+# picture is its page's drawing in page_groups.ICONS
 # These are VirtualTile templates; the base URL is added at request time.
 
 _PFAS_TOOL_DEFS = [
-    ("pfas-sample-status",   "Batch Status",
+    ("pfas-sample-status",   "Worksheet status",
      "@@pfas-sample-status",
      "Five-stage progress for every active worksheet",
-     "fa-tasks"),
+     ""),
 
     ("pfas-control-chart",   "Control Charts",
      "@@pfas-control-chart",
      "QC control charts with Westgard rule evaluation",
-     "fa-chart-line"),
+     ""),
 
     ("pfas-calibrations",    "Calibration Archive",
      "@@pfas-calibrations",
      "Every run's calibration curves; approved in Data Review",
-     "fa-sliders-h"),
+     ""),
 
     ("pfas-method-profiles", "Method Profiles",
      "@@pfas-method-profiles",
      "Per-method QC acceptance criteria",
-     "fa-cogs"),
+     ""),
 
     ("pfas-setup-refs",      "Setup Ref Defs",
      "@@pfas-setup-references",
      "Sync PFAS QC criteria to SENAITE Reference Definitions",
-     "fa-sync-alt"),
+     ""),
 
     ("pfas-method-wizard",   "New Method Wizard",
      "@@pfas-method-wizard",
      "Step-by-step guided wizard for a new analytical method",
-     "fa-magic"),
+     ""),
 
     ("pfas-import-studio",   "Import Studio",
      "@@pfas-import-studio",
      "Guided instrument column-mapping and profile editor",
-     "fa-file-import"),
+     ""),
 
     ("pfas-reagents",        "Reagent Inventory",
      "@@pfas-reagents",
      "ISO 17025 lot/expiry tracking with barcode scan and OCR",
-     "fa-flask"),
+     ""),
 
-    ("pfas-track",           "Sample Tracker",
+    ("pfas-track",           "Client Tracker",
      "@@pfas-track",
      "Public client-facing sample progress lookup by tracking number",
-     "fa-map-marker-alt"),
+     ""),
 
     ("pfas-extraction-guide", "Extraction Guide",
      "@@pfas-extraction-guide",
      "Step-by-step tablet workflow guiding analysts through each extraction stage",
-     "fa-microscope"),
+     ""),
 
-    ("pfas-logbooks",        "Logbooks",
-     "@@pfas-logbook-admin",
-     "Manage logbook definitions — rename, reorder, create custom logbooks",
-     "fa-book"),
-
-    ("pfas-edd-config",      "EDD Export",
+    ("pfas-edd-config",      "EDD settings",
      "@@pfas-edd-config",
      "EDD export profiles: each format's defaults, method codes, analyte codes, qualifiers",
-     "fa-file-export"),
+     ""),
 
     ("pfas-sample-subtypes", "Sample Sub-types",
      "@@pfas-sample-subtypes",
      "Sub-types of a sample type (Meat / Muscle: Beef, Pork) that regulatory limits may name",
-     "fa-sitemap"),
+     ""),
 
-    ("pfas-edd-batches",     "Batch EDDs",
+    ("pfas-edd-batches",     "EDD downloads",
      "@@pfas-edd-batches",
-     "Delivered EDDs: download per-batch EDD files; per-sample sample-type codes",
-     "fa-download"),
+     "Download each batch's EDD files; per-sample sample-type codes",
+     ""),
 ]
 
 
@@ -235,7 +231,7 @@ SETUP_GROUPS = [
         "item_ids": [
             _p("pfas-sample-status"),       # Batch Status
             _p("pfas-control-chart"),       # Control Charts
-            _p("pfas-track"),               # Sample Tracker
+            _p("pfas-track"),               # Client Tracker
             _p("pfas-extraction-guide"),    # Extraction Guide
         ],
     },
@@ -245,7 +241,6 @@ SETUP_GROUPS = [
         "item_ids": [
             _p("pfas-edd-config"),          # EDD export profiles
             _p("pfas-edd-batches"),         # Batch EDD dashboard
-            _p("pfas-logbooks"),            # Regulatory Logbooks
         ],
     },
 ]
@@ -278,10 +273,11 @@ class PFASSetupView(ViewHelpers, SetupView):
         Core item   → delegate to senaite.core's icon resolution.
         """
         if isinstance(item, VirtualTile):
-            if item._icon:
-                return '<i class="fas {0}" aria-hidden="true"></i>'.format(
-                    item._icon)
-            return ''
+            # the page's own drawing from the navigation (page_groups.ICONS),
+            # the one the panel shows for it
+            from senaite.pfas import page_groups
+            return ('<svg class="pfas-ico" aria-hidden="true"><use href="#{0}"/></svg>'
+                    .format(page_groups.icon_for((item._id,))))
         try:
             return super(PFASSetupView, self).get_icon_for(item, **kw)
         except Exception:

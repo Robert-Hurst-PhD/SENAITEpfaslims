@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<!-- The Client Tracker for anyone but staff: standalone, with none of the
+     staff frame. A signed-in client sees their own samples and issued
+     certificates above the tracking box; what those lists hold is decided by
+     SENAITE's own client permissions (client_page.py). A signed-out visitor
+     reaches a sample by its tracking number alone. -->
+<head tal:define="purl view/portal_url">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Client Tracker</title>
+  <link rel="icon" type="image/x-icon" tal:attributes="href string:${purl}/++resource++senaite.pfas/favicon.ico" />
+  <link rel="apple-touch-icon" tal:attributes="href string:${purl}/++resource++senaite.pfas/favicon-180.png" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-components.css?v=${context/@@pfas-macros/asset_version}" />
+  <!-- the one set of buttons, tables and badges; the frame it also styles is not drawn here -->
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-shell.css?v=${context/@@pfas-macros/asset_version}" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-tracker.css?v=${context/@@pfas-macros/asset_version}" />
+  <!-- the shared components' script: a list's columns widen as on every page -->
+  <script type="application/json" id="pfas-type-icons" tal:content="structure context/@@pfas-type-icons/spec"></script>
+  <script type="application/json" id="pfas-icons" tal:content="structure context/@@pfas-icons/spec"></script>
+  <script tal:attributes="src string:${purl}/++resource++senaite.pfas/pfas-components.js?v=${context/@@pfas-macros/asset_version}"></script>
+</head>
+<body class="pfas-tracker" tal:define="purl view/portal_url; client view/signed_in_client">
+  <div class="trk-header" role="banner">
+    <div class="trk-who">
+      <span class="trk-lab" tal:content="python:view.lab_name() or 'Client Tracker'">Laboratory</span>
+      <span class="trk-client" tal:condition="client" tal:content="view/client_name">DEMO Client</span>
+    </div>
+    <nav class="trk-actions" aria-label="Account">
+      <a class="btn-sm btn-secondary" tal:condition="client"
+         tal:attributes="href string:${purl}/@@pfas-coc">Chain of Custody</a>
+      <a class="btn-sm btn-secondary" tal:condition="view/signed_in"
+         tal:attributes="href string:${purl}/logout">Sign out</a>
+      <a class="btn-sm btn-secondary" tal:condition="not:view/signed_in"
+         tal:attributes="href string:${purl}/login?came_from=${purl}/@@pfas-home">Lab staff sign-in</a>
+    </nav>
+  </div>
+
+  <main class="page-body" tal:attributes="class python:'page-body has-lists' if client else 'page-body'">
+
+    <tal:lists tal:condition="client">
+    <section class="trk-section" aria-labelledby="trk-samples-h"
+             tal:define="cs view/client_samples; pg cs/paging">
+      <h2 id="trk-samples-h">Your samples</h2>
+      <form method="get" class="pfas-pill-row" aria-label="Sample states" tal:condition="cs/toggles"
+            tal:attributes="action string:${purl}/@@pfas-track">
+        <input type="hidden" name="t" tal:condition="view/tracking_number" tal:attributes="value view/tracking_number" />
+        <button type="submit" name="off" class="pfas-chip-toggle" tal:repeat="t cs/toggles"
+                tal:attributes="value t/off; aria-pressed python:'true' if t['on'] else 'false'"
+                tal:content="t/label">Received</button>
+      </form>
+      <div class="pfas-empty is-boxed" tal:condition="python:not cs['rows'] and not cs['any']">No samples yet.</div>
+      <div class="pfas-empty is-boxed" tal:condition="python:not cs['rows'] and cs['any']">No samples in the states shown.</div>
+      <div class="trk-scroll" tal:condition="cs/rows">
+        <table class="pfas-table" data-col-resize="trk-samples" tal:define="rm context/@@pfas-row-menu">
+          <thead><tr>
+            <th scope="col">Sample</th><th scope="col">Client sample ID</th><th scope="col">CoC</th>
+            <th scope="col">Matrix</th><th scope="col">Received</th><th scope="col">Status</th>
+          </tr></thead>
+          <tbody>
+            <!-- the row tracks its sample; the current certificate's package, as core serves it, is in its menu -->
+            <tr tal:repeat="r cs/rows"
+                tal:attributes="data-sample-id r/sample_id; data-coc r/coc; data-row-open r/track_url;
+                                data-row-actions python:rm.actions((u'Download the package', 'href', r['package_url']))">
+              <td class="trk-mono" tal:content="r/sample_id">DW-0001</td>
+              <td tal:content="r/client_sid">DEMO-1</td>
+              <td class="trk-mono" tal:content="r/coc">COC-2026-0001</td>
+              <td tal:content="r/matrix">Drinking water</td>
+              <td tal:content="r/received">2026-11-11</td>
+              <td tal:content="r/status">Received</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <metal:p use-macro="context/@@pfas-macros/macros/paging" />
+    </section>
+
+    <section class="trk-section" aria-labelledby="trk-certs-h"
+             tal:define="cc view/client_certificates; pg cc/paging">
+      <h2 id="trk-certs-h">Issued certificates</h2>
+      <div class="pfas-empty is-boxed" tal:condition="not:cc/rows">No certificates issued yet.</div>
+      <div class="trk-scroll" tal:condition="cc/rows">
+        <table class="pfas-table" data-col-resize="trk-certificates">
+          <thead><tr>
+            <th scope="col">Certificate</th><th scope="col">Sample</th><th scope="col">Client sample ID</th>
+            <th scope="col">Issued</th><th scope="col"><span class="sr-only">Kind</span></th>
+            <th scope="col"><span class="sr-only">PDF</span></th>
+          </tr></thead>
+          <tbody>
+            <!-- the row opens the certificate's PDF -->
+            <tr tal:repeat="r cc/rows" tal:attributes="data-sample-id r/sample_id; data-row-open r/pdf_url">
+              <td class="trk-mono" tal:content="r/certificate">DW-0001-R1</td>
+              <td class="trk-mono" tal:content="r/sample_id">DW-0001</td>
+              <td tal:content="r/client_sid">DEMO-1</td>
+              <td tal:content="r/issued">2026-11-11 10:00</td>
+              <td class="trk-marks">
+                <span tal:repeat="m r/marks" tal:attributes="class m/cls"
+                      tal:content="m/label">Interim</span>
+              </td>
+              <td>
+                <span class="pfas-muted" tal:condition="not:r/pdf_url">Ask the laboratory</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <metal:p use-macro="context/@@pfas-macros/macros/paging" />
+    </section>
+    </tal:lists>
+
+    <!-- The tracking box: a sample by its tracking number -->
+    <div class="search-card" id="tracking">
+      <h2>Find your sample</h2>
+      <p>Enter the tracking number from your receipt (e.g. PF-260611-A3K9Q7ZD)</p>
+      <form method="get" action="">
+        <div class="search-row">
+          <input class="search-input"
+                 type="text"
+                 name="t"
+                 placeholder="PF-YYMMDD-XXXXXXXX"
+                 maxlength="18"
+                 autocomplete="off"
+                 autocapitalize="characters"
+                 aria-label="Tracking number"
+                 tal:attributes="value view/tracking_number" />
+          <button class="search-btn" type="submit">Track</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="not-found" tal:condition="python:view.tracking_number() and view.limited()">
+      <strong>Too many look-ups</strong> Try again later.
+    </div>
+
+    <!-- Not found message -->
+    <div class="not-found" tal:condition="view/not_found">
+      <strong>Tracking number not found</strong>
+      Check the number on your receipt and try again. If you continue to have
+      trouble, please contact the laboratory.
+    </div>
+
+    <!-- Result card -->
+    <tal:result tal:condition="view/status" tal:define="s view/status">
+      <div class="result-card"
+           tal:attributes="class string:result-card stage-${s/stage}">
+
+        <!-- Stage hero with animation -->
+        <div class="stage-hero">
+          <div class="stage-animation"
+               tal:content="structure view/animation_svg">
+          </div>
+          <div class="stage-hero-text">
+            <h3 tal:content="s/stage_label">On Instrument</h3>
+            <div class="tracking-num"
+                 tal:content="view/tracking_number">PF-260611-A3K9Q7ZD</div>
+            <div class="method-name"
+                 tal:condition="s/method"
+                 tal:content="s/method">FDA 32-PFAS</div>
+          </div>
+        </div>
+
+        <!-- Five-stage progress bar -->
+        <div class="progress-section">
+          <div class="progress-steps">
+            <div tal:repeat="step s/steps" tal:define="ic context/@@pfas-icons"
+                 tal:attributes="class string:step ${step/status}">
+              <div class="step-dot" tal:content="structure python:ic.stage(step['icon'], step['label'], step['status'], size='lg')">1</div>
+              <div class="step-label" tal:content="step/label">Received</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Estimate row -->
+        <div class="info-row">
+          <tal:est tal:condition="s/estimate_text">
+            Avg. time at this stage:
+            <span class="est-badge" tal:content="s/estimate_text">~4 hours</span>
+          </tal:est>
+          <span class="est-na" tal:condition="not:s/estimate_text">
+            Time estimate not yet available (insufficient history)
+          </span>
+        </div>
+
+      </div><!-- /.result-card -->
+    </tal:result>
+
+  </main>
+</body>
+</html>

@@ -21,7 +21,12 @@
        drawer ...): one file for PFAS and core pages alike (decided 2026-10-11) -->
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-components.css?v=${context/@@pfas-macros/asset_version}" />
+  <!-- the sample type icons' drawings, once, for a row a script builds (sample_type_icons.py) -->
+  <script type="application/json" id="pfas-type-icons" tal:content="structure context/@@pfas-type-icons/spec"></script>
+  <!-- every other icon's drawing, once, for what a script builds (icons.py) -->
+  <script type="application/json" id="pfas-icons" tal:content="structure context/@@pfas-icons/spec"></script>
   <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-components.js?v=${context/@@pfas-macros/asset_version}"></script>
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-browser-check.js?v=${context/@@pfas-macros/asset_version}"></script>
   <!-- controlled documents on paper: the lab theme, the control block and the footer -->
   <link rel="stylesheet" type="text/css" media="print"
         tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-print.css?v=${context/@@pfas-macros/asset_version}" />
@@ -54,23 +59,120 @@
      tal:define="hterm python:context.restrictedTraverse('@@pfas-macros').help_term(hid)"
      tal:attributes="data-help-entry hid; aria-label string:Help: ${hterm}">?</button></tal:defs>
 
-  <!-- A pass / fail result as a symbol: define pf_ok (True, False, or None
-       for not judged). The word is its accessible name and tooltip. -->
-  <tal:defs tal:condition="nothing"><tal:pf metal:define-macro="pass-mark"><span
-     tal:condition="python:pf_ok is not None"
-     tal:attributes="class python:'badge badge-ok pfas-mark' if pf_ok else 'badge badge-fail pfas-mark';
-                     title python:'Pass' if pf_ok else 'Fail'; aria-label python:'Pass' if pf_ok else 'Fail'"
-     role="img" tal:content="python:u'\u2713' if pf_ok else u'\u2717'">&#10003;</span><span
+  <!-- A date range: one field, a From and a To date each under its visible
+       label, on one line joined by an arrow; the pair never splits. Define dr_id (the ids are <dr_id>-from and
+       <dr_id>-to), dr_from_name and dr_to_name (the posted names), dr_from
+       and dr_to (the values); optional: dr_min, dr_max (the bounds),
+       dr_from_title, dr_to_title, dr_submit (True: a change submits the
+       form). The caller wraps it in the Date range field. -->
+  <tal:defs tal:condition="nothing"><div class="pfas-date-range" metal:define-macro="date_range"
+     tal:define="dr_min dr_min|nothing; dr_max dr_max|nothing; dr_submit dr_submit|nothing">
+    <div class="pfas-date-part"><label tal:attributes="for string:${dr_id}-from">From</label>
+      <input type="date" class="pfas-input"
+             tal:attributes="id string:${dr_id}-from; name dr_from_name; value dr_from; min dr_min; max dr_max;
+                             title dr_from_title|nothing;
+                             onchange python:'this.form.submit()' if dr_submit else None" /></div>
+    <span class="pfas-date-arrow" aria-hidden="true">&#8594;</span>
+    <div class="pfas-date-part"><label tal:attributes="for string:${dr_id}-to">To</label>
+      <input type="date" class="pfas-input"
+             tal:attributes="id string:${dr_id}-to; name dr_to_name; value dr_to; min dr_min; max dr_max;
+                             title dr_to_title|nothing;
+                             onchange python:'this.form.submit()' if dr_submit else None" /></div>
+  </div></tal:defs>
+
+  <!-- A long list's paging (list_paging.paging): define pg. Rows first to
+       last of the whole, the page among the pages, Previous and Next. -->
+  <tal:defs tal:condition="nothing"><nav class="pfas-paging" aria-label="Pages" metal:define-macro="paging"
+     tal:condition="python:pg['total'] > 0">
+    <span tal:content="python:u'%d\u2013%d of %d' % (pg['first'], pg['last'], pg['total'])">1-20 of 340</span>
+    <span class="pfas-muted" tal:content="python:u'Page %d of %d' % (pg['page'], pg['pages'])">Page 1 of 17</span>
+    <a class="btn btn-secondary" tal:condition="pg/prev" tal:attributes="href pg/prev">Previous</a>
+    <a class="btn btn-secondary" tal:condition="pg/next" tal:attributes="href pg/next">Next</a>
+  </nav></tal:defs>
+
+  <!-- A pass / fail result as a mark (icons.py): define pf_ok (True, False,
+       or None for not judged). A tick for a pass, the failure diamond for a
+       fail; the word is its accessible name and its tooltip on hover, focus
+       and a long press. -->
+  <tal:defs tal:condition="nothing"><tal:pf metal:define-macro="pass-mark"><tal:m
+     tal:condition="python:pf_ok is not None" tal:define="ic context/@@pfas-icons"
+     tal:replace="structure python:ic.tip('pass', u'Pass') if pf_ok else ic.tip('fail', u'Fail')" /><span
      tal:condition="python:pf_ok is None" class="pfas-muted">&#8212;</span></tal:pf></tal:defs>
 
-  <!-- A status badge that can need attention: define attn_label (the
-       status), attn_cls (its badge class) and attn_reasons (a list, empty
-       when nothing needs doing). With reasons the badge turns amber and a
-       "!" beside it names them, on hover and to a screen reader. -->
-  <tal:defs tal:condition="nothing"><tal:attn metal:define-macro="status-attention"><span
-     tal:attributes="class python:'badge badge-warn' if attn_reasons else attn_cls"
-     tal:content="attn_label">Active</span><span tal:condition="attn_reasons" class="pfas-attn" role="img" tabindex="0"
-     tal:attributes="title python:u'\u003b '.join(attn_reasons); aria-label python:u'\u003b '.join(attn_reasons)">!</span></tal:attn></tal:defs>
+  <!-- A check answered Yes / No: the shared segmented control writing a
+       hidden input, which is what the form posts ("yes", "no"; "na" for N/A,
+       offered only where yn_na is defined true). Define yn_name (the
+       input's name and id), yn_value (what it posts until someone answers:
+       a token presses its button, anything else presses none) and yn_label
+       (its accessible name). -->
+  <tal:defs tal:condition="nothing"><tal:yn metal:define-macro="yes-no-na"><input type="hidden"
+     tal:attributes="id yn_name; name yn_name; value yn_value" /><div class="pfas-seg pfas-seg-sm is-fit" role="group"
+     data-field="data-field" data-quiet="data-quiet" tal:attributes="aria-label yn_label; data-input yn_name"><button
+     type="button" class="pfas-seg-item" tal:define="yn_na yn_na|nothing"
+     tal:repeat="c python:(('yes', 'Yes'), ('no', 'No')) + ((('na', 'N/A'),) if yn_na else ())"
+     tal:attributes="data-value python:c[0]; aria-pressed python:'true' if c[0] == yn_value else 'false'"
+     tal:content="python:c[1]">Yes</button></div></tal:yn></tal:defs>
+
+  <!-- A form's Save in the pinned action bar: the form is drawn in the
+       content, its Save at the foot of the window, always in view. Define
+       sb_form (the form's id); optional sb_label (Save), sb_name and
+       sb_value (what the button posts where the form reads which button
+       sent it), sb_class (btn btn-primary). The line before it says so once
+       the form holds a change not saved (pfas-components.js); the form's other actions go in the
+       "more" slot, after Save. Fill the page's action-bar slot with it. -->
+  <tal:defs tal:condition="nothing"><div class="pfas-action-bar" metal:define-macro="save-bar"
+     tal:define="sb_label sb_label|string:Save; sb_name sb_name|nothing; sb_value sb_value|nothing;
+                 sb_class sb_class|string:btn btn-primary"><span
+     class="form-note pfas-unsaved" role="status" tal:attributes="data-unsaved-for sb_form"></span><button
+     type="submit" tal:attributes="class sb_class; form sb_form; name sb_name; value sb_value"
+     tal:content="sb_label">Save</button><tal:more metal:define-slot="more" /></div></tal:defs>
+
+  <!-- A method chosen, the one way on every page: the methods by their
+       display names on a segmented control while there are six choices or
+       fewer, a drop-down beyond. Define mc_choices, a list of {"value",
+       "label"} (the label the method's display name; a choice of every
+       method has the value ""), with a "url" on each where a choice is a
+       link to the page showing it; mc_value (the value chosen) and mc_label
+       (its accessible name). A form field also defines mc_id and mc_name
+       (the hidden input or select the form posts; no mc_name: the field is
+       read by the page's script only); optional mc_submit (True: a choice
+       submits the form). -->
+  <tal:defs tal:condition="nothing"><tal:mc metal:define-macro="method-choice"
+     tal:define="mc_name mc_name|nothing; mc_id mc_id|nothing; mc_submit mc_submit|nothing;
+                 mc_links python:bool(mc_choices) and all(c.get('url') for c in mc_choices);
+                 mc_seg python:6 >= len(mc_choices)"><nav
+     class="pfas-seg" tal:condition="python:mc_seg and mc_links" tal:attributes="aria-label mc_label"><a
+     class="pfas-seg-item" tal:repeat="c mc_choices"
+     tal:attributes="href c/url; aria-selected python:'true' if c['value'] == mc_value else 'false'"
+     tal:content="c/label">EPA 537.1 Drinking Water</a></nav><tal:f tal:condition="python:mc_seg and not mc_links"><input
+     type="hidden" tal:attributes="id mc_id; name mc_name; value mc_value;
+                                   onchange python:'this.form.submit()' if mc_submit else None" /><div
+     class="pfas-seg" role="group" data-field="data-field" tal:attributes="aria-label mc_label; data-input mc_id"><button
+     type="button" class="pfas-seg-item" tal:repeat="c mc_choices"
+     tal:attributes="data-value c/value; aria-pressed python:'true' if c['value'] == mc_value else 'false'"
+     tal:content="c/label">EPA 537.1 Drinking Water</button></div></tal:f><select
+     class="pfas-select" tal:condition="python:not mc_seg and mc_links" onchange="location.href = this.value"
+     tal:attributes="aria-label mc_label"><option tal:repeat="c mc_choices"
+     tal:attributes="value c/url; selected python:'selected' if c['value'] == mc_value else None"
+     tal:content="c/label">EPA 537.1 Drinking Water</option></select><select
+     class="pfas-select" tal:condition="python:not mc_seg and not mc_links"
+     tal:attributes="id mc_id; name mc_name; aria-label mc_label;
+                     onchange python:'this.form.submit()' if mc_submit else None"><option tal:repeat="c mc_choices"
+     tal:attributes="value c/value; selected python:'selected' if c['value'] == mc_value else None"
+     tal:content="c/label">EPA 537.1 Drinking Water</option></select></tal:mc></tal:defs>
+
+  <!-- A status that can need attention: define attn_label (the status),
+       attn_cls (its badge class), attn_reasons (a list, empty when nothing
+       needs doing) and, for a document, attn_family 'document'. The status
+       is a picture (icons.status_mark): nothing when it is fine, the bottle
+       or the page in its state otherwise; with reasons the warning mark, and
+       the reasons written beside it so the state says what needs doing. A
+       status no picture says keeps its word. -->
+  <tal:defs tal:condition="nothing"><tal:attn metal:define-macro="status-attention"
+     tal:define="ic context/@@pfas-icons; attn_fam attn_family|string:lot; attn_pic python:ic.status_mark(attn_cls, attn_label, attn_reasons, attn_fam)"><tal:p
+     tal:condition="python:attn_pic is not None" tal:replace="structure attn_pic" /><span
+     tal:condition="python:attn_pic is None" tal:attributes="class attn_cls" tal:content="attn_label">Active</span><span
+     tal:condition="attn_reasons" class="pfas-attn-why" tal:content="python:u'\u003b '.join(attn_reasons)">No CoA on file</span></tal:attn></tal:defs>
 
   <!-- QC values as judged (qc_cells): one cell, and one table of cells.
        qc_value: define qv_cell = {text, word, cls, tip, notes, n}
@@ -101,7 +203,8 @@
           <thead>
             <tr>
               <th>Analyte</th>
-              <th class="is-right num" tal:repeat="col qv_group/columns">
+              <th class="is-right num" tal:repeat="col qv_group/columns"
+                  tal:attributes="data-eq python:col.get('equation'); tabindex python:'0' if col.get('equation') else None">
                 <span tal:replace="col/key">LFSM</span>
                 <span class="qv-unit" tal:condition="col/unit" tal:content="string:(${col/unit})">(Recovery %)</span><sup class="qv-cite"
                      tal:condition="col/notes" tal:content="python:u','.join(str(n) for n in col['notes'])">1</sup>
@@ -124,7 +227,7 @@
       </div>
       <ol class="qv-notes" tal:condition="qv_group/notes">
         <li tal:repeat="n qv_group/notes" tal:attributes="value python:n[0]"
-            tal:content="python:u'%s (%s method profile)' % (n[1], qv_method or u'the')">LFSM recovery 70-130 %</li>
+            tal:content="python:n[1] if len(n) > 2 else u'%s (%s method profile)' % (n[1], qv_method or u'the')">LFSM recovery 70-130 %</li>
       </ol>
     </section>
   </tal:defs>
@@ -144,7 +247,7 @@
   <!-- ── Shared QA sign-off attestation ────────────────────────────────────
        Rendered 3-tier attestation (Analyst prepared → QAO verified → Lab
        Director authorized) with signature stamps, for controlled printable
-       records (SOP, prep logs FM-ENV-25x, prepared standards). Define-once
+       records (SOP, preparation records, prepared standards). Define-once
        (§6C/§7). QAO + Director come from Print Settings; the preparer + date
        are passed by the calling template. A missing stamp prints a ruled line
        for wet signature. Caller sets: signoff_noun, signoff_prepared_name,

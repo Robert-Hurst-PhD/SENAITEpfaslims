@@ -29,7 +29,7 @@ QUALIFIER_LOD  = "< LOD"    # below limit of detection
 QUALIFIER_BLOQ = "BLoQ"     # below limit of quantitation (detected)
 QUALIFIER_ALOQ = "ALoQ"     # above limit of quantitation — report the dilution
 QUALIFIER_NC   = "N.C."     # not calculated (no IS)
-QUALIFIER_SATURATED = "Saturated"  # detected, but the apex overflowed: no number; shown as "Overflow"
+QUALIFIER_NQ   = "N.Q."     # not quantified: its isotope standard's peak deleted (no number, not N.D.)
 
 # a peak the analyst deleted in a raw run, and the reasons a calibrator comes
 # off its curve for one: its own quantifier's peak, or its isotope

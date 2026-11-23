@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """A prep sitting made from its recipe.
 
-New Prepared Standard is one sitting on a prep log, made from one recipe
-revision. The lots it makes are named from the method's code and the
+New Prepared Standard is one sitting of one recipe revision: its
+preparation record (prep_entries.py) names the recipe, and the lots it makes are named from the method's code and the
 recipe's levels (a series makes one lot per level), numbered by the prep
 date; their concentrations are calculated from the parent lot actually
 picked -- a purchased lot's certificate values as acid, a made lot's own --
 with the measured volumes, never typed. Each concentration says whether it
 rests on certificate values as acid ("acid") or on a typed value somewhere
 up the chain ("typed"). Expiry is the recipe's shelf life from the prep
-date, no later than the earliest parent's. Every lot is pinned to the
-recipe and revision that made it.
+date, no later than the earliest parent's. A parent out of date on the
+prep date is refused unless a reason is given (lot_expiry.gate). Every lot
+is pinned to the recipe and revision that made it.
 
     lot_names(rev, code)              -> [(level, title)]
     statement(names)                  -> "This sitting makes 7 lots, ..."
@@ -25,6 +26,7 @@ from __future__ import absolute_import, unicode_literals
 
 import json
 
+from senaite.pfas import lot_expiry
 from senaite.pfas import recipe_calc as rc
 from senaite.pfas.parentage_checks import default_expiry
 
@@ -97,13 +99,16 @@ def _conc_rows(values, basis, unit):
 
 
 def build(rev, rid, code, sitting, parents):
-    """(entry, rows, problems) for prep_entries.make. `sitting`: the log
-    (form_code, slug, revision, title), prepared_by, prepared_date,
-    standard_type, needs_values (a standard: refuse what cannot be
+    """(entry, rows, problems) for prep_entries.make. `rev` is the recipe
+    revision (its code and kind name the record); `code` is the method's
+    code, which names the lots. `sitting`: prepared_by, prepared_date,
+    standard_type, needs_values (a standard or series: refuse what cannot be
     calculated), taken (lot numbers already used), storage_location /
-    storage_conditions (blank: the
-    recipe's), equipment, final (the measured final volume, blank: the
-    recipe's) and shelf_days. `parents`: one per "made from", in order:
+    storage_conditions (blank: the recipe's), equipment, final (the measured
+    final volume, blank: the recipe's), shelf_days and expired_reason (why
+    a parent out of date on the prep date is used; lot_expiry.gate). The entry's recipe is
+    {id, revision, code, kind, name}; each lot keeps {id, revision}.
+    `parents`: one per "made from", in order:
     {"item": the picked lot or None, "cert": a purchased lot's certificate,
     "qty", "unit"}; the first is the one the concentrations come from."""
     rev, s = rev or {}, sitting or {}
@@ -119,8 +124,13 @@ def build(rev, rid, code, sitting, parents):
         entry_parents.append({"kind": item.get("kind"), "uid": item.get("uid"), "lot": item.get("lot_number"),
                               "name": item.get("name") or u"", "qty": p.get("qty") or u"",
                               "unit": p.get("unit") or u""})
-        if item.get("expiry"):
-            expiries.append(item["expiry"])
+        expiries.append(item.get("expiry") or u"")
+    # a parent out of date on the prep date is used only with a reason, kept
+    # on that parent in the record the preparer signs
+    entry_parents, expired = lot_expiry.gate(entry_parents, expiries, s.get("prepared_date"),
+                                             s.get("expired_reason"))
+    problems.extend(expired)
+    expiries = [e for e in expiries if e]
     first = (parents or [{}])[0] if parents else {}
     stock, basis = parent_values(first.get("item"), first.get("cert"), unit) if first.get("item") else ({}, {})
     if s.get("needs_values") and first.get("item"):
@@ -166,12 +176,12 @@ def build(rev, rid, code, sitting, parents):
                      "volume_prepared": vol, "expiry_date": expiry,
                      "analyte_concentrations": _conc_rows(conc or dict((a, None) for a in stock), basis, unit),
                      "recipe": dict(pin)})
-    entry = {"form_code": s.get("form_code") or u"", "logbook_slug": s.get("slug") or rev.get("log") or u"",
-             "logbook_revision": s.get("revision") or 1, "logbook_title": s.get("title") or u"",
-             "prepared_by": s.get("prepared_by") or u"", "prepared_date": day,
+    entry = {"prepared_by": s.get("prepared_by") or u"", "prepared_date": day,
              "storage_location": s.get("storage_location") or storage.get("location") or u"",
              "equipment": list(s.get("equipment") or []), "parents": entry_parents,
-             "unknown_parents": [], "recipe": dict(pin)}
+             "unknown_parents": [],
+             "recipe": dict(pin, code=rev.get("code") or u"", kind=rev.get("kind") or u"",
+                            name=rev.get("name") or u"")}
     return entry, rows, problems
 
 

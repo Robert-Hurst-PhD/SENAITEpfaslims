@@ -7,56 +7,64 @@
 
 <tal:header condition="python:sec == 'header'">
   <style type="text/css" tal:content="structure view/print_css">/* the lab print stylesheet */</style>
-  <div class="row section-header no-gutters pfas-coa">
-    <div class="pfas-coa-head">
-      <div class="pfas-coa-lab">
-        <img tal:condition="lab/logo" tal:attributes="src lab/logo" alt="" />
-        <div>
-          <div class="lab" tal:content="lab/name">Laboratory</div>
-          <div class="sub" tal:condition="lab/contact" tal:content="lab/contact">address</div>
-          <div class="sub" tal:condition="lab/accreditation" tal:content="lab/accreditation">ISO/IEC 17025</div>
-        </div>
-      </div>
-      <div class="doc" tal:define="meta view/doc_meta">
+  <!-- the lab on the left, its logo beside its name, as tall as the header, when one is set, the
+       document on the right over one ruled line; the black-and-white
+       variant is the same layout (pfas-print.css) -->
+  <div tal:attributes="class string:row section-header no-gutters pfas-coa ${view/variant}">
+    <table class="pfas-coa-head"><tr>
+      <td class="pfas-coa-logo" tal:condition="lab/logo" tal:attributes="style string:background-image: url('${lab/logo}')"></td>
+      <td class="pfas-coa-lab">
+        <div class="lab" tal:content="lab/name">Laboratory</div>
+        <div class="sub" tal:condition="lab/contact" tal:content="lab/contact">address</div>
+      </td>
+      <td class="doc" tal:define="meta view/doc_meta">
         <div class="t" i18n:translate="">Certificate of Analysis</div>
-        <div class="sub" tal:condition="meta/template_rev">
-          <span i18n:translate="">Template revision</span> <strong tal:content="meta/template_rev">3</strong>
+        <div class="meta">
+          <span tal:condition="meta/report_id"><tal:l i18n:translate="">Report</tal:l> <strong tal:content="meta/report_id">FEED-0002-R2</strong></span>
+          <span><tal:l i18n:translate="">Issued</tal:l> <strong tal:content="meta/issued">2026-09-30</strong></span>
         </div>
-        <div class="sub" tal:condition="meta/report_id">
-          <span i18n:translate="">Report</span> <strong tal:content="meta/report_id">FEED-0002-R2</strong>
-        </div>
-        <div class="sub"><span i18n:translate="">Issued</span> <span tal:content="meta/issued">2026-09-30</span></div>
-      </div>
-    </div>
+      </td>
+    </tr></table>
   </div>
 </tal:header>
 
 <tal:samples condition="python:sec == 'samples'">
-  <div class="row section-results no-gutters pfas-coa" tal:repeat="smp view/samples">
+  <div tal:attributes="class string:row section-results no-gutters pfas-coa ${view/variant}" tal:repeat="smp view/samples">
     <div class="pfas-coa-sample">
       <div tal:condition="smp/error|nothing" class="pfas-coa-error">
         <tal:i replace="smp/id"/>: this sample could not be rendered (<tal:e replace="smp/error"/>).
       </div>
       <tal:ok condition="not:smp/error|nothing">
+      <!-- the two sample IDs large in a tinted band, then the sample's
+           facts, label over value, four to a row -->
+      <div class="pfas-coa-sec" i18n:translate="">Sample</div>
+      <table class="pfas-coa-ids"><tr>
+        <td><div class="k" i18n:translate="">Lab sample ID</div><div class="v" tal:content="smp/id">DEMO-0001</div></td>
+        <td><div class="k" i18n:translate="">Client sample ID</div><div class="v" tal:content="smp/client_sid">DEMO-CS-01</div></td>
+      </tr></table>
       <table class="pfas-coa-info">
-        <tr><th i18n:translate="">Client</th><td tal:content="smp/client"></td>
-            <th i18n:translate="">Lab sample ID</th><td><strong tal:content="smp/id"></strong></td></tr>
-        <tr><th i18n:translate="">Contact</th><td tal:content="smp/contact"></td>
-            <th i18n:translate="">Client sample ID</th><td tal:content="smp/client_sid"></td></tr>
-        <tr><th i18n:translate="">Matrix</th><td tal:content="smp/matrix"></td>
-            <th i18n:translate="">Batch</th><td tal:content="smp/batch"></td></tr>
-        <tr><th i18n:translate="">Sampled</th><td tal:content="smp/sampled"></td>
-            <th i18n:translate="">Received</th><td tal:content="smp/received"></td></tr>
-        <tr><th i18n:translate="">Method</th><td tal:content="smp/method"></td>
-            <th i18n:translate="">Analysed</th><td tal:content="smp/analysed"></td></tr>
-        <tr tal:condition="smp/composite|nothing"><th i18n:translate="">Composite</th>
-            <td colspan="3" tal:content="smp/composite"></td></tr>
-        <tr tal:condition="smp/receipt|nothing"><th i18n:translate="">Receipt</th>
-            <td colspan="3" tal:content="smp/receipt"></td></tr>
-        <tr tal:condition="smp/blank_subtracted|nothing"><th i18n:translate="">Method blank</th>
-            <td colspan="3" i18n:translate="">Results are corrected for the batch's method blank.</td></tr>
+        <tr><td><div class="k" i18n:translate="">Client</div><div class="v" tal:content="smp/client"></div></td>
+            <td><div class="k" i18n:translate="">Contact</div><div class="v" tal:content="smp/contact"></div></td>
+            <td><div class="k" i18n:translate="">Matrix</div><div class="v" tal:content="smp/matrix"></div></td>
+            <td><div class="k" i18n:translate="">Batch</div><div class="v" tal:content="smp/batch"></div></td></tr>
+        <tr><td><div class="k" i18n:translate="">Sampled</div><div class="v" tal:content="smp/sampled"></div></td>
+            <td><div class="k" i18n:translate="">Received</div><div class="v" tal:content="smp/received"></div></td>
+            <td><div class="k" i18n:translate="">Analysed</div><div class="v" tal:content="smp/analysed"></div></td>
+            <td><div class="k" i18n:translate="">Certificate tier</div><div class="v" tal:content="smp/report_tier"></div></td></tr>
+        <tr tal:condition="smp/composite|nothing"><td colspan="4"><div class="k" i18n:translate="">Composite</div>
+            <div class="v" tal:content="smp/composite"></div></td></tr>
+        <tr tal:condition="smp/receipt|nothing"><td colspan="4"><div class="k" i18n:translate="">Receipt</div>
+            <div class="v" tal:content="smp/receipt"></div></td></tr>
+        <tr tal:condition="smp/blank_subtracted|nothing"><td colspan="4"><div class="k" i18n:translate="">Method blank</div>
+            <div class="v" i18n:translate="">Results are corrected for the batch's method blank.</div></td></tr>
       </table>
 
+      <!-- the method heads its results in a solid band -->
+      <div class="pfas-coa-band"><span class="k" i18n:translate="">Method</span>
+        <span tal:content="smp/method">EPA 537.1</span>
+        <!-- a code the batch or report carries: beside the results heading, its legend line below -->
+        <span class="pfas-coa-batch" tal:condition="smp/batch_codes|nothing"
+              tal:content="python:u', '.join(smp['batch_codes'])">B</span></div>
       <!-- the lab's column order: Analyte, CAS, Result in the matrix's
            unit, Qualifier, MDL, RL, Dilution; an MDL never set prints a dash -->
       <table class="pfas-coa-res">
@@ -86,12 +94,15 @@
         </tbody>
       </table>
       <div class="pfas-coa-note" tal:condition="smp/fmt/coa_note" tal:content="smp/fmt/coa_note">Standard note</div>
-      <div class="pfas-coa-legend">
+      <!-- the key: what bold, U, MDL and each code in use mean, boxed; on a
+           page of its own where the issued revision says so -->
+      <div tal:attributes="class python:'pfas-coa-legend is-page' if smp.get('legend_page') else 'pfas-coa-legend'">
+        <div class="h" i18n:translate="">Key</div>
         <span i18n:translate="">Detected results in bold.</span>
         <span i18n:translate="">U = not detected at or above the reporting limit (RL).</span>
         <span i18n:translate="">MDL = method detection limit.</span>
-        <span tal:repeat="c smp/rule_codes|nothing" tal:content="c/line">J = estimated.</span>
-        <span tal:condition="smp/codes" i18n:translate="">Other codes: see Quality control qualifications.</span>
+        <!-- a line per code on the page, in the lab's wording (coa_format.legend_lines) -->
+        <tal:c repeat="c smp/legend_codes|nothing"><span tal:content="c/line">J = estimated.</span> </tal:c>
         <span tal:condition="not:smp/any_rl" class="pfas-coa-error" i18n:translate="">
           No reporting limits are configured for this method and matrix.</span>
       </div>
@@ -164,6 +175,8 @@
           All other results compared are below the applicable limits.</div>
         <div tal:condition="python:reg['below'] and not reg['findings']" i18n:translate="">
           All results compared are below the applicable limits.</div>
+        <div tal:condition="reg/test_data|nothing" i18n:translate="">
+          DEMO test data: a limit compared here is an invented value, not a regulatory limit.</div>
         <div class="links" tal:condition="reg/links">
           <span i18n:translate="">For more information:</span>
           <tal:l repeat="l reg/links"><a tal:attributes="href l/url" tal:content="l/label">EPA</a><tal:c condition="not:repeat/l/end"> &middot; </tal:c></tal:l>
@@ -175,13 +188,18 @@
 </tal:samples>
 
 <tal:footer condition="python:sec == 'footer'">
-  <div class="row section-footer no-gutters pfas-coa-foot">
+  <!-- the foot of every page: the laboratory's accreditation status on the
+       left, the page number in the centre (the page's own counter,
+       print_doc.CERTIFICATE_PAGE_CSS), its template
+       revision on the right -->
+  <div tal:attributes="class string:row section-footer no-gutters pfas-coa-foot ${view/variant}">
     <div id="footer-line"></div>
-    <div>
-      <strong tal:content="lab/name">Laboratory</strong>
-      <tal:c condition="lab/contact"> &middot; <span tal:content="lab/contact"></span></tal:c>
-    </div>
-    <div tal:condition="python:s.get('footer_text')" tal:content="python:s.get('footer_text')"></div>
+    <table class="pfas-coa-foot-row" tal:define="meta view/doc_meta"><tr>
+      <td class="l" tal:content="lab/accreditation">ISO/IEC 17025</td>
+      <td class="c"></td>
+      <td class="r"><tal:t condition="meta/template_rev"><tal:l
+          i18n:translate="">Template revision</tal:l> <tal:v replace="meta/template_rev">3</tal:v></tal:t></td>
+    </tr></table>
   </div>
 </tal:footer>
 </tal:coa>

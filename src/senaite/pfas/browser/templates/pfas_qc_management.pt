@@ -10,8 +10,9 @@
   <metal:fill fill-slot="content">
     <section class="bench-block" tal:define="items view/attention">
       <h2 class="bench-h">Needs attention</h2>
-      <ul class="bench-alerts">
+      <ul class="bench-alerts" tal:define="ic context/@@pfas-icons">
         <li tal:repeat="it items" tal:attributes="class python:'bench-bad' if it['level'] == 'bad' else 'bench-warn'">
+          <span class="pfas-alert-mark" tal:content="structure python:ic.svg('fail' if it['level'] == 'bad' else 'warn', size='md')"></span>
           <strong tal:content="it/title">No reporting template issued</strong>
           <span tal:content="it/detail">Nothing can be published.</span>
           <a tal:repeat="a it/actions" class="btn-sm btn-secondary"

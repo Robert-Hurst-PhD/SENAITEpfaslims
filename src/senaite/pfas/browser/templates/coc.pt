@@ -9,11 +9,23 @@
   <tal:r metal:fill-slot="header-right" tal:define="rec view/record">
     <a class="btn-sm btn-secondary" tal:condition="rec"
        tal:attributes="href string:${view/portal_url}/@@pfas-coc">All CoCs</a>
-    <a class="btn-sm btn-secondary" tal:condition="python:rec and view.is_staff()"
-       tal:attributes="href string:${view/portal_url}/@@pfas-coc-receive?coc=${rec/number}">Receive</a>
     <a class="btn-sm btn-secondary" tal:condition="rec" target="_blank"
        tal:attributes="href string:${view/portal_url}/@@pfas-coc-print?coc=${rec/number}">Print</a>
+    <tal:new tal:condition="not:rec">
+      <button class="btn-sm btn-primary" type="button" data-modal-open="coc-modal" data-new="data-new" tal:condition="view/is_staff">+ New CoC</button>
+      <form method="post" tal:condition="not:view/is_staff" tal:attributes="action string:${view/portal_url}/@@pfas-coc">
+        <input type="hidden" name="action" value="new" />
+        <button class="btn-sm btn-primary" type="submit">+ New CoC</button>
+      </form>
+    </tal:new>
   </tal:r>
+
+  <!-- the record's Save and Submit, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:one tal:define="rec view/record" tal:condition="python:rec and view.can_edit()"><tal:sb
+      tal:define="can_submit python:rec['status'] == 'open'; sb_form string:coc-form; sb_name string:action; sb_value string:save;
+                  sb_class python:'btn btn-secondary' if can_submit else 'btn btn-primary'"><div metal:use-macro="context/@@pfas-macros/macros/save-bar"><tal:m
+      metal:fill-slot="more"><button class="btn btn-primary" type="submit" form="coc-form" name="action" value="submit"
+      tal:condition="can_submit">Submit CoC</button></tal:m></div></tal:sb></tal:one></tal:ab>
 
   <div metal:fill-slot="content">
   <div class="page-body" tal:define="purl view/portal_url; rec view/record">
@@ -27,30 +39,27 @@
     <tal:list condition="not:rec">
       <div class="pfas-between">
         <p class="pfas-lead">One CoC per shipment; its samples are entered here. <tal:h define="hid string:coc"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
-        <button class="btn btn-primary" type="button" data-modal-open="coc-modal" data-new="data-new" tal:condition="view/is_staff">+ New CoC</button>
-        <form method="post" tal:condition="not:view/is_staff" tal:attributes="action string:${purl}/@@pfas-coc">
-          <input type="hidden" name="action" value="new" />
-          <button class="btn btn-primary" type="submit">+ New CoC</button>
-        </form>
       </div>
       <div class="pfas-modal" id="coc-modal" tal:condition="view/is_staff">
         <div class="pfas-modal-box is-narrow" role="dialog" aria-modal="true" aria-labelledby="coc-modal-title">
           <h2 id="coc-modal-title">New CoC</h2>
           <form method="post" tal:attributes="action string:${purl}/@@pfas-coc">
             <input type="hidden" name="action" value="new" />
-            <div class="field-row">
-              <label for="coc-client">Client</label>
-              <select id="coc-client" name="client_uid" class="pfas-select">
-                <option value="">Choose a client</option>
-                <option tal:repeat="c view/clients" tal:attributes="value python:c[0]" tal:content="python:c[1]">Client</option>
-              </select>
-            </div>
-            <div class="field-row">
-              <label for="coc-origin">Origin</label>
-              <select id="coc-origin" name="origin" class="pfas-select">
-                <option value="digital">Generated in-house</option>
-                <option value="paper">Received on paper</option>
-              </select>
+            <div class="pfas-form-row">
+              <div class="pfas-form-field">
+                <label for="coc-client">Client</label>
+                <select id="coc-client" name="client_uid" class="pfas-select">
+                  <option value="">Choose a client</option>
+                  <option tal:repeat="c view/clients" tal:attributes="value python:c[0]" tal:content="python:c[1]">Client</option>
+                </select>
+              </div>
+              <div class="pfas-form-field">
+                <label for="coc-origin">Origin</label>
+                <select id="coc-origin" name="origin" class="pfas-select">
+                  <option value="digital">Generated in-house</option>
+                  <option value="paper">Received on paper</option>
+                </select>
+              </div>
             </div>
             <div class="form-actions">
               <button class="btn btn-primary" type="submit">Create CoC</button>
@@ -59,21 +68,35 @@
           </form>
         </div>
       </div>
+      <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+            tal:attributes="action string:${purl}/@@pfas-coc">
+        <input type="hidden" name="show" tal:attributes="value view/list_show" />
+        <div class="pfas-form-field"><span>Show</span>
+          <nav class="pfas-seg" aria-label="Show">
+            <a class="pfas-seg-item" tal:repeat="o view/list_shows"
+               tal:attributes="href o/url; aria-selected python:'true' if o['on'] else 'false'"
+               tal:content="o/label">Not received</a>
+          </nav></div>
+        <div class="pfas-form-field"><label for="coc-q">Search</label>
+          <input type="search" name="q" id="coc-q" class="pfas-input pfas-input-wide"
+                 placeholder="CoC number or client" tal:attributes="value view/list_q" /></div>
+        <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
+      </form>
       <table class="pfas-table" data-col-resize="coc-1">
         <thead><tr><th>CoC</th><th>Client</th><th>Origin</th><th>Status</th><th>Samples</th><th>Created</th></tr></thead>
         <tbody>
-          <tr tal:repeat="r view/records">
-            <td><a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-coc?coc=${r/number}"
-                   tal:content="r/number">COC-2026-0001</a></td>
+          <tr tal:repeat="r view/list_rows" tal:attributes="data-row-open string:${purl}/@@pfas-coc?coc=${r/number}">
+            <td><strong tal:content="r/number">COC-2026-0001</strong></td>
             <td tal:content="r/client">Client</td>
             <td tal:content="python:'Received on paper' if r['origin'] == 'paper' else 'Generated in-house'">Generated in-house</td>
             <td tal:content="python:r['status'].capitalize()">Open</td>
             <td tal:content="python:len(r.get('samples') or []) or len(r.get('rows') or [])">0</td>
             <td tal:content="python:view.lab_at(r.get('created_at'), (r.get('created_at') or '')[:10], u'%Y-%m-%d')">2026-10-06</td>
           </tr>
-          <tr tal:condition="not:view/records"><td colspan="6">No CoC yet.</td></tr>
+          <tr tal:condition="not:view/list_rows"><td colspan="6" tal:content="view/list_empty_text">No CoC yet.</td></tr>
         </tbody>
       </table>
+      <tal:p define="pg view/list_paging"><metal:p use-macro="context/@@pfas-macros/macros/paging" /></tal:p>
     </tal:list>
 
     <!-- ── one CoC ── -->
@@ -84,19 +107,38 @@
         <span tal:replace="python:rec['status'].capitalize()">Open</span>
         <tal:p condition="python:rec['origin'] == 'paper'">&#183; paper CoC</tal:p>
       </p>
-      <form method="post" tal:attributes="action string:${purl}/@@pfas-coc?coc=${rec/number}">
+      <!-- the state's next step and its button -->
+      <div class="pfas-banner" id="coc-next" tal:condition="python:rec['status'] in ('submitted', 'received')">
+        <tal:s condition="python:rec['status'] == 'submitted'">
+          <span>Submitted. Next: the laboratory receives the shipment.</span>
+          <span class="pfas-banner-end" tal:condition="view/may_receive">
+            <a class="btn-sm btn-primary" tal:attributes="href string:${purl}/@@pfas-coc-receive?coc=${rec/number}">Receive</a></span>
+        </tal:s>
+        <tal:r condition="python:rec['status'] == 'received'">
+          <span>Received. Next: the receipt for the client.</span>
+          <span class="pfas-banner-end">
+            <a class="btn-sm btn-primary" tal:attributes="href string:${purl}/@@pfas-receipt?coc=${rec/number}">Receipt</a></span>
+        </tal:r>
+      </div>
+      <form method="post" id="coc-form" tal:attributes="action string:${purl}/@@pfas-coc?coc=${rec/number}">
         <fieldset class="pfas-ro" tal:attributes="disabled python:None if edit else 'disabled'">
         <div class="section-group-hdr">Shipment</div>
-        <div class="field-grid">
-          <label>Project <input type="text" name="project" tal:attributes="value h/project" /></label>
-          <label>Project number <input type="text" name="project_number" tal:attributes="value h/project_number" /></label>
-          <label>Sampled by <input type="text" name="sampler" tal:attributes="value h/sampler" /></label>
+        <div class="pfas-form-row">
+          <label class="pfas-form-field">Project <input type="text" name="project" tal:attributes="value h/project" /></label>
+          <label class="pfas-form-field">Project number <input type="text" name="project_number" tal:attributes="value h/project_number" /></label>
+          <label class="pfas-form-field">Sampled by
+            <span class="pfas-inline"><input type="text" name="sampler" id="coc-sampler" tal:attributes="value h/sampler" /><button
+                  type="button" class="btn-sm btn-secondary" data-this-is-me="coc-sampler" tal:condition="edit"
+                  tal:attributes="data-name view/user_name">This is me</button></span></label>
         </div>
-        <div class="field-grid">
-          <label>Carrier <input type="text" name="carrier" tal:attributes="value h/carrier" /></label>
-          <label>Tracking number <input type="text" name="tracking" tal:attributes="value h/tracking" /></label>
-          <label>Custody seals <input type="text" name="seals" tal:attributes="value h/seals" /></label>
-          <label tal:condition="view/is_staff">Client contact
+        <div class="pfas-form-row">
+          <label class="pfas-form-field">Carrier <input type="text" name="carrier" tal:attributes="value h/carrier" /></label>
+          <label class="pfas-form-field">Courier tracking number <input type="text" name="tracking" tal:attributes="value h/tracking" /></label>
+          <!-- custody seals are not asked; a CoC that recorded them shows
+               the answer as stored, and a save never posts it -->
+          <label class="pfas-form-field" id="coc-seals" tal:define="seals rec/seals|nothing" tal:condition="seals">Custody seals
+            <input type="text" readonly="readonly" tal:attributes="value seals" /></label>
+          <label class="pfas-form-field" tal:condition="view/is_staff">Client contact
             <select name="contact_uid">
               <option tal:repeat="c python:view.contacts(rec)" tal:attributes="value python:c[0]"
                       tal:content="python:c[1]">Contact</option>
@@ -104,104 +146,124 @@
         </div>
 
         <div class="section-group-hdr">Samples</div>
-        <div class="cf-coll-wrap" tal:define="rows view/rows; subs view/subtype_options">
-          <table class="pfas-table pfas-table-form cf-coll" data-col-resize="coc-cf-coll">
-            <thead><tr><th>Sample ID</th><th>Matrix</th><th tal:condition="subs">Sub-type</th><th>Sampling point</th><th>Collected</th>
-                       <th>Container</th><th>Preservative</th><th>Analysis</th><th>Homogenisation</th>
-                       <th>Composite (units, what)</th><th>Field QC (of)</th>
-                       <th title="A regulatory compliance sample">Compliance</th><th></th></tr></thead>
+        <div class="cf-coll-wrap" tal:define="rows view/rows; rm context/@@pfas-row-menu">
+          <table class="pfas-table pfas-table-form cf-coll is-sticky-first has-set-widths" data-col-resize="coc-cf-coll">
+            <!-- the columns filled for every sample; the rest of a row is its
+                 detail (the Edit dialog), shown in words under the Client sample ID.
+                 Each column is wide enough for its longest choice; where the
+                 page is narrower than the table, at any width, the table
+                 scrolls sideways in its own box with the Client sample ID held in
+                 view -->
+            <colgroup><col width="235" /><col width="185" /><col width="190" /><col width="245" />
+                      <col width="200" /><col width="175" /></colgroup>
+            <thead><tr><th>Client sample ID</th><th>Matrix</th><th>Sampled</th><th>Method</th>
+                       <th>Field QC</th><th>QC of sample</th></tr></thead>
             <tbody>
-              <tr tal:repeat="r rows">
+              <tr tal:repeat="r rows" tal:attributes="data-row-actions python:rm.actions((u'Sample details', 'event', 'sample-details'))">
                 <tal:row define="n repeat/r/index">
                 <td><input type="hidden" tal:attributes="name string:r__${n}__sample_uid; value r/sample_uid|nothing" />
-                    <input type="text" tal:attributes="name string:r__${n}__client_sid; value r/client_sid" /></td>
+                    <input type="hidden" tal:attributes="name string:r__${n}__composite; value python:'on' if r.get('composite') else ''" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__units; value r/units" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__description; value r/description" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__subtype; value r/subtype" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__sampling_point; value r/sampling_point" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__container; value r/container" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__preservation; value r/preservation" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__homogenisation; value r/homogenisation" />
+                    <input type="hidden" tal:attributes="name string:r__${n}__compliance; value python:'on' if r.get('compliance') else ''" />
+                    <input type="hidden" value="" tal:condition="not:r/sample_uid|nothing" tal:attributes="name string:r__${n}__remove" />
+                    <input type="text" tal:attributes="name string:r__${n}__client_sid; value r/client_sid" />
+                    <div class="pfas-muted" data-detail-summary="data-detail-summary" tal:content="python:view.detail_summary(r)">No composite, container or preservative set</div></td>
                 <td><select tal:attributes="name string:r__${n}__sampletype">
                       <option value=""></option>
                       <option tal:repeat="o ch/sampletypes" tal:attributes="value python:o[0]; selected python:'selected' if o[0] == r.get('sampletype') else None" tal:content="python:o[1]">Eggs</option>
                     </select></td>
-                <!-- the matrix's sub-types the row's method analyses (coc_subtypes.js) -->
-                <td tal:condition="subs"><select aria-label="Sub-type" tal:attributes="name string:r__${n}__subtype">
-                      <option value=""></option>
-                      <option tal:repeat="o subs" tal:attributes="value o/id; data-type o/type; data-off o/off;
-                              selected python:'selected' if o['id'] == r.get('subtype') else None" tal:content="o/name">Beef</option>
-                    </select></td>
-                <td><select tal:attributes="name string:r__${n}__sampling_point">
-                      <option value=""></option>
-                      <option tal:repeat="o ch/points" tal:attributes="value python:o[0]; selected python:'selected' if o[0] == r.get('sampling_point') else None" tal:content="python:o[1]">Point</option>
-                    </select></td>
                 <td><input type="datetime-local" tal:attributes="name string:r__${n}__sampled; value r/sampled" /></td>
-                <td><select tal:attributes="name string:r__${n}__container">
-                      <option value=""></option>
-                      <option tal:repeat="o ch/containers" tal:attributes="value python:o[0]; selected python:'selected' if o[0] == r.get('container') else None" tal:content="python:o[1]">HDPE</option>
-                    </select></td>
-                <td><select tal:attributes="name string:r__${n}__preservation">
-                      <option value=""></option>
-                      <option tal:repeat="o ch/preservations" tal:attributes="value python:o[0]; selected python:'selected' if o[0] == r.get('preservation') else None" tal:content="python:o[1]">Cool</option>
-                    </select></td>
                 <td><select tal:attributes="name string:r__${n}__method">
                       <option value=""></option>
                       <option tal:repeat="o ch/methods" tal:attributes="value o/id; selected python:'selected' if o['id'] == r.get('method') else None" tal:content="o/title">EPA 537.1</option>
                     </select></td>
-                <td><select tal:attributes="name string:r__${n}__homogenisation">
-                      <option value=""></option>
-                      <option tal:repeat="o ch/homogenisation" tal:attributes="value python:o[0]; selected python:'selected' if o[0] == r.get('homogenisation') else None" tal:content="python:o[1]">IKA mill</option>
-                    </select></td>
-                <td><label class="pfas-switch"><input type="checkbox" value="on" tal:attributes="name string:r__${n}__composite; checked python:'checked' if r.get('composite') else None" /><span class="pfas-switch-track"></span></label>
-                    <input type="number" min="2" step="1" tal:attributes="name string:r__${n}__units; value r/units" />
-                    <input type="text" tal:attributes="name string:r__${n}__description; value r/description" /></td>
                 <td><select tal:attributes="name string:r__${n}__field_qc">
                       <option value=""></option>
                       <option tal:repeat="o ch/field_qc" tal:attributes="value o; selected python:'selected' if o == r.get('field_qc') else None" tal:content="o">Field reagent blank</option>
-                    </select>
-                    <input type="text" tal:attributes="name string:r__${n}__field_qc_of; value r/field_qc_of" /></td>
-                <td class="is-center"><label class="pfas-switch"><input type="checkbox" value="on" tal:attributes="name string:r__${n}__compliance; checked python:'checked' if r.get('compliance') else None; aria-label string:Compliance sample" /><span class="pfas-switch-track"></span></label></td>
-                <td><label tal:condition="not:r/sample_uid|nothing"><input type="checkbox" value="on" tal:attributes="name string:r__${n}__remove" /> Remove</label></td>
+                    </select></td>
+                <td><input type="text" tal:attributes="name string:r__${n}__field_qc_of; value r/field_qc_of" /></td>
                 </tal:row>
               </tr>
             </tbody>
           </table>
           <template class="cf-row-template">
-            <tr>
-              <td><input type="text" name="r__NEW__client_sid" /></td>
+            <tr tal:attributes="data-row-actions python:rm.actions((u'Sample details', 'event', 'sample-details'))">
+              <td>
+                  <input type="hidden" name="r__NEW__composite" value="" />
+                  <input type="hidden" name="r__NEW__units" value="" />
+                  <input type="hidden" name="r__NEW__description" value="" />
+                  <input type="hidden" name="r__NEW__subtype" value="" />
+                  <input type="hidden" name="r__NEW__sampling_point" value="" />
+                  <input type="hidden" name="r__NEW__container" value="" />
+                  <input type="hidden" name="r__NEW__preservation" value="" />
+                  <input type="hidden" name="r__NEW__homogenisation" value="" />
+                  <input type="hidden" name="r__NEW__compliance" value="" />
+                  <input type="hidden" name="r__NEW__remove" value="" />
+                  <input type="text" name="r__NEW__client_sid" />
+                  <div class="pfas-muted" data-detail-summary="data-detail-summary">No composite, container or preservative set</div></td>
               <td><select name="r__NEW__sampletype"><option value=""></option>
                     <option tal:repeat="o ch/sampletypes" tal:attributes="value python:o[0]" tal:content="python:o[1]">Eggs</option></select></td>
-              <td tal:condition="subs"><select name="r__NEW__subtype" aria-label="Sub-type" hidden="hidden"><option value=""></option>
-                    <option tal:repeat="o subs" tal:attributes="value o/id; data-type o/type; data-off o/off" tal:content="o/name">Beef</option></select></td>
-              <td><select name="r__NEW__sampling_point"><option value=""></option>
-                    <option tal:repeat="o ch/points" tal:attributes="value python:o[0]" tal:content="python:o[1]">Point</option></select></td>
               <td><input type="datetime-local" name="r__NEW__sampled" /></td>
-              <td><select name="r__NEW__container"><option value=""></option>
-                    <option tal:repeat="o ch/containers" tal:attributes="value python:o[0]" tal:content="python:o[1]">HDPE</option></select></td>
-              <td><select name="r__NEW__preservation"><option value=""></option>
-                    <option tal:repeat="o ch/preservations" tal:attributes="value python:o[0]" tal:content="python:o[1]">Cool</option></select></td>
               <td><select name="r__NEW__method"><option value=""></option>
                     <option tal:repeat="o ch/methods" tal:attributes="value o/id" tal:content="o/title">EPA 537.1</option></select></td>
-              <td><select name="r__NEW__homogenisation"><option value=""></option>
-                    <option tal:repeat="o ch/homogenisation" tal:attributes="value python:o[0]" tal:content="python:o[1]">IKA mill</option></select></td>
-              <td><label class="pfas-switch"><input type="checkbox" name="r__NEW__composite" value="on" /><span class="pfas-switch-track"></span></label>
-                  <input type="number" min="2" step="1" name="r__NEW__units" />
-                  <input type="text" name="r__NEW__description" /></td>
               <td><select name="r__NEW__field_qc"><option value=""></option>
-                    <option tal:repeat="o ch/field_qc" tal:attributes="value o" tal:content="o">Field reagent blank</option></select>
-                  <input type="text" name="r__NEW__field_qc_of" /></td>
-              <td class="is-center"><label class="pfas-switch"><input type="checkbox" name="r__NEW__compliance" value="on" aria-label="Compliance sample" /><span class="pfas-switch-track"></span></label></td>
-              <td></td>
+                    <option tal:repeat="o ch/field_qc" tal:attributes="value o" tal:content="o">Field reagent blank</option></select></td>
+              <td><input type="text" name="r__NEW__field_qc_of" /></td>
             </tr>
           </template>
-          <script tal:condition="subs" tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/coc_subtypes.js?v=${context/@@pfas-macros/asset_version}"></script>
+          <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/coc_row_detail.js?v=${context/@@pfas-macros/asset_version}"></script>
           <button type="button" class="btn-sm btn-secondary cf-add-row" tal:condition="edit"
                   tal:attributes="data-next python:len(rows)">+ Add sample</button>
         </div>
 
-        <label tal:condition="python:rec['status'] == 'received'">Reason for the correction
-          <input type="text" name="reason" /></label>
-        </fieldset>
-        <div class="form-actions" tal:condition="edit">
-          <button class="btn btn-secondary" type="submit" name="action" value="save">Save</button>
-          <button class="btn btn-primary" type="submit" name="action" value="submit"
-                  tal:condition="python:rec['status'] == 'open'">Submit CoC</button>
+        <div class="pfas-form-row" tal:condition="python:rec['status'] == 'received'">
+          <label class="pfas-form-field">Reason for the correction <input type="text" name="reason" /></label>
         </div>
+        </fieldset>
       </form>
+
+      <!-- a row's detail: one dialog for every row; its boxes post
+           nothing, Done writes the row's own values -->
+      <div class="pfas-modal" id="coc-detail">
+        <div class="pfas-modal-box" role="dialog" aria-modal="true" aria-labelledby="coc-detail-title"
+             tal:define="subs view/subtype_options">
+          <h2 id="coc-detail-title">Sample details</h2>
+          <p class="pfas-hint is-flush" data-detail="sample"></p>
+          <div class="pfas-form-row">
+            <label class="pfas-switch"><input type="checkbox" form="pfas-no-form" data-detail="composite" /><span class="pfas-switch-track"></span> Composite sample</label>
+          </div>
+          <div class="pfas-form-row">
+            <label class="pfas-form-field">Units combined <input type="number" min="2" step="1" form="pfas-no-form" data-detail="units" /></label>
+            <label class="pfas-form-field">What was combined <input type="text" form="pfas-no-form" data-detail="description" /></label>
+          </div>
+          <div class="pfas-form-row">
+            <label class="pfas-form-field" data-detail-group="sampling_point">Sampling point <select form="pfas-no-form" data-detail="sampling_point"><option value=""></option>
+              <option tal:repeat="o ch/points" tal:attributes="value python:o[0]" tal:content="python:o[1]">x</option></select></label>
+            <label class="pfas-form-field" data-detail-group="container">Container <select form="pfas-no-form" data-detail="container"><option value=""></option>
+              <option tal:repeat="o ch/containers" tal:attributes="value python:o[0]" tal:content="python:o[1]">x</option></select></label>
+            <label class="pfas-form-field" data-detail-group="preservation">Preservative <select form="pfas-no-form" data-detail="preservation"><option value=""></option>
+              <option tal:repeat="o ch/preservations" tal:attributes="value python:o[0]" tal:content="python:o[1]">x</option></select></label>
+            <label class="pfas-form-field" data-detail-group="homogenisation">Homogenisation <select form="pfas-no-form" data-detail="homogenisation"><option value=""></option>
+              <option tal:repeat="o ch/homogenisation" tal:attributes="value python:o[0]" tal:content="python:o[1]">x</option></select></label>
+            <label class="pfas-form-field" data-detail-group="subtype" tal:condition="subs">Sub-type <select form="pfas-no-form" data-detail="subtype"><option value=""></option>
+              <option tal:repeat="o subs" tal:attributes="value o/id; data-type o/type; data-off o/off" tal:content="o/name">Beef</option></select></label>
+          </div>
+          <div class="pfas-form-row">
+            <label class="pfas-switch" title="A regulatory compliance sample"><input type="checkbox" form="pfas-no-form" data-detail="compliance" /><span class="pfas-switch-track"></span> Compliance sample</label>
+            <label class="pfas-switch" data-detail-group="remove"><input type="checkbox" form="pfas-no-form" data-detail="remove" /><span class="pfas-switch-track"></span> Remove this sample</label>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="button" data-detail-done="data-detail-done">Done</button>
+            <button class="btn btn-secondary" type="button" data-modal-close="data-modal-close">Cancel</button>
+          </div>
+        </div>
+      </div>
 
       <tal:log condition="rec/log">
         <div class="section-group-hdr">Changes</div>

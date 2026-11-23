@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Certificate not produced</title>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Certificate not produced</tal:t>
+<metal:content metal:fill-slot="content">
+  <!-- why the designed certificate could not be produced; a result
+       analysed before its sample was received shows the dates side by
+       side, with the buttons to where each is corrected -->
+  <div class="page-body-narrow" tal:define="r view/refusal">
+    <div class="pfas-card">
+      <h3>Sample <span class="pfas-mono" tal:content="r/sample">DW-0001</span></h3>
+      <p tal:content="r/text"></p>
+      <table class="pfas-table" data-col-resize="certificate-refused" tal:condition="r/rows">
+        <thead><tr><th>Analyte</th><th>Received</th><th>Analysed</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="row r/rows">
+            <td tal:content="python:row[0]">PFOA</td>
+            <td class="pfas-mono" tal:content="r/received">2026-01-07 12:47</td>
+            <td class="pfas-mono" tal:content="python:row[1] or u'—'">2026-01-07 09:10</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="pfas-muted" tal:condition="r/rows">Correct either date.</p>
+      <div class="form-actions">
+        <a class="btn btn-secondary" tal:condition="r/receipt_url"
+           tal:attributes="href r/receipt_url">Receipt</a>
+        <a class="btn btn-secondary" tal:condition="r/review_url"
+           tal:attributes="href r/review_url">Data Review</a>
+        <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-report-template">Reporting Template</a>
+      </div>
+    </div>
+  </div>
+</metal:content>
+</body>
+</html>

@@ -9,6 +9,10 @@
 <body>
   <tal:t metal:fill-slot="header-title">QC Qualifiers</tal:t>
 
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="sb_form string:qc-qualifiers-form; sb_label string:Save QC Qualifiers"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
   <div metal:fill-slot="content">
   <div class="page-body">
 
@@ -20,7 +24,7 @@
          ─────────────────────────────────────────────────────────────────── -->
     <p class="form-note">A failed QC criterion qualifies the result with the code below or holds it; control-material failures always hold. Edit draft wording before issuing. <tal:h define="hid string:qualified-release"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
-    <form method="post"
+    <form method="post" id="qc-qualifiers-form"
           tal:attributes="action string:${view/portal_url}/@@pfas-qc-qualifiers">
       <input type="hidden" name="action" value="save_qualifiers" />
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
@@ -41,7 +45,8 @@
                    tal:condition="row/customised">edited by the lab</div>
             </td>
             <td tal:condition="row/rule">Reporting rule</td>
-            <td tal:condition="not:row/rule">
+            <td tal:condition="row/kind|nothing">Kind of exceedance</td>
+            <td tal:condition="python:not row['rule'] and not row.get('kind')">
               <select class="pfas-select pfas-fill"
                       tal:attributes="name string:qual_disp.${row/key}">
                 <option tal:repeat="d disps"
@@ -64,9 +69,6 @@
           </tr>
         </tbody>
       </table>
-      <button class="btn btn-primary pfas-mt" type="submit">
-        Save QC Qualifiers
-      </button>
     </form>
 
   </div>

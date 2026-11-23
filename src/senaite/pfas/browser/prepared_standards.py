@@ -2,8 +2,8 @@
 """
 PFAS Prepared Standards (@@pfas-prep-standards).
 
-Manages in-house prepared reagents and standards.  Each record links to
-a PrepLogbookDef revision (slug + revision number), stores the parent
+Manages in-house prepared reagents and standards.  Each lot is made by a
+preparation record of its recipe (prep_entries.py), stores the parent
 reagents consumed (parentage), analyte concentrations, and generates an
 internal certificate (HTML) at creation/update.
 
@@ -46,7 +46,7 @@ _ANN_ANALYTES = u"senaite.pfas.prepstd.analyte_concentrations"
 # Facility QC unit registry, so the calibration chain is RESOLVED at read time by
 # facility_qc.equipment_provenance rather than copied onto the lot and left to rot.
 _ANN_EQUIPMENT = u"senaite.pfas.prepstd.equipment"
-# the prep entry (FM-ENV-001 / 002, prep_entries.py) that made the lot
+# the preparation record (prep_entries.py) that made the lot
 _ANN_ENTRY = u"senaite.pfas.prepstd.entry"
 # the recipe and revision that made the lot ({"id", "revision"}; prep_sitting.py)
 _ANN_RECIPE = u"senaite.pfas.prepstd.recipe"
@@ -62,10 +62,15 @@ WARN_ICON = (u'<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true
 STATUS_ACTIVE    = "active"
 STATUS_EXHAUSTED = "exhausted"
 STATUS_EXPIRED   = "expired"
-STATUS_PENDING   = "pending"        # a new lot until verified (lot_status)
+STATUS_PENDING   = "pending"        # a new lot until accepted (lot_status)
 STATUS_QUARANTINE = "quarantine"    # a rejected lot until a manager releases it
+# the standard type a new lot defaults to, by its recipe's kind; the form's
+# type select overrides it
+KIND_TYPES = {"reagent": u"Solvent / Reagent", "standard": u"QC Check Standard",
+              "series": u"Calibration Standard"}
+
 STATUSES = [(STATUS_ACTIVE, "Active"), (STATUS_EXHAUSTED, "Exhausted"), (STATUS_EXPIRED, "Expired"),
-            (STATUS_PENDING, "Pending verification"), (STATUS_QUARANTINE, "Quarantine")]
+            (STATUS_PENDING, "Pending acceptance"), (STATUS_QUARANTINE, "Quarantine")]
 
 # Vocabulary is OWNED by the PreparedStandard content type — single source of
 # truth (was duplicated here). Imported so this view stays in lock-step.
@@ -111,10 +116,8 @@ def _compute_expiry(prepared_date_str, expiry_days):
 
 
 def _is_expired(expiry_str):
-    d = _parse_date(expiry_str)
-    if not d:
-        return False
-    return d < lab_time.today()
+    from senaite.pfas.lot_expiry import expired_on
+    return expired_on(expiry_str, lab_time.today())
 
 
 # ── Content object helpers ─────────────────────────────────────────────────────
@@ -152,8 +155,11 @@ def _obj_to_dict(obj):
         "entry_id": IAnnotations(obj).get(_ANN_ENTRY) or u"",
         "recipe": _get_ann(obj, _ANN_RECIPE, {}),
     }
+    # the extensions QA approved or was asked for (lot_extension.py)
+    from senaite.pfas import lot_extension
+    d["extensions"] = lot_extension.entries(IAnnotations(obj).get(lot_extension.KEY))
     # Auto-update expired status (transient read-time only — not written to DB here)
-    if d["status"] == STATUS_ACTIVE and _is_expired(d["expiry_date"]):
+    if d["status"] == STATUS_ACTIVE and _is_expired(lot_extension.in_force(d["expiry_date"], d["extensions"])):
         d["status"] = STATUS_EXPIRED
     return d
 
@@ -225,7 +231,7 @@ def _save(portal, data):
         title = data.get("title") or u"Prepared Standard"
         folder.invokeFactory("PreparedStandard", id=uid, title=title)
         obj = folder[uid]
-        # a new lot is verified before use (lot_status)
+        # a new lot is accepted before use (lot_status)
         from senaite.pfas.lot_status import initial_status
         data["status"] = initial_status(True)
     try:
@@ -254,6 +260,18 @@ def _save(portal, data):
     return uid
 
 
+def lot_dict(portal, uid):
+    """One lot as the list shows it (with its effective expiry and what set
+    it), or None when it is not in the inventory."""
+    d = _get(portal, uid)
+    if d is None:
+        return None
+    eff = effective_expiry_info(portal, d)
+    d["effective_expiry"] = eff["date"]
+    d["expiry_inherited_from"] = eff["inherited_from"]
+    return d
+
+
 def _get(portal, uid):
     try:
         folder = _get_folder(portal)
@@ -263,12 +281,16 @@ def _get(portal, uid):
     return _obj_to_dict(obj) if obj else None
 
 
-def effective_expiry_info(portal, d, _seen=None, _depth=0):
+def effective_expiry_info(portal, d, _seen=None, _depth=0, as_of=None):
     """Inherited expiry: min(own expiry, every parent lot's effective expiry),
     purchased and prepared parents alike, at any depth. If a parent is
     tighter (earlier), the prep inherits it. Cycle-safe and depth-bounded as
-    build_parentage is. Returns {"date": iso, "inherited_from": parent}."""
-    own = d.get("expiry_date") or ""
+    build_parentage is. Returns {"date": iso, "inherited_from": parent}.
+    Each lot's own date is the one in force on `as_of` (a laboratory day;
+    None is now): its latest extension QA approved by then
+    (lot_extension.in_force), still capped by its parents."""
+    from senaite.pfas import lot_extension
+    own = lot_extension.in_force(d.get("expiry_date") or u"", d.get("extensions"), as_of)
     eff, src = own, ""
     seen = set(_seen or ())
     own_lot = (d.get("lot_number") or u"").strip()
@@ -278,7 +300,7 @@ def effective_expiry_info(portal, d, _seen=None, _depth=0):
         return {"date": eff, "inherited_from": src}
     for p in d.get("parent_reagents") or []:
         try:
-            pexp = _effective_expiry_of(portal, p, seen, _depth)
+            pexp = _effective_expiry_of(portal, p, seen, _depth, as_of)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("parent expiry of %s: %s", p.get("lot"), exc)
             continue
@@ -287,20 +309,65 @@ def effective_expiry_info(portal, d, _seen=None, _depth=0):
     return {"date": eff, "inherited_from": src}
 
 
-def _effective_expiry_of(portal, parent, seen, depth):
-    """One parent's effective expiry: a purchased lot's (its global-default
-    rules), a prepared lot's own capped by ITS parents."""
+def parents_in_force(portal, parents, as_of=None):
+    """A record's parents, each with its expiry in force ("expiry") on
+    `as_of` (None: now): the walk over a lot whose only parent is that one,
+    a prepared parent's inherited date included. A parent that cannot be
+    resolved has none. A parent whose own extension is in force then also
+    carries its printed note ("extension", lot_extension.note); a lot whose
+    category has no expiry, "no_expiry"."""
+    out = []
+    for p in parents or []:
+        q = dict(p, expiry=effective_expiry_info(portal, {"parent_reagents": [p]}, as_of=as_of)["date"] or u"")
+        q.update(_parent_extras(portal, p, as_of))
+        out.append(q)
+    return out
+
+
+def _parent_extras(portal, parent, as_of=None):
+    """What a record prints beside a parent's expiry: {"extension": the
+    note of the extension in force on `as_of`} and {"no_expiry": True} for
+    a lot whose category has none; {} when neither or not found."""
+    from senaite.pfas import lot_extension
+    try:
+        obj, kind = _resolve_lot(portal, parent)
+    except Exception:                                       # noqa: BLE001
+        return {}
+    if obj is None:
+        return {}
+    out = {}
+    if kind == KIND_MANUFACTURER:
+        from senaite.pfas.browser.reagents import no_expiry_categories
+        if (getattr(obj, "category", u"") or u"") in no_expiry_categories():
+            return {"no_expiry": True}
+    items = lot_extension.entries(IAnnotations(obj).get(lot_extension.KEY))
+    note = lot_extension.note(lot_extension.in_force_entry(items, as_of))
+    if note:
+        out["extension"] = note
+    return out
+
+
+def lot_in_force(portal, uid, as_of=None):
+    """The expiry in force on `as_of` of one inventory lot (its object id,
+    reagent or prepared standard): the reading every gate shares."""
+    return effective_expiry_info(portal, {"parent_reagents": [{"uid": uid}]}, as_of=as_of)["date"] or u""
+
+
+def _effective_expiry_of(portal, parent, seen, depth, as_of=None):
+    """One parent's effective expiry on `as_of`: a purchased lot's (its
+    global-default rules), a prepared lot's own capped by ITS parents."""
+    from senaite.pfas import lot_extension
     obj, kind = _resolve_lot(portal, parent)
     if obj is None:
         return u""
     if kind == KIND_MANUFACTURER:
         from senaite.pfas.browser.reagents import (
             _obj_to_dict as _rdict, _effective_expiry, get_expiry_defaults)
-        return _effective_expiry(_rdict(obj), get_expiry_defaults(portal))
+        return _effective_expiry(_rdict(obj), get_expiry_defaults(portal), as_of=as_of)
     child = _obj_to_dict(obj)
     if (child.get("lot_number") or u"").strip() in seen:
-        return str(child.get("expiry_date") or "")[:10]
-    return effective_expiry_info(portal, child, seen, depth + 1)["date"]
+        return lot_extension.in_force(str(child.get("expiry_date") or "")[:10], child.get("extensions"), as_of)
+    return effective_expiry_info(portal, child, seen, depth + 1, as_of=as_of)["date"]
 
 
 # ── Parentage hierarchy ──────────────────────────────────────────────────────
@@ -360,6 +427,37 @@ def _resolve_lot(portal, parent):
     return None, KIND_UNRESOLVED
 
 
+def resolve_loaded(portal, snap):
+    """(object, kind) of a lot a run was loaded with, from the snapshot the
+    run kept of it (uid, lot): the one lookup the traceability walk and the
+    batch record's print share."""
+    return _resolve_lot(portal, {"uid": snap.get("uid"), "lot": snap.get("lot")})
+
+
+def _lx_note(items):
+    from senaite.pfas import lot_extension
+    return lot_extension.note(lot_extension.in_force_entry(items))
+
+
+def _lx_printed(recorded, items, no_expiry=False):
+    from senaite.pfas import lot_expiry, lot_extension
+    if no_expiry:
+        return lot_expiry.NO_EXPIRY
+    return lot_extension.printed(recorded, items)
+
+
+def _in_force_node(node, own, rec):
+    """A parentage node's expiry: the date in force now ("expiry"); the
+    lot's own date ("expiry_base") and its extensions, from which the
+    review judges each use on its own day (parentage_checks.in_force). A
+    lot whose category has no expiry has none."""
+    from senaite.pfas import lot_extension
+    if rec.get("no_expiry"):
+        own = u""
+    node["expiry_base"], node["extensions"] = own, rec.get("extensions") or []
+    node["expiry"] = lot_extension.in_force(own, node["extensions"])
+
+
 def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
     """The full parentage hierarchy of a prepared standard, as a node list.
 
@@ -380,6 +478,7 @@ def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
     died -- a data-entry error should not be able to take a page down.
     """
     from senaite.pfas.content.reagent import CATEGORY_INHOUSE_WATER
+    from senaite.pfas.lot_expiry import REASON_KEY
 
     _seen = set(_seen or ())
     own_lot = (rec.get("lot_number") or u"").strip()
@@ -429,6 +528,8 @@ def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
             "water_log":  None,
             "children":   [],
             "problems":   [],
+            # why the preparation used this parent out of date, when it did
+            "expired_reason": p.get(REASON_KEY) or u"",
         }
 
         if obj is None:
@@ -444,13 +545,15 @@ def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
         if kind == KIND_MANUFACTURER:
             from senaite.pfas.browser.reagents import (
                 _COA_ANN_KEY, _ANN_ARCHIVED_KEY, _obj_to_dict as _rdict,
-                _effective_expiry, get_expiry_defaults)
+                _base_expiry, get_expiry_defaults)
             rd = _rdict(obj)
             node["status"] = rd.get("status") or u""
             node["storage_conditions"] = rd.get("storage_conditions") or u""
             node["supplier"] = rd.get("supplier") or u""
             node["cat_number"] = rd.get("cat_number") or u""
-            node["expiry"] = _effective_expiry(rd, get_expiry_defaults(portal))
+            _in_force_node(node, _base_expiry(rd, get_expiry_defaults(portal)), rd)
+            node["no_expiry"] = bool(rd.get("no_expiry"))
+            node["no_coa"] = bool(rd.get("no_coa"))
             # Presence is not sufficiency. A SPECIMEN certificate establishes no
             # traceability, and a claim resting on one would be exactly the false
             # assurance this subsystem exists to prevent — so the specimen flag
@@ -499,7 +602,7 @@ def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
         elif kind == KIND_PREPARED:
             child_rec = _obj_to_dict(obj)
             child_lot = (child_rec.get("lot_number") or u"").strip()
-            node["expiry"] = str(child_rec.get("expiry_date") or "")[:10]
+            _in_force_node(node, str(child_rec.get("expiry_date") or "")[:10], child_rec)
             node["prepared_date"] = str(child_rec.get("prepared_date") or "")[:10]
             node["prepared_by"] = child_rec.get("prepared_by") or u""
             node["entry_id"] = child_rec.get("entry_id") or u""
@@ -571,7 +674,8 @@ def _list(portal, q="", status_filter="", type_filter=""):
         from senaite.pfas.lot_status import matches_filter
         if not matches_filter(d["status"], status_filter):
             continue
-        if type_filter and d["standard_type"] != type_filter:
+        if type_filter and d["standard_type"] not in (
+                type_filter if isinstance(type_filter, (list, tuple)) else (type_filter,)):
             continue
         if q_lower:
             searchable = u" ".join([
@@ -632,7 +736,8 @@ def _render_parentage_html(nodes, depth=0):
                          u' &mdash; establishes nothing</span>')
             elif n.get("has_coa"):
                 prov += u' &middot; <strong>CoA on file</strong>'
-            else:
+            elif not n.get("no_coa"):
+                # a lot whose category needs no CoA carries no warning
                 prov += u' &middot; <span class="pk-warn">no CoA on file</span>'
         elif kind == KIND_WATER:
             badge = u'<span class="pk pk-water">TYPE 1 WATER</span>'
@@ -654,17 +759,18 @@ def _render_parentage_html(nodes, depth=0):
             prov = u'<span class="pk-warn">not traceable</span>'
 
         name = n.get("name") or u"(unnamed)"
-        if n.get("url"):
-            # a button beside the name, not a text link
-            name = (u'{1} <a class="btn-sm btn-secondary" href="{0}">Open</a>'
-                    .format(n["url"], name))
+        # the row opens its lot: no button stands inside a row (the url
+        # arrives escaped, as every value here does)
+        opens = (u' data-row-open="{0}"'.format(n["url"])
+                 if n.get("url") else u"")
         amount = u"{0} {1}".format(n.get("qty") or u"", n.get("unit") or u"").strip()
         out += (
-            u'<tr><td style="padding-left:{pad}px">{badge} {name}</td>'
+            u'<tr{opens}><td style="padding-left:{pad}px">{badge} {name}</td>'
             u'<td>{lot}</td><td>{prov}</td><td>{amount}</td>'
             u'<td>{expiry}</td></tr>').format(
-                pad=pad, badge=badge, name=name, lot=n.get("lot") or u"—",
-                prov=prov, amount=amount or u"—", expiry=n.get("expiry") or u"—")
+                opens=opens, pad=pad, badge=badge, name=name, lot=n.get("lot") or u"—",
+                prov=prov, amount=amount or u"—",
+                expiry=_lx_printed(n.get("expiry"), n.get("extensions"), n.get("no_expiry")) or u"—")
         for prob in n.get("problems") or []:
             out += (u'<tr><td colspan="5" style="padding-left:{0}px" '
                     u'class="pk-problem">{2} {1}</td></tr>').format(
@@ -746,17 +852,20 @@ def _render_equipment_html(nodes):
                 u'&mdash; the balance and pipettes used, and their calibration '
                 u'status, cannot be shown. Record them on the prepared-standard '
                 u'form.</td></tr>')
+    from senaite.pfas import facility_qc
     rows = u""
     for n in nodes:
         traced = []
         for r in n.get("records") or []:
             d = r.get("data") or {}
-            if r.get("type") == "weight_set":
+            if r.get("type") == "weight_set" and not facility_qc.calibration_required(d):
+                traced.append(u"weight set {0} &mdash; not calibrated".format(d.get("set_id") or u"?"))
+            elif r.get("type") == "weight_set":
                 traced.append(u"weight set {0} &mdash; {1}, cert {2}".format(
                     d.get("set_id") or u"?", d.get("cal_lab") or u"?",
                     d.get("cal_cert_number") or u"?"))
             elif r.get("type") == "balance_verification":
-                traced.append(u"verified {0}".format(d.get("verified_date") or u"?"))
+                traced.append(u"checked {0}".format(d.get("verified_date") or u"?"))
             elif r.get("type") == "pipette_calibration":
                 # For an EXTERNAL check the provider and its certificate are the
                 # traceability endpoint -- the same role the metrology laboratory
@@ -784,12 +893,30 @@ def _render_equipment_html(nodes):
     return rows
 
 
+def _named_concentrations(rows):
+    """The concentration rows with each analyte by the compound library's
+    display name (compound_library.canonical_name); a name the library does
+    not know prints as stored. An unreadable library leaves them as stored."""
+    rows = list(rows or [])
+    try:
+        from senaite.pfas import compound_library, compound_library_store
+        library = compound_library_store.library()
+    except Exception:                                       # noqa: BLE001
+        logger.warning("compound library unreadable: analytes print as stored", exc_info=True)
+        return rows
+    return [dict(r, analyte=compound_library.canonical_name(library, r.get("analyte")))
+            if isinstance(r, dict) and r.get("analyte") else r for r in rows]
+
+
 def _render_cert_html(d, signers=None, portal=None):
     """Return the internal certificate HTML string for a prepared-standard dict.
 
     `signers` (optional) = {"qao": staff-dict-or-None, "director"...} from
     print settings; drives the 3-tier QA attestation. Names only (this cert is
     written to a standalone file, so signature-image URLs are not embedded)."""
+    # an analyte by its display name, as the certificate and the QC Review
+    # print it
+    d = dict(d, analyte_concentrations=_named_concentrations(d.get("analyte_concentrations")))
     # the page is built as a string: every value is escaped first
     d = html_safe(d)
     signers = html_safe(signers or {})
@@ -826,18 +953,11 @@ def _render_cert_html(d, signers=None, portal=None):
     # placeholder as though it were the lab's name.
     lab_name, lab_address = u"", u""
     if portal is not None:
-        try:
-            lab = portal.bika_setup.laboratory
-            nm = (lab.getName() or u"").strip()
-            if nm and nm != u"Laboratory Information":
-                lab_name = html_safe(nm)
-            addr = html_safe(lab.getPostalAddress() or {})
-            lab_address = u", ".join(
-                [x for x in (addr.get("address"), addr.get("city"),
-                             addr.get("zip"), addr.get("state"),
-                             addr.get("country")) if x])
-        except Exception:
-            pass
+        from senaite.pfas import lab_identity
+        nm = lab_identity.lab_name(portal)
+        if nm and nm != u"Laboratory Information":
+            lab_name = html_safe(nm)
+        lab_address = html_safe(lab_identity.lab_address(portal))
     lab_header = lab_name or (
         u'<span style="color:#8a1c1c">Laboratory name and address not '
         u'configured (ISO 17025 §7.8.2.1(a))</span>')
@@ -884,7 +1004,7 @@ def _render_cert_html(d, signers=None, portal=None):
             u'{0} of {1} source lot(s) have no USABLE certificate of analysis '
             u'on file '
             u'({2}). Without the supplier\'s certificate the reference value '
-            u'these were prepared against is unverified, so traceability to a '
+            u'these were prepared against is not confirmed, so traceability to a '
             u'stated reference cannot be claimed (ISO 17025 §6.5).').format(
                 len(without_coa), len(mfr),
                 u", ".join(n.get("lot") or u"?" for n in without_coa)) + _spec
@@ -997,7 +1117,7 @@ def _render_cert_html(d, signers=None, portal=None):
   <div><dt>Storage Location</dt><dd>{storage_location}</dd></div>
   <div><dt>Storage conditions</dt><dd>{storage_conditions}</dd></div>
   <div><dt>Volume / Amount</dt><dd>{volume_prepared}</dd></div>
-  <div><dt>Prep Logbook</dt><dd>{logbook_title} (Rev {logbook_revision})</dd></div>
+  <div><dt>{made_by_label}</dt><dd>{made_by_value}</dd></div>
 </dl>
 
 <h2 style="font-size:13px;margin-bottom:8px">Analyte Concentrations</h2>
@@ -1075,15 +1195,20 @@ balance that was in calibration that morning stays defensible afterwards.</p>
         lot_number=d.get("lot_number", ""),
         standard_type=d.get("standard_type", ""),
         prepared_date=d.get("prepared_date", ""),
-        expiry_date=d.get("expiry_date", ""),
+        # an extended lot prints the extension: the date in force, the
+        # original and who approved it (lot_extension.printed)
+        expiry_date=_lx_printed(d.get("expiry_date", ""), d.get("extensions")),
         prepared_by=d.get("prepared_by", "") or u"—",
         qao_name=qao_name,
         director_name=director_name,
         storage_location=d.get("storage_location", ""),
         storage_conditions=d.get("storage_conditions") or u"not recorded",
         volume_prepared=d.get("volume_prepared", ""),
-        logbook_title=d.get("logbook_title", ""),
-        logbook_revision=d.get("logbook_revision", ""),
+        # a lot names the preparation record that made it; a lot made
+        # before records, the logbook it was entered on
+        made_by_label=u"Preparation record" if d.get("entry_id") else u"Prep Logbook",
+        made_by_value=d.get("entry_id") or u"%s (Rev %s)" % (d.get("logbook_title", ""),
+                                                            d.get("logbook_revision", "")),
         analyte_rows=rows_html or u"<tr><td colspan='3'>No analytes recorded</td></tr>",
         parent_rows=parents_html,
         expiry_note_section=(
@@ -1099,6 +1224,18 @@ balance that was in calibration that morning stays defensible afterwards.</p>
         calc_rows=calc_rows,
         equip_rows=equip_rows,
     )
+
+
+def _why(exc):
+    """A refusal's message as text: a SignatureRefused's own text, else the
+    exception's."""
+    text = getattr(exc, "text", None)
+    if text:
+        return text
+    try:
+        return u"%s" % exc
+    except UnicodeDecodeError:
+        return str(exc).decode("utf-8", "replace")
 
 
 # ── View ──────────────────────────────────────────────────────────────────────
@@ -1120,6 +1257,8 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         action = self.request.form.get("action", "")
         if action == "cert":
             return self._serve_cert()
+        if action == "verify_prep":
+            return self._handle_verify_prep()
         if self.request.method == "POST":
             from senaite.pfas.browser.perms import disable_csrf
             disable_csrf(self.request)
@@ -1137,56 +1276,18 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
                 return self._handle_review_prep()
         return self.template()
 
-    # ── prep entries: the library's logbooks (prep_entries.py) ────────────
-
-    def prep_forms(self):
-        """[{"code", "slug", "revision", "title"}]: each library prep logbook's
-        current revision."""
-        from senaite.pfas.browser.prep_logbooks import _get_active_families
-        from senaite.pfas.logbook_store import LIBRARY, scope_of
-        out = []
-        for d in _get_active_families(self._portal()):
-            if scope_of(d) == LIBRARY:
-                out.append({"code": d.get("logbook_code") or d["logbook_slug"], "slug": d["logbook_slug"],
-                            "revision": d.get("revision") or 1, "title": d.get("title") or u""})
-        return out
-
-    def tab(self):
-        want = self.request.form.get("tab") or u"lots"
-        return want if want in [f["code"] for f in self.prep_forms()] else u"lots"
-
-    def date_range(self):
-        return (self.request.form.get("from") or u"", self.request.form.get("to") or u"")
-
-    def entries(self):
-        """The current logbook tab's entries, newest first, in the date range."""
-        from senaite.pfas import prep_entries
-        if self.tab() == u"lots":
-            return []
-        since, until = self.date_range()
-        portal = self._portal()
-        lots = dict((r["uid"], r) for r in _list(portal))
-        out = []
-        for e in prep_entries.list_entries(portal, self.tab(), since or None, until or None):
-            out.append(dict(e, lot_numbers=u", ".join((lots.get(u) or {}).get("lot_number") or u"?"
-                                                        for u in e.get("lots") or []),
-                            parents_text=u", ".join(u"%s %s" % (p.get("name") or u"", p.get("lot") or u"")
-                                                    for p in e.get("parents") or [])))
-        return out
-
-    def print_control(self):
-        """A logbook tab prints as that logbook, for the date range shown."""
-        if self.tab() == u"lots":
-            return None
-        since, until = self.date_range()
-        return {"doc_id": self.tab(), "title": self.tab(),
-                "cells": [(u"From", since or u"first entry"), (u"To", until or u"today")]}
+    # ── preparation records (prep_entries.py) ─────────────────────────────
 
     def parent_lots(self):
-        """{"kind:uid": item}: the lots a prep may use (in date, not used up)."""
-        from senaite.pfas.browser.bench_inventory import usable_lots
-        return dict(("%s:%s" % (i["kind"], i["uid"]), i)
-                    for i in usable_lots(self._portal(), lab_time.today().isoformat()))
+        """{"kind:uid": item}: the lots a prep may use -- not used up,
+        archived or quarantined. A lot out of date is offered too: the
+        sitting judges it against the prep date and uses it only with a
+        reason (lot_expiry.gate)."""
+        from senaite.pfas.bench_queue import is_usable, out_of_date_only
+        from senaite.pfas.browser.bench_inventory import inventory_items
+        today = lab_time.today().isoformat()
+        return dict(("%s:%s" % (i["kind"], i["uid"]), i) for i in inventory_items(self._portal())
+                    if is_usable(i, today) or out_of_date_only(i, today))
 
     def _handle_review_prep(self):
         from senaite.pfas import prep_entries
@@ -1194,22 +1295,93 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         from senaite.pfas.entry_rights import REFUSAL
         from six.moves.urllib.parse import quote_plus
         f = self.request.form
-        back = "{0}?tab={1}".format(self._self_url(), f.get("prep_form") or u"")
+        back = self._self_url()
+        if f.get("back") == "recipes":
+            # reviewed from the recipe's preparations: back to that recipe
+            back = "{0}/@@pfas-recipes?method={1}".format(self.context.absolute_url(), quote_plus(
+                (f.get("method") or u"").encode("utf-8")))
+            if f.get("recipe"):
+                back += "&recipe={0}".format(quote_plus((f.get("recipe") or u"").encode("utf-8")))
+        sep = "&" if "?" in back else "?"
         if not may_enter():
-            return self._redirect("{0}&error={1}".format(back, quote_plus(REFUSAL.encode("utf-8"))))
+            return self._redirect("{0}{1}error={2}".format(back, sep, quote_plus(REFUSAL.encode("utf-8"))))
+        if f.get("sign") != "1":
+            # a review is recorded only through the sign dialog
+            return self._redirect("{0}{1}error=Sign+the+review+to+record+it.".format(back, sep))
         portal = self._portal()
         entries = prep_entries.load(portal)
         entry = entries.get(f.get("entry_id") or u"")
         if entry is None:
-            return self._redirect("{0}&error=Entry+not+found".format(back))
+            return self._redirect("{0}{1}error=Record+not+found".format(back, sep))
         from AccessControl import getSecurityManager
+        from senaite.pfas.esig import ledger, signing
+        note = (f.get("sign_note") or u"").strip()
+        request = self.request
+
+        def sign(rid, h):
+            return signing.cache([signing.sign(portal, request, "preparation", rid, prep_entries.REVISION, h, "reviewer",
+                                               note=note)])
         try:
             prep_entries.review(entry, getSecurityManager().getUser().getId(),
-                                datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
-        except ValueError as exc:
-            return self._redirect("{0}&error={1}".format(back, quote_plus((u"%s" % exc).encode("utf-8"))))
+                                datetime.utcnow().strftime("%Y-%m-%d %H:%M"), sign=sign)
+        except (ValueError, signing.SignatureRefused, ledger.LedgerError) as exc:
+            return self._redirect("{0}{1}error={2}".format(back, sep, quote_plus(_why(exc).encode("utf-8"))))
         prep_entries.save(portal, entries)
-        return self._redirect("{0}&ok=Entry+reviewed".format(back))
+        return self._redirect("{0}{1}ok=Record+reviewed".format(back, sep))
+
+    def _handle_verify_prep(self):
+        """Read the record's signatures against its content now: the hash
+        recomputed, every signature looked up in the ledger
+        (prep_entries.verify). Back to the lot's record card."""
+        from senaite.pfas import prep_entries
+        from senaite.pfas.esig import ledger
+        from six.moves.urllib.parse import quote_plus
+        f = self.request.form
+        back = self._self_url()
+        if f.get("record"):
+            back += "?record={0}".format(quote_plus((f.get("record") or u"").encode("utf-8")))
+        sep = "&" if "?" in back else "?"
+        entry = prep_entries.load(self._portal()).get(f.get("entry") or u"")
+        if entry is None:
+            return self._redirect("{0}{1}error=Record+not+found".format(back, sep))
+        try:
+            _current, st = prep_entries.signature_status(entry)
+        except ledger.LedgerError:
+            logger.exception("signatures of %s unreadable", entry.get("id"))
+            return self._redirect("{0}{1}error=The+signatures+could+not+be+read".format(back, sep))
+        why = prep_entries.verify(entry, st)
+        if why:
+            return self._redirect("{0}{1}error={2}".format(back, sep, quote_plus(why.encode("utf-8"))))
+        return self._redirect("{0}{1}ok=Signatures+checked".format(back, sep))
+
+    def _signature_card(self, entry):
+        """The record card's Signatures: each signature as the print lists
+        it (report_documents.signature_rows), read from the ledger against
+        the record's content now; None when the ledger cannot be read."""
+        from senaite.pfas import prep_entries, print_doc
+        from senaite.pfas import report_documents as rd
+        from senaite.pfas.esig import ledger
+        try:
+            current, st = prep_entries.signature_status(entry)
+        except ledger.LedgerError:
+            logger.exception("signatures of %s unreadable", entry.get("id"))
+            return None
+        return rd.signature_rows(st, current, lab_time.show, changed_at=print_doc.now_label())
+
+    def make_esig(self):
+        """The sign dialog of New Prepared Standard: the record is numbered
+        and its content hashed when it is saved, so neither is known here."""
+        from senaite.pfas import prep_entries
+        from senaite.pfas.esig import signing
+        return {"record": u"New preparation record", "revision": prep_entries.REVISION,
+                "hash_prefix": u"Set when saved", "meaning_label": signing.meaning_label("preparer"),
+                "signer_name": signed_in_name(self.context), "action": u"make_recipe", "form_id": u"psNewForm"}
+
+    def make_nonce(self):
+        """A new id for the Make form as drawn: its lots' uids come from it
+        (prep_entries.lot_uids), so the same post retried names the same
+        lots and signs the same content."""
+        return uuid.uuid4().hex
 
     # ── New Prepared Standard: a sitting made from its recipe (prep_sitting) ─
 
@@ -1218,15 +1390,6 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         if getattr(self, "_recipes_cache", None) is None:
             self._recipes_cache = rs.load(self._portal())
         return self._recipes_cache
-
-    def _log_defaults(self):
-        """Each prep log's default expiry: the shelf life of its recipes
-        that state none."""
-        out = {}
-        for d in self.prep_logbooks():
-            if d.get("status") == "active" and d.get("default_expiry_days"):
-                out[d["logbook_slug"]] = d["default_expiry_days"]
-        return out
 
     def _certificate(self, uid):
         """A purchased lot's certificate values (certificate_values.py)."""
@@ -1239,7 +1402,8 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
             return {}
 
     def _choices(self, mf, usable, records):
-        """The lots a "made from" may use, newest first: a purchased
+        """The lots a "made from" may use, newest first, those out of date
+        last: a purchased
         product's lots by name; a recipe's lots made from it, else (before
         any is) the lots under the recipe's name."""
         from senaite.pfas import recipe_calc as rc
@@ -1251,20 +1415,25 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         else:
             found = [i for i in usable if i["kind"] == u"reagent" and i.get("name") == mf.get("ref")]
         found.sort(key=lambda i: (i.get("received") or u"", i.get("lot_number") or u""), reverse=True)
+        # a lot out of date today is listed last, never the one preselected
+        from senaite.pfas.lot_expiry import expired_on
+        today = lab_time.today()
+        found.sort(key=lambda i: expired_on(i.get("expiry"), today))
         return [{"key": u"%s:%s" % (i["kind"], i["uid"]), "expiry": i.get("expiry") or u"",
                  "label": u"%s \u00b7 %s" % (i.get("lot_number") or u"", i.get("expiry") or u"no expiry")}
                 for i in found]
 
     def new_standard(self):
-        """The New Prepared Standard dialog's data: the prep logs, and per
-        method its code and its recipes on each log, each "made from" with
-        the lots it may use."""
+        """The New Prepared Standard dialog's data: per method its recipes,
+        each with its kind, code, default standard type and every "made
+        from" with the lots it may use. The dialog opens on the recipe the
+        address names (?method=&recipe=)."""
         from senaite.pfas import configured_methods, recipes as rs
         from senaite.pfas import prep_sitting
         from senaite.pfas.injection_names import method_code
         from senaite.pfas.method_profile_store import raw_profile
         portal = self._portal()
-        store, defaults = self._recipe_store(), self._log_defaults()
+        store = self._recipe_store()
         usable = list(self.parent_lots().values())
         records = dict((r["uid"], r) for r in _list(portal))
         methods = []
@@ -1277,19 +1446,19 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
                 final = series[0].get("final") if series else rev.get("final_volume")
                 unit = (series[0].get("final_unit") if series else rev.get("final_unit")) or u"mL"
                 recipes.append({
-                    "id": rev["id"], "name": rev.get("name") or rev["id"], "log": rev.get("log") or u"",
+                    "id": rev["id"], "name": rev.get("name") or rev["id"],
+                    "kind": rev.get("kind") or u"", "code": rev.get("code") or u"",
+                    "standard_type": KIND_TYPES.get(rev.get("kind")) or u"",
                     "titles": [t for _l, t in names], "statement": prep_sitting.statement(names),
                     "final": final, "final_unit": unit, "per_level": bool(series),
-                    "storage": rev.get("storage") or {}, "shelf_days": rs.shelf_life(rev, defaults),
+                    "storage": rev.get("storage") or {}, "shelf_days": rs.shelf_life(rev),
                     "made_from": [{"kind": mf.get("kind"), "take": mf.get("take"),
                                    "take_unit": mf.get("take_unit") or u"",
                                    "label": (rs.active(store, mf.get("ref")) or {}).get("name") or mf.get("ref"),
                                    "lots": self._choices(mf, usable, records)}
                                   for mf in rev.get("made_from") or []]})
             methods.append({"id": m["id"], "label": m["label"], "recipes": recipes})
-        logs = [{"slug": f["slug"], "code": f["code"], "title": f["title"]} for f in self.prep_forms()
-                if f["slug"] in (u"250", u"251")]
-        return {"logs": logs, "methods": methods, "who": signed_in_name(self.context)}
+        return {"methods": methods, "who": signed_in_name(self.context)}
 
     def new_standard_json(self):
         return script_json(self.new_standard())
@@ -1304,7 +1473,7 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         uid = self.request.form.get("record") or u""
         if not uid:
             return None
-        from senaite.pfas import lot_record as lr, prep_entries, recipes as rs
+        from senaite.pfas import lot_expiry, lot_record as lr, prep_entries, recipes as rs
         portal = self._portal()
         recs = dict((r["uid"], r) for r in _list(portal))
         rec = recs.get(uid)
@@ -1320,17 +1489,26 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         pin = rec.get("recipe") or {}
         rev = revision(pin.get("id"), pin.get("revision")) if pin.get("id") else None
         entry = prep_entries.load(portal).get(rec.get("entry_id") or u"") or {}
-        shelf = rs.shelf_life(rev, self._log_defaults()) if rev else None
-        log = u" ".join(x for x in (entry.get("form_code") or u"", rec.get("logbook_title") or u"") if x)
+        shelf = rs.shelf_life(rev) if rev else None
         made = lr.sitting(entry, recs)
         self._record = {
+            # a lot made from a preparation record shows that record's
+            # signatures; a lot made before records has none to show
+            "entry_id": entry.get("id") or u"",
+            "signatures": self._signature_card(entry) if entry.get("id") else [],
             "uid": uid, "title": u"Lot %s \u00b7 %s" % (rec.get("lot_number") or u"", rec.get("title") or u""),
             "recipe": label(pin["id"], pin.get("revision")) if rev else u"",
-            "log": (u"%s Rev %s" % (log, rec.get("logbook_revision"))) if log else u"",
-            "entry_id": rec.get("entry_id") or u"",
+            "recorded_on": lr.recorded_on(entry),
             "made": u"%s by %s" % (rec.get("prepared_date") or u"", rec.get("prepared_by") or u""),
             "expires": rec.get("effective_expiry") or rec.get("expiry_date") or u"",
             "expiry_note": lr.expiry_note(rec, shelf),
+            # the extension in force: the original date and who approved it
+            "extension": _lx_note(rec.get("extensions")),
+            # a parent its preparation used out of date, and why (lot_expiry.gate)
+            # a lot not made from a recipe keeps the reasons on its own parents
+            "expired_parents": lot_expiry.statement(
+                parents_in_force(portal, entry.get("parents") or rec.get("parent_reagents")),
+                entry.get("prepared_date") or rec.get("prepared_date")),
             "tree": lr.tree_rows(rec, build_parentage(portal, rec), label),
             "steps": lr.steps(rev, rec.get("prepared_by")),
             "conc": lr.conc_rows(rec),
@@ -1343,15 +1521,8 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         return self._record
 
 
-    def _is_standard_log(self, slug):
-        """A standard-prep log's lots carry calculated concentrations
-        (logbook_roles); a reagent prep's carry none."""
-        from senaite.pfas.logbook_roles import role_of
-        return any(role_of(d) == u"standard_prep" for d in self.prep_logbooks()
-                   if d.get("logbook_slug") == slug)
-
     def _handle_make_recipe(self):
-        """One entry in the recipe's prep log, one lot per level, each
+        """One preparation record of the recipe, one lot per level, each
         pinned to the recipe revision (prep_sitting.build, prep_entries.make)."""
         from senaite.pfas import prep_entries, prep_sitting, recipes as rs
         from senaite.pfas.browser.staff import may_enter
@@ -1361,19 +1532,25 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         from six.moves.urllib.parse import quote_plus
         f = self.request.form
         back = self._self_url()
+        rid, mid = f.get("recipe") or u"", f.get("method") or u""
 
         def refused(msg):
-            return self._redirect("{0}?error={1}".format(back, quote_plus((u"%s" % msg).encode("utf-8"))))
+            # the sitting reopens on the method and recipe it was made from
+            keep = u"new=1&method={0}&recipe={1}&".format(
+                quote_plus(mid.encode("utf-8")), quote_plus(rid.encode("utf-8"))) if rid else u""
+            return self._redirect("{0}?{1}error={2}".format(back, keep, quote_plus((u"%s" % msg).encode("utf-8"))))
         if not may_enter():
             return refused(REFUSAL)
+        if f.get("sign") != "1":
+            # a record is saved only through the sign dialog
+            return refused(u"Sign the record to save it.")
         portal = self._portal()
-        rid, mid = f.get("recipe") or u"", f.get("method") or u""
         rev = rs.active(self._recipe_store(), rid)
         if rev is None or mid not in (rev.get("methods") or []):
             return refused(u"Choose a standard the method prepares.")
-        log = [x for x in self.prep_forms() if x["slug"] == rev.get("log")]
-        if not log:
-            return refused(u"The recipe's prep log has no active revision.")
+        if rs.shelf_life(rev) is None:
+            # a lot's expiry is its recipe's shelf life: none, no lot
+            return refused(u"The recipe has no shelf life: edit it first.")
         lots = self.parent_lots()
         parents, made_from = [], []
         for i, mf in enumerate(rev.get("made_from") or []):
@@ -1384,6 +1561,11 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
                  "unit": (f.get("pl_unit.%d" % i) or u"").strip() or mf.get("take_unit") or u""}
             if item is not None:
                 item = dict(item)
+                # judged on the date in force on the prep date: an extension
+                # approved after it does not reach back (lot_extension)
+                prep_day = (f.get("prepared_date") or u"").strip()[:10]
+                if prep_day:
+                    item["expiry"] = lot_in_force(portal, item["uid"], prep_day)
                 if item["kind"] == u"prepared_standard":
                     item["analyte_concentrations"] = (_get(portal, item["uid"]) or {}).get("analyte_concentrations") or []
                 else:
@@ -1393,32 +1575,59 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         equipment = [{"unit_id": (f.get(key) or u"").strip(), "role": role}
                      for key, role in (("equip_balance_unit_id", u"Balance"), ("equip_pipette_unit_id", u"Pipette"))
                      if (f.get(key) or u"").strip()]
-        sitting = {"form_code": log[0]["code"], "slug": log[0]["slug"], "revision": log[0]["revision"],
-                   "title": log[0]["title"], "prepared_by": signed_in_name(self.context),
+        sitting = {"prepared_by": signed_in_name(self.context),
                    "prepared_date": (f.get("prepared_date") or u"").strip(),
-                   "standard_type": (f.get("standard_type") or u"").strip(),
+                   "standard_type": (f.get("standard_type") or u"").strip() or KIND_TYPES.get(rev.get("kind")) or u"",
                    "storage_location": (f.get("storage_location") or u"").strip(),
                    "storage_conditions": (f.get("storage_conditions") or u"").strip(),
                    "equipment": equipment, "final": (f.get("final") or u"").strip(),
-                   "shelf_days": rs.shelf_life(rev, self._log_defaults()),
+                   "shelf_days": rs.shelf_life(rev),
                    # a lot number is never repeated (a second sitting that day)
                    "taken": [r.get("lot_number") for r in _list(portal)],
-                   "needs_values": self._is_standard_log(rev.get("log"))}
+                   # a standard's or a series' concentrations are calculated, never typed
+                   "needs_values": rev.get("kind") in (u"standard", u"series"),
+                   # why a parent out of date on the prep date is used
+                   "expired_reason": (f.get("expired_reason") or u"").strip()}
         code = method_code(raw_profile(portal, mid) or {}, mid)
-        entry, rows, problems = prep_sitting.build(dict(rev, made_from=made_from), rid, code, sitting, parents)
+        # the record takes the active revision's own code, the one its pin
+        # names; the code check holds it for this recipe while a draft
+        # names another
+        entry, rows, problems = prep_sitting.build(
+            dict(rev, made_from=made_from, code=rev.get("code") or u""), rid, code, sitting, parents)
         if problems:
             return refused(u" ".join(problems))
         note = (f.get("notes") or u"").strip()
         for r in rows:
             r["notes"] = note
         from AccessControl import getSecurityManager
+        from senaite.pfas.esig import ledger, signing
+        request = self.request
+        # the lots take their uids from the form's nonce: a retry after a
+        # conflict posts the same nonce and signs the same content
+        uids = prep_entries.lot_uids((f.get("make_nonce") or u"").strip() or uuid.uuid4().hex, len(rows))
+        folder = _get_folder(portal)
+        if [u for u in uids if u in folder]:
+            # the form was saved already (posted again from the browser)
+            return refused(u"This form was saved already: reload the page.")
+
+        def sign(record_id, record_hash):
+            # signed before any lot, the record or a usage row is saved
+            return prep_entries.sign_made(portal, request, record_id, record_hash,
+                                          note=(f.get("sign_note") or u"").strip())
         try:
             entry_id, uids = prep_entries.make(portal, entry, rows, getSecurityManager().getUser().getId(),
-                                               datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
-        except ValueError as exc:
-            return refused(exc)
+                                               datetime.utcnow().strftime("%Y-%m-%d %H:%M"), sign=sign, uids=uids,
+                                               held=prep_entries.held_in_ledger)
+        except RuntimeError as exc:
+            # a lot saved under another id: the lots saved before it must
+            # not stay without their record
+            import transaction
+            transaction.abort()
+            return refused(_why(exc))
+        except (ValueError, signing.SignatureRefused, ledger.LedgerError) as exc:
+            return refused(_why(exc))
         return self._redirect("{0}?ok={1}".format(back, quote_plus(
-            (u"%s saved: %d lot(s) made, pending verification." % (entry_id, len(uids))).encode("utf-8"))))
+            (u"%s saved: %d lot(s) made, pending acceptance." % (entry_id, len(uids))).encode("utf-8"))))
 
     def facility_balances(self):
         """Registered balances, for the equipment picker. The registry is the one
@@ -1461,26 +1670,16 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         )
 
     def attention(self, rec):
-        """Why an active standard needs attention: no preparation logbook
-        linked (a traceability gap), or expiring within 30 days."""
+        """Why an active standard needs attention: no preparation record or
+        logbook linked (a traceability gap), or expiring within 30 days."""
         if rec.get("status") != "active":
             return []
         from senaite.pfas import certificate_values as cv
         from senaite.pfas import lot_attention
         obj = _get_folder(self._portal()).get(rec.get("uid") or u"")
         return lot_attention.reasons(expiry=rec.get("effective_expiry") or rec.get("expiry_date"),
-                                     logbook=bool(rec.get("logbook_slug")),
+                                     logbook=bool(rec.get("entry_id") or rec.get("logbook_slug")),
                                      review=cv.flags_of(obj) if obj is not None else None)
-
-    def prep_logbooks(self):
-        """Return active/draft logbooks for the prep form selector."""
-        from senaite.pfas.browser.prep_logbooks import _get_active_families
-        try:
-            return _get_active_families(self._portal())
-        except Exception as exc:
-            logger.error("prep_logbooks: %s", exc)
-            return []
-
 
     def edit_uid(self):
         return self.request.form.get("edit_uid", "")
@@ -1501,13 +1700,15 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
 
     def label_url(self, rec):
         """Print label: this lot's values on @@pfas-label."""
+        from senaite.pfas import lot_extension
         from senaite.pfas.browser.label_print import label_href
         return label_href(self.portal_url(), back=self.portal_url() + "/@@pfas-prep-standards",
                           name=rec.get("title"), lot=rec.get("lot_number"),
                           exp=rec.get("effective_expiry") or rec.get("expiry_date"),
                           date=rec.get("prepared_date"), analyst=rec.get("prepared_by"),
                           vol=rec.get("volume_prepared"),
-                          storage=rec.get("storage_conditions") or rec.get("storage_location"))
+                          storage=rec.get("storage_conditions") or rec.get("storage_location"),
+                          **lot_extension.label_values(rec.get("extensions")))
 
     def expiry_class(self, rec):
         # colour by the EFFECTIVE (possibly parent-inherited) expiry
@@ -1539,33 +1740,36 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         # the concentrations only when it posts them; otherwise the lot keeps
         # its own (prep_sitting.edit_values).
         from senaite.pfas import prep_sitting
-        kept = prep_sitting.edit_values(f, _get(self._portal(), (f.get("uid") or "").strip()) or {})
+        stored = _get(self._portal(), (f.get("uid") or "").strip()) or {}
+        kept = prep_sitting.edit_values(f, stored)
         parents = kept["parent_reagents"]
         analytes = kept["analyte_concentrations"]
+        # a parent the edit adds that was out of date on the date prepared is
+        # refused unless a reason is given, kept on that parent as a
+        # preparation keeps it; the parents already on the lot keep theirs
+        from senaite.pfas import lot_expiry
+        prep_day = f.get("prepared_date", "").strip() or stored.get("prepared_date") or u""
+        parents, expired = lot_expiry.gate_edit(
+            parents, stored.get("parent_reagents") or [],
+            [p.get("expiry") for p in parents_in_force(self._portal(), parents, as_of=prep_day)],
+            prep_day, f.get("expired_reason"))
+        if expired:
+            from six.moves.urllib.parse import quote_plus
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(), quote_plus(u" ".join(expired).encode("utf-8"))))
 
         # Compute default expiry if not supplied
         logbook_slug = (kept["logbook_slug"] or u"").strip()
         expiry_date = f.get("expiry_date", "").strip()
+        if not expiry_date and stored.get("expiry_date"):
+            # a blank expiry keeps the recorded one, never a later default
+            expiry_date = (stored.get("expiry_date") or u"")[:10]
         expiry_days = 365
         logbook_title = (kept["logbook_title"] or u"").strip()
         logbook_revision = kept["logbook_revision"] or 1
         if logbook_slug and not expiry_date:
-            # Look up default_expiry_days from the logbook
-            try:
-                from senaite.pfas.browser.prep_logbooks import _list as lb_list
-                lbs = lb_list(self._portal(), slug=logbook_slug, status_filter="active")
-                if not lbs:
-                    lbs = lb_list(self._portal(), slug=logbook_slug)
-                if lbs:
-                    # Sort by revision desc, take highest
-                    lbs.sort(key=lambda x: -x["revision"])
-                    expiry_days = lbs[0].get("default_expiry_days") or 365
-                    if not logbook_title:
-                        logbook_title = lbs[0].get("title", "")
-                    if not logbook_revision:
-                        logbook_revision = lbs[0].get("revision", 1)
-            except Exception as exc:
-                logger.error("logbook lookup: %s", exc)
+            # a lot made on a logbook keeps the title and revision it was
+            # made under; with no expiry kept, the default shelf life applies
             prepared_date = f.get("prepared_date", "").strip()
             expiry_date = _compute_expiry(prepared_date, expiry_days)
 
@@ -1607,6 +1811,10 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         from senaite.pfas.browser.core_lists import lot_problems
         from six.moves.urllib.parse import quote_plus
         bad = lot_problems(data) + problems(data, kinds=("storage_location",))
+        # a recorded expiry moves earlier only: a later date comes through an
+        # extension (lot_extension.edit_problems)
+        from senaite.pfas import lot_extension
+        bad += lot_extension.edit_problems((("expiry_date", u"The expiry"),), stored, data)
         if bad:
             return self._redirect("{0}?error={1}".format(self._self_url(), quote_plus(bad[0].encode("utf-8"))))
         _save(self._portal(), data)

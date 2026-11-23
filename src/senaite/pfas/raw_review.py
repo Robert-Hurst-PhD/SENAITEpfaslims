@@ -6,8 +6,8 @@
     injection_view(name, traces, result_rows, lots) one injection: each analyte's
         quantifier and qualifier traces with their peaks, its isotope standard
         beside it, its values and flags, the peak's measures (engine, width,
-        tailing, plates, smoothing, the file's transition, its note, a refused
-        fit), and the calibration lots it was quantified against
+        tailing, plates, asymmetry, smoothing, the file's transition, its note,
+        a refused fit), and the calibration lots it was quantified against
     run_files(manifest)                            the raw files, their checksums
         and the conversion, for the Instrument Report, and the injections
         acquired out of sequence order
@@ -127,27 +127,16 @@ def _state(r):
 
 
 # the peak record's measures the card shows when the peak has them
-PEAK_MEASURES = ("fwhm_s", "tailing", "plates", "smoothing_from", "file_transition", "fit_note")
+PEAK_MEASURES = ("fwhm_s", "tailing", "plates", "smoothing_from", "file_transition", "fit_note",
+                 "asymmetry", "asymmetry_note")
 ENGINES = {u"adaptive": u"Adaptive", u"classic": u"Classic"}
 # the worker's own wording on a peak record
 FIT_REFUSED = u"trapezoid, fit refused"
 PAIR_FIT_FAILED = u"pair fit failed"
-OVERFLOW_NOTE = u"overflow at the apex: the stored value is above the file's number range"
-# the worker's other wording, still read on stored peaks
-OVERFLOW_NOTES = (OVERFLOW_NOTE, u"saturated: the stored signal tops out at the apex")
-# the stored qualifier token of an overflowed trace, and what the analyst reads
-QUALIFIER_TEXT = {u"Saturated": u"Overflow"}
-
-
-def qualifier_text(token):
-    """A stored result qualifier as the analyst reads it."""
-    return QUALIFIER_TEXT.get(token, token)
-
-
 def _note(peak):
-    """The peak's note without the saturation part, which the card says on its own."""
+    """The peak's note, its parts trimmed."""
     parts = [p.strip() for p in (peak.get("note") or u"").split(u";")]
-    return u"; ".join(p for p in parts if p and p not in OVERFLOW_NOTES)
+    return u"; ".join(p for p in parts if p)
 
 
 def _fit_text(peak):
@@ -285,7 +274,10 @@ def change_text(edit):
     return u", ".join(parts)
 
 
-def _stored_state(peak):
+def stored_state(peak):
+    """What a stored peak's review left it as: auto, edited, deleted, or
+    no_effect for an edit that did not apply. The package's chromatogram
+    captions read it too."""
     manual = (peak or {}).get("manual")
     if not manual:
         return u"auto"
@@ -448,11 +440,13 @@ def _quant_of(row):
 
 def natives_of(rows, is_name, injection):
     """The analytes of that injection quantified against the isotope standard
-    `is_name` (the keyword each row's record names), by the name they are
-    shown under (label), sorted."""
+    `is_name` (the keyword each row's record names, or a member of the
+    composite it names), by the name they are shown under (label), sorted."""
+    def on(q):
+        return q.get("is") == is_name or is_name in [(m or {}).get("kw") for m in q.get("members") or []]
     return sorted(set(r.get("label") or r.get("analyte") for r in rows or []
                       if r.get("injection_name") == injection and r.get("analyte") != is_name
-                      and _quant_of(r).get("is") == is_name))
+                      and on(_quant_of(r))))
 
 
 def manual_excluded(rows, analyte, levels=None):
@@ -507,7 +501,7 @@ def _edit_of_trace(overrides, t, quant_transition):
     """The trace's edit state: against its override when the run's overrides
     are known, else from the stored peak alone."""
     if overrides is None:
-        return _stored_state(t.get("peak"))
+        return stored_state(t.get("peak"))
     return edit_state(t.get("peak"), edit_for(overrides, t["injection"], t["analyte"], t["transition"],
                                               quant_transition))
 
@@ -580,6 +574,18 @@ def _review_trace(t, overrides, quant_transition):
     return out
 
 
+def _composite_is(q, allq, rows):
+    """The standard of an analyte read on a composite (its peak names the
+    members it was averaged on): named after them, each member's own trace
+    beside it; None when the peak names none."""
+    from senaite.pfas import composite_standards as cmp
+    members = (q.get("peak") or {}).get("linked_members") or []
+    if not members:
+        return None
+    return {"label": cmp.name_of([label_of(rows, m) for m in members]),
+            "members": [dict(_trace(allq[m]), label=label_of(rows, m)) for m in members if m in allq]}
+
+
 def card(injection, analyte, traces, rows, lots, overrides=None):
     """One analyte of one injection: its values and traces (the injection
     view's card), and for the quantifier and each qualifier the transition,
@@ -603,16 +609,15 @@ def card(injection, analyte, traces, rows, lots, overrides=None):
     out = {
         "analyte": analyte, "label": r.get("label") or analyte, "quant": _review_trace(q, overrides, qt),
         "quals": [_review_trace(t, overrides, qt) for t in mine if t["role"] == u"qual"],
-        "is": dict(_trace(allq[linked]), label=label_of(rows, linked)) if linked in allq else None,
+        "is": (dict(_trace(allq[linked]), label=label_of(rows, linked)) if linked in allq
+               else _composite_is(q, allq, rows)),
         "area": r.get("response"), "rt": r.get("rt"), "sn": r.get("sn"),
         "ion_ratio": r.get("ion_ratio_obs"), "ion_expected": r.get("ion_ratio_exp"),
-        "conc": r.get("calc_conc"), "qualifier": qualifier_text(r.get("conc_qualifier") or u""),
+        "conc": r.get("calc_conc"), "qualifier": r.get("conc_qualifier") or u"",
         "flags": [f for f in [r.get("flag")] if f], "state": _state(r), "lots": list(lots or [])}
     out.update(_measures(q.get("peak") or {}, r))
     if out["fit_flag"] and not out["state"]:
         out["state"] = u"warn"             # a refused or failed fit is for review
-    if (q.get("peak") or {}).get("saturated"):
-        out["overflowed"] = True           # the quantifier's stored value overflowed at the apex
     out["state_text"] = state_text(out["state"], bool((q.get("peak") or {}).get("deleted")))
     natives = natives_of(rows, analyte, injection)
     if natives:
@@ -651,7 +656,7 @@ def _thumb(injection, analyte, qc_type, r, q, overrides, label=None):
         th["t"], th["y"] = raw_traces_envelope(q["t"], q["y"], window[0], window[1])
     else:
         th["t"], th["y"] = raw_traces_envelope(q["t"], q["y"], float("-inf"), float("inf"))
-    th.update(state=state, qualifier=qualifier_text(r.get("conc_qualifier") or u""), conc=r.get("calc_conc"),
+    th.update(state=state, qualifier=r.get("conc_qualifier") or u"", conc=r.get("calc_conc"),
               edit=_edit_of_trace(overrides, q, q["transition"]), deleted=deleted,
               state_text=state_text(state, deleted),
               peak=dict((k, peak.get(k)) for k in PEAK_EDGES))

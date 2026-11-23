@@ -27,7 +27,10 @@ from __future__ import absolute_import
 import json
 import logging
 
-from zope.annotation.interfaces import IAnnotations
+try:
+    from zope.annotation.interfaces import IAnnotations
+except ImportError:         # the library's seeds (library_from) read without Zope
+    IAnnotations = None
 
 logger = logging.getLogger("senaite.pfas.qc_qualification")
 
@@ -35,11 +38,11 @@ LIBRARY_KEY = "senaite.pfas.qc_qualification.library"
 
 # Shown when a QC failure has no qualifier configured; names the page to fix it.
 UNMAPPED_PROMPT = (
-    u"This batch failed a quality control check ({failure}) for which no "
+    u"This worksheet failed a quality control check ({failure}) for which no "
     u"certificate qualifier has been configured. The certificate cannot be "
     u"issued until the QAO defines the wording for this failure type under "
-    u"Configuration \u2192 Print Settings \u2192 QC Qualifiers, or records a "
-    u"decision to hold the batch."
+    u"Reporting Setup \u2192 QC Qualifiers, or records a "
+    u"decision to hold the worksheet."
 )
 
 # What the system does with a failure, decided without a human in the loop.
@@ -77,12 +80,25 @@ def remarks_text(remarks):
     return u"%s" % remarks
 
 
-# A recovery check biased HIGH (above its upper limit) cannot hide a real
-# result when the analyte was not detected in any sample it covers: that
-# failure releases, qualified by this code and carrying the note below. A low
-# bias, or one detected sample, still holds the batch.
-HIGH_BIAS_CODE = u"ND"
-HIGH_BIAS_NOTE = u"{qc_type} biased high; analyte non-detect in sample"
+# A recovery check biased HIGH (above its upper limit) matters only for a
+# result at or above the reporting limit: when every result it covers is
+# below the reporting limit (a non-detect, or a J value, which counts as
+# detected), that failure releases, qualified on the affected analyte by
+# the QC Qualifiers library's high-bias entry: its code and its wording,
+# under the QAO's control, the note naming the QC type explained once. A
+# low bias, or one result at or above the reporting limit, still holds the
+# batch, and so does every high bias while the entry holds or has no code.
+# The entry ships with a code and a wording, both the QAO's to change; a
+# code the QAO clears holds the release again.
+HIGH_BIAS = "high_bias"
+HIGH_BIAS_STATEMENT = u"Recovery biased high; result below the reporting limit"
+HIGH_BIAS_NOTE = u"{qc_type} " + HIGH_BIAS_STATEMENT
+
+
+def high_bias_note(statement, qc_type):
+    """The release note: the QC type, then the library's wording (the seed
+    wording when it has none)."""
+    return u"{0} {1}".format(qc_type or u"", (statement or u"").strip() or HIGH_BIAS_STATEMENT).strip()
 
 # The QC types whose window is a recovery percentage of a known amount: the
 # calibration verifications and the spikes. Nothing else is a bias: a blank's
@@ -93,11 +109,11 @@ RECOVERY_QC_TYPES = (u"CCV", u"ICV", u"LFB", u"LCS", u"LFSM", u"LFSMD")
 
 def is_rpd_row(row):
     """True when the row's value is a relative percent difference (a
-    duplicate or LFSMD pair): imprecision has no direction, so it is never a
-    high bias. The row says so itself: a Dup type, a qc_level starting
-    "RPD", or units naming RPD."""
+    duplicate or LFSMD pair) or the RSD of several spikes: imprecision has
+    no direction, so it is never a high bias. The row says so itself: a Dup
+    type, a qc_level starting "RPD" or "RSD", or units naming RPD."""
     level = (row.get("qc_level") or u"").split(u" ")[0]
-    return (row.get("qc_type") == u"Dup" or level == u"RPD"
+    return (row.get("qc_type") == u"Dup" or level in (u"RPD", u"RSD")
             or u"RPD" in (row.get("units") or u""))
 
 
@@ -127,17 +143,20 @@ def recovery_pct(row, judged=None):
         return None
 
 
-def high_bias_release(row, sample_results, judged=None):
+def high_bias_release(row, sample_results, judged=None, statement=None):
     """The release note for a failed QC row, or None when the failure holds.
 
     row: a qc_results row (qc_type, value, expected_value, units,
     limit_high); sample_results: the analyte's sample results it covers,
-    [{"keyword", "nondetect", "undecidable"}], undecidable when the LIMS
-    records no role for the sample; judged: rounds a percentage as the
-    checks judge it. The note is returned only for a recovery check whose
-    recovery is above limit_high when every sample result is a non-detect
-    of a field sample (no samples, or one of undecidable role, is not a
-    release).
+    [{"keyword", "nondetect", "below_rl", "undecidable"}], below_rl when
+    the certificate prints the result below its reporting limit (a
+    non-detect or a J value; a J value is detected, not a non-detect),
+    undecidable when the LIMS records no role for the sample; judged:
+    rounds a percentage as the checks judge it; statement: the library's
+    wording (high_bias_note). The note is returned only for a recovery
+    check whose recovery is above limit_high when every sample result is
+    below the reporting limit, of a field sample (no samples, or one of
+    undecidable role, is not a release).
     """
     if row.get("qc_type") not in RECOVERY_QC_TYPES or is_rpd_row(row):
         return None
@@ -148,9 +167,9 @@ def high_bias_release(row, sample_results, judged=None):
         return None
     if recovery is None or not (recovery > high) or not sample_results:
         return None
-    if not all(r.get("nondetect") and not r.get("undecidable") for r in sample_results):
+    if not all(r.get("below_rl") and not r.get("undecidable") for r in sample_results):
         return None
-    return HIGH_BIAS_NOTE.format(qc_type=row.get("qc_type") or u"")
+    return high_bias_note(statement, row.get("qc_type") or u"")
 
 
 # A failing per-injection flag on a field sample -> the QC Summary column it
@@ -297,6 +316,11 @@ FAILURE_TYPES = [
     ("field_blank",  u"Field reagent blank detection",       QUALIFY, u"B"),
     # a trip blank travels with the samples too: the same treatment
     ("trip_blank",   u"Trip blank detection",                QUALIFY, u"B"),
+    # a recovery check biased high on results all below the reporting limit
+    # (high_bias_release): released under its own code, shipped as BH and
+    # the QAO's to change; a cleared code holds the release. Its code is
+    # never the receipt's: a certificate tells the two apart by the code.
+    ("high_bias",    u"Recovery biased high, results below the RL", QUALIFY, u"BH"),
     # a sample received out of compliance with its method (receipt
     # temperature, holding time, the shipment): every result of that sample
     # (receipt_compliance)
@@ -305,35 +329,71 @@ FAILURE_TYPES = [
     # modification, qualified when the method says so (Lab Workflow,
     # Dilutions); its code is the QAO's to set, none is drafted
     ("respike",      u"Re-spiked dilution",                  QUALIFY, u""),
+    # a result whose peak the pair fit split from a co-eluting neighbour
+    # (the worker's COELUTION mark): an estimate, qualified for matrix bias
+    # or co-elution; the code is a draft the QAO approves
+    ("coelution",    u"Co-eluting peaks split",              QUALIFY, u"CE"),
     # reporting rules, not QC failures: the certificate applies them to the
     # result itself (coa_format J_CODE, D_CODE). The lab edits the wording;
     # the code and the disposition are the rule's own.
     ("between_mdl_rl", u"Between MDL and RL",                QUALIFY, u"J"),
     ("dilution",     u"Diluted extract",                     QUALIFY, u"D"),
+    # a native whose isotope standard's peak was deleted (coa_format NQ_CODE)
+    ("not_quantified", u"Not quantified",                    QUALIFY, u"N.Q."),
+    # a result above the calibration range reported from no dilution, the
+    # reviewer's reason recorded: "> the top of the range" (coa_format E_CODE)
+    ("above_range",  u"Above the calibration range",         QUALIFY, u"E"),
 ]
-REPORTING_RULES = ("between_mdl_rl", "dilution")
+REPORTING_RULES = ("between_mdl_rl", "dilution", "not_quantified", "above_range")
+
+# The kinds of exceedance (flag_kinds): one entry each, its code and its
+# wording the lab's, shipped blank. A kind holds and qualifies nothing by
+# itself (the failure's own entry decides that); it is the code every rule
+# of that kind attaches when it fails, once the QAO sets one.
+from senaite.pfas import flag_kinds as _flag_kinds                   # noqa: E402
+KIND_TYPES = [(_flag_kinds.library_key(k), label) for k, label in _flag_kinds.KINDS]
+KIND_KEYS = tuple(k for k, _l in KIND_TYPES)
 
 FAILURE_LABELS = dict((k, label) for k, label, _d, _c in FAILURE_TYPES)
 DEFAULT_DISPOSITION = dict((k, d) for k, _l, d, _c in FAILURE_TYPES)
 DEFAULT_CODE = dict((k, code) for k, _l, _d, code in FAILURE_TYPES)
 
 
-def respike_qualifier_rows(items, qual):
-    """QC Summary qualifier rows for results the worker marked RESPIKE
-    (reported from a re-spiked dilution the method qualifies): that analyte
-    on that sample, with the QAO's code and wording. `items` =
-    [{"sample_id", "analyte", "remarks"}]; none while the QAO has not set
-    the qualifier."""
+def marked_qualifier_rows(items, qual, mark, qc_type, reason):
+    """QC Summary qualifier rows for the results whose remarks carry the
+    worker's `mark`: that analyte on that sample, with the QAO's code and
+    wording. `items` = [{"sample_id", "analyte", "remarks"}]; none while the
+    QAO has not set the qualifier."""
     if not qual or qual.get("needs_config"):
         return []
     out = []
     for it in items or []:
-        if u"RESPIKE" not in (u"%s" % (it.get("remarks") or u"")).split():
+        if mark not in (u"%s" % (it.get("remarks") or u"")).split():
             continue
-        out.append({"qc_type": u"Re-spiked dilution", "applies_to": it.get("sample_id"),
-                    "analyte": it.get("analyte"), "reason": u"reported from a re-spiked dilution",
+        out.append({"qc_type": qc_type, "applies_to": it.get("sample_id"),
+                    "analyte": it.get("analyte"), "reason": reason,
                     "code": qual.get("code") or u"", "statement": qual.get("statement") or u""})
     return out
+
+
+def respike_qualifier_rows(items, qual):
+    """The rows for results the worker marked RESPIKE (reported from a
+    re-spiked dilution the method qualifies)."""
+    return marked_qualifier_rows(items, qual, u"RESPIKE", u"Re-spiked dilution",
+                                 u"reported from a re-spiked dilution")
+
+
+# the worker's mark on a result whose peak was split from its co-eluting
+# partner (pfas_pipeline qc_engine.COELUTION_FLAG, coelution_split)
+COELUTION_MARK = u"COELUTION"
+
+
+def coelution_qualifier_rows(items, qual):
+    """The rows for results the worker marked COELUTION: split from a
+    co-eluting neighbour by the pair's fit, measured alone where that fit
+    failed, or drawn on a drop or skim, so an estimate."""
+    return marked_qualifier_rows(items, qual, COELUTION_MARK, u"Co-eluting peaks split",
+                                 u"peak split from a co-eluting neighbour")
 
 
 def disposition_for(failure_type, injection_role=u"", library=None):
@@ -366,6 +426,15 @@ DEFAULT_LIBRARY = {
     },
     "dilution": {
         "statement": u"Result from a diluted extract",
+    },
+    "not_quantified": {
+        "statement": u"Not quantified: its isotope standard could not be measured",
+    },
+    "above_range": {
+        "statement": u"Above the calibration range: the value is estimated.",
+    },
+    "high_bias": {
+        "statement": HIGH_BIAS_STATEMENT,
     },
     # the lab's wording
     "receipt": {
@@ -438,6 +507,18 @@ DEFAULT_LIBRARY = {
                      u"confirmed and the affected results should be treated as "
                      u"presumptive.",
     },
+    # the calculation is named as docs/REFERENCES.md cites it
+    "coelution": {
+        "statement": u"The affected analytes co-eluted with a neighbouring "
+                     u"peak. The two peaks were separated by fitting two "
+                     u"exponentially modified Gaussian peaks on one baseline "
+                     u"by non-linear least squares; where that fit failed, "
+                     u"the peak was measured on its own, and where the "
+                     u"analyst split the pair by hand, on a perpendicular "
+                     u"drop or a tangent skim. The results are estimates and "
+                     u"may be biased by the sample matrix or the co-eluting "
+                     u"compound.",
+    },
     # Held, never issued. The text is for the analyst.
     "calibration": {
         "statement": u"Calibration did not meet method criteria. Held for "
@@ -486,9 +567,15 @@ def get_library(portal):
             saved = json.loads(raw)
         except (ValueError, TypeError):
             logger.warning("QC qualifier library unreadable; using defaults")
+    return library_from(saved)
+
+
+def library_from(saved):
+    """The library as get_library gives it, from what the QAO saved ({} for
+    the seeds alone)."""
     out = {}
     for key, label, disposition, code in FAILURE_TYPES:
-        entry = saved.get(key) or {}
+        entry = (saved or {}).get(key) or {}
         if key in REPORTING_RULES:
             # a rule's code and disposition are not the lab's to change here
             entry = dict((k, v) for k, v in entry.items() if k == "statement")
@@ -500,6 +587,17 @@ def get_library(portal):
             "code": entry.get("code", code),
             "statement": entry.get("statement") or seed.get("statement", u""),
             "customised": bool(entry),
+        }
+    for key, label in KIND_TYPES:
+        entry = (saved or {}).get(key) or {}
+        out[key] = {
+            "key": key,
+            "label": label,
+            "disposition": QUALIFY,
+            "code": (entry.get("code") or u"").strip(),
+            "statement": (entry.get("statement") or u"").strip(),
+            "customised": bool(entry),
+            "kind": True,
         }
     return out
 
@@ -522,6 +620,12 @@ def save_library(portal, data):
             diff["code"] = entry.get("code", code)
         if (entry.get("statement") or u"").strip() != seed_text.strip():
             diff["statement"] = entry.get("statement") or u""
+        if diff:
+            trimmed[key] = diff
+    for key, _label in KIND_TYPES:
+        entry = (data or {}).get(key) or {}
+        diff = dict((f, (entry.get(f) or u"").strip()) for f in ("code", "statement")
+                    if (entry.get(f) or u"").strip())
         if diff:
             trimmed[key] = diff
     IAnnotations(portal)[LIBRARY_KEY] = json.dumps(trimmed)
@@ -582,6 +686,25 @@ def qualifier_for(portal, failure_type, injection_role=u""):
     }
 
 
+HIGH_BIAS_NO_CODE = (
+    u"A recovery check ran high on results below the reporting limit. Its "
+    u"release needs a certificate code: the QAO sets one for \u201c{failure}\u201d "
+    u"under Reporting Setup \u2192 QC Qualifiers, or holds it there."
+)
+
+
+def high_bias_qualifier(portal):
+    """The library's high-bias entry as qualifier_for gives it: None when
+    the QAO holds the release, needs_config when it has no wording or no
+    code (a release is marked on its results by its code)."""
+    found = qualifier_for(portal, HIGH_BIAS)
+    if found is None or found.get("needs_config"):
+        return found
+    if not (found.get("code") or u"").strip():
+        return dict(found, needs_config=True, prompt=HIGH_BIAS_NO_CODE.format(failure=found.get("label")))
+    return found
+
+
 # ── Scoping ──────────────────────────────────────────────────────────────────
 
 # the failures recorded against a labelled compound, whose natives the
@@ -591,15 +714,23 @@ MAPPED_FAILURES = ("surrogate", "is_response")
 
 def surrogate_map(method_id):
     """The method's native -> surrogate map, from the stored profile's rows;
-    {} when it has none."""
+    {} when it has none. A native on a composite standard maps to its
+    members' list: a failure of any member reaches it."""
     from bika.lims import api
     from senaite.pfas.method_profile_store import get_profile
+    return map_of(get_profile(api.get_portal(), method_id) or {})
+
+
+def map_of(profile):
+    """surrogate_map's reading of one profile (composite_standards.members)."""
+    from senaite.pfas import composite_standards as cmp
     out = {}
-    for row in ((get_profile(api.get_portal(), method_id) or {}).get("surrogate_map") or []):
+    for row in (profile.get("surrogate_map") or []):
         analyte = (row.get("analyte") or "").strip()
         surrogate = (row.get("surrogate_is") or "").strip()
         if analyte and surrogate:
-            out[analyte] = surrogate
+            members = cmp.members(profile, surrogate)
+            out[analyte] = members if members != [surrogate] else surrogate
     return out
 
 
@@ -617,9 +748,11 @@ def analytes_for_failure(failure_type, analyte, method_id="", mapping=None):
     if mapping is None:
         mapping = surrogate_map(method_id)
     n2k = _name_to_keyword() if mapping else None
-    natives = sorted(set(
-        native for native, surrogate in mapping.items()
-        if surrogate and _same_compound(surrogate, analyte, n2k)))
+    def on(surrogate):
+        # a composite's members, each its own compound
+        return any(_same_compound(s, analyte, n2k) for s in
+                   (surrogate if isinstance(surrogate, (list, tuple)) else [surrogate]) if s)
+    natives = sorted(set(native for native, surrogate in mapping.items() if surrogate and on(surrogate)))
     return natives or ([analyte] if analyte else [])
 
 

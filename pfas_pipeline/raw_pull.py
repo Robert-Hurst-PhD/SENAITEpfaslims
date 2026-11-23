@@ -1,6 +1,12 @@
 """The worker's pull: copies a run's raw data from the instrument's share,
 reads it, and hands it to the worker as a raw run.
 
+A run is pulled from the raw data folder of its worksheet's instrument (the
+instrument's equipment record, in the export System keeps for the worker), else
+from the folder System names for an instrument without its own; a run with
+neither waits, saying which is missing (<stem>.rawstatus.json). Every folder
+must be a path inside a mount of this worker (docs/RAW_DATA.md).
+
 The Run Builder writes <stem>.rawexpect.json into the watch folder for a
 method set to integrate from raw data (raw_expect.py). Each tick:
 
@@ -146,6 +152,44 @@ def ready(expectation, listing, now, settle_minutes, seen, native=False):
             "seen": now_seen}
 
 
+class Shares(object):
+    """Where each run is pulled from: the folder of the run's instrument, else
+    `default`. `instruments`: {instrument uid: {"name", "folder"}}."""
+
+    def __init__(self, default=None, instruments=None):
+        self.default = default or None
+        self.instruments = instruments or {}
+
+    def for_run(self, expectation):
+        """(folder, setup message): the folder to pull the run from, or None
+        and what is missing."""
+        uid = (expectation.get("run_record") or {}).get("instrument_uid") or ""
+        if not uid:
+            if self.default:
+                return self.default, None
+            return None, ("The run's worksheet has no instrument, so there is no folder to pull from. "
+                          "Choose the instrument on the worksheet, or set a default folder on System. "
+                          "Nothing is pulled.")
+        known = self.instruments.get(uid)
+        if known is None:
+            if self.default:
+                return self.default, None
+            return None, ("The run's instrument is not an active analytical instrument on the Equipment "
+                          "page, so there is no folder to pull from. Nothing is pulled.")
+        if known.get("folder"):
+            return known["folder"], None
+        if self.default:
+            return self.default, None
+        return None, ("Instrument %s has no raw data folder: set one on its equipment record, or set a "
+                      "default folder on System. Nothing is pulled." % (known.get("name") or uid))
+
+
+def _shares(share):
+    """`share` as Shares: a plain folder (or None) is the one folder every run
+    is pulled from."""
+    return share if isinstance(share, Shares) else Shares(share)
+
+
 def _acquired(mzml_path):
     """The injection's acquisition time from the mzML run's startTimeStamp."""
     with open(mzml_path, "rb") as fh:
@@ -206,7 +250,9 @@ def pull(expectation, share, run_dir, convert):
     # under "service" the reader is the MassLynx one whether or not it converted
     run_mode = (sorted(modes)[0] if len(modes) == 1 else "mixed" if modes
                 else getattr(convert, "mode", "") or "")
-    return {"run": expectation.get("run"), "run_dir": os.path.abspath(run_dir), "injections": injections,
+    return {"run": expectation.get("run"),
+            "instrument": (expectation.get("run_record") or {}).get("instrument_uid") or "",
+            "run_dir": os.path.abspath(run_dir), "injections": injections,
             "converter": {"mode": run_mode, "args": CONVERT_ARGS,
                           "image": os.environ.get("PFAS_PWIZ_IMAGE", "") if "service" in modes else "",
                           "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")}}
@@ -230,6 +276,7 @@ def run_once(watch_dir, share, now, settle_minutes, run_root, convert, record_fa
     """One pass over the expected runs; the stems handed over. A run waiting
     says what for in <stem>.rawstatus.json (Data Review's Instrument Report)."""
     done = []
+    shares = _shares(share)
     for name in sorted(os.listdir(watch_dir)):
         if not name.endswith(".rawexpect.json"):
             continue
@@ -237,12 +284,16 @@ def run_once(watch_dir, share, now, settle_minutes, run_root, convert, record_fa
         base = os.path.join(watch_dir, stem)
         if os.path.exists(base + ".rawrun") or os.path.exists(base + ".rawfail"):
             continue
-        if not share or not settle_minutes:
-            _write(base + ".rawstatus.json", {"setup": "The instrument data share and the settle time are "
-                                                       "not both set: set them on System. Nothing is pulled.",
-                                              "checked": now})
-            continue
         expectation = _read(os.path.join(watch_dir, name))
+        share, setup = shares.for_run(expectation)
+        if setup is None and not settle_minutes:
+            setup = "The settle time is not set: set it on System. Nothing is pulled."
+        if setup is None and not os.path.isdir(share):
+            setup = ("The folder %s is not visible to the worker. Mount it in the worker "
+                     "(docs/RAW_DATA.md) and check the path. Nothing is pulled." % share)
+        if setup is not None:
+            _write(base + ".rawstatus.json", {"setup": setup, "checked": now})
+            continue
         native = convert is NATIVE
         items = [_item(inj, native) for inj in expectation.get("injections") or []]
         state = ready(expectation, listing(share, items), now, settle_minutes,
@@ -321,15 +372,17 @@ def converter_from_env(queue_dir):
 
 
 def settings(path=None):
-    """(share, settle minutes) from the System page's export, or (None, None)."""
+    """(Shares, settle minutes) from the System page's export, or (Shares(),
+    None). An export that holds no instruments (written before instruments
+    held their own folders) is the one folder for every run."""
     from .addon import load
     path = path or load("raw_share").EXPORT
     try:
         with open(path) as fh:
             data = json.load(fh)
     except (OSError, ValueError):
-        return None, None
-    return data.get("share_path"), data.get("settle_minutes")
+        return Shares(), None
+    return Shares(data.get("share_path"), data.get("instruments")), data.get("settle_minutes")
 
 
 def tick(watch_dir, run_root, now=None):

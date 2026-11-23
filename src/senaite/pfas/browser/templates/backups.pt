@@ -11,91 +11,88 @@
     <div tal:condition="msg" tal:attributes="class python:'alert ' + ('alert-success' if msg['ok'] else 'alert-danger')"
          tal:content="msg/text">Saved.</div>
 
-    <div class="section-group-hdr">Backup levels</div>
-    <table class="pfas-table" data-col-resize="backups-1">
-      <thead><tr><th>Level</th><th>What it holds</th><th>When</th><th>Kept</th></tr></thead>
-      <tbody><tr tal:repeat="l view/level_rows">
-        <td class="pfas-cell-name" tal:content="l/label">Full</td><td tal:content="l/holds">A full copy</td>
-        <td tal:content="l/when">First day of each quarter</td><td tal:content="l/kept">5 years</td></tr></tbody>
-    </table>
+    <div tal:define="sl view/status_line" tal:attributes="class string:pfas-state ${sl/tone}" tal:content="sl/text"></div>
 
-    <div class="section-group-hdr">Status <tal:h define="hid string:backups"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></div>
-    <table class="pfas-table">
-      <tbody>
-        <tr><th>Destination</th><td tal:content="python:st.get('destination') or u'—'">/media/STORAGE</td></tr>
-        <tr><th>Free space</th><td tal:content="python:(u'%.0f GB' % st['free_gb']) if st.get('free_gb') is not None else u'—'">1800 GB</td></tr>
-        <tr><th>Encrypted to</th><td class="pfas-mono" tal:content="python:u', '.join(st.get('recipients') or []) or u'—'">FPR</td></tr>
-        <tr><th>Scheduled</th><td tal:content="python:{True: u'Yes', False: u'No'}.get(st.get('timers'), u'—')">Yes</td></tr>
-        <tr tal:condition="view/settings_line"><th>Settings</th><td tal:content="view/settings_line">Saved</td></tr>
-        <tr tal:repeat="lv python:(('quarterly', u'Last full'), ('daily', u'Last incremental'), ('full_install', u'Last full install'))">
-          <th tal:content="python:lv[1]">Last incremental</th>
-          <td tal:define="e python:sm['last_ok'].get(lv[0])"
-              tal:content="python:(e['ended'][:16].replace('T', ' ') + u' · ' + (view.level_label(e) if lv[0] == 'daily' else (e.get('point') or u''))) if e else u'—'">2027-02-09 02:10</td></tr>
-        <tr><th>Restore test</th>
-          <td tal:define="t sm/last_restore_test"
-              tal:content="python:(t['ended'][:10] if t else u'none') + (u' · due' if sm['restore_test_due'] else u'')">2027-01-05</td></tr>
-      </tbody>
-    </table>
-    <div class="alert alert-danger" tal:define="f sm/last_failed" tal:condition="f"
-         tal:content="python:u'Last backup failed %s: %s' % (f['ended'][:16].replace('T', ' '), u', '.join(f.get('failures') or []))">failed</div>
+    <div class="alert alert-warning" tal:condition="st/snapshots_on_root|nothing">System snapshots are kept on the disk they protect.</div>
+
+    <div class="pfas-tiles">
+      <div class="pfas-tile is-static" tal:repeat="f view/figures">
+        <span class="pfas-tile-meta" tal:content="python:f[0]"></span>
+        <span tal:attributes="class python:'pfas-tile-stat is-md is-flag' if f[3] else 'pfas-tile-stat is-md'" tal:content="python:f[1]"></span>
+        <span class="pfas-tile-meta" tal:content="python:f[2]"></span>
+      </div>
+    </div>
 
     <!-- set here by a site administrator, applied by the backup tool at its next run (backup_settings) -->
-    <div class="section-group-hdr">Backup settings</div>
-    <table class="pfas-table">
+    <div class="section-group-hdr">Backup settings <tal:h define="hid string:backups"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></div>
+    <p class="form-note" tal:condition="view/settings_line" tal:content="view/settings_line">Saved</p>
+    <table class="pfas-table" data-col-resize="backups-settings" tal:define="rm context/@@pfas-row-menu">
+      <thead><tr><th>Setting</th><th>Now</th></tr></thead>
       <tbody>
-        <tr tal:repeat="r view/setting_rows">
-          <th tal:content="r/label">Destination</th>
-          <td><span tal:content="r/value">/media/STORAGE</span>
-            <div class="pfas-sub" tal:condition="r/waiting" tal:content="string:Next run: ${r/waiting}">Next run</div>
-            <details class="row-form" tal:condition="view/can_site_admin">
-              <summary class="btn-sm btn-secondary" tal:attributes="aria-label string:Change ${r/label}">Change</summary>
-              <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-backups">
-                <input type="hidden" name="action" value="save_setting" />
-                <input type="hidden" name="setting" tal:attributes="value r/key" />
-                <tal:d condition="python:r['key'] == 'dest'">
-                  <label class="field-row">Destination <input type="text" name="value" class="pfas-input pfas-input-wide" tal:attributes="value python:r['raw'] or u''" /></label></tal:d>
-                <tal:t condition="python:r['key'] == 'run_at'">
-                  <label class="field-row">Backup runs at <input type="time" name="value" tal:attributes="value python:r['raw'] or u''" /></label></tal:t>
-                <tal:p condition="python:r['key'] == 'prune'">
-                  <div class="cf-chips">
-                    <label class="pfas-switch cf-chip" tal:repeat="d view/days">
-                      <input type="checkbox" value="on" tal:attributes="name string:prune.${d}; checked python:'checked' if d in ((r['raw'] or {}).get('days') or []) else None" /><span class="pfas-switch-track"></span>
-                      <span tal:replace="d">Sun</span></label></div>
-                  <label class="field-row">At <input type="time" name="prune_at" tal:attributes="value python:(r['raw'] or {}).get('at') or u''" /></label></tal:p>
-                <tal:k condition="python:r['key'] == 'recipients'">
-                  <div class="pfas-rows" data-rows="data-rows">
-                    <div data-row-list="data-row-list">
-                      <div class="pfas-rows-item" data-row="data-row" tal:repeat="k python:r['raw'] or []">
-                        <input type="text" class="pfas-input" aria-label="Key holder" tal:attributes="name string:key.${repeat/k/index}.holder; value k/holder" />
-                        <input type="text" class="pfas-input pfas-mono" aria-label="Fingerprint" tal:attributes="name string:key.${repeat/k/index}.fpr; value k/fpr" />
-                        <button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove key">&#215;</button>
-                      </div>
-                    </div>
-                    <template data-row-template="data-row-template">
-                      <div class="pfas-rows-item" data-row="data-row">
-                        <input type="text" class="pfas-input" name="key.__i__.holder" placeholder="Key holder" aria-label="Key holder" />
-                        <input type="text" class="pfas-input pfas-mono" name="key.__i__.fpr" placeholder="Fingerprint" aria-label="Fingerprint" />
-                        <textarea name="key.__i__.key" rows="2" placeholder="Public key block" aria-label="Public key"></textarea>
-                        <button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove key">&#215;</button>
-                      </div>
-                    </template>
-                    <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add">+ Add a public key</button>
-                  </div></tal:k>
-                <label class="field-row">Reason for the change <input type="text" name="reason" required="required" /></label>
-                <div class="form-actions"><button class="btn-sm btn-primary" type="submit">Save</button></div>
-              </form>
-            </details></td>
+        <!-- a site administrator's row opens its edit window; its menu offers the same -->
+        <tr tal:repeat="r view/setting_rows"
+            tal:attributes="data-row-dialog python:u'bk-set-%s' % r['key'] if view.can_site_admin() else None;
+                            data-row-actions python:rm.actions((u'Change', 'modal', u'bk-set-%s' % r['key'])) if view.can_site_admin() else None">
+          <td tal:content="r/label"></td>
+          <td><span tal:attributes="class python:'pfas-mono' if r['key'] in view.path_settings() else None" tal:content="r/value"></span>
+            <div class="pfas-sub" tal:condition="r/waiting" tal:content="string:Next run: ${r/waiting}"></div></td>
         </tr>
       </tbody>
     </table>
+    <!-- one edit window per setting: the same form, the same posted names -->
+    <tal:w tal:condition="view/can_site_admin" tal:repeat="r view/setting_rows">
+      <div class="pfas-modal" tal:attributes="id python:u'bk-set-%s' % r['key']">
+        <div class="pfas-modal-box">
+          <h2 tal:content="r/label">Destination</h2>
+          <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-backups">
+            <input type="hidden" name="action" value="save_setting" />
+            <input type="hidden" name="setting" tal:attributes="value r/key" />
+            <tal:d condition="python:r['key'] in view.path_settings()">
+              <label class="pfas-form-field"><span tal:replace="r/label">Destination</span> <input type="text" name="value" class="pfas-input pfas-input-wide" tal:attributes="value python:r['raw'] or u''" /></label></tal:d>
+            <tal:t condition="python:r['key'] == 'run_at'">
+              <label class="pfas-form-field">Backup runs at <input type="time" name="value" tal:attributes="value python:r['raw'] or u''" /></label></tal:t>
+            <tal:p condition="python:r['key'] == 'prune'">
+              <div class="cf-chips">
+                <label class="pfas-switch cf-chip" tal:repeat="d view/days">
+                  <input type="checkbox" value="on" tal:attributes="name string:prune.${d}; checked python:'checked' if d in ((r['raw'] or {}).get('days') or []) else None" /><span class="pfas-switch-track"></span>
+                  <span tal:replace="d">Sun</span></label></div>
+              <label class="pfas-form-field">At <input type="time" name="prune_at" tal:attributes="value python:(r['raw'] or {}).get('at') or u''" /></label></tal:p>
+            <tal:k condition="python:r['key'] == 'recipients'">
+              <div class="pfas-rows" data-rows="data-rows">
+                <div data-row-list="data-row-list">
+                  <div class="pfas-rows-item" data-row="data-row" tal:repeat="k python:r['raw'] or []">
+                    <input type="text" class="pfas-input" aria-label="Key holder" tal:attributes="name string:key.${repeat/k/index}.holder; value k/holder" />
+                    <input type="text" class="pfas-input pfas-mono" aria-label="Fingerprint" tal:attributes="name string:key.${repeat/k/index}.fpr; value k/fpr" />
+                    <button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove key">&#215;</button>
+                  </div>
+                </div>
+                <template data-row-template="data-row-template">
+                  <div class="pfas-rows-item" data-row="data-row">
+                    <input type="text" class="pfas-input" name="key.__i__.holder" placeholder="Key holder" aria-label="Key holder" />
+                    <input type="text" class="pfas-input pfas-mono" name="key.__i__.fpr" placeholder="Fingerprint" aria-label="Fingerprint" />
+                    <textarea name="key.__i__.key" rows="2" placeholder="Public key block" aria-label="Public key"></textarea>
+                    <button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove key">&#215;</button>
+                  </div>
+                </template>
+                <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add">+ Add a public key</button>
+              </div></tal:k>
+            <label class="pfas-form-field">Reason for the change <input type="text" name="reason" required="required" /></label>
+            <div class="form-actions is-end">
+              <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+              <button class="btn btn-primary" type="submit">Save</button></div>
+          </form>
+        </div>
+      </div>
+    </tal:w>
 
-    <tal:c define="chs view/changes" condition="chs">
+    <tal:c define="chs view/changes; rm context/@@pfas-row-menu" condition="chs">
     <div class="section-group-hdr">Settings changes</div>
     <table class="pfas-table" data-col-resize="backups-2">
-      <thead><tr><th>Saved</th><th>Change</th><th>By</th><th>Reason</th><th>State</th><th>Applied</th>
-        <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
+      <thead><tr><th>Saved</th><th>Change</th><th>By</th><th>Reason</th><th>State</th><th>Applied</th></tr></thead>
       <tbody>
-        <tr tal:repeat="c chs">
+        <tr tal:repeat="c chs"
+            tal:attributes="data-row-actions python:rm.actions(
+                (u'Withdraw', 'form', u'withdraw-%s' % c['id']) if c['state'] == 'waiting' and view.can_site_admin() else None)">
           <td class="pfas-mono" tal:content="python:view.lab_at(c.get('at'), c.get('at'))">2026-10-14 15:02</td>
           <td tal:content="c/change">Destination</td>
           <td tal:content="c/by">AD</td>
@@ -105,20 +102,14 @@
               <span metal:use-macro="context/@@pfas-macros/macros/pass-mark"></span>
               <span tal:replace="python:c.get('applied_at') or u''">2026-10-15 02:00</span><tal:w condition="c/why|nothing">:
               <span tal:replace="c/why">the disk is not mounted</span></tal:w></tal:a></td>
-          <td class="row-plus-cell">
-            <details class="row-more" tal:condition="python:c['state'] == 'waiting' and view.can_site_admin()">
-              <summary class="row-plus" aria-label="Actions for this change" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-backups">
-                  <input type="hidden" name="action" value="withdraw_setting" />
-                  <input type="hidden" name="change" tal:attributes="value c/id" />
-                  <button type="submit" class="btn-sm btn-secondary">Withdraw</button>
-                </form>
-              </div>
-            </details></td>
         </tr>
       </tbody>
     </table>
+    <tal:w repeat="c chs"><form method="post" hidden="hidden" tal:condition="python:c['state'] == 'waiting' and view.can_site_admin()"
+          tal:attributes="action string:${view/portal_url}/@@pfas-backups; id string:withdraw-${c/id}">
+      <input type="hidden" name="action" value="withdraw_setting" />
+      <input type="hidden" name="change" tal:attributes="value c/id" />
+    </form></tal:w>
     </tal:c>
 
     <div class="section-group-hdr">Runs</div>
@@ -140,11 +131,21 @@
     </table>
     <p class="form-note" tal:condition="not:view/events">No backups recorded yet.</p>
 
+    <details class="pfas-card is-tint">
+      <summary>Backup levels</summary>
+      <table class="pfas-table" data-col-resize="backups-1">
+        <thead><tr><th>Level</th><th>What it holds</th><th>When</th><th>Kept</th></tr></thead>
+        <tbody><tr tal:repeat="l view/level_rows">
+          <td class="pfas-cell-name" tal:content="l/label">Full</td><td tal:content="l/holds">A full copy</td>
+          <td tal:content="l/when">First day of each quarter</td><td tal:content="l/kept">5 years</td></tr></tbody>
+      </table>
+    </details>
+
     <div class="section-group-hdr">Restore a method</div>
     <form method="post" enctype="multipart/form-data" tal:condition="view/can_site_admin"
           tal:attributes="action string:${view/portal_url}/@@pfas-backups">
       <input type="hidden" name="action" value="upload_bundle" />
-      <div class="field-row"><label for="bk-bundle">Method bundle</label>
+      <div class="pfas-form-field"><label for="bk-bundle">Method bundle</label>
         <input type="file" name="bundle" id="bk-bundle" accept=".json,application/json" required="required" /></div>
       <div class="form-actions"><button class="btn btn-primary" type="submit">Show the changes</button></div>
     </form>
@@ -166,10 +167,10 @@
             tal:attributes="action string:${view/portal_url}/@@pfas-backups">
         <input type="hidden" name="action" value="apply_restore" />
         <input type="hidden" name="bundle" tal:attributes="value b/bundle_id" />
-        <div class="field-row"><label for="bk-reason">Reason</label>
+        <div class="pfas-form-field"><label for="bk-reason">Reason</label>
           <input type="text" name="reason" id="bk-reason" required="required" /></div>
         <div class="form-actions"><button class="btn btn-primary" type="submit"
-             tal:content="python:u'Restore %s from %s' % (b['method_id'], b['point'])">Restore</button></div>
+             tal:content="python:u'Restore %s from %s' % (view.method_name(b['method_id']), b['point'])">Restore</button></div>
       </form>
     </tal:p>
   </div>

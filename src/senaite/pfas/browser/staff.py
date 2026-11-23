@@ -8,7 +8,7 @@
 
 The person's name and job title are core LabContact fields; the signature is
 core's LabContact Signature image (what SENAITE's own reports print).
-Credentials and "signs as" (preparer / reviewer) are PFAS settings kept in
+Credentials and the sign rights (preparer, reviewer, authoriser) are PFAS settings kept in
 an annotation on the same Lab Contact. The Laboratory Director is one person,
 chosen on the Laboratory page only. Python 2.7.
 """
@@ -25,27 +25,12 @@ logger = logging.getLogger("senaite.pfas.staff")
 
 STAFF_KEY = "senaite.pfas.staff"            # on a LabContact: {"credentials", "sign_as"}
 DIRECTOR_KEY = "senaite.pfas.lab_director"  # on the portal: the director's user id
-SIGN_ROLES = (("preparer", "Preparer"), ("reviewer", "Reviewer"))
-# The "Signs as" control: each choice and the roles it writes
-SIGNS_AS = (("none", "None", []), ("preparer", "Preparer", ["preparer"]),
-            ("reviewer", "Reviewer", ["reviewer"]), ("both", "Both", ["preparer", "reviewer"]))
-
-
-def signs_as_key(sign_as):
-    """The "Signs as" choice a stored list reads as."""
-    roles = set(clean_sign_as(sign_as))
-    for key, _label, wrote in SIGNS_AS:
-        if set(wrote) == roles:
-            return key
-    return "none"
-
-
-def sign_as_for(key):
-    """The roles one "Signs as" choice writes, or None for an unknown one."""
-    for k, _label, wrote in SIGNS_AS:
-        if k == key:
-            return list(wrote)
-    return None
+# the sign rights People & Roles grants, one switch each, in this order
+SIGN_ROLES = (("preparer", "Preparer"), ("reviewer", "Reviewer"), ("authoriser", "Authoriser"),
+              ("qa_approver", "QA approver"), ("interim_release", "Interim release"))
+# rights a lab may leave with nobody: interim certificates are a client's
+# choice, so nobody holding the right stops no designed document
+OPTIONAL_SIGN_ROLES = ("interim_release",)
 
 
 def contact_for(userid):
@@ -127,6 +112,17 @@ def entry_status(userid):
     return entry_rights.status(True, row.get("initials"), bool(signature_uri(contact)))
 
 
+def is_automation(userid=None):
+    """The current (or named) user is a declared service account (the
+    PFASAutomation group)."""
+    from senaite.pfas.browser.data_review import AUTOMATION_GROUP
+    try:
+        user = api.get_user(userid) if userid else api.get_current_user()
+        return user is not None and AUTOMATION_GROUP in (user.getGroups() or [])
+    except Exception:                                       # noqa: BLE001
+        return False
+
+
 def may_enter(userid=None):
     """The current (or named) user may enter data and review."""
     from senaite.pfas import entry_rights
@@ -155,6 +151,8 @@ def check_signature(raw):
 
 
 def clean_sign_as(values):
+    """The known sign rights among values, in SIGN_ROLES order; anything else
+    is dropped."""
     allowed = [k for k, _t in SIGN_ROLES]
     return [k for k in allowed if k in (values or [])]
 

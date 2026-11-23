@@ -13,13 +13,14 @@
      tal:define="mv python:context.restrictedTraverse('@@pfas-macros');
                  purl python:context.portal_url();
                  uname mv/user_name;
-                 is_mgr mv/is_manager_role"
+                 is_mgr mv/is_manager_role;
+                 ic context/@@pfas-icons"
      tal:attributes="data-terminal-idle mv/terminal_idle;
                      data-badge-signin string:${purl}/@@pfas-badge-signin">
   <ul class="navbar-nav pfas-topbar-left">
     <li class="nav-item">
       <button type="button" class="nav-link pfas-topbar-toggle" onclick="PFAS.nav.toggle(this)"
-              aria-label="Toggle navigation" title="Show or hide the menu">&#9776;</button>
+              aria-label="Toggle navigation" title="Show or hide the menu"><tal:m tal:replace="structure python:ic.svg('menu', hidden=True, size='md')" /></button>
     </li>
     <li class="nav-item pfas-topbar-title" id="pfas-topbar-title"><h1 class="pfas-topbar-h1"><metal:t define-slot="bar-title">LIMS</metal:t></h1></li>
   </ul>
@@ -29,7 +30,7 @@
 
   <form class="pfas-topbar-search" role="search" tal:condition="uname" autocomplete="off"
         tal:attributes="action string:${purl}/@@pfas-search; data-endpoint string:${purl}/@@pfas-search">
-    <span class="pfas-search-icon" aria-hidden="true"><i class="fas fa-search"></i></span>
+    <span class="pfas-search-icon" aria-hidden="true"><tal:m tal:replace="structure python:ic.svg('search', hidden=True)" /></span>
     <input type="search" name="q" id="pfas-search-input" aria-label="Search the site"
            placeholder="Search samples, equipment, method settings&#8230;"
            aria-autocomplete="list" aria-controls="pfas-search-results" />
@@ -40,11 +41,11 @@
   <ul class="navbar-nav pfas-topbar-global" tal:condition="uname">
     <li class="nav-item pfas-topbar-search-toggle">
       <button type="button" class="nav-link" title="Search" aria-label="Search"
-              onclick="pfasSearchOpen()"><i class="fas fa-search"></i></button>
+              onclick="pfasSearchOpen()"><tal:m tal:replace="structure python:ic.svg('search', hidden=True, size='md')" /></button>
     </li>
     <li class="nav-item dropdown" tal:define="create mv/create_items" tal:condition="create">
       <button type="button" class="nav-link dropdown-toggle pfas-topbar-create" data-pfas-drop=""
-              title="Create new&#8230;" aria-haspopup="true">+</button>
+              title="Create new&#8230;" aria-label="Create new" aria-haspopup="true"><tal:m tal:replace="structure python:ic.svg('add', hidden=True, size='md')" /></button>
       <div class="dropdown-menu dropdown-menu-right">
         <div class="dropdown-header">Create new</div>
         <a tal:repeat="c create" class="dropdown-item" tal:attributes="href c/url"
@@ -54,7 +55,7 @@
     <!-- notifications: notices and outstanding actions, fetched after load (bell.py) -->
     <li class="nav-item dropdown pfas-bell" tal:attributes="data-endpoint string:${purl}/@@pfas-bell">
       <button type="button" class="nav-link dropdown-toggle pfas-topbar-bell" data-pfas-drop=""
-              title="Notifications" aria-label="Notifications" aria-haspopup="true"><i class="fas fa-bell"></i><span
+              title="Notifications" aria-label="Notifications" aria-haspopup="true"><tal:m tal:replace="structure python:ic.svg('bell', hidden=True, size='md')" /><span
               class="pfas-bell-count" hidden="hidden"></span></button>
       <div class="dropdown-menu dropdown-menu-right pfas-bell-menu">
         <div class="pfas-bell-list"><div class="dropdown-header">Nothing open</div></div>
@@ -62,16 +63,17 @@
     </li>
     <li class="nav-item">
       <a class="nav-link pfas-topbar-help" title="Help: what things mean and what they affect"
-         aria-label="Help" tal:attributes="href string:${purl}/@@pfas-help"><span aria-hidden="true">?</span></a>
+         aria-label="Help" tal:attributes="href string:${purl}/@@pfas-help"><tal:m tal:replace="structure python:ic.svg('help', hidden=True, size='md')" /></a>
     </li>
     <li class="nav-item" tal:condition="is_mgr">
-      <a class="nav-link" title="LIMS Setup"
-         tal:attributes="href string:${purl}/@@lims-setup"><i class="fas fa-cog"></i></a>
+      <a class="nav-link" title="LIMS Setup" aria-label="LIMS Setup"
+         tal:attributes="href string:${purl}/@@lims-setup"><tal:m tal:replace="structure python:ic.svg('settings', hidden=True, size='md')" /></a>
     </li>
     <li class="nav-item dropdown">
       <button type="button" class="nav-link dropdown-toggle pfas-topbar-user" data-pfas-drop=""
               aria-haspopup="true" tal:attributes="title uname"><span class="pfas-avatar"
-              tal:content="mv/user_initials">AN</span></button>
+              tal:define="pic mv/user_picture"><img tal:condition="pic" tal:attributes="src pic" alt="" /><tal:i
+              condition="not:pic" content="mv/user_initials">AN</tal:i></span></button>
       <div class="dropdown-menu dropdown-menu-right">
         <div class="dropdown-header" tal:content="string:Signed in as ${uname}">Signed in as admin</div>
         <!-- the dark theme is the person's choice, never the lab's default
@@ -83,8 +85,8 @@
         <tal:a repeat="a mv/user_actions">
           <div class="dropdown-divider" tal:condition="python:a['id'] == 'logout' and not repeat['a'].start"></div>
           <a tal:attributes="href a/url;
-                             class python:'dropdown-item pfas-topbar-logout' if a['id'] == 'logout' else 'dropdown-item'"><i
-             tal:attributes="class string:fas ${a/icon}"></i> <span tal:replace="a/title">My Profile</span></a>
+                             class python:'dropdown-item pfas-topbar-logout' if a['id'] == 'logout' else 'dropdown-item'"><tal:m
+             tal:replace="structure python:ic.svg(a['icon'], hidden=True)" /> <span tal:replace="a/title">My Profile</span></a>
         </tal:a>
       </div>
     </li>

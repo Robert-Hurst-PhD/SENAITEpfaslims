@@ -20,12 +20,23 @@
   try {
     if (window.sessionStorage.getItem('pfas_panel_collapsed') === '1') document.documentElement.classList.add('pfas-panel-folded');
   } catch (e) {}
+  /* a menu closed is closed at once (its button says so) and fades out
+     before it goes (pfas-components.css; at once with reduced motion) */
+  function motion() { return PFAS.components && PFAS.components.motion; }
+  function shown(menu) { return menu.classList.contains('show') && !menu.classList.contains('is-leaving'); }
+  function hide(menu) {
+    var m = motion(), btn = menu.parentNode && menu.parentNode.querySelector('[data-pfas-drop]');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (!shown(menu)) return;
+    if (m) m.leave(menu, 'is-leaving', function () { menu.classList.remove('show'); });
+    else menu.classList.remove('show');
+  }
   function closeAll(except) {
     /* only the bar's own menus: core's Bootstrap dropdowns (a sample's
        workflow menu) open and close themselves */
     var open = document.querySelectorAll('#pfas-topbar [data-pfas-drop] + .dropdown-menu.show');
     for (var i = 0; i < open.length; i++) {
-      if (open[i] !== except) open[i].classList.remove('show');
+      if (open[i] !== except) hide(open[i]);
     }
   }
 
@@ -40,8 +51,13 @@
     var menu = btn.parentNode.querySelector('.dropdown-menu');
     if (!menu) return;
     closeAll(menu);
-    menu.classList.toggle('show');
-    btn.setAttribute('aria-expanded', menu.classList.contains('show') ? 'true' : 'false');
+    if (shown(menu)) {
+      hide(menu);
+    } else {
+      if (motion()) motion().stay(menu, 'is-leaving');
+      menu.classList.add('show');
+      btn.setAttribute('aria-expanded', 'true');
+    }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeAll(null);
@@ -94,7 +110,16 @@ function pfasSearchInit() {
     for (var k = 0; k < l.length; k++) l[k].classList.toggle('active', k === active);
     l[active].scrollIntoView({block: 'nearest'});
   }
-  function close() { box.hidden = true; active = -1; form.classList.remove('open'); }
+  /* the results box fades in when it opens and out when it closes; drawn
+     again while open (typing), it stays as it is */
+  var motion = window.PFAS.components.motion;
+  function show() { if (motion) motion.stay(box, 'is-leaving'); box.hidden = false; form.classList.add('open'); }
+  function close() {
+    active = -1; form.classList.remove('open');
+    if (box.hidden) return;
+    if (motion) motion.leave(box, 'is-leaving', function () { box.hidden = true; });
+    else box.hidden = true;
+  }
   function draw(data) {
     var q = input.value.trim();
     if (!data.groups || !data.groups.length) {
@@ -111,7 +136,7 @@ function pfasSearchInit() {
       html += '<a class="pfas-search-hit pfas-search-all" href="' + esc(data.more) + '">All results for “' + esc(q) + '”</a>';
       box.innerHTML = html;
     }
-    box.hidden = false; form.classList.add('open'); active = -1;
+    show(); active = -1;
   }
   function run() {
     var q = input.value.trim();
@@ -123,7 +148,7 @@ function pfasSearchInit() {
       .catch(function () {});
   }
   input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 200); });
-  input.addEventListener('focus', function () { if (input.value.trim().length >= 2 && box.innerHTML) { box.hidden = false; form.classList.add('open'); } });
+  input.addEventListener('focus', function () { if (input.value.trim().length >= 2 && box.innerHTML) show(); });
   input.addEventListener('keydown', function (e) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
@@ -250,7 +275,7 @@ if (document.readyState === 'loading') {
 
 
 /* Opening a form moves the keyboard into it: a button that reveals a form
-   or dialog (Add Reagent, New Deviation...) left focus on the button, so a
+   or dialog (New Reagent, New Deviation...) left focus on the button, so a
    keyboard user had to hunt for the fields it opened. After such a click,
    the first field that has just become visible gets the focus. A tab, a
    step or another segmented choice only changes what is shown, and a Help
@@ -434,3 +459,61 @@ function pfasBellInit() {
     .catch(function () {});
 }
 if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', pfasBellInit); } else { pfasBellInit(); }
+
+/* ── The slow-page line ──────────────────────────────────────────────────
+   A click on a link that leaves this page (or a form sent the browser's
+   way): if nothing has painted 300 ms later, a 2 px line under the top bar
+   steps to 30 %, then 60 % at 1 s and 80 % at 2.5 s, each step by transform
+   on --t-reveal (pfas-topbar.css); it goes with the page. A link the page
+   handles itself, one that opens a new tab, a download and a jump within
+   the page start nothing. Reduced motion: each step at once. */
+(function () {
+  var PFAS = window.PFAS = window.PFAS || {};
+  var line = null, timers = [];
+  var P = PFAS.progress = { STEPS: [[300, 0.3], [1000, 0.6], [2500, 0.8]], GIVE_UP: 15000 };
+  var DOWNLOAD = /([?&](export|download|format)=|\.(pdf|csv|xlsx?|zip|json|txt)(\?|$)|-pdf(\?|$)|\/download)/i;
+  function bar() {
+    if (!line) {
+      line = document.createElement('div');
+      line.className = 'pfas-progress';
+      line.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(line);
+    }
+    return line;
+  }
+  P.step = function (f) { var b = bar(); b.classList.add('is-on'); b.style.transform = 'scaleX(' + f + ')'; };
+  P.stop = function () {
+    timers.forEach(function (t) { clearTimeout(t); });
+    timers = [];
+    if (line) { line.classList.remove('is-on'); line.style.transform = ''; }
+  };
+  P.start = function () {
+    P.stop();
+    P.STEPS.forEach(function (s) { timers.push(setTimeout(function () { P.step(s[1]); }, s[0])); });
+    timers.push(setTimeout(P.stop, P.GIVE_UP));
+  };
+  /* does this link take the window to another page? */
+  P.leaves = function (a) {
+    var href = a.getAttribute('href') || '';
+    if (!href || href.charAt(0) === '#' || /^(javascript|mailto|tel):/i.test(href)) return false;
+    if (a.hasAttribute('download') || (a.getAttribute('target') && a.getAttribute('target') !== '_self')) return false;
+    var u;
+    try { u = new URL(href, location.href); } catch (e) { return false; }
+    if (u.origin !== location.origin || DOWNLOAD.test(u.pathname + u.search)) return false;
+    return !(u.pathname === location.pathname && u.search === location.search && u.hash);
+  };
+  /* on the window, so every handler on the page has had its say first */
+  window.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button > 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (a && P.leaves(a)) P.start();
+  });
+  window.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (e.defaultPrevented || (f && f.getAttribute && f.getAttribute('target') && f.getAttribute('target') !== '_self')) return;
+    if (f && f.action && DOWNLOAD.test(f.action)) return;
+    P.start();
+  });
+  window.addEventListener('pagehide', P.stop);
+  window.addEventListener('pageshow', P.stop);
+})();

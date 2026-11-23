@@ -3,7 +3,7 @@
 
 SECTIONS lists the six sections and their items. An item is a family of
 pages (GROUPS: an item and its tabs, a nested family's tabs a level below)
-or a page of its own (ITEMS, Logbooks with its pages as children). Each
+or a page of its own (ITEMS, which may list pages as children). Each
 page keeps its own address and view. Who sees a row is _allowed on its
 `who`, the role SENAITE enforces on the page; each page still applies its
 own permission check.
@@ -12,6 +12,7 @@ own permission check.
     tree(section, roles, path, query)  a section's rows, the page's branch open
     node_for(path, query)         (section, item, child, check) of a page, or None
     crumbs(path, query, roles)    [(label, url_path)] from the section down
+    step_label(path, query)       the extra crumb step a query adds (STEPS), or None
     pages(roles)                  every page the person may open, with its place
     nav_model(roles, path, query, landing, pins)  the rail and the panel for a page
 
@@ -40,7 +41,7 @@ MGR_CLK = "mgr_clk"        # managers and clerks (the core instruments list)
 GROUPS = [
     {"id": "samples", "label": "Samples", "tabs": [
         ("samples", "Samples", STAFF, "samples"),
-        ("pfas-track", "Sample Tracker", STAFF),
+        ("pfas-track", "Client Tracker", STAFF),
     ]},
     {"id": "data-review", "label": "Data Review", "tabs": [
         ("pfas-data-review", "Data Review", MGR_ANA),
@@ -52,7 +53,10 @@ GROUPS = [
     ]},
     {"id": "reagents", "label": "Reagents & Standards", "tabs": [
         ("pfas-reagents", "Reagent Inventory", STAFF),
+        ("pfas-materials", "Materials & Containers", STAFF),
         ("pfas-prep-standards", "Prepared Standards", STAFF),
+        ("pfas-recipes", "Recipes", STAFF),
+        ("pfas-lot-extensions", "Lot Extensions", STAFF),
     ]},
     {"id": "extraction", "label": "Extraction", "tabs": [
         ("pfas-homogenisation", "Homogenisation", STAFF),
@@ -62,11 +66,11 @@ GROUPS = [
     {"id": "equipment", "label": "Equipment", "tabs": [
         ("pfas-equipment", "Equipment", STAFF),
         ("pfas-equipment-types", "Equipment Types", MGR),
-        ("pfas-homogenisation-setup", "Homogenisation Methods", MGR),
-        ("group:equipment-checks", "Equipment Checks", STAFF),
+        ("pfas-homogenisation-setup", "Homogenisation Techniques", MGR),
+        ("group:equipment-checks", "Equipment checks", STAFF),
     ]},
-    {"id": "equipment-checks", "label": "Equipment Checks", "tabs": [
-        ("pfas-facility-qc", "Daily Checklist", STAFF),
+    {"id": "equipment-checks", "label": "Equipment checks", "tabs": [
+        ("pfas-facility-qc", "Equipment checks", STAFF),
         ("pfas-temperature-log", "Facility Monitoring", STAFF),
         ("pfas-balance-log", "Balance", STAFF),
         ("pfas-weight-sets", "Weight Sets", STAFF),
@@ -81,16 +85,17 @@ GROUPS = [
         ("pfas-import-studio", "Import Studio", STAFF),
         ("pfas-calibrations", "Calibration Archive", STAFF),
     ]},
-    {"id": "reports", "label": "Reports", "tabs": [
-        ("reports", "Reports", MGR_ANA, "samples?review_state=published"),
-        ("pfas-controlled-publications", "Controlled Publications", MGR),
-        ("pfas-edd-batches", "Delivered EDDs", MGR),
+    {"id": "reports", "label": "Published samples", "tabs": [
+        ("reports", "Published samples", MGR_ANA, "samples?samples_review_state=published"),
+        ("pfas-controlled-publications", "Certificates", MGR),
+        ("pfas-edd-batches", "EDD downloads", MGR),
     ]},
     {"id": "reporting-setup", "label": "Reporting Setup", "tabs": [
         ("pfas-report-template", "Reporting Template", MGR_ANA),
         ("pfas-document-templates", "Document Templates", MGR),
-        ("pfas-edd-config", "EDD Export", MGR_ANA),
+        ("pfas-edd-config", "EDD settings", MGR_ANA),
         ("pfas-print-settings", "Print Settings", MGR),
+        ("pfas-report-tiers", "Certificate tiers", MGR),
         ("pfas-qc-qualifiers", "QC Qualifiers", MGR),
         ("pfas-regulatory-limits", "Regulatory Limits", MGR),
     ]},
@@ -102,6 +107,7 @@ GROUPS = [
         ("pfas-terminals", "Terminals", MGR),
         ("pfas-backups", "Backups", MGR),
         ("pfas-config-history", "Configuration History", MGR),
+        ("pfas-signatures", "Signatures", MGR),
         ("pfas-system-map", "System Map", MGR),
     ]},
     {"id": "setup", "label": "Setup", "tabs": [
@@ -124,25 +130,43 @@ ALSO = {
     "pfas-equipment": ["pfas-equipment-settings"],
     "pfas-method-profiles": ["pfas-method-profile-edit", "pfas-method-wizard"],
     "pfas-reagents": ["pfas-lot-usage", "pfas-assigned-levels"],
+    "pfas-report-template": ["pfas-report-template-preview"],
 }
 
 # Pages that ARE their row's own page under another address (the landing of
-# Data Review, which draws the tab's title; a batch's logbook list, which
-# draws By batch's): they mark the row like ALSO pages, but the breadcrumb
-# ends at the row and adds no title. A tab's are joined to ALSO here; an
+# Data Review, which draws the tab's title): they mark the row like ALSO
+# pages, but the breadcrumb ends at the row and adds no title. A tab's are joined to ALSO here; an
 # item's child names its pages in the item's children_also.
 SAME = {
     "pfas-data-review": ["pfas-data-review-home"],
-    "pfas-logbook-batches": ["pfas-logbook-index"],
 }
 for _key, _pages_of in SAME.items():
     if _key in set(t[0] for g in GROUPS for t in g["tabs"]):
         ALSO[_key] = ALSO.get(_key, []) + list(_pages_of)
 
 
+# A step the breadcrumb adds after a page's own row when the page is asked for
+# with a query name: {page key: [(query name, label)]}. The page stays a link
+# and the step is the place the person is in.
+STEPS = {
+    "pfas-method-studies": [("new", "New study")],
+}
+
+
+def step_label(path, query):
+    """The label of the extra breadcrumb step for the page at `path` asked
+    with `query` (a query string or {name: value}), else None."""
+    here = _norm(path).rsplit("/", 1)[-1]
+    params = query if isinstance(query, dict) else _query(query)
+    for name, label in STEPS.get(here, ()):
+        if params.get(name):
+            return label
+    return None
+
+
 def is_row_page(path):
     """True when `path` is a page that is its row's own page (SAME), at the
-    site or as a view on a record (a batch's logbooks)."""
+    site or as a view on a record."""
     mine = set(_norm(p) for pages_of in SAME.values() for p in pages_of)
     here = _norm(path)
     return here in mine or here.rsplit("/", 1)[-1] in mine
@@ -179,18 +203,27 @@ def _pages():
 _BY_VIEW = dict((key, g) for g, key, _path in _pages())
 
 
-def _allowed(who, roles):
+# What the read-only Regulatory Inspector may open of the manager's pages:
+# the certificate register (perms.INSPECTOR_READ_VIEWS), by key.
+INSPECTOR_KEYS = frozenset(("pfas-controlled-publications",))
+
+
+def _allowed(who, roles, key=None):
+    """Whether `who` admits these roles. The inspector sees every staff row
+    to read, and of the manager's rows only those in INSPECTOR_KEYS; what it
+    may do on a page is the page's and the wall's (perms.py)."""
     roles = set(roles or ())
+    ins = "RegulatoryInspector" in roles
     mgr = bool(roles & set(("Manager", "LabManager")))
     ana = bool(roles & set(("Analyst", "Verifier")))
     clk = "LabClerk" in roles
     if who == MGR:
-        return mgr
+        return mgr or (ins and key in INSPECTOR_KEYS)
     if who == MGR_ANA:
-        return mgr or ana
+        return mgr or ana or ins
     if who == MGR_CLK:
-        return mgr or clk
-    return mgr or ana or clk
+        return mgr or clk or ins
+    return mgr or ana or clk or ins
 
 
 def view_name(url):
@@ -226,7 +259,7 @@ def tabs_for(group, roles):
     out = []
     for t in (group or {}).get("tabs", []):
         key, label, who, _path = _tab(t)
-        if not _allowed(who, roles):
+        if not _allowed(who, roles, key):
             continue
         if key.startswith(NESTED) and not tabs_for(group_by_id(key[len(NESTED):]), roles):
             continue
@@ -272,7 +305,7 @@ def match(path, params):
     """(group, key) of the page at `path` (under the site) with query
     `params` ({name: value}), or (None, None): the tab whose path is the
     page's and whose query the page carries; of several, the one naming the
-    most of the query (the published samples are Reports, the others Samples)."""
+    most of the query (the published samples are Published samples, the others Samples)."""
     here = _norm(path)
     best, best_n = (None, None), (-1, -1)
     for g, key, tpath in _pages():
@@ -311,31 +344,27 @@ SECTIONS = (
     {"id": "qc", "label": "QC & Methods", "short": "QC & Methods", "icon": "ico-qc-rules",
      "who": MGR_ANA, "items": ["data-review", "method-profiles"]},
     {"id": "bench", "label": "Bench", "short": "Bench", "icon": "ico-extraction",
-     "who": STAFF, "items": ["reagents", "logbooks", "extraction", "controlled-documents", "deviations"]},
+     "who": STAFF, "items": ["reagents", "extraction", "batch-records", "controlled-documents", "deviations"]},
     {"id": "equipment", "label": "Equipment & Instruments", "short": "Equipment", "icon": "ico-instruments",
      "who": STAFF, "items": ["equipment", "instruments"]},
     {"id": "reporting", "label": "Reporting", "short": "Reporting", "icon": "ico-book",
      "who": MGR_ANA, "items": ["reports", "reporting-setup"]},
-    {"id": "config", "label": "Configuration", "short": "Config", "icon": "ico-workflow",
+    {"id": "config", "label": "Configuration", "short": "Config", "icon": "ico-config",
      "who": MGR, "items": ["settings", "setup"]},
 )
 
 # Items that are not a family: their own page, and the pages that are part
-# of it (`also`, as ALSO; `children_also` for its children). Logbooks opens
-# By batch and has its four pages as children; By batch also holds a
-# batch's logbook list and its forms.
+# of it (`also`, as ALSO; `children_also` for its children). An item with
+# children opens its own page and lists the children under it.
 ITEMS = {
     "clients": {"label": "Clients", "who": STAFF, "path": "clients"},
-    "batches": {"label": "Batches", "who": STAFF, "path": "batches", "also": ["pfas-sample-status"]},
-    "worksheets": {"label": "Worksheets", "who": STAFF, "path": "worksheets"},
-    "chain-of-custody": {"label": "Chain of Custody", "who": STAFF, "path": "@@pfas-coc"},
+    "batches": {"label": "Batches", "who": STAFF, "path": "batches"},
+    "worksheets": {"label": "Worksheets", "who": STAFF, "path": "worksheets",
+                   "also": ["pfas-worksheet-samples", "pfas-sample-status"]},
+    "chain-of-custody": {"label": "Chain of Custody", "who": STAFF, "path": "@@pfas-coc",
+                         "also": ["pfas-coc-receive", "pfas-receipt"]},
     "projects": {"label": "Projects", "who": STAFF, "path": "@@pfas-projects"},
-    "logbooks": {"label": "Logbooks", "who": STAFF, "path": "@@pfas-logbook-batches", "children": [
-        ("pfas-prep-logbooks", "Templates", MGR),
-        ("pfas-logbook-admin", "Method sequence", MGR),
-        ("pfas-logbook-batches", "By batch", STAFF),
-        ("pfas-recipes", "Recipes", MGR),
-    ], "children_also": {"pfas-logbook-batches": ["pfas-logbook-index", "pfas-logbook-dynamic"]}},
+    "batch-records": {"label": "Batch records", "who": STAFF, "path": "@@pfas-batch-records"},
     "controlled-documents": {"label": "Controlled Documents", "who": STAFF, "path": "@@pfas-sop"},
     "deviations": {"label": "Deviations / CARs", "who": STAFF, "path": "@@pfas-deviations"},
 }
@@ -373,9 +402,9 @@ def _visible(spec, roles):
     """The row as this person sees it: {"keys", "label", "url_path",
     "children"}, or None when nothing in it is open to them. A row with one
     child open is that child's page: it keeps its own name when it names a
-    page of its own (Logbooks), else it takes the child's (a family). `keys`
+    page of its own (an item), else it takes the child's (a family). `keys`
     are the map keys the row stands for, outermost first."""
-    if not _allowed(spec["who"], roles):
+    if not _allowed(spec["who"], roles, spec["key"]):
         return None
     if not spec["children"]:
         return {"keys": (spec["key"],), "label": spec["label"], "url_path": spec["path"], "children": []}
@@ -447,7 +476,7 @@ def node_for(path, query):
 
     `path` is under the site, `query` a query string or {name: value}. A
     page is the map page whose path is its own and whose query it carries;
-    else a map view it shows on some record (a batch's logbooks); else the
+    else a map view it shows on some record (a worksheet's Data Review); else the
     map page it is under (a record view). Of several, the one naming the
     most of the query, then the deepest (a child before its item)."""
     path, params = _params(path, query)
@@ -556,12 +585,68 @@ def pages(roles):
 
 # -- The rail and the panel ---------------------------------------------------
 #
+# The panel draws each section as groups of icon tiles (_groups), one tile a
+# page. The icon of a page is ICONS by its map key, else DEFAULT_ICON; each
+# names a symbol of the sprite in templates/pfas_sidebar.pt.
+#
+ICONS = {
+    # Operations
+    "clients": "ico-clients", "samples": "ico-samples", "pfas-track": "ico-tracker",
+    "batches": "ico-batch", "worksheets": "ico-worksheets", "chain-of-custody": "ico-chain",
+    "projects": "ico-project",
+    # QC and methods
+    "pfas-data-review": "ico-data-review", "pfas-control-chart": "ico-control-charts",
+    "pfas-method-profiles": "ico-method-profiles", "pfas-method-studies": "ico-method-setup",
+    # Bench
+    "pfas-reagents": "ico-reagents", "pfas-materials": "ico-storage",
+    "pfas-prep-standards": "ico-prep-standards", "pfas-recipes": "ico-book-open",
+    "pfas-lot-extensions": "ico-calendar-plus", "pfas-homogenisation": "ico-homogenise",
+    "pfas-extraction-guide": "ico-guide", "pfas-run-builder": "ico-sequence",
+    "batch-records": "ico-batch-record", "controlled-documents": "ico-regulatory",
+    "deviations": "ico-deviation",
+    # Equipment and instruments
+    "pfas-equipment": "ico-instruments", "pfas-equipment-types": "ico-types",
+    "pfas-homogenisation-setup": "ico-technique", "pfas-facility-qc": "ico-daily-checklist",
+    "pfas-temperature-log": "ico-temperature", "pfas-balance-log": "ico-balance",
+    "pfas-weight-sets": "ico-unit-registry", "pfas-reference-thermometers": "ico-ref-thermometer",
+    "pfas-pipette-calibration": "ico-pipette", "pfas-water-log": "ico-water",
+    "pfas-waste-log": "ico-waste", "pfas-eyewash-log": "ico-eyewash",
+    "instruments": "ico-analyser", "pfas-import-studio": "ico-import",
+    "pfas-calibrations": "ico-calibrations",
+    # Reporting
+    "reports": "ico-published", "pfas-controlled-publications": "ico-certificate",
+    "pfas-edd-batches": "ico-edd-edd", "pfas-report-template": "ico-template",
+    "pfas-document-templates": "ico-grid", "pfas-edd-config": "ico-edd-config",
+    "pfas-print-settings": "ico-specifications", "pfas-report-tiers": "ico-tiers",
+    "pfas-qc-qualifiers": "ico-flag", "pfas-regulatory-limits": "ico-limit",
+    # Configuration
+    "pfas-laboratory": "ico-sitemap", "pfas-people": "ico-people",
+    "pfas-time-language": "ico-clock", "pfas-system": "ico-console",
+    "pfas-terminals": "ico-monitor", "pfas-backups": "ico-backup",
+    "pfas-config-history": "ico-history", "pfas-signatures": "ico-signature",
+    "pfas-system-map": "ico-map", "lims-setup": "ico-toggles",
+    "lims-setup-storage": "ico-shelf", "lims-setup-instruments": "ico-instrument-setup",
+    "lims-setup-methods": "ico-flask", "lims-setup-workflow": "ico-workflow",
+    "lims-setup-regulatory": "ico-landmark",
+}
+DEFAULT_ICON = "ico-page"
+TILE_COLUMNS = 3          # the most tiles a group draws side by side
+
+
+def icon_for(keys):
+    """The sprite symbol of a row standing for `keys` (outermost first): its
+    own page's key first, else the nearest above, else DEFAULT_ICON."""
+    for key in reversed(tuple(keys)):
+        if key in ICONS:
+            return ICONS[key]
+    return DEFAULT_ICON
+#
 # The rail is Home and the sections the person may open; the panel holds one
 # tree per rail button. Home is the Dashboard (the launcher, which sends each
 # role to its landing) and the person's pins.
 
 HOME = {"id": "home", "label": "Home", "short": "Home", "icon": "ico-home",
-        "dashboard": {"key": "dashboard", "label": "Dashboard", "url_path": "@@pfas-home"},
+        "dashboard": {"key": "dashboard", "label": "Dashboard", "url_path": "@@pfas-home", "icon": "ico-home"},
         "pins_label": "Pinned"}
 _DASHBOARD = ("", "pfas-home")      # the site root and the launcher, under the site
 
@@ -578,6 +663,7 @@ def _drawn(node, row, section_id, above, leaves, labels):
     gid = "pfas-nav-%s-%s" % (section_id, "-".join(keys)) if node["children"] else None
     below = labels + (node["label"],)
     out = dict(node, group_id=gid, where=where, pinned=False, pinnable=True,
+               icon=icon_for(row["keys"]),
                children=[_drawn(n, r, section_id, keys, leaves, below)
                          for n, r in zip(node["children"], row["children"])])
     if not node["children"]:
@@ -585,10 +671,43 @@ def _drawn(node, row, section_id, above, leaves, labels):
     return out
 
 
+def _groups(rows, section_id):
+    """The panel's groups for a section's drawn rows (_drawn): [{"id",
+    "label", "items", "cols"}], each group a run of page rows drawn as tiles.
+    A family is a group named by its row, its page rows the tiles, and a
+    family inside it a group of its own after it; consecutive pages that
+    belong to no family are one group without a label. `cols` is how many
+    tiles a group draws side by side (TILE_COLUMNS at most), which sets the
+    panel's width."""
+    out = []
+
+    def add(label, items):
+        if items:
+            out.append({"id": "pfas-nav-%s-g%d" % (section_id, len(out) + 1), "label": label,
+                        "items": items, "cols": min(len(items), TILE_COLUMNS)})
+
+    def family(row):
+        add(row["label"], [c for c in row["children"] if not c["children"]])
+        for c in row["children"]:
+            if c["children"]:
+                family(c)
+
+    loose = []
+    for row in rows:
+        if not row["children"]:
+            loose.append(row)
+            continue
+        add(None, loose)
+        loose = []
+        family(row)
+    add(None, loose)
+    return out
+
+
 def _pin_rows(leaves, pins):
     """The stored pins that are page rows of this person's (`leaves`, as
     _drawn fills it), each page once, in pin order: [{"path" as stored,
-    "url_path", "label", "place", "ambiguous"}]. `place` names the rows
+    "url_path", "label", "place", "icon", "ambiguous"}]. `place` names the rows
     above the page as pages() does; `ambiguous` is true when another pin
     has the same label, so the list names the place too. Each pin's page
     row is marked pinned."""
@@ -602,7 +721,7 @@ def _pin_rows(leaves, pins):
         row, labels = hit
         row["pinned"] = True
         out.append({"path": stored, "url_path": row["url_path"], "label": row["label"],
-                    "place": " > ".join(labels)})
+                    "place": " > ".join(labels), "icon": row["icon"]})
     count = {}
     for r in out:
         count[r["label"]] = count.get(r["label"], 0) + 1
@@ -644,14 +763,17 @@ def nav_model(roles, path, query, landing=None, pins=()):
     pin_rows = _pin_rows(leaves, pins)
 
     dash = dict(HOME["dashboard"], children=[], open=False, current=on_dashboard, pinned=False,
-                pinnable=False, group_id=None, where=None)
+                pinnable=False, group_id=None, where=None, icon=HOME["dashboard"]["icon"])
     out = [{"id": HOME["id"], "label": HOME["label"], "short": HOME["short"], "icon": HOME["icon"],
-            "pins_label": HOME["pins_label"], "tree": [dash], "pins": pin_rows}]
+            "pins_label": HOME["pins_label"], "tree": [dash], "pins": pin_rows,
+            "groups": _groups([dash], HOME["id"])}]
     for s, rows in drawn:
         out.append({"id": s["id"], "label": s["label"], "short": s["short"], "icon": s["icon"],
-                    "tree": rows, "pins": None})
+                    "tree": rows, "pins": None, "groups": _groups(rows, s["id"])})
     for s in out:
         s["shown"] = s["id"] == shown
         s["here"] = s["id"] == page_section
+        if s["pins"] is not None:
+            s["pins_cols"] = min(len(s["pins"]), TILE_COLUMNS) or 1
     return {"section": shown, "sections": out}
 

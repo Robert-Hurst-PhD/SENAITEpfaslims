@@ -4,6 +4,10 @@
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-components.css?v=${context/@@pfas-macros/asset_version}" />
+  <!-- the icon drawings, once, before the script that draws from them: a core
+       page's listing draws its states as stage pictures (icons.py) -->
+  <script type="application/json" id="pfas-type-icons" tal:content="structure context/@@pfas-type-icons/spec"></script>
+  <script type="application/json" id="pfas-icons" tal:content="structure context/@@pfas-icons/spec"></script>
   <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-components.js?v=${context/@@pfas-macros/asset_version}"></script>
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-core-overlay.css?v=${context/@@pfas-macros/asset_version}" />

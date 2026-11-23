@@ -220,6 +220,19 @@ def idle_verdict(last, now, limit):
     return "touch" if now - last >= TOUCH_EVERY else "fresh"
 
 
+# the reason a successful password sign-in at a terminal is logged with
+# (login.py); a successful badge sign-in is logged with none
+PASSWORD_SIGNIN = "password"
+
+
+def signed_in_by_badge(con, terminal_id, userid):
+    """True when `userid`'s latest successful sign-in at the terminal was
+    by badge, not by password."""
+    row = con.execute("SELECT reason FROM signins WHERE terminal_id=? AND userid=? AND ok=1 "
+                      "ORDER BY id DESC LIMIT 1", (terminal_id, userid)).fetchone()
+    return row is not None and (row[0] or "") != PASSWORD_SIGNIN
+
+
 def log_signin(con, userid, terminal_id, ok, reason, when):
     with con:
         con.execute("INSERT INTO signins (at, userid, terminal_id, ok, reason) VALUES (?,?,?,?,?)",

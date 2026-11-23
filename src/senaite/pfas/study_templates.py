@@ -264,15 +264,50 @@ def evaluate_replicates(el, rows, limits):
     return {"rows": out, "verdict": combine([r["verdict"] for r in out])}
 
 
-def evaluate_mdl(results):
-    """{analyte: method_studies.mdl_rev2 result} -> rows and a verdict: an
-    MDL calculated without notes passes; with notes or none it is open."""
+MDL_S, MDL_B, MDL_STAT = u"MDLs, spiked", u"MDLb, blanks", u"MDL, the greater"
+
+
+MIXED_LEVELS = u"spiked at more than one level (%s): an MDL pools one spiking level"
+
+
+def evaluate_mdl(results, levels=()):
+    """{analyte: method_studies.mdl_rev2 result} -> rows and a verdict: per
+    analyte the MDL from the spiked samples, the MDL from the method blanks
+    (with the rule that set it) and the MDL, the greater of the two (App. B
+    Rev. 2 §2(e), §4(f)); an MDL calculated without notes passes, with
+    notes or none it is open. "results" keeps the calculation, from which
+    approval writes the MDLs (applied_mdl). `levels`: each spiked
+    replicate's level label; more than one keeps the element open and
+    writes nothing."""
     out = []
     for a, r in sorted((results or {}).items()):
         v = PASS if r.get("verdict") == "calculated" else OPEN
-        out.append({"analyte": a, "level": u"", "stat": u"MDL", "value": r.get("mdl"),
+        out.append({"analyte": a, "level": u"", "stat": MDL_S, "value": r.get("mdl_s"),
+                    "limit": u"", "verdict": u""})
+        out.append({"analyte": a, "level": u"", "stat": MDL_B, "value": r.get("mdl_b"),
+                    "limit": r.get("mdl_b_rule") or u"", "verdict": u""})
+        out.append({"analyte": a, "level": u"", "stat": MDL_STAT, "value": r.get("mdl"),
                     "limit": u"; ".join(r.get("notes") or []), "verdict": v})
-    return {"rows": out, "verdict": combine([r["verdict"] for r in out])}
+    judged = [r["verdict"] for r in out if r["stat"] == MDL_STAT]
+    mixed = sorted(set(l for l in levels or () if l))
+    if len(mixed) > 1:
+        return {"rows": out, "verdict": OPEN, "reason": MIXED_LEVELS % u", ".join(mixed), "results": {},
+                "levels": mixed}
+    return {"rows": out, "verdict": combine(judged), "results": dict(results or {})}
+
+
+def applied_mdl(design_results):
+    """What approving a designed study writes to the method profile's
+    Reporting Limits for its matrix: {keyword: {"mdl": value}} from its MDL
+    element, as an annual MDL study writes them (study_data.applied_values).
+    One MDL element only: two would be two spiking levels or two sets of
+    blanks, and App. B Rev. 2 §4(b) pools one level; with two, nothing is
+    written. `design_results` [(element, result)]."""
+    from senaite.pfas import study_data
+    mdl = [r for el, r in design_results or [] if (el or {}).get("type") == "mdl"]
+    if len(mdl) != 1:
+        return {}
+    return study_data.applied_values("mdl", (mdl[0] or {}).get("results") or {})
 
 
 def evaluate_typed(el, entry, file_present):

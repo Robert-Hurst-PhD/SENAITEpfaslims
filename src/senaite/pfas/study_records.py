@@ -131,6 +131,44 @@ def approve(records, rec, results, applied, by, at, statement, file_name=u""):
     return u""
 
 
+# A study marked test data by the DEMO tooling (tools/synth/demo_study.py,
+# registered and removable there): its approval is labelled DEMO in the
+# change history and keeps, on the record, what each value it writes
+# replaced, so the tool can put it back.
+DEMO_FLAG = "demo"
+DEMO_BEFORE = "demo_before"
+# what an entry held before a value went in (the DEMO tools' own markers)
+ABSENT, NO_ENTRY, NO_MATRIX = "absent", "absent entry", "absent matrix"
+
+
+def is_demo(rec):
+    return bool((rec or {}).get(DEMO_FLAG))
+
+
+def demo_label(rec):
+    """The change history's label for a DEMO study's approval."""
+    return u"DEMO method study %s (test values)" % (rec or {}).get("id", u"")
+
+
+def values_before(profile, matrix, applied):
+    """{keyword: {field: what the Reporting Limits entry held}} for each
+    field `applied` writes: the value, or ABSENT (the field), NO_ENTRY (the
+    analyte's entry) or NO_MATRIX (the matrix's table) when it held none."""
+    limits = (profile or {}).get("reporting_limits") or {}
+    out = {}
+    for kw, vals in sorted((applied or {}).items()):
+        for field in sorted(vals or {}):
+            if matrix not in limits:
+                prev = NO_MATRIX
+            elif kw not in (limits[matrix] or {}):
+                prev = NO_ENTRY
+            else:
+                entry = limits[matrix][kw] or {}
+                prev = entry[field] if field in entry else ABSENT
+            out.setdefault(kw, {})[field] = prev
+    return out
+
+
 def apply_to_profile(profile, matrix, applied):
     """A copy of the profile's Reporting Limits with the study's values
     written in (only the fields the study sets)."""
@@ -162,3 +200,17 @@ def find(records, sid):
         if r.get("id") == sid:
             return r
     return None
+
+
+def filtered(recs, show):
+    """The studies a list's filter keeps: "open" the drafts, "finished" the
+    approved and replaced ones, anything else every one."""
+    if show not in (u"open", u"finished"):
+        return list(recs)
+    return [r for r in recs if (r.get("status") == DRAFT) == (show == u"open")]
+
+
+def counts(recs):
+    """(open, finished) study counts."""
+    n_open = len(filtered(recs, u"open"))
+    return n_open, len(recs) - n_open

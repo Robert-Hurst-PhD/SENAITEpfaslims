@@ -28,6 +28,7 @@ def help_lists():
     from senaite.pfas import coa_qc_standards as q
     from senaite.pfas import doc_fields
     from senaite.pfas import report_format
+    from senaite.pfas import value_sources
     from senaite.pfas.qc import rules
     from senaite.pfas.qc_qualification import FAILURE_TYPES
     out = {}
@@ -41,9 +42,11 @@ def help_lists():
             u"may be released qualified" if disp == "qualify" else u"blocks release"))
         for _k, label, disp, code in FAILURE_TYPES]
     out["doc_categories"] = [(c, u"") for c in doc_fields.CATEGORIES]
-    out["qc_statuses"] = [(v, u"") for v in (q.STATUS["within"], q.STATUS["outside"],
-                                              u"Outside (guidance only)", q.STATUS["no criterion"],
-                                              q.STATUS["not assessed"])]
+    out["value_sources"] = value_sources.help_rows()
+    # a box in the state Evaluate prints Within or Outside too, never flagged
+    out["qc_statuses"] = [(q.STATUS["within"], u""),
+                          (q.STATUS["outside"], u"flagged only when its box is Enforced; in Evaluate, printed and not flagged"),
+                          (q.STATUS["no criterion"], u""), (q.STATUS["not assessed"], u"")]
     out["publish_holds"] = [
         (u"Method not identified", u"the reported analyses carry no method, or different ones"),
         (u"No reporting template issued", u"a manager issues the first revision"),

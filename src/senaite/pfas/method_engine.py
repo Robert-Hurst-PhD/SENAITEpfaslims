@@ -14,7 +14,7 @@ methods is read here, from the profile:
   engine.qc_type_aliases         {qc: qc}  a QC type judged as another
                                         ({"OPR": "LFB"})
   engine.surrogate_guidance_only bool   surrogate recovery is guidance only
-  engine.surrogate_fallback      {min, max, citation} | None  the method
+  engine.surrogate_fallback      {min, max} | None  the method
                                         text's surrogate window, used when
                                         the profile sets none
   engine.eis_recovery_limits     bool   SUR / EIS judged per analyte and
@@ -25,12 +25,22 @@ methods is read here, from the profile:
                                         absence refuses (calibration,
                                         is_response, confirmation)
   engine.aliases                 [names] other names the method is called by
-  engine.rule_notes              {rule: text}  the note each rule carries
+  engine.rule_flags              {rule: {code, attach, output, note}}  each
+                                        rule's flag (rule_flags); engine() gives
+                                        the worker its notes as rule_notes
+  engine.rule_flags_more         {rule: [flag]}  a rule's further flags
+  engine.rule_kinds              {rule: kind | ""}  a rule's kind of
+                                        exceedance where it differs from
+                                        flag_kinds.DEFAULT_KINDS
   engine.labelled_compound_fit   "mean_response_factor" | ""  the fit for a
                                         labelled compound's calibration
   engine.inclusion_needs_verification bool  the analyte x matrix inclusion
                                         is to be confirmed against the
                                         published method (editor notice)
+  engine.recovery_decimals       int    the decimal places a recovery
+                                        percent is judged, shown and printed
+                                        at (recovery_decimals); unset: whole
+                                        percent
 
 and at profile level: matrix_classes {matrix: class}, blank_role_name,
 study_kinds and idc.
@@ -57,7 +67,9 @@ _TRUE = (True, 1, "1", "yes", "on", "true", "True")
 
 # Profile keys the migration writes once and the lab may clear: the export
 # never back-fills them from the shipped seeds (a cleared value stays cleared)
-NOT_BACKFILLED = ("blank_role_name", "study_kinds", "idc", "matrix_classes")
+# (a composite standard a seed ships is for new installs only: a stored
+# profile is the lab's, and its surrogate map would not name it)
+NOT_BACKFILLED = ("blank_role_name", "study_kinds", "idc", "matrix_classes", "composite_standards")
 
 
 def _text(v):
@@ -103,13 +115,13 @@ from senaite.pfas.rounding import number as _num
 
 
 def _fallback(v):
-    """{min, max, citation} when both ends are set, else None."""
+    """{min, max} when both ends are set, else None."""
     if not isinstance(v, dict):
         return None
     lo, hi = _num(v.get("min")), _num(v.get("max"))
     if lo is None or hi is None:
         return None
-    return {"min": lo, "max": hi, "citation": _text(v.get("citation"))}
+    return {"min": lo, "max": hi}
 
 
 def _required(v):
@@ -152,6 +164,11 @@ def profile_tiers(profile, replace=None):
     return out
 
 
+def _rule_flags():
+    from senaite.pfas import rule_flags
+    return rule_flags
+
+
 def engine(profile):
     """The profile's Engine settings, normalised, every feature OFF when
     unset; grouped recovery tiers derived from the tiers themselves."""
@@ -168,12 +185,81 @@ def engine(profile):
         "eis_verify_flag": _bool(e.get("eis_verify_flag")),
         "required_keys": _required(e.get("required_keys")),
         "aliases": _names(e.get("aliases")),
-        "rule_notes": _notes(e.get("rule_notes")),
+        # the notes the worker's rules carry, read from the rules' flags
+        # (rule_flags.legacy_notes; a profile not yet migrated, its own)
+        "rule_notes": _notes(_rule_flags().legacy_notes(profile)),
         "labelled_compound_fit": (u"mean_response_factor"
                                   if e.get("labelled_compound_fit") == u"mean_response_factor"
                                   else u""),
         "inclusion_needs_verification": _bool(e.get("inclusion_needs_verification")),
     }
+
+
+# the words every page uses where a limit is reported but does not fail the
+# sample (its box's state, Evaluate: guidance only folded into it), and
+# where a value is the method's own default
+GUIDANCE_WORDS = u"Evaluate"
+METHOD_DEFAULT_WORDS = u"Method default"
+
+# the Engine setting that makes a rule guidance only, and the rule it governs
+_GUIDANCE_SETTINGS = (("surrogate_guidance_only", "surrogate_recovery"),)
+
+
+def guidance_only_rules(profile):
+    """The keys of the rules the method reports without failing a sample:
+    the surrogate recovery while its window's box is in the state Evaluate
+    (limit_states; guidance only folded into Evaluate, and a method that had
+    the Engine setting on seeds its box so). The one reader: the rules grid,
+    Effective QC and surrogate_window all ask here."""
+    from senaite.pfas import limit_states
+    return frozenset(rule for _setting, rule in _GUIDANCE_SETTINGS
+                     if limit_states.box_state(profile or {}, rule) == "evaluate")
+
+
+RECOVERY_DECIMALS_MAX = 3
+
+
+def recovery_decimals(profile):
+    """The decimal places a recovery percent is judged at by the worker's
+    checks and shown with on every page and printout: the Engine's
+    recovery_decimals, a whole number from 0 to RECOVERY_DECIMALS_MAX; 0, a
+    whole percent, when the method sets none or sets something else. A
+    stored value or verdict is never rewritten by a change: the run records
+    the places it was judged at (rounding.judged_rule) and a certificate
+    refuses a run judged at others until it is reprocessed."""
+    e = (profile or {}).get(ENGINE_KEY)
+    v = e.get("recovery_decimals") if isinstance(e, dict) else None
+    if isinstance(v, bool) or v is None:
+        return 0
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return 0
+    if n != int(n) or not 0 <= n <= RECOVERY_DECIMALS_MAX:
+        return 0
+    return int(n)
+
+
+def surrogate_window(profile):
+    """The method's one surrogate window, as the worker judges every
+    surrogate of a method whose standards are not judged per matrix class:
+    the profile's own (instrument_verification.surrogate_window, both ends
+    set), else the window the method text states (engine.surrogate_fallback),
+    else None. {min, max, source, guidance_only}: `source` is "profile" or
+    "method_text". The one reader of that precedence: the worker, the
+    Isotope standards grid, the rule table and Effective QC all ask here."""
+    eng = engine(profile)
+    guidance = "surrogate_recovery" in guidance_only_rules(profile)
+    win = ((profile or {}).get("instrument_verification") or {}).get("surrogate_window")
+    win = win if isinstance(win, dict) else {}
+    if win.get("recovery_min") is not None and win.get("recovery_max") is not None:
+        return {"min": float(win["recovery_min"]), "max": float(win["recovery_max"]),
+                "source": "profile", "guidance_only": guidance}
+    fallback = eng["surrogate_fallback"]
+    if fallback is None:
+        return None
+    return {"min": fallback["min"], "max": fallback["max"], "source": "method_text",
+            "guidance_only": guidance}
 
 
 def _profile_key(profile, key):

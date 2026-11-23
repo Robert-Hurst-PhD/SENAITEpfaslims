@@ -17,6 +17,8 @@ Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
+from senaite.pfas import composite_standards as _cmp
+
 KEY = "labelled_standards"
 ROLES = ("surrogate", "injection_is")
 ROLE_LABELS = [("surrogate", "Surrogate (SUR)"),
@@ -24,9 +26,13 @@ ROLE_LABELS = [("surrogate", "Surrogate (SUR)"),
 
 
 def _map_surrogates(profile):
+    """The standards the surrogate map quantifies on, a composite's members
+    for the composite (its own refusals are composite_standards.check's)."""
     out = []
     for row in profile.get("surrogate_map") or []:
         kw = (row.get("surrogate_is") or "").strip() if isinstance(row, dict) else ""
+        if _cmp.is_composite(profile, kw) or _cmp.is_id(kw):
+            continue
         if kw and kw not in out:
             out.append(kw)
     return out
@@ -75,10 +81,19 @@ def removal_blocked_by(profile, keyword):
     return out
 
 
-def check(profile):
+def composites_holding(profile, keyword):
+    """The names of the composites `keyword` is a member of: while any holds
+    it, the standard cannot leave the method (the composite would average a
+    compound the method no longer measures)."""
+    return [_cmp.name(profile, cid) for cid in _cmp.holding(profile, keyword)]
+
+
+def check(profile, keywords=None):
     """Refusals for a whole saved profile: links, loops, and agreement with the
     surrogate map (checked on the whole profile after each save, so a new
-    standard and a native mapped to it may come from different saves)."""
+    standard and a native mapped to it may come from different saves); then
+    the composites' own (`keywords`: the compound library's, which no
+    composite id may be)."""
     g = grid(profile)
     errors = []
     for kw in sorted(g):
@@ -87,6 +102,9 @@ def check(profile):
             errors.append("%s: choose its role (extracted or injection)." % kw)
         if ref == kw:
             errors.append("%s cannot be linked to itself." % kw)
+        elif ref and (_cmp.is_composite(profile, ref) or _cmp.is_id(ref)):
+            # a composite is never a link target: its members each carry their own
+            errors.append("%s: link it to an internal standard, not a composite." % kw)
         elif ref and ref not in g:
             errors.append("%s is linked to %s, which this method does not use: "
                           "add %s, or change the link." % (kw, ref, ref))
@@ -112,4 +130,4 @@ def check(profile):
             errors.append("%s quantifies natives in the surrogate map but is not "
                           "one of this method's standards: add it, or quantify them by "
                           "another." % kw)
-    return errors
+    return errors + _cmp.check(profile, keywords)

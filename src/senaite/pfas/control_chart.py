@@ -15,7 +15,7 @@ written here because the one maintained SPC package is GPLv3.
                           BASELINE_N results; fewer, and the chart says so
 * insight_title(points, flags, ...)   the chart's heading: what it shows,
                           not what it plots
-* point_marks / threshold_marks       each point's severity and the rule
+* point_marks / threshold_marks   each point's severity and the rule
                           lines its tooltip leads with
 * check_window(lim, qc)   the method's recovery window for a CCV / ICV
 * axis_window(judged, fb) the y axis while there are too few points: the
@@ -101,8 +101,8 @@ def westgard(points, lim):
             p = sig[i - 1]
             if (s > 2.0 and p > 2.0) or (s < -2.0 and p < -2.0):
                 add(u"2-2s", u"Two consecutive values beyond the same 2 SD", u"reject", [i - 1, i])
-            if abs(s - p) >= 4.0:
-                add(u"R-4s", u"Adjacent values 4 SD or more apart", u"reject", [i - 1, i])
+            if abs(s - p) > 4.0:
+                add(u"R-4s", u"Adjacent values more than 4 SD apart", u"reject", [i - 1, i])
         if i >= 3:
             run = sig[i - 3:i + 1]
             if all(v > 1.0 for v in run) or all(v < -1.0 for v in run):

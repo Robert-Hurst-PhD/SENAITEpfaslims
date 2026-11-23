@@ -22,9 +22,9 @@ The owner is the core AnalysisService. Each library fact is a field on it
     published_names  pfas_published_names: how a published method names a
                      native where that differs from the keyword (EPA's
                      HFPO-DA for GenX); used to join a method's own tables
-    key              pfas_key_analyte: a key analyte by default when the
-                     native joins a method (each method's Key analytes list
-                     decides)
+    key              pfas_key_analyte: a regulated analyte by default when
+                     the native joins a method (each method's Regulated
+                     analytes list decides)
 
 SENAITE writes the library to the worker's data beside the method profiles
 (FILE_NAME), from the services, every time it exports the profiles and
@@ -187,8 +187,12 @@ def referenced(profile):
         pairs = list(sm.items())
     else:
         pairs = [(r.get("analyte"), r.get("surrogate_is")) for r in sm if isinstance(r, dict)]
+    from senaite.pfas import composite_standards as cmp
     for analyte, surrogate in pairs:
-        out += [analyte, surrogate]
+        # a composite is no compound: its members are what the profile names
+        out += [analyte] + cmp.members(p, surrogate)
+    for members in cmp.members_map(p).values():
+        out += members
     grid = p.get("labelled_standards")
     if isinstance(grid, dict):
         for kw, entry in grid.items():
@@ -328,6 +332,33 @@ def canonical_name(export, name):
     when the library does not know it."""
     kw = keyword_of(export, name)
     return (compounds(export)[kw].get("name") or kw) if kw else name
+
+
+def listed_name(export, name, listed):
+    """The name one analyte goes by wherever results of it are gathered:
+    its entry in `listed` (the method's analyte list), whichever spelling
+    the list holds; else its keyword; else `name` as it is. An isomer peak
+    keeps its own name: it is reviewed on its own, never as its sum."""
+    return listed_namer(export, listed)(name)
+
+
+def listed_namer(export, listed):
+    """listed_name(export, name, listed) as a function of the name, the
+    list and the library read once and each name resolved once."""
+    from senaite.pfas.isomers import is_peak_name
+    n2k = name_to_keyword(export)
+    by_kw = {}
+    for entry in listed or ():
+        by_kw.setdefault(keyword_of(export, entry, n2k) or entry, entry)
+    seen = {}
+
+    def name_of(name):
+        name = _text(name)
+        if name not in seen:
+            kw = None if (not name or is_peak_name(name)) else keyword_of(export, name, n2k)
+            seen[name] = by_kw.get(kw, kw) if kw else name
+        return seen[name]
+    return name_of
 
 
 def expand(export, keyword):

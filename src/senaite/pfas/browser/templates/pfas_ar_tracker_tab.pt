@@ -8,8 +8,8 @@
 
   <div class="pfas-card pfas-card-narrow">
     <div class="pfas-card-head">
-      <span><i class="fas fa-map-marker-alt pfas-text-accent"></i>
-        <strong>PFAS Sample Tracker</strong></span>
+      <span><svg class="pfas-ico" aria-hidden="true"><use href="#ico-tracker"/></svg>
+        <strong>PFAS Client Tracker</strong></span>
     </div>
 
     <!-- Has tracking number -->
@@ -20,7 +20,7 @@
         PF-260611-A3K9
       </div>
       <div class="pfas-btn-row">
-        <a class="btn btn-sm btn-secondary" tal:attributes="href info/tracker_url" target="_blank">Open client tracker &#8599;</a>
+        <a class="btn btn-sm btn-secondary" tal:attributes="href info/tracker_url" target="_blank">Open client tracker <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('external', hidden=True)" /></a>
         <a class="btn btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-receipt?t=${info/tracking_number}">Print receipt</a>
       </div>
     </tal:hasnum>

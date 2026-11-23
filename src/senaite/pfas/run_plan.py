@@ -23,6 +23,9 @@
         import results, "4" dilutions and re-injections), or None, from its
         uploads, its review requests and the worker's import log. WAITING
         names each step as the Run Builder's landing lists it.
+
+    loaded_stamp(who, at)
+        The record of who loaded a built run on the instrument and when.
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -151,7 +154,13 @@ def place_members(seq, qc_members, samples_token=u"SAMPLES"):
 
 
 # the steps a built run can wait at, as the Run Builder's landing names them
-WAITING = ((u"3", u"step 3, import results"), (u"4", u"step 4, dilutions and re-injections"))
+WAITING = ((u"2", u"step 2, load on the instrument"), (u"3", u"step 3, import results"), (u"4", u"step 4, dilutions and re-injections"))
+
+
+def loaded_stamp(who, at):
+    """What the Loaded button records on the run: who loaded it, and when
+    (UTC, as the build time is kept)."""
+    return {"by": who or u"", "at": at or u""}
 
 
 def _minute(stamp):
@@ -193,9 +202,9 @@ def waiting_step(manifest, run_files, requests, imports=()):
     upload); and again when the worker failed to import them. Then a
     dilution or re-injection review asked for waits at step 4: open (the
     bench makes it), or made and not yet run, unless it runs with this
-    run. Otherwise nothing waits in the Run Builder. No record tells a run
-    loaded on the instrument from one not yet loaded, so a run is never
-    named at step 2.
+    run. Otherwise nothing waits in the Run Builder. A built run whose
+    results are not in waits at step 2 until the Loaded button has stamped
+    it (manifest "loaded"), then at step 3.
     """
     if not manifest or manifest.get("sent_back"):
         return None
@@ -218,7 +227,7 @@ def waiting_step(manifest, run_files, requests, imports=()):
     imported = any(i.get("status") == u"imported" and since_build(i.get("updated_at")) for i in imports)
     failed = any(i.get("status") == u"failed" and since_build(i.get("updated_at")) for i in imports)
     if failed or not (uploaded or imported):
-        return u"3"
+        return u"3" if manifest.get("loaded") else u"2"
     # a follow-up run's results are in: the requests it carried are run,
     # though only an upload marks them so
     if any(r.get("id") not in carried and (r.get("status") == u"open" or

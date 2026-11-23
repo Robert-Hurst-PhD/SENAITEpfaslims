@@ -40,6 +40,7 @@ def holding_days_by_sampletype(profiles):
 
 
 def sync(portal):
+    from senaite.pfas.doc_fields import utext
     from bika.lims import api
     from senaite.pfas.method_profile_store import list_method_ids, raw_profile
     days = holding_days_by_sampletype([raw_profile(portal, m) or {} for m in list_method_ids(portal)])
@@ -58,11 +59,11 @@ def sync(portal):
             if key(current) != key(default):
                 st.setRetentionPeriod(None)               # core's default lifetime
                 st.reindexObject()
-                out.append(u"%s: seeded retention cleared (no holding time set)" % st.Title())
+                out.append(u"%s: seeded retention cleared (no holding time set)" % utext(st.Title()))
             continue
         target = {"days": int(want), "hours": int(round((want - int(want)) * 24)), "minutes": 0}
         if key(current) != key(target):
             st.setRetentionPeriod(target)
             st.reindexObject()
-            out.append(u"%s: retention = holding time %s day(s)" % (st.Title(), want))
+            out.append(u"%s: retention = holding time %s day(s)" % (utext(st.Title()), want))
     return out

@@ -32,8 +32,7 @@ from zope.annotation.interfaces import IAnnotations
 logger = logging.getLogger("senaite.pfas.browser.bench_inventory")
 
 ROLE_PICKS_KEY = u"senaite.pfas.extraction.role_picks"
-REAGENT, PREPARED = u"reagent", u"prepared_standard"
-KIND_LABELS = {REAGENT: u"Reagent", PREPARED: u"Prepared standard"}
+from senaite.pfas.run_lots import KIND_LABELS, PREPARED, REAGENT  # noqa: E402,F401  (one definition)
 
 
 def _stock(received_text, unit, low_text, uses):
@@ -75,6 +74,8 @@ def inventory_items(portal):
                 "supplier": r.get("supplier") or u"", "cat_number": r.get("cat_number") or u"",
                 "barcode": r.get("barcode") or u"",
                 "is_archived": bool(r.get("is_archived")),
+                # its category has no expiry: never out of date (lot_expiry.NO_EXPIRY)
+                "no_expiry": bool(r.get("no_expiry")),
             }
             item.update(_stock(r.get("quantity"), r.get("unit"), r.get("low_stock_level"),
                                uses.get((REAGENT, r.get("uid") or u""))))

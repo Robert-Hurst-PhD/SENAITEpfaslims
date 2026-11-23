@@ -13,6 +13,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import config_history
+from senaite.pfas import config_history_brief
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import GateMixin, TIER_CONFIG, deny_gated_action
 
@@ -65,6 +66,10 @@ class PFASConfigHistoryView(GateMixin, BrowserView):
 
     PAGE = 20
     WHEN = ((u"", u"All"), (u"24h", u"24 h"), (u"7d", u"7 days"), (u"30d", u"30 days"))
+
+    def zone_active(self):
+        from senaite.pfas import lab_time
+        return lab_time.active()
 
     def store_filter(self):
         return self.request.form.get("store", "")
@@ -134,12 +139,6 @@ class PFASConfigHistoryView(GateMixin, BrowserView):
                             urllib.urlencode(dict((k, (u"%s" % v).encode("utf-8")) for k, v in q.items())))})
         return out
 
-    def zone_active(self):
-        """True when times are shown on the laboratory's clock: a screen
-        then names no zone; while unset, the When column says UTC."""
-        from senaite.pfas import lab_time
-        return lab_time.active()
-
     def key_filter(self):
         return self.request.form.get("key", "")
 
@@ -155,12 +154,20 @@ class PFASConfigHistoryView(GateMixin, BrowserView):
         register_all()
         out = []
         since, until = self._window()
+        import urllib
+        base = u"%s/@@pfas-config-history" % api.get_portal().absolute_url()
         for e in config_history.entries(api.get_portal(), self.store_filter() or None,
                                         self.key_filter() or None, limit=self.PAGE,
                                         since=since, until=until,
                                         offset=(self.paging()["page"] - 1) * self.PAGE):
             spec = config_history.STORES.get(e.get("store"))
+            raw = e.get("changes", [])
             out.append({
+                # the row's line, the dialog's value-by-value change, and every change to this setting
+                "brief": config_history_brief.brief(raw),
+                "detail": config_history_brief.detail(raw),
+                "history_url": u"%s?%s" % (base, urllib.urlencode(
+                    {"store": (e.get("store") or u"").encode("utf-8"), "key": (e.get("key") or u"").encode("utf-8")})),
                 "id": e["id"], "at": config_history.shown_at(e["at"]), "who": e.get("who"),
                 "store": spec["title"] if spec else config_history.TITLES.get(e.get("store"), e.get("store")),
                 "key": e.get("key"), "label": e.get("label") or e.get("key"),

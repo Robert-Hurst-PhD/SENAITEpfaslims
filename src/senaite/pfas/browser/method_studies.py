@@ -31,7 +31,7 @@ from senaite.pfas import study_runs as sru
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action, is_staff, refuse
 from senaite.pfas.paths import is_plain_name
-from senaite.pfas.browser.view_helpers import send_pdf
+from senaite.pfas.browser.view_helpers import MethodNames, send_pdf
 
 logger = logging.getLogger("senaite.pfas.browser.method_studies")
 
@@ -54,7 +54,16 @@ def _user():
         return u""
 
 
-class PFASMethodStudiesView(BrowserView, GateMixin):
+def _run_label(batch, when, values):
+    """A run offered for the IDC's peak asymmetry: "WS-346 · 2026-11-10 ·
+    PFBA 1.12, PFPeA 1.05"."""
+    shown = u", ".join(u"%s %s" % (v.get("analyte") or u"", u"%.2f" % v["factor"]
+                                   if v.get("factor") is not None else u"not measured")
+                       for v in values or [])
+    return u" · ".join(x for x in (batch, when, shown) if x)
+
+
+class PFASMethodStudiesView(BrowserView, GateMixin, MethodNames):
 
     template = ViewPageTemplateFile("templates/method_studies.pt")
     print_template = ViewPageTemplateFile("templates/method_study_pdf.pt")
@@ -115,8 +124,35 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             self._records = sr.load(self.portal())
         return self._records
 
+    SHOW = ((u"open", u"Open"), (u"finished", u"Finished"), (u"all", u"All"))
+
+    def show(self):
+        """The list's filter: open (drafts), finished (approved or replaced)
+        or all; open when none is asked for."""
+        asked = (self.request.form.get("show") or u"").strip()
+        return asked if asked in dict(self.SHOW) else u"open"
+
+    def shows(self):
+        base = u"%s/@@pfas-method-studies" % self.portal_url()
+        return [{"label": label, "on": key == self.show(),
+                 "url": u"%s?show=%s" % (base, key)} for key, label in self.SHOW]
+
     def listed(self):
-        return list(reversed(self.records()))
+        return sr.filtered(list(reversed(self.records())), self.show())
+
+    def counts_text(self):
+        return u"%d open, %d finished" % sr.counts(self.records())
+
+    def status_label(self, status):
+        return {sr.DRAFT: u"Open", sr.APPROVED: u"Approved", sr.SUPERSEDED: u"Replaced"}.get(status, status)
+
+    def show_form(self):
+        """The new-study form: asked for, or kept after a refused create."""
+        f = self.request.form
+        return bool(f.get("new")) or f.get("action") == u"create"
+
+    def can_start_new(self):
+        return self.record() is None and not self.show_form()
 
     def mdl_due(self):
         """Annual MDL verification: when each method x matrix is due."""
@@ -132,11 +168,16 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         laboratory's clock; as stored while no zone converts."""
         return print_doc.lab_or(value, value or u"")
 
+    def screen_when(self, value):
+        """The same stamp for a screen, which names no zone."""
+        import re
+        return re.sub(r"\s*UTC$", u"", self.when(value) or u"")
+
     def print_head(self):
         rec = self.record() or {}
         approved = u" ".join(x for x in (rec.get("approved_by"), self.when(rec.get("approved_at"))) if x)
         cells = [(u"Study", rec.get("id", u"")), (u"Kind", self.kind_label(rec.get("kind"))),
-                 (u"Method", u"%s / %s" % (rec.get("method", u""), rec.get("matrix", u""))),
+                 (u"Method", u"%s / %s" % (self.method_name(rec.get("method")), rec.get("matrix", u""))),
                  (u"Status", rec.get("status", u"")), (u"Approved", approved)]
         return print_doc.head_html(print_doc.print_settings(self.context),
                                    u"Method study %s" % rec.get("id", u""), cells)
@@ -249,13 +290,13 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             try:
                 if rec["kind"] == "mdl":
                     spikes = sd.injections(conn, rec["method"], [sd.spike_role(rec) or u"-"], since=rec.get("since") or None,
-                                           until=rec.get("until") or None, matrix=rec["matrix"])
+                                           until=rec.get("until") or None, matrix=rec["matrix"], profile=self.profile())
                     blanks = sd.injections(conn, rec["method"], [self.blank_role(rec) or u"-"],
                                            since=rec.get("since") or None, until=rec.get("until") or None,
-                                           matrix=rec["matrix"])
+                                           matrix=rec["matrix"], profile=self.profile())
                 else:
                     spikes = sd.injections(conn, rec["method"], [sd.spike_role(rec) or u"-"],
-                                           batches=sru.study_worksheets(rec) or [u"-"])
+                                           batches=sru.study_worksheets(rec) or [u"-"], profile=self.profile())
             finally:
                 conn.close()
             # runs that passed technical review only: an
@@ -347,7 +388,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                               for kw, r in rows.items())}
         spikes, blanks = self.data()
         return sd.calculate_levels(rec["kind"], spikes, blanks, self.fortified_by_level(),
-                                   rec.get("exclusions"), self.existing())
+                                   rec.get("exclusions"), self.existing(), self._precision_limit(rec))
 
     # ── initial demonstration of capability (idc.py) ─────────────────────
     def _qc_rows(self, qc_type, batches):
@@ -375,14 +416,15 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return {}
         conn = sqlite3.connect(QC_DB)
         try:
-            spikes = sd.injections(conn, rec["method"], ["LFB"], batches=ws)
+            spikes = sd.injections(conn, rec["method"], ["LFB"], batches=ws, profile=self.profile(rec.get("method")))
         finally:
             conn.close()
         levels = self._levels(ws)
         spikes = [dict(r, level=levels.get((r["batch"], r["injection"])) or u"") for r in spikes]
         fort = dict((lv, self.fortified(lv)) for lv in set(r["level"] for r in spikes))
         out = {}
-        for lv, res in sd.calculate_levels(kind, spikes, None, fort, rec.get("exclusions")).items():
+        for lv, res in sd.calculate_levels(kind, spikes, None, fort, rec.get("exclusions"),
+                                           precision_limit=self._precision_limit(rec)).items():
             out.update(dict((u"%s %s" % (kw, lv) if lv else kw, r) for kw, r in res.items()))
         return out
 
@@ -406,7 +448,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             "qcs": idc.judged_rows(self._qc_rows("ICV", sorted(self._reviewed(set(every))))),
             "asymmetry": idc.asymmetry((rec.get("idc") or {}).get("asymmetry"),
                                        self._asymmetry_present(rec),
-                                       idc.spec_asymmetry(self.idc_spec())),
+                                       idc.spec_asymmetry(self.idc_spec()),
+                                       measured=(rec.get("idc") or {}).get("asymmetry_run")),
             "mrl": idc.per_analyte(self._part_results("mrl", "mrl")),
         }
         # the spec's elements only; one this module cannot judge stays open
@@ -429,7 +472,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 continue
             conn = sqlite3.connect(QC_DB)
             try:
-                rows = sd.injections(conn, rec["method"], [p.get("role") or role], batches=ws)
+                rows = sd.injections(conn, rec["method"], [p.get("role") or role], batches=ws,
+                                      profile=self.profile(rec.get("method")))
             finally:
                 conn.close()
             for r in rows:
@@ -478,8 +522,12 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             elif el["type"] == "mdl":
                 spikes = self._design_injections(eid + u"|spiked", el.get("spike_role"))
                 blanks = self._design_injections(eid + u"|blanks", el.get("blank_role"))
-                res = st.evaluate_mdl(sd.calculate("mdl", spikes, blanks, exclusions=rec.get("exclusions"))
-                                      if spikes else {})
+                # each spike's level, from its extraction batch: one level is pooled
+                levels = self._levels(sorted(set(r["batch"] for r in spikes))) if spikes else {}
+                res = st.evaluate_mdl(sd.calculate("mdl", spikes, blanks, exclusions=rec.get("exclusions"),
+                                                   existing=self.existing())
+                                      if spikes else {},
+                                      levels=[levels.get((r["batch"], r["injection"])) or u"" for r in spikes])
             elif el["type"] == "qualitative":
                 res = st.evaluate_qualitative(el, entries.get(eid), self.design_files(eid))
             else:
@@ -490,6 +538,12 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def limits_qc(self, el):
         from senaite.pfas import study_templates as st
         return st.limits_qc(el)
+
+    def _precision_limit(self, rec):
+        """limits(keyword, fortified) of a precision and accuracy study (or
+        an IDC's element): the method profile's LFB tier at that level, its
+        RSD limit the precision's (EPA 537.1 §9.2.3), never a typed copy."""
+        return self._design_limits(rec, sd.LFB)
 
     def _design_limits(self, rec, qc_type):
         """limits(keyword, level) for a designed element: the method profile's
@@ -607,14 +661,63 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def _asymmetry_present(self, rec):
         return bool((rec.get("idc") or {}).get("pdf")) and os.path.exists(self._asymmetry_path(rec))
 
+    def asymmetry_runs(self):
+        """[{"batch", "injection", "values", "label"}] of the runs of the
+        IDC's method whose mid-level calibrator was measured, newest first:
+        reviewed worksheets only, as every IDC element's. "values" are its
+        first two eluting method analytes with their factors
+        (asymmetry_track)."""
+        if hasattr(self, "_asym_runs"):
+            return self._asym_runs
+        from senaite.pfas import asymmetry_track as at
+        rec = self.record() or {}
+        self._asym_runs = []
+        if rec.get("kind") != "idc" or not os.path.exists(QC_DB):
+            return self._asym_runs
+        conn = sqlite3.connect(QC_DB)          # read only
+        try:
+            rows = at.load_rows(conn, method=rec.get("method"))
+        finally:
+            conn.close()
+        by = {}
+        for r in rows:
+            by.setdefault(r["batch_id"], []).append(r)
+        reviewed = self._reviewed(set(by))
+        for batch in sorted(reviewed, key=lambda b: (by[b][0].get("run_date") or u"", b), reverse=True):
+            run = at.run_factors(by[batch])
+            if run is None:
+                continue
+            values = [{"analyte": e["analyte"], "factor": e["factor"]} for e in at.first_eluting(run)]
+            self._asym_runs.append({"batch": batch, "injection": run["injection"], "values": values,
+                                    "label": _run_label(batch, by[batch][0].get("run_date"), values)})
+        # the run already recorded stays a choice, as recorded, so saving
+        # the draft again never clears it
+        kept = (rec.get("idc") or {}).get("asymmetry_run") or {}
+        if kept.get("batch") and kept["batch"] not in [r["batch"] for r in self._asym_runs]:
+            self._asym_runs.append({"batch": kept["batch"], "injection": kept.get("injection") or u"",
+                                    "values": list(kept.get("values") or []),
+                                    "label": _run_label(kept["batch"], u"as recorded", kept.get("values"))})
+        return self._asym_runs
+
     def _save_idc(self):
-        """The peak asymmetry factors and the PDF of their calculation."""
+        """The peak asymmetry: a measured run's first two eluting peaks, or
+        the typed factors with the PDF of their calculation."""
         f = self.request.form
         rec = self.record()
         if rec is None or rec.get("kind") != "idc" or rec.get("status") != sr.DRAFT:
             self.error = u"Only a draft IDC is edited here."
             return
         data = dict(rec.get("idc") or {})
+        picked = (f.get("asym_run") or u"").strip()
+        if picked:
+            run = dict((r["batch"], r) for r in self.asymmetry_runs()).get(picked)
+            if run is None:
+                self.error = u"Run %s has no measured mid-level calibrator to use." % picked
+                return
+            data["asymmetry_run"] = {"batch": run["batch"], "injection": run["injection"],
+                                     "values": run["values"], "by": _user(), "at": _now()}
+        else:
+            data.pop("asymmetry_run", None)
         data["asymmetry"] = [(f.get(u"asym.%d" % i) or u"").strip() for i in (1, 2)]
         upload = f.get("asymmetry_file")
         if upload is not None and getattr(upload, "filename", u""):
@@ -647,15 +750,147 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         """[(level, [(keyword, result)])] for the results macro."""
         return [(lv, sorted(res.items())) for lv, res in sorted(self.results().items())]
 
+    def _calculated(self):
+        """What the draft's results would write before approval settles it:
+        the MDLs as calculated, an MRL's RL."""
+        rec = self.record() or {}
+        if rec.get("kind") == "designed":
+            from senaite.pfas import study_templates as st
+            return st.applied_mdl(self.design_results())
+        return sd.applied_by_level(rec.get("kind"), self.results(), self.fortified_by_level())
+
+    def _settled(self, keep=()):
+        rec = self.record() or {}
+        if not keep:
+            if getattr(self, "_settled_cache", None) is None:
+                self._settled_cache = sd.settle(self._calculated(), self.profile(rec.get("method")),
+                                                rec.get("matrix"), keepable=self.keepable())
+            return self._settled_cache
+        return sd.settle(self._calculated(), self.profile(rec.get("method")), rec.get("matrix"),
+                         keep=keep, keepable=self.keepable())
+
     def applied(self):
+        """What approval writes (frozen on an approved study): each MDL
+        rounded to the method's report format, an RL raised to an MDL above
+        it (sd.settle)."""
         rec = self.record() or {}
         if rec.get("status") != sr.DRAFT:
             return rec.get("applied") or {}
-        return sd.applied_by_level(rec.get("kind"), self.results(), self.fortified_by_level())
+        return self._settled()["applied"]
+
+    def raised(self):
+        """{keyword: [RL before, RL]} approval raises to the MDL."""
+        rec = self.record() or {}
+        if rec.get("status") != sr.DRAFT:
+            return rec.get("raised_rl") or {}
+        return self._settled()["raised"]
+
+    def keepable(self):
+        """The analytes whose MDL in force may stay, offered Keep existing on
+        approval (App. B Rev. 2 §4(f), sd.keepable): an annual MDL study's
+        one level, a designed study's MDL element."""
+        rec = self.record() or {}
+        if rec.get("status") != sr.DRAFT:
+            return []
+        if rec.get("kind") == "designed":
+            mdl = [r for el, r in self.design_results() if (el or {}).get("type") == "mdl"]
+            return sd.keepable((mdl[0] or {}).get("results")) if len(mdl) == 1 else []
+        if rec.get("kind") != "mdl":
+            return []
+        results = self.results()
+        return sd.keepable(list(results.values())[0]) if len(results) == 1 else []
+
+    # ── the one-study page: facts, and an MDL's results run by run ────────
+    def levels_text(self, rec):
+        return u", ".join(u"%s (%s)" % (l, self.fmt(self.fortified(l))) for l in rec.get("levels") or []) or u"\u2014"
+
+    def materials_text(self, rec):
+        return u", ".join(u"%s %s" % (m.get("name"), m.get("lot_number"))
+                          for m in rec.get("reference_materials") or []) or u"None"
+
+    def spiked_text(self, rec):
+        """"LFB, 7 replicates": the spiked samples the study pooled."""
+        spikes, _blanks = self.data()
+        counts = [(lv, len([r for r in spikes if (r.get("level") or u"") == lv]))
+                  for lv in sorted(set(r.get("level") or u"" for r in spikes))]
+        return sd.sample_text(self.spike_role(rec), counts, u"replicate")
+
+    def blanks_text(self, rec):
+        """"LRB, 7 blanks": the method blanks the study pooled."""
+        _spikes, blanks = self.data()
+        return sd.sample_text(self.blank_role(rec), [(u"", len(blanks))] if blanks else [], u"blank")
+
+    def run_names(self):
+        """The runs that went into the study, from its data and its worksheets."""
+        spikes, blanks = self.data()
+        names = set(r["batch"] for r in spikes + blanks if r.get("batch")) | set(self.all_worksheets())
+        return sorted(names)
+
+    def is_mdl(self):
+        return (self.record() or {}).get("kind") == "mdl"
+
+    def mdl_levels(self):
+        """[{"level", "title", ...sd.mdl_level_view}] one per spiking level of
+        an annual MDL study."""
+        rec = self.record() or {}
+        spikes, blanks = self.data()
+        applied, existing = self.applied(), self.existing()
+        out = []
+        for lv, res in sorted(self.results().items()):
+            rows = [r for r in spikes if (r.get("level") or u"") == lv]
+            view = sd.mdl_level_view(rows, blanks, res, rec.get("exclusions"), applied, existing, self.fmt)
+            view["level"] = lv
+            view["title"] = u"%s (%s)" % (lv, self.fmt(self.fortified(lv))) if lv else u""
+            out.append(view)
+        return out
+
+    def study_warnings(self):
+        """What the approver must see before the tables: each calculation
+        note, a raised reporting limit, and a study whose runs have changed
+        since it was approved."""
+        rec = self.record() or {}
+        if rec.get("kind") != "mdl":
+            return []
+        results = self.results()
+        out = sd.note_lines(results)
+        for kw, (before, after) in sorted(self.raised().items()):
+            if rec.get("status") == sr.DRAFT:
+                out.append(u"%s: the MDL is above the RL, so the RL goes from %s to %s."
+                           % (kw, self.fmt(before), self.fmt(after)))
+            else:
+                out.append(u"%s: the MDL is above the RL, so the RL was raised from %s to %s."
+                           % (kw, self.fmt(before), self.fmt(after)))
+        if rec.get("status") != sr.DRAFT and rec.get("kind") == "mdl":
+            spikes, _blanks = self.data()
+            for lv, res in results.items():
+                rows = [r for r in spikes if (r.get("level") or u"") == lv]
+                for kw, r in res.items():
+                    now = [r2["values"].get(kw) for r2 in sd._kept(rows, rec.get("exclusions"), kw)]
+                    if len([v for v in now if v is not None and v > 0]) != (r.get("n_spikes") or 0):
+                        out.append(u"The runs now in the period differ from the ones this study was "
+                                   u"approved on. The figures are the approved ones.")
+                        return out
+        return out
 
     def replicate_rows(self):
         spikes, blanks = self.data()
         return [dict(r, role=u"spike") for r in spikes] + [dict(r, role=u"blank") for r in blanks]
+
+    @staticmethod
+    def study_note(text):
+        """One note in plain words (method_studies.plain_note)."""
+        from senaite.pfas import method_studies as ms
+        return ms.plain_note(text)
+
+    @staticmethod
+    def study_notes(res):
+        """A result's Notes cell: its reason, its MDLb rule, its notes and
+        whether the MDL in force may stay, each in plain words."""
+        from senaite.pfas import method_studies as ms
+        said = [x for x in (res.get("reason"), res.get("mdl_b_rule")) if x] + list(res.get("notes") or [])
+        if res.get("may_keep_existing"):
+            said.append(u"may keep the MDL in force")
+        return u"; ".join(ms.plain_note(x) for x in said)
 
     def fmt(self, v):
         if v is None or v == u"":
@@ -802,7 +1037,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self.error = u"The template is not finished: %s" % probs[0]
                 return self.template()
             if design.get("method") != method or (design.get("matrix") and design["matrix"] != matrix):
-                self.error = u"The template is for %s%s." % (design.get("method"),
+                self.error = u"The template is for %s%s." % (self.method_name(design.get("method")),
                                                             u" / %s" % design["matrix"] if design.get("matrix") else u"")
                 return self.template()
             kind = u"designed"
@@ -974,20 +1209,41 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             if st.combine([r.get("verdict") for _el, r in res]) != st.PASS:
                 self.error = u"Every element of the study must pass before it is approved."
                 return
-            results, applied = {"design": dict((el["id"], r) for el, r in res)}, {}
+            # its MDL element's MDLs go to the method profile, as an annual MDL study's do
+            results = {"design": dict((el["id"], r) for el, r in res)}
+        settled = {"applied": applied, "kept": [], "raised": {}, "error": u""}
+        if rec.get("kind") in ("mdl", "designed"):
+            # one switch per analyte the page offers, numbered (a keyword may
+            # hold a colon, which a posted name cannot), the keyword its value
+            keep = [v for k, v in self.request.form.items() if k.startswith("keep_existing.") and v]
+            settled = self._settled(keep)
+            if settled["error"]:
+                self.error = settled["error"]
+                return
+            applied = settled["applied"]
         recs = self.records()
         self.error = sr.approve(recs, rec, results, applied, _user(), _now(),
                                 self.request.form.get("statement") or u"",
                                 file_name=u"%s.pdf" % rec["id"])
         if self.error:
             return
+        rec["kept_existing"], rec["raised_rl"] = settled["kept"], settled["raised"]
         if applied:
             from senaite.pfas.config_history import set_actor, set_note
             from senaite.pfas.method_profile_store import save_profile
             set_actor(_user())
-            set_note(u"method study %s" % rec["id"])
+            note = u"method study %s" % rec["id"]
+            if settled["raised"]:
+                note += u": RL raised to the MDL for %s" % u", ".join(sorted(settled["raised"]))
+            label = None
+            if sr.is_demo(rec):
+                # test data: named DEMO in the change history, and what each
+                # value replaces kept on the record for the DEMO tool's removal
+                note, label = u"DEMO (test data): %s" % note, sr.demo_label(rec)
+                rec[sr.DEMO_BEFORE] = sr.values_before(self.profile(rec["method"]), rec["matrix"], applied)
+            set_note(note)
             save_profile(self.portal(), rec["method"],
-                         sr.apply_to_profile(self.profile(rec["method"]), rec["matrix"], applied))
+                         sr.apply_to_profile(self.profile(rec["method"]), rec["matrix"], applied), label=label)
         sr.save(self.portal(), recs)
         self._freeze_pdf(rec)
         self.message = u"Approved."

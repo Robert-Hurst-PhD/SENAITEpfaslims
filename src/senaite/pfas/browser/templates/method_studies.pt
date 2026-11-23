@@ -9,6 +9,7 @@
 <body>
   <tal:t metal:fill-slot="header-title">Method Studies</tal:t>
   <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-primary" tal:condition="view/can_start_new" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies?new=1">+ New study</a>
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-study-designer">Study Designer</a>
   </tal:r>
   <tal:t metal:fill-slot="header-context"><span class="pfas-chip" tal:define="rec view/record"
@@ -20,25 +21,25 @@
 
     <!-- the list and a new study -->
     <tal:list tal:condition="not:rec">
-      <section class="bench-block" tal:define="due python:[d for d in view.idc_due() if d[1]]" tal:condition="due">
+      <section class="bench-block" tal:define="due python:[d for d in view.idc_due() if d[1]]" tal:condition="python:due and not view.show_form()">
         <h2 class="bench-h">Initial demonstration of capability due</h2>
         <table class="pfas-table" data-col-resize="method-studies-1">
           <thead><tr><th>Method</th><th>Analysts without an approved IDC</th></tr></thead>
           <tbody>
             <tr tal:repeat="d due">
-              <td tal:content="python:d[0]">EPA_537_1</td>
+              <td tal:content="python:view.method_name(d[0])">EPA 537.1 Drinking Water</td>
               <td tal:content="python:u', '.join(n for _u, n in d[1])">AN1</td>
             </tr>
           </tbody>
         </table>
       </section>
-      <section class="bench-block" tal:define="due view/mdl_due" tal:condition="due">
-        <h2 class="bench-h">MDL verification due</h2>
+      <section class="bench-block" tal:define="due view/mdl_due" tal:condition="python:due and not view.show_form()">
+        <h2 class="bench-h">MDL check due</h2>
         <table class="pfas-table" data-col-resize="method-studies-2">
           <thead><tr><th>Method</th><th>Matrix</th><th>Last approved</th><th>Due by</th></tr></thead>
           <tbody>
             <tr tal:repeat="d due">
-              <td tal:content="d/method">EPA_537_1</td>
+              <td tal:content="python:view.method_name(d['method'])">EPA 537.1 Drinking Water</td>
               <td tal:content="d/matrix">Drinking Water</td>
               <td tal:content="d/approved">2025-08-15</td>
               <td><span tal:content="d/due">2026-09-15</span>
@@ -47,46 +48,59 @@
           </tbody>
         </table>
       </section>
-      <section class="bench-block">
-        <table class="pfas-table" data-col-resize="method-studies-3" tal:condition="view/listed">
-          <thead><tr><th>Study</th><th>Kind</th><th>Method</th><th>Matrix</th><th>Status</th><th>Approved</th><th></th></tr></thead>
+      <section class="bench-block" tal:condition="not:view/show_form">
+        <h2 class="bench-h">Studies <span class="pfas-muted" tal:content="view/counts_text"></span></h2>
+        <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+              tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
+          <input type="hidden" name="show" tal:attributes="value view/show" />
+          <nav class="pfas-seg" aria-label="Show">
+            <a class="pfas-seg-item" tal:repeat="o view/shows"
+               tal:attributes="href o/url; aria-selected python:'true' if o['on'] else 'false'"
+               tal:content="o/label">Open</a>
+          </nav>
+        </form>
+        <p class="pfas-empty" tal:condition="not:view/listed">None.</p>
+        <table class="pfas-table" data-col-resize="method-studies-3" tal:condition="view/listed"
+               tal:define="rm context/@@pfas-row-menu">
+          <thead><tr><th>Study</th><th>Kind</th><th>Method</th><th>Matrix</th><th>Status</th><th>Approved</th></tr></thead>
           <tbody>
-            <tr tal:repeat="r view/listed">
-              <td tal:content="r/id">MS-0001</td>
+            <tr tal:repeat="r view/listed"
+                tal:attributes="data-row-open string:${view/portal_url}/@@pfas-method-studies?id=${r/id};
+                                data-row-actions python:rm.actions((u'Open', 'href', view.portal_url() + '/@@pfas-method-studies?id=' + r['id']))">
+              <td class="pfas-mono" tal:content="r/id">MS-0001</td>
               <td tal:content="python:view.kind_label(r['kind'], r)">MDL</td>
-              <td tal:content="r/method">EPA_537_1</td>
+              <td tal:content="python:view.method_name(r.get('method'))">EPA 537.1 Drinking Water</td>
               <td tal:content="r/matrix">Drinking Water</td>
-              <td tal:content="r/status">draft</td>
-              <td tal:content="python:view.when(r.get('approved_at'))">date</td>
-              <td><a class="btn-sm btn-secondary"
-                     tal:attributes="href string:${view/portal_url}/@@pfas-method-studies?id=${r/id}">Open</a></td>
+              <td><span tal:attributes="class python:'badge badge-active' if r['status'] == 'draft' else 'badge badge-archived'"
+                        tal:content="python:view.status_label(r['status'])">Open</span></td>
+              <td tal:content="python:view.screen_when(r.get('approved_at'))">date</td>
             </tr>
           </tbody>
         </table>
       </section>
-      <section class="bench-block">
+      <section class="bench-block" tal:condition="view/show_form">
         <h2 class="bench-h">New study <tal:h define="hid string:method-studies"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h2>
         <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
           <input tal:replace="structure context/@@authenticator/authenticator" />
-          <div class="field-grid">
-            <label>Kind
+          <div class="pfas-form-row">
+            <label class="pfas-form-field">Kind
               <select name="kind">
                 <option tal:repeat="k view/kinds" tal:attributes="value python:k[0]" tal:content="python:k[1]">MDL</option>
               </select></label>
-            <label>Method
+            <label class="pfas-form-field">Method
               <select name="method">
-                <option tal:repeat="m view/method_choices" tal:attributes="value m/id" tal:content="m/label">EPA 537.1</option>
+                <option tal:repeat="m view/method_choices" tal:attributes="value m/id" tal:content="m/label">EPA 537.1 Drinking Water</option>
               </select></label>
-            <label data-enable-if="kind" data-enable-values="idc">Analyst
+            <label class="pfas-form-field" data-enable-if="kind" data-enable-values="idc">Analyst
               <select name="idc_analyst">
                 <option value="">Choose</option>
                 <option tal:repeat="a view/analysts" tal:attributes="value python:a[0]" tal:content="python:a[1]">AN1</option>
               </select></label>
-            <label>Matrix
+            <label class="pfas-form-field">Matrix
               <select name="matrix">
                 <option tal:repeat="m view/matrices" tal:attributes="value m" tal:content="m">Drinking Water</option>
               </select></label>
-            <fieldset class="field-wide" data-enable-if="kind" data-enable-values="mdl mrl pa dl idc">
+            <fieldset class="is-full" data-enable-if="kind" data-enable-values="mdl mrl pa dl idc">
               <legend>Preparations</legend>
               <div class="pfas-pill-row" id="study-preps">
                 <button type="button" class="pfas-chip-toggle" aria-pressed="false"
@@ -103,14 +117,13 @@
                 <thead><tr><th>Level</th><th>Concentration</th><th>Replicates</th><th>Days</th><th>Preparations</th></tr></thead>
                 <tbody></tbody>
               </table>
-              <tal:h define="hid string:method-studies"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
             </fieldset>
-            <label data-enable-if="kind" data-enable-values="mdl">Spiked replicates
+            <label class="pfas-form-field" data-enable-if="kind" data-enable-values="mdl">Spiked replicates
               <select name="spike_role">
                 <option value="">Choose</option>
                 <option tal:repeat="r view/spike_roles" tal:attributes="value r" tal:content="r">LFSM</option>
               </select></label>
-            <div class="field-wide" data-enable-if="kind" data-enable-values="mdl">
+            <div class="is-full" data-enable-if="kind" data-enable-values="mdl">
               <span class="pfas-label">Period</span>
               <div class="pfas-radios">
                 <label class="pfas-check"><input type="radio" name="period" value="last12" checked="checked" /> Last 12 months</label>
@@ -121,7 +134,7 @@
                 <label data-enable-if="kind" data-enable-values="mdl">To <input type="date" name="until" /></label>
               </div>
             </div>
-            <label>Reference sample
+            <label class="pfas-form-field">Reference sample
               <select name="reference_sample">
                 <option value="">None</option>
                 <option tal:repeat="l view/reference_lots" tal:attributes="value l/uid"
@@ -174,6 +187,7 @@
           </script>
           <div class="form-actions">
             <button class="btn-sm btn-primary" type="submit" name="action" value="create">Create study</button>
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies">Cancel</a>
           </div>
         </form>
       </section>
@@ -183,24 +197,38 @@
     <tal:one tal:condition="rec"><tal:d tal:define="draft python:rec['status'] == 'draft'">
       <section class="bench-block">
         <h2 class="bench-h" tal:content="python:view.kind_label(rec['kind'], rec)">MDL</h2>
-        <table class="pfas-table">
-          <tbody>
-            <tr><th>Method</th><td tal:content="rec/method">EPA_537_1</td>
-                <th>Matrix</th><td tal:content="rec/matrix">Drinking Water</td></tr>
-            <tr><th>Spiking levels</th>
-                <td tal:content="python:u', '.join(u'%s (%s)' % (l, view.fmt(view.fortified(l))) for l in rec.get('levels') or []) or u'\u2014'">Low (4)</td>
-                <th>Reference materials</th>
-                <td tal:content="python:u', '.join(u'%s %s' % (m.get('name'), m.get('lot_number')) for m in rec.get('reference_materials') or []) or u'\u2014'">CRM</td></tr>
-            <tr><th>Spiked replicates</th><td tal:content="python:view.spike_role(rec) or u'\u2014'">LFSM</td>
-                <th>Blanks</th><td tal:content="python:view.blank_role(rec)">MB</td></tr>
-            <tr><th>Period</th><td tal:content="python:u'%s to %s' % (rec.get('since') or u'\u2014', rec.get('until') or u'today')">period</td>
-                <th>Worksheets</th><td tal:content="python:u', '.join(view.all_worksheets()) or u'\u2014'">WS</td></tr>
-            <tr><th>Status</th><td tal:content="rec/status">draft</td>
-                <th>Approved</th><td tal:content="python:u'%s %s' % (rec.get('approved_by') or u'', view.when(rec.get('approved_at')))">by</td></tr>
-            <tr><th>Control charts</th>
-                <td colspan="3" tal:content="python:u'its runs are included' if rec.get('in_charts') else u'its runs are kept out'">kept out</td></tr>
-          </tbody>
-        </table>
+        <div class="pfas-cols-3">
+          <div class="pfas-card">
+            <h3 class="pfas-card-title">What was studied</h3>
+            <dl class="rc-facts is-stack">
+              <div><dt>Method</dt><dd tal:content="python:view.method_name(rec.get('method'))">EPA 537.1 Drinking Water</dd></div>
+              <div><dt>Matrix</dt><dd tal:content="rec/matrix">Drinking Water</dd></div>
+              <div><dt>Spiking level</dt><dd tal:content="python:view.levels_text(rec)">Mid (80)</dd></div>
+              <div><dt>Reference materials</dt><dd tal:content="python:view.materials_text(rec)">None</dd></div>
+              <div><dt>Spiked samples</dt><dd tal:content="python:view.spiked_text(rec)">LFB, 7 replicates</dd></div>
+              <div tal:condition="python:rec['kind'] == 'mdl'"><dt>Blank samples</dt><dd tal:content="python:view.blanks_text(rec)">LRB, 7 blanks</dd></div>
+            </dl>
+          </div>
+          <div class="pfas-card">
+            <h3 class="pfas-card-title">Which runs</h3>
+            <dl class="rc-facts is-stack">
+              <div><dt>Period</dt><dd tal:content="python:u'%s to %s' % (rec.get('since') or u'\u2014', rec.get('until') or u'today')">period</dd></div>
+              <div><dt>Runs</dt><dd>
+                <span class="pfas-chip" tal:repeat="w view/run_names" tal:content="w">WS-346</span>
+                <tal:none condition="not:view/run_names">&mdash;</tal:none></dd></div>
+            </dl>
+          </div>
+          <div class="pfas-card">
+            <h3 class="pfas-card-title">Status</h3>
+            <dl class="rc-facts is-stack">
+              <div><dt>Status</dt><dd><span tal:attributes="class python:'badge badge-active' if draft else 'badge badge-archived'"
+                                            tal:content="python:view.status_label(rec['status'])">Approved</span></dd></div>
+              <div><dt>Approved by</dt><dd tal:content="python:rec.get('approved_by') or u'\u2014'">DEMO Review Lab Manager</dd></div>
+              <div><dt>Approved on</dt><dd tal:content="python:view.screen_when(rec.get('approved_at')) or u'\u2014'">2026-11-14 07:06</dd></div>
+              <div><dt>Control charts</dt><dd tal:content="python:u'Its runs are included' if rec.get('in_charts') else u'Its runs are kept out'">Its runs are kept out</dd></div>
+            </dl>
+          </div>
+        </div>
         <form method="post" class="form-actions" tal:condition="python:can_approve and draft"
               tal:attributes="action string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}">
           <input tal:replace="structure context/@@authenticator/authenticator" />
@@ -225,22 +253,27 @@
         <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies">All studies</a>
       </section>
 
+      <ul class="bench-alerts" tal:condition="view/study_warnings">
+        <li class="bench-warn" tal:repeat="w view/study_warnings" tal:content="w">warning</li></ul>
+
       <section class="bench-block" tal:condition="python:view.elements() or view.parts()">
-        <h2 class="bench-h">Parts and analysts</h2>
-        <table class="pfas-table" data-col-resize="method-studies-4" tal:condition="view/parts">
+        <h2 class="bench-h" tal:condition="view/parts">Parts and analysts</h2>
+        <table class="pfas-table" data-col-resize="method-studies-4" tal:condition="view/parts"
+               tal:define="rm context/@@pfas-row-menu">
           <thead><tr><th>Part</th><th>Element</th><th>Analyst</th><th>Level</th><th>Replicates</th>
                      <th>Matrix source</th><th>Worksheet</th></tr></thead>
           <tbody>
-            <tr tal:repeat="p view/parts">
+            <tr tal:repeat="p view/parts"
+                tal:attributes="data-row-actions python:rm.actions(*[
+                    (u'Open worksheet %s' % w, 'href', view.worksheet_url(w) + '/@@pfas-extraction-batch')
+                    for w in p['worksheets'] if view.worksheet_url(w)])">
               <td tal:content="p/id">P1</td>
               <td tal:content="python:view.element_label(p['element'])">MRL confirmation</td>
               <td tal:content="p/analyst_name">AN1</td>
               <td tal:content="python:p.get('level') or u'—'">MRL</td>
               <td tal:content="p/replicates">7</td>
               <td tal:content="python:u'%s: %s' % (view.source_label(p['source']['kind']), view.source_text(p['source']))">water</td>
-              <td><tal:w repeat="w p/worksheets"><span tal:replace="w">WS-1</span>
-                <a class="btn-sm btn-secondary" tal:define="u python:view.worksheet_url(w)" tal:condition="u"
-                   tal:attributes="href string:${u}/@@pfas-extraction-batch">Open</a></tal:w></td>
+              <td tal:content="python:u', '.join(p['worksheets'])">WS-1</td>
             </tr>
           </tbody>
         </table>
@@ -248,36 +281,36 @@
               tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <input type="hidden" name="id" tal:attributes="value rec/id" />
-          <div class="field-grid">
-            <label>Part
+          <div class="pfas-form-row">
+            <label class="pfas-form-field">Part
               <select name="element">
                 <option tal:repeat="e view/elements" tal:attributes="value python:e[0]" tal:content="python:e[1]">MRL</option>
               </select></label>
-            <label>Analyst
+            <label class="pfas-form-field">Analyst
               <select name="analyst" required="required">
                 <option value="">Choose</option>
                 <option tal:repeat="a view/analysts" tal:attributes="value python:a[0]" tal:content="python:a[1]">AN1</option>
               </select></label>
             <tal:fixed condition="not:view/by_day">
-            <label>Spiking level (spiked parts)
+            <label class="pfas-form-field">Spiking level (spiked parts)
               <select name="level">
                 <option value="">None (blanks)</option>
                 <option tal:repeat="l python:rec.get('levels') or view.level_labels()" tal:attributes="value l" tal:content="l">MRL</option>
               </select></label>
-            <label>Replicates <input type="number" min="1" step="1" name="replicates" placeholder="the part's default" /></label>
+            <label class="pfas-form-field">Replicates <input type="number" min="1" step="1" name="replicates" placeholder="the part's default" /></label>
             </tal:fixed>
-            <label>Matrix source
+            <label class="pfas-form-field">Matrix source
               <select name="source_kind" required="required">
                 <option value="">Choose</option>
                 <option tal:repeat="k view/sources" tal:attributes="value python:k[0]" tal:content="python:k[1]">Water</option>
               </select></label>
-            <label>Vendor reagent water lot
+            <label class="pfas-form-field">Vendor reagent water lot
               <select name="source_lot.water_lot">
                 <option value="">Not used</option>
                 <option tal:repeat="l python:view.lot_options('water_lot')" tal:attributes="value l/uid"
                         tal:content="string:${l/name} ${l/lot_number}">water lot</option>
               </select></label>
-            <label>Reference sample lot
+            <label class="pfas-form-field">Reference sample lot
               <select name="source_lot.reference_lot">
                 <option value="">Not used</option>
                 <option tal:repeat="l view/reference_lots" tal:attributes="value l/uid"
@@ -329,22 +362,22 @@
               <input tal:replace="structure context/@@authenticator/authenticator" />
               <input type="hidden" name="id" tal:attributes="value rec/id" />
               <input type="hidden" name="eid" tal:attributes="value el/id" />
-              <div class="field-grid page-body-narrow">
+              <div class="pfas-form-row page-body-narrow">
                 <tal:v tal:condition="python:el['type'] == 'typed'"
                        tal:define="vals python:((rec.get('entries') or {}).get(el['id']) or {}).get('values') or []">
-                  <label tal:repeat="i python:range(int(el.get('count') or 1))">Value <tal:n tal:replace="python:i + 1">1</tal:n>
+                  <label class="pfas-form-field" tal:repeat="i python:range(int(el.get('count') or 1))">Value <tal:n tal:replace="python:i + 1">1</tal:n>
                     <input type="number" step="any" tal:attributes="name string:value.${i}; value python:vals[i] if i &lt; len(vals) else u''" /></label>
                 </tal:v>
-                <label class="field-wide">Evidence (<tal:a tal:replace="python:el.get('accept') or u'pdf'">pdf</tal:a>)
+                <label class="pfas-form-field is-full">Evidence (<tal:a tal:replace="python:el.get('accept') or u'pdf'">pdf</tal:a>)
                   <input type="file" name="evidence" /></label>
                 <tal:j tal:condition="python:el['type'] == 'qualitative' and can_approve">
-                  <label>Reviewer's verdict
+                  <label class="pfas-form-field">Reviewer's verdict
                     <select name="verdict">
                       <option value="">Not judged</option>
                       <option value="pass">Pass</option>
                       <option value="fail">Fail</option>
                     </select></label>
-                  <label>Note <input type="text" name="note" /></label>
+                  <label class="pfas-form-field">Note <input type="text" name="note" /></label>
                 </tal:j>
               </div>
               <div class="form-actions"><button class="btn-sm btn-primary" type="submit" name="action" value="design_entry">Save</button></div>
@@ -352,11 +385,13 @@
           </tal:q>
           </tal:d>
         </fieldset>
+        <tal:a define="applied view/applied"><metal:a use-macro="context/@@pfas-method-study-macros/macros/applied" /></tal:a>
       </section>
 
       <section class="bench-block" tal:condition="python:rec['kind'] not in ('idc', 'designed')">
         <h2 class="bench-h">Results</h2>
-        <metal:r use-macro="context/@@pfas-method-study-macros/macros/results" />
+        <tal:old condition="not:view/is_mdl"><metal:r use-macro="context/@@pfas-method-study-macros/macros/results" /></tal:old>
+        <tal:new condition="view/is_mdl"><metal:m use-macro="context/@@pfas-method-study-macros/macros/mdl_levels" /></tal:new>
       </section>
 
       <section class="bench-block" tal:condition="python:rec['kind'] == 'idc'" tal:define="ov view/idc_overall">
@@ -375,7 +410,7 @@
               <td><span tal:define="v python:e[2].get('verdict') or u'not evaluated'"
                         tal:attributes="class python:'badge ' + ('badge-active' if v == 'pass' else 'badge-expired' if v == 'fail' else 'badge-quarantine')"
                         tal:content="v">pass</span></td>
-              <td tal:content="python:e[2].get('reason') or (u', '.join(u'%s' % x for x in e[2].get('values') or e[2].get('branched') or e[2].get('failed') or []))">detail</td>
+              <td tal:content="python:view.study_note(e[2].get('reason')) or e[2].get('detail') or (u', '.join(u'%s' % x for x in e[2].get('values') or e[2].get('branched') or e[2].get('failed') or []))">detail</td>
             </tr>
           </tbody>
         </table>
@@ -383,12 +418,19 @@
               tal:attributes="action string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <input type="hidden" name="id" tal:attributes="value rec/id" />
-          <div class="field-grid page-body-narrow" tal:define="asym python:(rec.get('idc') or {}).get('asymmetry') or [u'', u'']">
-            <label>Peak asymmetry, first eluting peak
+          <div class="pfas-form-row page-body-narrow" tal:define="asym python:(rec.get('idc') or {}).get('asymmetry') or [u'', u''];
+                                                               used python:((rec.get('idc') or {}).get('asymmetry_run') or {}).get('batch')">
+            <label class="pfas-form-field is-full">Peak asymmetry measured on run
+              <select name="asym_run" class="pfas-select">
+                <option value="">None: typed below</option>
+                <option tal:repeat="r view/asymmetry_runs" tal:content="r/label"
+                        tal:attributes="value r/batch; selected python:'selected' if r['batch'] == used else None">WS-1</option>
+              </select></label>
+            <label class="pfas-form-field">Peak asymmetry, first eluting peak
               <input type="number" step="0.01" min="0" name="asym.1" tal:attributes="value python:asym[0]" /></label>
-            <label>Peak asymmetry, second eluting peak
+            <label class="pfas-form-field">Peak asymmetry, second eluting peak
               <input type="number" step="0.01" min="0" name="asym.2" tal:attributes="value python:asym[1] if len(asym) > 1 else u''" /></label>
-            <label class="field-wide">Calculation (PDF)
+            <label class="pfas-form-field is-full">Calculation (PDF)
               <input type="file" name="asymmetry_file" accept="application/pdf" /></label>
           </div>
           <div class="form-actions">
@@ -407,13 +449,13 @@
               tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <input type="hidden" name="id" tal:attributes="value rec/id" />
-          <div class="field-grid">
-            <label>Provider <input type="text" name="pt_provider" tal:attributes="value pt/provider|nothing" /></label>
-            <label>Scheme <input type="text" name="pt_scheme" tal:attributes="value pt/scheme|nothing" /></label>
-            <label>Round <input type="text" name="pt_round" tal:attributes="value pt/round|nothing" /></label>
-            <label>PT sample <input type="text" name="pt_sample" tal:attributes="value pt/sample|nothing" /></label>
-            <label>Received <input type="date" name="pt_received" tal:attributes="value pt/received|nothing" /></label>
-            <label>Certificate (PDF) <input type="file" name="certificate_file" accept="application/pdf" /></label>
+          <div class="pfas-form-row">
+            <label class="pfas-form-field">Provider <input type="text" name="pt_provider" tal:attributes="value pt/provider|nothing" /></label>
+            <label class="pfas-form-field">Scheme <input type="text" name="pt_scheme" tal:attributes="value pt/scheme|nothing" /></label>
+            <label class="pfas-form-field">Round <input type="text" name="pt_round" tal:attributes="value pt/round|nothing" /></label>
+            <label class="pfas-form-field">PT sample <input type="text" name="pt_sample" tal:attributes="value pt/sample|nothing" /></label>
+            <label class="pfas-form-field">Received <input type="date" name="pt_received" tal:attributes="value pt/received|nothing" /></label>
+            <label class="pfas-form-field">Certificate (PDF) <input type="file" name="certificate_file" accept="application/pdf" /></label>
           </div>
           <table class="pfas-table" data-col-resize="method-studies-7">
             <thead><tr><th>Analyte</th><th>Reported</th><th>Assigned</th><th>Provider's verdict</th></tr></thead>
@@ -437,30 +479,42 @@
 
       <section class="bench-block" tal:condition="python:draft and rec['kind'] != 'pt'">
         <h2 class="bench-h">Replicates</h2>
-        <table class="pfas-table" data-col-resize="method-studies-8">
-          <thead><tr><th>Injection</th><th>Run</th><th>Date</th><th>Used as</th><th>Exclude</th></tr></thead>
+        <table class="pfas-table" data-col-resize="method-studies-8" tal:define="rm context/@@pfas-row-menu">
+          <thead><tr><th>Injection</th><th>Run</th><th>Date</th><th>Used as</th></tr></thead>
           <tbody>
-            <tr tal:repeat="r view/replicate_rows">
+            <tr tal:repeat="r view/replicate_rows"
+                tal:attributes="data-row-actions python:rm.actions((u'Exclude\u2026', 'modal', u'exclude-%d' % repeat['r'].index))">
               <td tal:content="r/injection">WS-1-LFB1</td>
               <td tal:content="r/batch">WS-1</td>
               <td tal:content="r/date">date</td>
               <td tal:content="python:u'%s %s' % (r['role'], r.get('level') or u'')">spike</td>
-              <td>
-                <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
-                  <input tal:replace="structure context/@@authenticator/authenticator" />
-                  <input type="hidden" name="id" tal:attributes="value rec/id" />
-                  <input type="hidden" name="injection" tal:attributes="value python:r.get('key') or r['injection']" />
-                  <select name="analyte">
-                    <option value="*">Every analyte</option>
-                    <option tal:repeat="a python:sorted(r['values'])" tal:attributes="value a" tal:content="a">PFOA</option>
-                  </select>
-                  <input type="text" name="reason" placeholder="Reason (gross failure)" />
-                  <button class="btn-sm btn-secondary" type="submit" name="action" value="exclude">Exclude</button>
-                </form>
-              </td>
-            </tr>
+</tr>
           </tbody>
         </table>
+        <tal:d repeat="r view/replicate_rows">
+        <div class="pfas-modal" tal:attributes="id string:exclude-${repeat/r/index}">
+          <div class="pfas-modal-box">
+            <h2>Exclude <tal:i replace="r/injection">WS-1-LFB1</tal:i></h2>
+            <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
+              <input tal:replace="structure context/@@authenticator/authenticator" />
+              <input type="hidden" name="id" tal:attributes="value rec/id" />
+              <input type="hidden" name="injection" tal:attributes="value python:r.get('key') or r['injection']" />
+              <input type="hidden" name="action" value="exclude" />
+              <label class="pfas-form-field">Analyte
+                <select name="analyte">
+                  <option value="*">Every analyte</option>
+                  <option tal:repeat="a python:sorted(r['values'])" tal:attributes="value a" tal:content="a">PFOA</option>
+                </select></label>
+              <label class="pfas-form-field">Reason
+                <input type="text" name="reason" placeholder="Reason (gross failure)" /></label>
+              <div class="form-actions is-end">
+                <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Close</button>
+                <button class="btn btn-primary" type="submit">Exclude</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        </tal:d>
         <ul class="bench-alerts" tal:condition="view/left_out">
           <li class="bench-warn"><strong>Left out, not reviewed:</strong>
             <tal:w tal:replace="python:u', '.join(view.left_out)">-</tal:w></li></ul>
@@ -473,7 +527,7 @@
           <tbody>
             <tr tal:repeat="e rec/exclusions">
               <td tal:content="e/injection">WS-1-LFB1</td><td tal:content="e/analyte">PFOA</td>
-              <td tal:content="e/reason">cracked vial</td><td tal:content="e/by">AN1</td><td tal:content="python:view.when(e.get('at'))">t</td>
+              <td tal:content="e/reason">cracked vial</td><td tal:content="e/by">AN1</td><td tal:content="python:view.screen_when(e.get('at'))">t</td>
             </tr>
           </tbody>
         </table>
@@ -484,6 +538,15 @@
         <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <input type="hidden" name="id" tal:attributes="value rec/id" />
+          <p class="pfas-hint" tal:repeat="item python:sorted(view.raised().items())" tal:condition="not:view/is_mdl"
+             tal:content="python:u'%s: the MDL is above the RL, so the RL goes from %s to %s.' % (item[0], view.fmt(item[1][0]), view.fmt(item[1][1]))"></p>
+          <fieldset tal:define="keep view/keepable" tal:condition="keep">
+            <legend>Keep existing MDL</legend>
+            <label class="pfas-switch pfas-check" tal:repeat="kw keep">
+              <input type="checkbox" tal:attributes="name string:keep_existing.${repeat/kw/index}; value kw" /><span class="pfas-switch-track"></span>
+              <span tal:content="python:u'%s, %s in force' % (kw, view.fmt(view.existing().get(kw)))"></span>
+            </label>
+          </fieldset>
           <label>Statement <input type="text" name="statement" placeholder="Reviewed against the source" /></label>
           <button class="btn-sm btn-primary" type="submit" name="action" value="approve">Approve</button>
         </form>

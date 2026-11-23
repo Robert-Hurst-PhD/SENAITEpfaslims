@@ -20,6 +20,7 @@ from senaite.pfas.print_style import PALETTE as _P
 
 from senaite.pfas import doc_fields as _df
 from senaite.pfas import print_doc as _pd
+from senaite.pfas import report_documents as _rep
 
 
 _s = _df.as_text
@@ -32,6 +33,13 @@ def _fixed(name, text, x, y, w, h, size=7.5, align="left", **kw):
     return _t(name, x, y, w, h, size, align, readOnly=True, content=text, **kw)
 
 
+def _fit(name, x, y, w, h, size=7.5, floor=7, align="left", **kw):
+    """A value in a box that does not grow: a long one wraps and shrinks to
+    stay inside it, so it never prints over the row below."""
+    return _t(name, x, y, w, h, size, align,
+              dynamicFontSize={"min": floor, "max": size, "fit": "vertical"}, **kw)
+
+
 _image = _df.image_field
 
 
@@ -40,7 +48,7 @@ def _rule(name, x, y, w, **kw):
                  "width": w, "height": 0.3, "readOnly": True, "color": _P["s-body"]}, **kw)
 
 
-def _table(name, columns, x, y, w, widths, size=6.5):
+def _table(name, columns, x, y, w, widths, size=7):
     return {"name": name, "type": "table", "position": {"x": x, "y": y}, "width": w,
             "height": 12, "showHead": True, "repeatHead": True,
             "head": [t for _k, t, _e in columns], "headWidthPercentages": widths,
@@ -82,6 +90,7 @@ COC_FIELDS = [
     ("receipt_flags", "Receipt flags", "DEMO: received not compliant"),
     ("transcription", "Transcription note",
      "DEMO: transcribed from paper CoC COC-DEMO-0001 by AN1 on 2026-10-07. Paper original retained."),
+    _rep.CONTROL_FIELD,
 ]
 COC_TABLES = {
     "samples": [("sample_id", "Lab sample ID", "DEMO-0001"),
@@ -108,7 +117,7 @@ COC_REQUIRED = ("coc_id", "client", "sampler", "received_by", "received_at", "re
 COC_LONG = ("condition_notes", "receipt_flags", "transcription", "relinquished_line")
 COC_GROUPS = _df.grouped(COC_FIELDS + _df.LAB_FIELDS, dict(
     [(k, _df.LAB) for k, _t2, _e in _df.LAB_FIELDS] + [
-        ("coc_id", _df.DOCUMENT), ("printed", _df.DOCUMENT),
+        ("coc_id", _df.DOCUMENT), ("printed", _df.DOCUMENT), ("control", _df.DOCUMENT),
         ("client", _df.SAMPLE), ("contact", _df.SAMPLE), ("contact_phone", _df.SAMPLE),
         ("contact_email", _df.SAMPLE), ("project", _df.SAMPLE), ("project_number", _df.SAMPLE),
         ("sampler", _df.SAMPLE), ("carrier", _df.TRACE), ("tracking", _df.TRACE),
@@ -147,12 +156,12 @@ def coc_starter(width=210.0, height=297.0):
     y = 31.0
     for i, (l1, k1, l2, k2) in enumerate(pairs):
         yy = y + i * 5.5
-        out += [_fixed("label_" + k1, l1, 10, yy, 25, 5), _t(k1, 35, yy, 65, 5),
-                _fixed("label_" + k2, l2, 105, yy, 28, 5), _t(k2, 133, yy, right - 133, 5)]
+        out += [_fixed("label_" + k1, l1, 10, yy, 25, 5), _fit(k1, 35, yy, 65, 5),
+                _fixed("label_" + k2, l2, 105, yy, 28, 5), _fit(k2, 133, yy, right - 133, 5)]
     y += 5 * 5.5 + 3
     out.append(_fixed("heading_samples", "Samples", 10, y, wide, 5, 9))
     out.append(_table("samples", COC_TABLES["samples"], 10, y + 6, wide,
-                      [10, 11, 11, 9, 11, 10, 9, 10, 10, 9]))
+                      [9, 15, 10, 8, 11, 10, 9, 10, 11, 7]))
     y += 22
     out.append(_fixed("heading_field_qc", "Field quality control", 10, y, wide, 5, 9))
     out.append(_table("field_qc", COC_TABLES["field_qc"], 10, y + 6, wide, [30, 35, 35]))
@@ -168,8 +177,8 @@ def coc_starter(width=210.0, height=297.0):
                ("Holding times OK", "holding_time_ok", "Printed", "printed")]
     for i, (l1, k1, l2, k2) in enumerate(receipt):
         yy = y + i * 5.5
-        out += [_fixed("label_r_" + k1, l1, 10, yy, 28, 5), _t(k1, 38, yy, 62, 5),
-                _fixed("label_r_" + k2, l2, 105, yy, 28, 5), _t(k2, 133, yy, right - 133, 5)]
+        out += [_fixed("label_r_" + k1, l1, 10, yy, 28, 5), _fit(k1, 38, yy, 62, 5),
+                _fixed("label_r_" + k2, l2, 105, yy, 28, 5), _fit(k2, 133, yy, right - 133, 5)]
     y += 4 * 5.5 + 1
     out += [_fixed("label_condition_notes", "Condition on receipt", 10, y, wide, 5),
             _t("condition_notes", 10, y + 5, wide, 5, 7.5, overflow="expand")]
@@ -182,6 +191,7 @@ def coc_starter(width=210.0, height=297.0):
         x = 10 + i * (wide / 2.0)
         out += [_rule("sign_line_%d" % i, x, y + 8, wide / 2.0 - 8),
                 _fixed("label_sign_%d" % i, who, x, y + 9, wide / 2.0 - 8, 4.5, 7)]
+    out += _rep.control_foot((_rep.CONTROL_FIELD[0],), width, height)
     out.append(dict(_fixed("pager", "Page {currentPage} of {totalPages}", right - 50,
                            height - 12, 50, 5, 7, "right"), **every))
     return {"basePdf": {"width": width, "height": height, "padding": [31, 10, 18, 10]},
@@ -193,7 +203,7 @@ def _yes(v):
 
 
 def coc_data(record, samples, lab, printed):
-    """`record`: the CoC record (the coc logbook entry, a dict); `samples`:
+    """`record`: the CoC's own fields (a dict: its id); `samples`:
     one dict per sample with the sample_table keys (built from the sample
     records by the view); `lab`: the LAB_FIELDS values."""
     record = record or {}
@@ -230,6 +240,8 @@ def coc_data(record, samples, lab, printed):
         "holding_time_ok": _yes(record.get("holding_time_ok")),
         "condition_notes": _s(record.get("condition_notes")),
         "printed": _s(printed),
+        # the document control block is written when the CoC is printed
+        "control": "",
         # a CoC logbook entry has no electronic relinquish, receipt flags or
         # transcription: those are a CoC record's (coc_record_data)
         "relinquished_line": "", "receipt_flags": "", "transcription": "",
@@ -289,18 +301,18 @@ def sop_starter(width=210.0, height=297.0):
         _t("lab_name", 10, 54, wide, 7, 12),
         _t("lab_address", 10, 61, wide, 5, 8),
         _t("doc_type", 10, 78, wide, 6, 10),
-        _t("doc_title", 10, 85, wide, 12, 18),
-        _fixed("label_method", "Method", 10, 100, 30, 5), _t("method", 40, 100, 80, 5),
-        _fixed("label_status", "Status", 10, 105.5, 30, 5), _t("status", 40, 105.5, 80, 5),
-        _fixed("label_cc", "Controlled copy", 10, 111, 30, 5), _t("controlled_copy", 40, 111, 80, 5),
+        _fit("doc_title", 10, 84, wide, 14, 18, 11),
+        _fixed("label_method", "Method", 10, 100, 30, 5), _fit("method", 40, 100, wide - 30, 5),
+        _fixed("label_status", "Status", 10, 105.5, 30, 5), _fit("status", 40, 105.5, wide - 30, 5),
+        _fixed("label_cc", "Controlled copy", 10, 111, 30, 5), _fit("controlled_copy", 40, 111, wide - 30, 5),
         _fixed("label_scope", "Scope", 10, 119, 30, 5),
         _t("scope", 10, 124, wide, 5, 8, overflow="expand"),
         _fixed("heading_approvals", "Approval", 10, 136, wide, 5, 9),
         _table("approvals", SOP_TABLES["approvals"], 10, 142, wide, [25, 30, 20, 25], 7),
         _fixed("heading_history", "Revision history", 10, 166, wide, 5, 9),
         _table("history", SOP_TABLES["history"], 10, 172, wide, [12, 18, 18, 52], 7),
-        _fixed("label_printed", "Printed", 10, height - 12, 20, 4.5, 6.5, **every),
-        _t("printed", 30, height - 12, 60, 4.5, 6.5, **every),
+        _fixed("label_printed", "Printed", 10, height - 12, 20, 4.5, 7, **every),
+        _t("printed", 30, height - 12, 60, 4.5, 7, **every),
     ]
     return {"basePdf": {"width": width, "height": height, "padding": [30, 10, 18, 10]},
             "schemas": [out]}
@@ -411,8 +423,15 @@ def coc_record_data(record, samples, lab, printed):
         """A relinquish is stamped on the server's clock (UTC); a receipt
         time is typed on the laboratory's and prints as typed."""
         return _pd.lab_or(v, when(v))
-    transfers = [dict((k, (stamped if k == "relinquished_at" else when)(t.get(k)) if k.endswith("_at")
-                       else _s(t.get(k)))
+    # the receipt date in force: a signed correction's, which the lab's
+    # transfer row shows too; the date received is kept on the record
+    from senaite.pfas import coc_records as cr
+    in_force, received = cr.received_in_force(record), _s(rc.get("received_at"))
+
+    def at_lab(t):
+        return in_force if received and _s(t.get("received_at")) == received else t.get("received_at")
+    transfers = [dict((k, (stamped if k == "relinquished_at" else when)(at_lab(t) if k == "received_at" else t.get(k))
+                       if k.endswith("_at") else _s(t.get(k)))
                       for k, _t2, _e in COC_TABLES["transfers"])
                  for t in record.get("transfers") or []]
     first = (record.get("transfers") or [{}])[0] if record.get("transfers") else {}
@@ -424,19 +443,22 @@ def coc_record_data(record, samples, lab, printed):
         "project": _s(record.get("project")), "project_number": _s(record.get("project_number")),
         "sampler": _s(record.get("sampler")), "carrier": _s(record.get("carrier")),
         "tracking": _s(record.get("tracking")), "custody_seals": _s(record.get("seals")),
-        "received_by": _s(rc.get("received_by")), "received_at": _s(rc.get("received_at")),
+        "received_by": _s(rc.get("received_by")), "received_at": _s(in_force),
         "receipt_temp": "; ".join(temp(t) for t in readings),
         "receipt_thermometer": " ".join(x for x in (_s(therm.get("name")), _s(therm.get("serial"))) if x),
         "seals_intact": _yes(rc.get("seals_intact")) if rc else "",
         "labels_legible": _yes(rc.get("labels_legible")) if rc else "",
         "holding_time_ok": _yes(rc.get("holding_time_ok")) if rc else "",
         "condition_notes": _s(rc.get("note")),
-        "receipt_flags": ("Receipt flags: " + "; ".join(rc.get("flags"))) if rc.get("flags") else "",
+        "receipt_flags": " ".join(x for x in (
+            ("Receipt flags: " + "; ".join(rc.get("flags"))) if rc.get("flags") else "",
+            " ".join(cr.correction_line(c, u"Receipt date corrected") + "." for c in cr.corrections(record)))
+            if x),
         "relinquished_line": (("Relinquished electronically by %s on %s (signed in)"
                                % (_s(first.get("relinquished_by")), stamped(first.get("relinquished_at"))))
                               if record.get("origin") != "paper" and first.get("relinquished_by") else ""),
         "transcription": _transcription(record),
-        "printed": _s(printed),
+        "printed": _s(printed), "control": "",
         "samples": rows, "field_qc": field_qc,
         "transfers": transfers or [dict((k, "") for k, _t2, _e in COC_TABLES["transfers"]) for _i in range(3)],
     })

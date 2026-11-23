@@ -10,12 +10,12 @@ from __future__ import unicode_literals
 
 CSS = """\
 @page { margin: 16mm 15mm 18mm;
-        @bottom-left { width: 45%; font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px; white-space: pre;
+        @bottom-left { width: 45%; font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9.5px; white-space: pre;
                        color: #66756f; vertical-align: top; padding-top: 6px; }
-        @bottom-center { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px; font-weight: 700;
+        @bottom-center { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9.5px; font-weight: 700;
                          color: #66756f; vertical-align: top; padding-top: 6px;
                          content: "Page " counter(page) " of " counter(pages); }
-        @bottom-right { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9px;
+        @bottom-right { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 9.5px;
                         color: #66756f; vertical-align: top; padding-top: 6px; } }
 .pd { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 12px; line-height: 17px; color: #263532;
       font-feature-settings: "tnum"; }
@@ -52,6 +52,9 @@ CSS = """\
 .pd-logo { max-height: 40px; }
 .pd-lab-name { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 16px; line-height: 20px; }
 .pd-lab-sub { color: #66756f; font-size: 11px; line-height: 15px; }
+.pd-id, .pd-status { white-space: nowrap; }
+.pd .pd-ctl-rows { margin: 0 0 14px; }
+.pd .pd-ctl-rows table.pd-ctl { margin: 0 0 -1.5px; }
 .pd table.pd-ctl { border-collapse: separate; border-spacing: 0; margin: 0 0 14px;
                    border: 1.5px solid #263532; border-radius: 6px; }
 .pd table.pd-ctl td { padding: 5px 10px; vertical-align: top; border: 0;
@@ -60,7 +63,7 @@ CSS = """\
 .pd-ctl small { display: block; font-size: 10px; line-height: 13px; letter-spacing: .04em;
                 text-transform: uppercase; color: #66756f; }
 .pd-ctl b { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 13px; line-height: 18px; }
-.pd-flag { display: inline-block; border: 1.5px solid #263532; border-radius: 3px; padding: 0 5px;
+.pd-flag { display: inline-block; white-space: nowrap; border: 1.5px solid #263532; border-radius: 3px; padding: 0 5px;
            font-weight: 700; font-size: 10px; line-height: 15px; text-transform: uppercase;
            letter-spacing: .03em; }
 .pd-flag-ok:before { content: "\\2713\\00a0"; }
@@ -79,6 +82,8 @@ CSS = """\
 .pd .sr-stamp span { margin-right: 14px; }
 .pd .sr-intro, .pd .sr-meta { margin: 3px 0; }
 .pd .sr-table th { background: #f5f9f7; }
+.pd .sr-fixed { table-layout: fixed; }
+.pd .sr-fixed th, .pd .sr-fixed td { word-wrap: break-word; overflow-wrap: break-word; }
 .pd .sr-how { color: #66756f; font-size: 10px; }
 .pd .sr-yes { color: #1d6b52; font-weight: 700; }
 .pd .sr-no { color: #a8412a; font-weight: 700; }
@@ -86,40 +91,69 @@ CSS = """\
 .pd .sr-revision { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 700; margin: 2px 0 6px; }
 .pd .pd-note { font-size: 10px; color: #66756f; margin-top: 12px; }
 .pfas-coa { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 10px; color: #263532; font-feature-settings: "tnum"; }
-.pfas-coa-lab { display: flex; align-items: flex-end; }
-.pfas-coa-sample { width: 100%; }
-.pfas-coa-head { width: 100%; display: flex; justify-content: space-between; align-items: flex-end;
-  border-bottom: 3px solid #2fa88a; padding-bottom: 6px; margin-bottom: 8px; }
-.pfas-coa-head .lab { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; font-weight: 700; }
-.pfas-coa-head .sub { font-size: 9px; color: #66756f; margin-top: 2px; }
+.pfas-coa-sample { width: 100%; margin-bottom: 12px; page-break-inside: auto; }
+.pfas-coa-head { width: 100%; border-collapse: collapse; border-bottom: 3px solid #1e7a64;
+  margin-bottom: 4px; }
+.pfas-coa-head td { vertical-align: bottom; padding: 0 0 4px; }
+.pfas-coa-head td.pfas-coa-logo { width: 150px; padding: 0 12px 0 0; background-repeat: no-repeat;
+  background-position: left center; background-size: contain; background-clip: content-box; background-origin: content-box; }
+.pfas-coa-head .lab { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 16px; font-weight: 800; letter-spacing: .02em; }
+.pfas-coa-head .sub { font-size: 9px; color: #66756f; margin-top: 1px; }
 .pfas-coa-head .doc { text-align: right; }
-.pfas-coa-head .doc .t { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 800; letter-spacing: .02em; }
-.pfas-coa-head img { max-height: 42px; max-width: 160px; margin-right: 10px; }
-.pfas-coa-info { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
-.pfas-coa-info th { text-align: left; font-weight: 600; color: #66756f; width: 16%;
-  padding: 2px 6px 2px 0; white-space: nowrap; }
-.pfas-coa-info td { padding: 2px 10px 2px 0; width: 34%; }
+.pfas-coa-head .doc .t { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; font-weight: 800;
+  letter-spacing: .01em; color: #1e7a64; }
+.pfas-coa-head .doc .meta { font-size: 9px; color: #66756f; margin-top: 2px; }
+.pfas-coa-head .doc .meta span { margin-left: 10px; white-space: nowrap; }
+.pfas-coa-head .doc .meta strong { color: #263532; }
+.pfas-coa-head img { max-height: 42px; max-width: 160px; display: block; }
+.pfas-coa-sec,
+.pfas-coa-res caption { caption-side: top; text-align: left; font-size: 8.5px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: #1e7a64; margin: 12px 0 5px; padding: 0; }
+.pfas-coa-res caption { padding: 10px 0 5px; }
+.pfas-coa .k { font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: #66756f; }
+.pfas-coa-ids { width: 100%; border-collapse: collapse; border: 1px solid #c4d3cc; }
+.pfas-coa-ids td { width: 50%; padding: 6px 10px; background: #e3f5ef; vertical-align: top; }
+.pfas-coa-ids td + td { border-left: 1px solid #c4d3cc; }
+.pfas-coa-ids .v { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; font-weight: 800; margin-top: 1px; }
+.pfas-coa-info { width: 100%; border-collapse: collapse; border: 1px solid #c4d3cc; border-top: 0;
+  margin: 0 0 4px; }
+.pfas-coa-info td { width: 25%; padding: 5px 10px; vertical-align: top; border-top: 1px solid #d9e4df; }
+.pfas-coa-info .v { font-weight: 600; }
+.pfas-coa-band { margin: 12px 0 0; padding: 5px 8px; background: #1e7a64; color: #ffffff;
+  font-weight: 700; font-size: 10.5px; page-break-after: avoid; }
+.pfas-coa-band .k { color: #ffffff; margin-right: 6px; }
+.pfas-coa-band .pfas-coa-batch { margin-left: 8px; font-weight: bold; }
 .pfas-coa-res { width: 100%; border-collapse: collapse; }
-.pfas-coa-res caption { caption-side: top; text-align: left; font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-weight: 700; font-size: 11px; padding: 4px 0; }
-.pfas-coa-res th { font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
-  color: #66756f; border-bottom: 1.5px solid #263532;
-  padding: 3px 5px; text-align: left; }
-.pfas-coa-res td { padding: 2px 5px; border-bottom: 1px solid #d9e4df; }
+.pfas-coa-res th { font-size: 8.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: #66756f; background: #f5f9f7; border-bottom: 1.5px solid #263532;
+  padding: 5px 6px; text-align: left; }
+.pfas-coa-res td { padding: 4px 6px; line-height: 1.3; border-bottom: 1px solid #d9e4df; }
 .pfas-coa-res .num { text-align: right; white-space: nowrap; }
-.pfas-coa-res tr.det td.res { font-weight: 700; }
-.pfas-coa-qcstd { margin-top: 8px; }
+.pfas-coa-res tr.det td.res { font-weight: 800; }
+.pfas-coa-qcstd { margin-top: 4px; }
 .pfas-coa-res tr.out td.st { font-weight: 700; color: #a8412a; }
 .pfas-coa-res tr.out td.st:before { content: "\\25C6\\00a0"; }
-.pfas-coa-legend { font-size: 8.5px; color: #66756f; margin-top: 4px; }
-.pfas-coa-sample { margin-bottom: 12px; page-break-inside: auto; }
+.pfas-coa-legend { margin-top: 8px; padding: 6px 10px; border: 1px solid #c4d3cc;
+  background: #f5f9f7; font-size: 8.5px; color: #263532; page-break-inside: avoid; }
+.pfas-coa-legend .h { font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: #1e7a64; margin-bottom: 2px; }
+.pfas-coa-legend span { display: inline-block; width: 48%; margin-right: 1%; vertical-align: top; padding: 1px 0; }
+.pfas-coa-legend span.pfas-coa-error { width: 98%; }
+.pfas-coa-note { margin-top: 4px; }
+.pfas-coa-legend.is-page { break-before: page; page-break-before: always; break-after: page; page-break-after: always; }
 .pfas-coa-foot { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 8.5px; color: #66756f; }
+.pfas-coa-foot table.pfas-coa-foot-row { width: 100%; border-collapse: collapse; }
+.pfas-coa-foot-row td { padding: 0; vertical-align: top; }
+.pfas-coa-foot-row td.l { width: 40%; text-align: left; }
+.pfas-coa-foot-row td.c { width: 20%; }
+.pfas-coa-foot-row td.r { width: 40%; text-align: right; }
 .pfas-coa-reg { margin-top: 8px; padding: 6px 8px; border: 1px solid #c4d3cc; page-break-inside: avoid; }
 .pfas-coa-reg .h { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 11px; margin-bottom: 3px; }
 .pfas-coa-reg .finding { margin: 2px 0; }
 .pfas-coa-reg .finding.exceeds { border-left: 3px solid #a8412a; padding-left: 5px; }
 .pfas-coa-reg .finding.exceeds:before { content: "\\25C6\\00a0"; color: #a8412a; }
-.pfas-coa-reg .finding.undetermined { border-left: 3px solid #8a5a12; padding-left: 5px; }
+.pfas-coa-reg .finding.undetermined { border-left: 3px dashed #8a5a12; padding-left: 5px; }
 .pfas-coa-reg .finding.undetermined:before { content: "\\25B2\\00a0"; color: #8a5a12; }
 .pfas-coa-reg .cite { color: #66756f; }
 .pfas-coa-reg .links { margin-top: 4px; }
@@ -127,23 +161,24 @@ CSS = """\
 .pfas-coa-error { color: #a8412a; font-weight: 700; }
 .pfas-coa-box { margin-top: 14px; padding: 8px 10px; border: 1px solid #c4d3cc; page-break-inside: avoid; }
 .pfas-coa-box.scope { padding: 9px 11px; border: 2px solid #263532; }
-.pfas-coa-box .bh { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+.pfas-coa-box .bh { font-size: 8.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: #1e7a64; margin-bottom: 4px; }
 .pfas-coa-box .bt { font-size: 10px; margin-bottom: 6px; }
 .pfas-coa-box table { width: 100%; font-size: 10px; border-collapse: collapse; }
-.pfas-coa-box td { vertical-align: top; padding: 3px 4px; }
+.pfas-coa-box td { vertical-align: top; padding: 4px 5px; line-height: 1.3; }
 .pfas-coa-box td.code { width: 34px; font-weight: 700; }
 .pfas-coa-box td.dot { width: 14px; }
 .pfas-coa-box .bn { font-size: 9px; color: #66756f; margin-top: 5px; }
 .pfas-coa-box .affected { color: #66756f; margin-top: 2px; }
-.pfas-coa-stamp { margin-top: 10px; padding-top: 6px; border-top: 1px solid #d9e4df;
-  font-size: 10px; color: #66756f; text-align: center; }
+.pfas-coa-stamp { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin-top: 10px; padding-top: 6px; border-top: 1px solid #d9e4df;
+  font-size: 9px; color: #66756f; text-align: center; }
 .qc-qualifier { font-size: .8em; font-weight: 600; vertical-align: super; margin-left: .15em;
   color: #8a5a12; white-space: nowrap; }
-.pfas-coa-attestation { margin: 22px 0 6px; page-break-inside: avoid; }
-.pfas-coa-attestation .coa-att-title { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; font-weight: 700;
-  letter-spacing: .04em; text-transform: uppercase; color: #1e7a64;
-  border-bottom: 1.5px solid #263532; padding-bottom: 4px; margin-bottom: 10px; }
-.pfas-coa-attestation .coa-att-id { float: right; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-weight: 600; }
+.pfas-coa-attestation { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 18px 0 6px; padding-top: 7px;
+  border-top: 2px solid #1e7a64; page-break-inside: avoid; }
+.pfas-coa-attestation .coa-att-title { font-size: 8.5px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: #1e7a64; margin-bottom: 7px; }
+.pfas-coa-attestation .coa-att-id { float: right; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-weight: 700; }
 .pfas-coa-attestation table.coa-att-tbl { width: 100%; border-collapse: collapse; }
 .pfas-coa-attestation td { padding: 8px 8px; vertical-align: top; border-bottom: 1px solid #d9e4df; }
 .pfas-coa-attestation td.role { width: 110px; font-weight: 600; color: #66756f; font-size: 11px;
@@ -151,16 +186,53 @@ CSS = """\
 .pfas-coa-attestation .person { display: inline-block; min-width: 190px; margin: 0 22px 6px 0; vertical-align: bottom; }
 .pfas-coa-attestation .sig { max-height: 46px; max-width: 180px; display: block; margin-bottom: 2px; }
 .pfas-coa-attestation .sigline { height: 40px; border-bottom: 1px solid #263532; width: 180px; margin-bottom: 2px; }
-.pfas-coa-attestation .nm { font-weight: 600; font-size: 12px; }
-.pfas-coa-attestation .jt { color: #66756f; font-size: 11px; }
-.pfas-coa-attestation .dt { color: #66756f; font-size: 11px; white-space: nowrap; }
-.pfas-coa-attestation table.coa-att-compact { width: 100%; border-collapse: collapse; }
-.pfas-coa-attestation table.coa-att-compact td { width: 33%; vertical-align: top; padding: 4px 8px 4px 0;
-  border-bottom: 0; font-size: 10px; }
-.pfas-coa-attestation table.coa-att-compact .role { font-size: 9px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .03em; color: #66756f; margin-bottom: 2px; }
-.pfas-coa-attestation .sig-sm { max-height: 26px; max-width: 120px; display: block; }
-.pfas-coa-attestation .coa-att-note { margin-top: 10px; font-size: 10px; color: #66756f; font-style: italic; }
+.pfas-coa-attestation .nm { font-weight: 700; font-size: 11px; }
+.pfas-coa-attestation .jt { color: #66756f; font-size: 10px; }
+.pfas-coa-attestation .dt { color: #66756f; font-size: 10px; white-space: nowrap; }
+.pfas-coa-attestation table.coa-att-compact { width: 100%; border-collapse: separate; border-spacing: 8px 0; }
+.pfas-coa-attestation table.coa-att-compact td { width: 33%; vertical-align: top; padding: 6px 10px;
+  border: 1px solid #c4d3cc; font-size: 10px; }
+.pfas-coa-attestation table.coa-att-compact .role { font-size: 8px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: #66756f; margin-bottom: 3px; }
+.pfas-coa-attestation table.coa-att-compact .nm { display: block; }
+.pfas-coa-attestation .sig-sm { max-height: 26px; max-width: 120px; display: block; margin: 2px 0; }
+.pfas-coa-attestation .coa-att-note { margin-top: 8px; font-size: 9.5px; color: #66756f; font-style: italic; }
+.pfas-coa.pfas-coa-mono, .pfas-coa.pfas-coa-mono .k, .pfas-coa-mono .pfas-coa-sec,
+.pfas-coa-mono .pfas-coa-head .sub, .pfas-coa-mono .pfas-coa-head .doc .t,
+.pfas-coa-mono .pfas-coa-head .doc .meta, .pfas-coa-mono .pfas-coa-head .doc .meta strong,
+.pfas-coa-mono .pfas-coa-res caption, .pfas-coa-mono .pfas-coa-res th,
+.pfas-coa-mono .pfas-coa-res tr.out td.st, .pfas-coa-mono .pfas-coa-legend,
+.pfas-coa-mono .pfas-coa-legend .h, .pfas-coa-mono .pfas-coa-error,
+.pfas-coa-mono .pfas-coa-reg .finding.exceeds:before, .pfas-coa-mono .pfas-coa-reg .finding.undetermined:before,
+.pfas-coa-mono .pfas-coa-reg .cite, .pfas-coa-mono .pfas-coa-reg a, .pfas-coa-mono .qc-qualifier,
+.pfas-coa-foot.pfas-coa-mono,
+.pfas-coa-box.pfas-coa-mono .bh, .pfas-coa-box.pfas-coa-mono .bn, .pfas-coa-box.pfas-coa-mono .affected,
+.pfas-coa-stamp.pfas-coa-mono,
+.pfas-coa-attestation.pfas-coa-mono .coa-att-title, .pfas-coa-attestation.pfas-coa-mono td.role,
+.pfas-coa-attestation.pfas-coa-mono .jt, .pfas-coa-attestation.pfas-coa-mono .dt,
+.pfas-coa-attestation.pfas-coa-mono table.coa-att-compact .role,
+.pfas-coa-attestation.pfas-coa-mono .coa-att-note { color: #000000; }
+.pfas-coa-mono .pfas-coa-head { border-bottom-color: #000000; }
+.pfas-coa-mono .pfas-coa-ids { border: 1.5px solid #000000; }
+.pfas-coa-mono .pfas-coa-ids td { background: #ffffff; }
+.pfas-coa-mono .pfas-coa-ids td + td { border-left-color: #000000; }
+.pfas-coa-mono .pfas-coa-info { border-color: #000000; }
+.pfas-coa-mono .pfas-coa-info td { border-top-color: #000000; }
+.pfas-coa-mono .pfas-coa-band { background: #000000; color: #ffffff; }
+.pfas-coa-mono .pfas-coa-band .k { color: #ffffff; }
+.pfas-coa-mono .pfas-coa-res th { background: #ffffff; border-bottom: 2px solid #000000; }
+.pfas-coa-mono .pfas-coa-res td { border-bottom: .5px solid #000000; }
+.pfas-coa-mono .pfas-coa-legend { background: #ffffff; border: 1.5px solid #000000; }
+.pfas-coa-mono .pfas-coa-reg { border-color: #000000; }
+.pfas-coa-mono .pfas-coa-reg .finding.exceeds,
+.pfas-coa-mono .pfas-coa-reg .finding.undetermined { border-left-color: #000000; }
+.pfas-coa-mono .pfas-coa-reg a { text-decoration: underline; }
+.pfas-coa-box.pfas-coa-mono, .pfas-coa-box.scope.pfas-coa-mono { border-color: #000000; }
+.pfas-coa-stamp.pfas-coa-mono { border-top-color: #000000; }
+.pfas-coa-attestation.pfas-coa-mono { border-top-color: #000000; }
+.pfas-coa-attestation.pfas-coa-mono td { border-bottom-color: #000000; }
+.pfas-coa-attestation.pfas-coa-mono table.coa-att-compact td { border-color: #000000; }
+.pfas-coa-attestation.pfas-coa-mono .sigline { border-bottom-color: #000000; }
 .qcr { font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 11px; color: #263532; font-feature-settings: "tnum"; }
 .qcr h1 { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 18px; font-weight: 800; margin: 0 0 2px; }
 .qcr h2 { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12.5px; font-weight: 700; margin: 20px 0 6px;
@@ -168,6 +240,14 @@ CSS = """\
   letter-spacing: .04em; color: #1e7a64; }
 .qcr .lead { font-size: 11px; color: #66756f; margin: 0 0 14px; }
 .qcr table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.qcr thead { display: table-header-group; }
+.qcr tr { page-break-inside: avoid; }
+.qcr td, .qcr th { word-wrap: break-word; overflow-wrap: break-word; }
+.qcr table.qcr-fixed { table-layout: fixed; }
+.qcr table.qcr-fixed th { letter-spacing: 0; }
+.qcr th.qcr-first { width: 22%; }
+.qcr th.qcr-wide { width: 12%; }
+.qcr th.qcr-narrow { width: 5%; }
 .qcr th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em;
   color: #66756f; border-bottom: 1.5px solid #263532; padding: 4px 6px; }
 .qcr td { padding: 3px 6px; border-bottom: 1px solid #d9e4df; vertical-align: top; }
@@ -184,8 +264,16 @@ CSS = """\
 .qcr .note { background: #f5f9f7; border-left: 3px solid #c4d3cc;
   padding: 7px 10px; font-size: 10px; color: #66756f; margin: 6px 0 12px; }
 .qcr .sect { page-break-inside: avoid; }
-.qcr .appendix { page-break-before: always; }
-.qcr .appendix td, .qcr .appendix th { font-size: 9px; padding: 2px 4px; }
+.qcr h2 { page-break-after: avoid; }
+.qcr h3 { font-family: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 700; margin: 10px 0 4px;
+  color: #263532; page-break-after: avoid; }
+.qcr table.qcr-kind th { white-space: nowrap; letter-spacing: 0; }
+@page qcr-landscape { size: landscape; }
+.qcr .appendix { page-break-before: always; page: qcr-landscape; }
+.qcr .appendix td, .qcr .appendix th { font-size: 9.5px; padding: 2px 3px; }
+.qcr .appendix th { letter-spacing: 0; }
+svg.pfas-type { color: #000000; }
+svg.pfas-type.is-na { color: #000000; opacity: 0.35; }
 """
 
 # the light set's plain colours, for documents drawn by pdfme (which
@@ -195,6 +283,8 @@ PALETTE = {
     "on-accent": "#ffffff",
     "on-frame": "#ffffff",
     "on-success": "#0f1a18",
+    "print-ink": "#000000",
+    "print-paper": "#ffffff",
     "s-bg": "#ffffff",
     "s-body": "#263532",
     "s-border": "#d9e4df",
@@ -236,4 +326,10 @@ PALETTE = {
     "tier-c3": "#1f4e47",
     "tier-c4": "#b7791f",
     "tier-c5": "#6c7a89",
+    "type-blanks": "#4e5d78",
+    "type-calibration": "#1d5fa6",
+    "type-checks": "#1d5fa6",
+    "type-na": "#b9bfc8",
+    "type-samples": "#4a3fb3",
+    "type-spiked": "#963a82",
 }

@@ -6,7 +6,7 @@ from bika.lims.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from Products.CMFCore.utils import getToolByName
 
-from senaite.pfas.browser.sample_status import _compute_stage, STAGES
+from senaite.pfas.browser.sample_status import _compute_stage, _state_title, STAGES, STAGE_ICONS
 from senaite.pfas.tracking_store import tracking_for
 from senaite.pfas.browser.formutil import flatten_form
 
@@ -31,7 +31,7 @@ class PFASWorksheetStageTabView(BrowserView):
     def stage_info(self):
         ws = self.context
         wf_tool = getToolByName(ws, 'portal_workflow')
-        ws_state = wf_tool.getInfoFor(ws, 'review_state', '')
+        ws_state = _state_title(ws, wf_tool.getInfoFor(ws, 'review_state', ''))
         try:
             stage, responsible = _compute_stage(ws)
         except Exception:
@@ -44,6 +44,7 @@ class PFASWorksheetStageTabView(BrowserView):
         return {
             'stage':       stage,
             'stage_label': dict(STAGES).get(stage, ''),
+            'stage_icon':  STAGE_ICONS.get(stage),
             'responsible': responsible,
             'ws_state':    ws_state,
         }

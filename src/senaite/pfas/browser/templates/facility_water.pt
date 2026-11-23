@@ -8,13 +8,17 @@
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Type 1 Water QC Log</tal:t>
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="sb_form string:water-form; sb_label string:Save Entry"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url; defs python:view.defaults(request.get('unit_id'))">
   <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
 
   <div class="pfas-card">
     <h3>New Entry</h3>
-    <form method="POST" tal:attributes="action string:${purl}/@@pfas-water-log">
+    <form method="POST" id="water-form" tal:attributes="action string:${purl}/@@pfas-water-log">
       <div class="pfas-form-row">
         <div class="pfas-form-field" tal:condition="view/water_units"><label>Water system</label>
           <select name="unit_id" required="required">
@@ -28,28 +32,25 @@
           <input type="date" name="log_date" id="wDate" required/></div>
         <div class="pfas-form-field"><label>Time</label>
           <input type="time" name="log_time" id="wTime"/></div>
-        <div class="pfas-form-field"><label>Operator initials</label>
-          <input type="text" name="operator" maxlength="10" required/></div>
+        <div class="pfas-form-field"><label>Operator</label>
+          <input type="text" name="operator" readonly="readonly" tal:attributes="value view/signed_in" /></div>
       </div>
       <div class="pfas-form-row">
-        <div class="pfas-form-field is-centered">
+        <div class="pfas-form-field">
           <label for="w-cond">Conductivity (<tal:u tal:replace="view/conductivity_label">&micro;S/cm</tal:u>)</label>
           <input type="number" step="0.01" name="conductivity" id="w-cond" required/>
           <span class="pfas-hint" tal:content="view/conductivity_limit">Limit &le; 1 &micro;S/cm</span>
         </div>
-        <div class="pfas-form-field is-centered">
+        <div class="pfas-form-field">
           <label for="w-toc">TOC (ppb)</label>
           <input type="number" step="1" name="toc" id="w-toc" required/>
           <span class="pfas-hint" tal:content="python:u'Limit \u2264 %g ppb' % defs['toc_max']">Limit &le; 500 ppb</span>
         </div>
       </div>
       <div class="pfas-form-row">
-        <div class="pfas-form-field is-grow"><label>Notes</label>
+        <div class="pfas-form-field is-full"><label>Notes</label>
           <input type="text" name="notes"/></div>
       </div>
-      <button type="submit" class="btn btn-primary">
-        Save Entry
-      </button>
     </form>
   </div>
 

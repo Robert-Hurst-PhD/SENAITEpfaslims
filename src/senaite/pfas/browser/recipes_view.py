@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Logbooks › 4 · Recipes: each method's recipes.
+"""Reagents & Standards › Recipes: each method's recipes.
 
 A recipe says how the lab prepares one standard or reagent: what it is made
-from, the log that records it, its steps and what is made from it. The list
-per method; a recipe's card with its steps and its concentrations, calculated
-from the parent down to a purchased lot's certificate values (as acid); the
+from, its kind and code, its steps and what is made from it. The list
+per method, filtered by kind (?kind=); a recipe's card with its steps, its
+concentrations, calculated from the parent down to a purchased lot's
+certificate values (as acid), and its preparations -- each a preparation
+record (prep_entries.py), made with Make and reviewed by another person; the
 editor, whose save issues a new revision (recipes.py). Purchased materials
 are not recipes: they appear as the parents. Saving is the manager's.
 
@@ -23,13 +25,12 @@ from senaite.pfas import recipe_calc as rc
 from senaite.pfas import recipes as rs
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import refuse, require_manager
+from senaite.pfas.browser.view_helpers import LabTime
 
 logger = logging.getLogger("senaite.pfas.browser.recipes_view")
 
-LOGS = (("250", u"FM-ENV-001"), ("251", u"FM-ENV-002"))
 
-
-class PFASRecipesView(BrowserView):
+class PFASRecipesView(LabTime, BrowserView):
 
     template = ViewPageTemplateFile("templates/recipes.pt")
 
@@ -68,12 +69,20 @@ class PFASRecipesView(BrowserView):
             self._store = rs.load(self.portal())
         return self._store
 
-    def log_label(self, slug):
-        from senaite.pfas.logbook_store import form_code
-        return form_code(self.portal(), slug, dict(LOGS).get(slug, slug))
+    def kinds(self):
+        return rs.KINDS
 
-    def logs(self):
-        return [(slug, self.log_label(slug)) for slug, _c in LOGS]
+    def kind(self):
+        """The ?kind= filter: one of the recipe kinds, else every kind."""
+        k = self.request.form.get("kind") or u""
+        return k if k in dict(rs.KINDS) else u""
+
+    def kind_qs(self):
+        """The kind filter as it rides on the page's own addresses."""
+        return u"&kind=%s" % self.kind() if self.kind() else u""
+
+    def kind_label(self, kind):
+        return dict(rs.KINDS).get(kind, u"")
 
     def channel_choices(self):
         """The LC channels the methods name (the Run Builder's slots)."""
@@ -118,14 +127,22 @@ class PFASRecipesView(BrowserView):
         return u"makes %s in one sitting" % (u"%s … %s" % (names[0], names[-1]) if len(names) > 2
                                              else u", ".join(names))
 
+    def make_url(self, rid):
+        """New Prepared Standard opened on this recipe."""
+        return u"%s/@@pfas-prep-standards?new=1&method=%s&recipe=%s" % (self.portal_url(), self.method_id(), rid)
+
     def rows(self):
         out = []
         for r in rs.for_method(self.store(), self.method_id()):
+            if self.kind() and r.get("kind") != self.kind():
+                continue
             out.append({"id": r["id"], "name": r.get("name") or r["id"], "makes": self._makes_text(r),
-                        "made_from": self._made_from_text(r), "log": self.log_label(r.get("log")),
+                        "make_url": self.make_url(r["id"]),
+                        "edit_url": u"%s/@@pfas-recipes?method=%s&recipe=%s&edit=1" % (self.portal_url(), self.method_id(), r["id"]),
+                        "made_from": self._made_from_text(r), "kind": self.kind_label(r.get("kind")), "code": r.get("code") or u"",
                         "used_in": u", ".join(self._used_in(r["id"])) or u"—",
-                        "url": u"%s/@@pfas-recipes?method=%s&recipe=%s" % (self.portal_url(), self.method_id(),
-                                                                           r["id"])})
+                        "url": u"%s/@@pfas-recipes?method=%s&recipe=%s%s" % (self.portal_url(), self.method_id(),
+                                                                             r["id"], self.kind_qs())})
         return out
 
     # ── a recipe's card ──────────────────────────────────────────────────
@@ -167,10 +184,12 @@ class PFASRecipesView(BrowserView):
         ser = (rev.get("series") or {}).get("levels") or []
         storage = rev.get("storage") or {}
         unit_of = rev.get("unit") or u"ng/mL"
+        # built from the active revision only: a recipe with none has no card
         return {"id": rid, "name": rev.get("name") or rid, "revision": rev.get("revision"),
-                "log": self.log_label(rev.get("log")), "made_from": self._made_from_text(rev),
+                "make_url": self.make_url(rid),
+                "kind": self.kind_label(rev.get("kind")), "code": rev.get("code") or u"", "made_from": self._made_from_text(rev),
                 "makes": (u"%d levels in one sitting" % len(ser)) if ser else u"one lot",
-                "shelf_life": rs.shelf_life(rev, self._log_defaults()),
+                "shelf_life": rs.shelf_life(rev),
                 "storage": u" · ".join(x for x in (storage.get("location"), storage.get("conditions")) if x),
                 "steps": rev.get("steps") or [], "unit": unit_of,
                 "levels": [l.get("level") or rev.get("name") for l in levels],
@@ -182,16 +201,30 @@ class PFASRecipesView(BrowserView):
     def cards(self):
         return [c for c in (self.card(r["id"]) for r in self.rows()) if c]
 
-    def _log_defaults(self):
-        """Each prep log's default expiry, the default shelf life of its recipes."""
-        out = {}
-        try:
-            from senaite.pfas.browser.prep_logbooks import _list
-            for d in _list(self.portal()):
-                if d.get("status") == "active" and d.get("default_expiry_days"):
-                    out[d["logbook_slug"]] = d["default_expiry_days"]
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("log defaults: %s", exc)
+    # ── a recipe's preparations (prep_entries.py) ─────────────────────────
+
+    def date_range(self):
+        """The preparations' ?since=&until= range, ISO dates."""
+        f = self.request.form
+        return ((f.get("since") or u"").strip()[:10], (f.get("until") or u"").strip()[:10])
+
+    def preparations(self, rid):
+        """The recipe's preparation records, newest first, in the date range;
+        each with the lot numbers it made."""
+        from senaite.pfas import prep_entries
+        from senaite.pfas.browser.perms import signed_in_name
+        from senaite.pfas.esig import signing
+        since, until = self.date_range()
+        who = signed_in_name(self.context)
+        out = []
+        for e in prep_entries.list_entries(self.portal(), recipe_id=rid, since=since or None, until=until or None):
+            # its Review's sign dialog, one per record: the content as stored
+            esig = {"record": e["id"], "revision": prep_entries.REVISION,
+                    "hash_prefix": prep_entries.record_hash(e)[:12],
+                    "meaning_label": signing.meaning_label("reviewer"), "signer_name": who,
+                    "action": u"review-%s" % e["id"], "form_id": u"review-form-%s" % e["id"]}
+            out.append(dict(e, esig=esig,
+                            lot_numbers=u", ".join(r.get("lot_number") or u"" for r in e.get("rows") or [])))
         return out
 
     # ── the editor ───────────────────────────────────────────────────────
@@ -201,7 +234,7 @@ class PFASRecipesView(BrowserView):
         if not self.can_edit():
             return None
         if f.get("new"):
-            return {"id": u"", "rev": {"methods": [self.method_id()], "log": f.get("log") or u"251",
+            return {"id": u"", "rev": {"methods": [self.method_id()], "kind": f.get("kind") or u"reagent",
                                        "made_from": [{"kind": u"purchased", "ref": u"", "take_unit": u"mL"}],
                                        "steps": [{}], "unit": u"ng/mL", "final_unit": u"mL", "storage": {}}}
         rid = self.recipe_id()
@@ -217,7 +250,7 @@ class PFASRecipesView(BrowserView):
         data = rs.from_form(f)
         rid = (f.get("recipe") or u"").strip()
         back = u"%s/@@pfas-recipes?method=%s" % (self.portal_url(), self.method_id())
-        errors = rs.problems(data)
+        errors = rs.problems(data, self.store(), rid)
         if errors:
             return self._redirect(back + (u"&recipe=%s&edit=1" % rid if rid else u"&new=1"), u" ".join(errors))
         who = api.get_current_user().getId()

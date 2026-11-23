@@ -53,6 +53,23 @@ def landing_wanted(came_from, portal_url):
                         "pfas-badge-signin")
 
 
+# where a sign-in whose password has expired goes first
+CHANGE_EXPIRED = "@@forced-password-change"
+
+
+def password_expired_now():
+    """True when the person just signed in has a password past the expiry a
+    manager set (esig.signing.password_expired); a store that cannot be
+    read leaves the sign-in alone, as signing still refuses an expired
+    password."""
+    try:
+        from senaite.pfas.esig import signing
+        return signing.password_expired(signing.current_userid(None))
+    except Exception:                                       # noqa: BLE001
+        logger.warning("password expiry not checked at sign-in", exc_info=True)
+        return False
+
+
 def tile_accounts(terminal):
     """[{"userid", "name", "avatar"}] for the terminal's sign-in page, or []
     without a registered terminal. Deleted and administrator accounts are
@@ -80,6 +97,33 @@ def tile_accounts(terminal):
     return out
 
 
+def sign_in_flash_left(messages):
+    """The status messages left queued once the sign-in's own "Welcome" (an
+    info message) is dropped. The pages a person lands on do not draw status
+    messages, so a queued welcome was drawn by the next page that does, long
+    after signing in."""
+    return [m for m in messages if getattr(m, "type", None) != u"info"]
+
+
+def _drop_welcome(request):
+    """Remove the sign-in's welcome from the queue this request wrote."""
+    from Products.statusmessages import STATUSMESSAGEKEY
+    from Products.statusmessages.adapter import _decodeCookieValue
+    from zope.annotation.interfaces import IAnnotations
+    ann = IAnnotations(request)
+    queued = ann.get(STATUSMESSAGEKEY)
+    if queued is None:
+        return
+    keep = sign_in_flash_left(_decodeCookieValue(queued))
+    ann[STATUSMESSAGEKEY] = None
+    # a response header must be a byte string under Python 2: the web server
+    # refuses a unicode one and the sign-in answers with an error
+    request.response.expireCookie(str(STATUSMESSAGEKEY), path=str("/"))
+    status = IStatusMessage(request)
+    for m in keep:
+        status.add(m.message, type=m.type)
+
+
 class PFASLoginForm(CoreLoginForm):
 
     def update(self):
@@ -94,8 +138,16 @@ class PFASLoginForm(CoreLoginForm):
         """A successful PASSWORD sign-in (Plone calls this once, and never on
         a failure; a badge sign-in does not come here): at a registered
         terminal, logged like a badge sign-in, which also gives the account
-        its tile there, and the terminal's idle clock starts."""
+        its tile there, and the terminal's idle clock starts. A password
+        never seen set starts its expiry clock now."""
         result = super(PFASLoginForm, self)._post_login()
+        try:
+            from senaite.pfas.esig import credentials, signing
+            userid = signing.current_userid(self.request)
+            if userid:
+                credentials.password_seen(userid, signing.stamp())
+        except Exception:                                   # noqa: BLE001
+            logger.warning("password first use not recorded", exc_info=True)
         try:
             term = self.terminal()
             if term:
@@ -104,7 +156,7 @@ class PFASLoginForm(CoreLoginForm):
                 if userid:
                     con = bs.connect()
                     try:
-                        bs.log_signin(con, userid, term["id"], True, u"password", _iso())
+                        bs.log_signin(con, userid, term["id"], True, bs.PASSWORD_SIGNIN, _iso())
                         bs.touch(con, term["id"], userid, time.time())
                     finally:
                         con.close()
@@ -118,7 +170,15 @@ class PFASLoginForm(CoreLoginForm):
         root or core's empty dashboard."""
         if not landing_wanted(came_from, api.get_portal().absolute_url()):
             came_from = api.get_portal().absolute_url() + "/@@pfas-home"
-        return super(PFASLoginForm, self).redirect_after_login(came_from, is_initial_login)
+        if password_expired_now():
+            # Plone's own form; it leaves for the site once the password is changed
+            came_from = api.get_portal().absolute_url() + "/" + CHANGE_EXPIRED
+        result = super(PFASLoginForm, self).redirect_after_login(came_from, is_initial_login)
+        try:
+            _drop_welcome(self.request)
+        except Exception:                                   # noqa: BLE001
+            logger.warning("the welcome message could not be dropped", exc_info=True)
+        return result
 
     def terminal(self):
         if not hasattr(self, "_terminal"):

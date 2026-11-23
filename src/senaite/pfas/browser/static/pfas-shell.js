@@ -35,6 +35,8 @@ document.addEventListener('click', function (e) {
   var empty = body.querySelector('tr.pfas-empty-row');
   if (empty) body.removeChild(empty);
   body.appendChild(row);
+  /* the row's menu and its place in the Tab order, as the drawn rows have them */
+  if (window.PFAS && window.PFAS.components && window.PFAS.components.rows) window.PFAS.components.rows.init(row);
   var first = row.querySelector('input, select');
   if (first) first.focus();
 });
@@ -44,26 +46,6 @@ document.addEventListener('click', function (e) {
 window.addEventListener('load', function () {
   var m = /[?&]new=([A-Za-z0-9_]+)/.exec(location.search);   /* new=1 too: the Reagent lot entry never opened */
   if (m && typeof window.pfasOpenNew === 'function') window.pfasOpenNew(m[1]);
-});
-
-/* A row with data-href opens its record when clicked anywhere but on a
-   control of its own (a link, a button, a box, its "+" menu); from the
-   keyboard the row is a focusable link (Tab to it, Enter). */
-document.querySelectorAll('tr[data-href]').forEach(function (row) {
-  row.setAttribute('tabindex', '0');
-  row.setAttribute('role', 'link');
-});
-document.addEventListener('keydown', function (e) {
-  if (e.key !== 'Enter' || !e.target.matches || !e.target.matches('tr[data-href]')) return;
-  window.location.href = e.target.getAttribute('data-href');
-});
-document.addEventListener('click', function (e) {
-  var row = e.target.closest ? e.target.closest('tr[data-href]') : null;
-  if (!row || e.defaultPrevented) return;
-  if (e.target.closest('a, button, input, select, textarea, label, summary, details, form')) return;
-  if (window.getSelection && String(window.getSelection())) return;   /* selecting text */
-  var url = row.getAttribute('data-href');
-  if (e.ctrlKey || e.metaKey) { window.open(url, '_blank'); } else { window.location.href = url; }
 });
 
 /* Row "More" menus (.row-more): one open at a time; a click elsewhere closes. */

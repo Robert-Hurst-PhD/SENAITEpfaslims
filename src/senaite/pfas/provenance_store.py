@@ -123,6 +123,36 @@ class ProvenanceStore(object):
             conn.close()
         return out
 
+    def identity_applied(self, batch_id):
+        """{injection: correction id} the stored run was judged with (its
+        records of kind ID, injection_identity); {} with none."""
+        conn = self._connect()
+        out = {}
+        try:
+            if not conn.execute("SELECT name FROM sqlite_master WHERE name='value_provenance'").fetchone():
+                return out
+            for row in conn.execute("SELECT injection, value_text FROM value_provenance "
+                                    "WHERE batch_id=? AND kind='ID'", (batch_id,)):
+                out[row["injection"] or ""] = row["value_text"] or ""
+        finally:
+            conn.close()
+        return out
+
+    def amendments_applied(self, batch_id):
+        """The ids ("EA-n") of the extraction corrections the stored run was
+        judged with (its records of kind EA, extraction_amendments), sorted;
+        [] with none: release waits while one in force is not among them."""
+        conn = self._connect()
+        out = []
+        try:
+            if not conn.execute("SELECT name FROM sqlite_master WHERE name='value_provenance'").fetchone():
+                return out
+            out = sorted(row["value_text"] for row in conn.execute(
+                "SELECT value_text FROM value_provenance WHERE batch_id=? AND kind='EA'", (batch_id,)))
+        finally:
+            conn.close()
+        return out
+
     def injection_rows(self, batch_id, pairs):
         """The stored injection rows for (injection, compound) pairs."""
         pairs = [p for p in pairs if p and p[0]]
@@ -146,8 +176,10 @@ class ProvenanceStore(object):
         base = os.path.basename(name or "")
         if not base or base != name:
             return None
-        path = os.path.join(self.upload_dir, base)
-        if not os.path.isfile(path):
+        # imported, it is in the archive (instrument_files)
+        from senaite.pfas.instrument_files import locate
+        path = locate(self.upload_dir, base)
+        if path is None:
             return None
         from senaite.pfas import import_layouts as L
         with io.open(path, "rb") as fh:

@@ -44,21 +44,25 @@ CHART_THRESHOLD = "threshold"       # flat threshold line only (blanks)
 # own fields (R2, CCV window, S/N, ion ratio, RT, IS response), never kept
 # here.
 # `scope` is what the rule's limits vary by (one of the SCOPE_ words, written
-# out: the library is read as a literal); `editor` is where the QC criteria
-# tab edits them: "drawer:<section id>:<group>" opens that group of the
-# declared section from the rule's row, None when they are kept on another
-# tab (the MDL on Analytes, the SUR limits on Isotope standards).
+# out: the library is read as a literal); `editor` is where the method
+# profile edits them: "drawer:<section id>:<group>" opens that group of the
+# declared section, on the tab whose form saves that section; None when they
+# are kept on a tab's own grid (the MDL on Analytes, the SUR limits on
+# Isotope standards).
 SCOPE_METHOD = u"Method"
 SCOPE_WINDOWS = u"QC type \u00d7 analyte group \u00d7 matrix"
+# the Surrogate Recovery rule's, for a method whose Engine does not judge
+# standards per matrix class: its one window is every standard's
+SCOPE_STANDARDS = u"All standards"
 RULE_LIBRARY = [
     {"key": "is_response",   "label": "IS Response", "params": [],
-     "scope": u"Method", "editor": u"drawer:cal:IS / Surrogate Response",
-     "note": u"Window: IS / Surrogate Response (QC criteria tab)."},
+     "scope": u"Method", "editor": None,
+     "note": u"Window: each internal standard's row, on Isotope standards."},
     # the IS response's second condition, its own switch: against the most
     # recent CCV (judged inside the IS response check, when that is on)
     {"key": "is_vs_ccv", "label": "IS response vs. the most recent CCV", "params": [],
-     "scope": u"Method", "editor": u"drawer:cal:IS / Surrogate Response",
-     "note": u"Window: Compared to the most recent CCV (QC criteria tab)."},
+     "scope": u"Method", "editor": None,
+     "note": u"Window: IS vs most recent CCV, in each internal standard's row on Isotope standards."},
     {"key": "rrt_deviation", "label": "RT Deviation", "params": [],
      "scope": u"Method", "editor": u"drawer:cal:Chromatographic Confirmation & Signal Quality",
      "note": u"Tolerance: relative / absolute RT (QC criteria tab)."},
@@ -67,14 +71,14 @@ RULE_LIBRARY = [
      "note": u"Ion Ratio Tolerance (QC criteria tab); blank = not judged."},
     {"key": "cal_r2",        "label": u"Calibration r²", "params": [],
      "scope": u"Method", "editor": u"drawer:cal:Calibration",
-     "note": u"R² Minimum (QC criteria tab)."},
+     "note": u"R² Minimum (QC criteria tab), judged on the curve its Curve fit gives."},
     {"key": "ccv_recovery",  "label": "CCV Recovery", "params": [],
      "scope": u"Method", "editor": u"drawer:cal:Continuing Calibration Verification (CCV)",
      "note": u"Recovery Min / Max (QC criteria tab)."},
     # N is the method profile's CCV frequency (Run Template), the value the
     # Run Builder brackets with
     {"key": "ccv_frequency", "label": "CCV Frequency", "params": [],
-     "scope": u"Method", "editor": u"drawer:run_rules:Continuing Calibration Verification (CCV)",
+     "scope": u"Method", "editor": u"drawer:cal:Continuing Calibration Verification (CCV)",
      "note": u"N is the method's CCV frequency (QC criteria tab)."},
     {"key": "sn_min",        "label": "S/N Minimum", "params": [],
      "scope": u"Method", "editor": u"drawer:cal:Chromatographic Confirmation & Signal Quality",
@@ -100,10 +104,14 @@ RULE_LIBRARY = [
              u"(QC criteria tab)."},
     # A result above the method's top calibration level (the profile's
     # levels, in the matrix's reporting unit) reads ALoQ and is reported from
-    # the dilution, whatever the instrument wrote (on by default).
+    # the dilution, whatever the instrument wrote (on by default). With no
+    # dilution it is never reported extrapolated: the certificate prints
+    # "> the top of the range" with E, and release waits for the reviewer's
+    # reason (Data Review).
     {"key": "over_range", "label": "Above the Calibration Range", "params": [],
      "scope": u"Method", "editor": u"drawer:cal:Calibration",
-     "note": u"Top level: the highest calibration level (QC criteria tab)."},
+     "note": u"Top level: the highest calibration level (QC criteria tab). With no dilution, "
+             u"the result prints as above the top with E once the reviewer records why."},
 ]
 
 
@@ -197,11 +205,15 @@ def set_qc_row_state(profile, code, state):
         return profile
     if set_row_state(profile, key, state) and isinstance(entry, dict):
         entry["enabled"] = state != "off"
+        # Removed: each tier's box Off; Restored: each Off tier Enforced
+        from senaite.pfas import limit_states
+        limit_states.set_type_presence(profile, code, state != "off")
     return profile
 
 
 def rule_state(profile, method_id, key):
-    """One rule's state for one method: the profile's `rule_states`, then its
+    """One rule's or row's state as stored before limit boxes held their own
+    (the seed limit_states reads): the profile's `rule_states`, then its
     `rule_toggles` (on = enforced); a rule the profile does not mention is
     enforced, as the worker judges it. A QC type's or blank's row with no
     state reads its type's `enabled` flag (absent = enforced). `method_id`
@@ -223,14 +235,18 @@ def rule_state(profile, method_id, key):
 
 
 def method_toggles(profile, method_id):
-    """{rule key: on} for one method: a rule is on in the state Enforced and
-    in the state Evaluate, off only when Off. The one reader of rule
-    switches. The QC-type and blank rows are not rule
+    """{rule key: on} for one method: a rule is on while any of its limit
+    boxes is Enforced or Evaluate (limit_states.rule_state), off when every
+    one is Off; a key the library no longer knows reads as stored. The one
+    reader of rule switches. The QC-type and blank rows are not rule
     switches: their on / off is their type's `enabled` flag."""
+    from senaite.pfas import limit_states
     keys = set(r["key"] for r in RULE_LIBRARY)
     keys.update((profile or {}).get("rule_toggles") or {})
     keys.update((profile or {}).get("rule_states") or {})
-    return dict((k, rule_state(profile, method_id, k) != "off") for k in keys
+    library = set(r["key"] for r in RULE_LIBRARY)
+    return dict((k, (limit_states.rule_state(profile, k) if k in library
+                     else rule_state(profile, method_id, k)) != "off") for k in keys
                 if not is_profile_row_key(k))
 
 
@@ -273,7 +289,11 @@ LIBRARY_KEY_TO_ENGINE_CHECKS = {
     "mdl_check":     [],   # flags detections below the MDL (no review item)
     "surrogate_recovery": ["surrogate_recovery"],
     "single_transition_confirm": ["identity_confirmation"],
-    "over_range":    [],   # the result reads ALoQ; the dilution reports (no review item)
+    # the result reads ALoQ and the dilution reports it; with no dilution a
+    # sample's result is a failing QC result (Above the calibration range)
+    # Data Review holds release on until the reviewer records the reason to
+    # report it with E: an item of the gate, not an engine review check
+    "over_range":    [],
 }
 
 # ── Default QC rule set ───────────────────────────────────────────────────────

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title" tal:content="view/kind_title">Labels</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title" tal:content="view/kind_title">Labels</tal:t>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:condition="view/label_subject"
+        tal:content="view/label_subject">DEMO-LOT-0001</span></tal:c>
+  <tal:r metal:fill-slot="header-right" tal:define="back view/label_back">
+    <a class="btn-sm btn-secondary" tal:condition="back"
+       tal:attributes="href python:back[1]" tal:content="python:back[0]">Back</a>
+  </tal:r>
+
+  <!-- shown in place of the PDF: labels print only from an issued design -->
+  <metal:fill fill-slot="content" tal:define="state view/label_state">
+    <div class="pfas-empty is-boxed" tal:condition="python:state == 'none'">
+      <span tal:content="string:No ${view/kind_title} design is issued, so no label can be printed. A manager issues one for each label size in Document Templates.">No design</span>
+      <a class="btn-sm btn-secondary" tal:attributes="href view/templates_url">Document Templates</a>
+    </div>
+    <div class="pfas-empty is-boxed" tal:condition="python:state == 'empty'">
+      There is no label to print here.
+    </div>
+    <tal:choose condition="python:state == 'choose'">
+      <p class="pfas-lead is-narrow">Choose the design for the labels in the printer. Each prints one label to a page at its own size.</p>
+      <div class="table-wrap">
+      <table class="pfas-table" data-col-resize="label-designs">
+        <thead><tr><th>Design</th><th>Label size</th><th>Revision</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="d view/design_choices" tal:attributes="data-row-open d/url">
+            <td tal:content="d/title">Vial label</td>
+            <td tal:content="d/size">2 x 1</td>
+            <td tal:content="d/rev">1</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </tal:choose>
+  </metal:fill>
+</body>
+</html>

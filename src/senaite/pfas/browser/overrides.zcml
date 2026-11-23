@@ -74,6 +74,22 @@
       />
 
   <!--
+    Core's add_analyses on a worksheet (core's create redirects there, the
+    Worksheet type's Add Analyses tab) opens @@pfas-worksheet-samples: one
+    method and matrix per worksheet, samples added through core's
+    addAnalyses. A view registration on the PFAS layer, not a template
+    override; core's permission. Upgrade note: if core renames the view its
+    create redirects to, follow it here.
+  -->
+  <browser:page
+      for="bika.lims.interfaces.IWorksheet"
+      name="add_analyses"
+      class="senaite.pfas.browser.worksheet_samples.PFASAddAnalysesRedirect"
+      permission="senaite.core.permissions.EditWorksheet"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+  <!--
     Override @@email (report/COA delivery) from senaite.core
     (bika.lims.browser.publish.emailview.EmailView) so the state EDD CSV rides
     the same email as the report PDF (D63 step D). Registered on

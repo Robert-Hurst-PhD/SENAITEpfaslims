@@ -10,7 +10,8 @@ with none the bell shows no badge.
 
     entries(notices, items, equipment, raw=None) -> {"count", "for_you", "actions"}
 
-notices: [{"title", "ws_id", "text", "raised_at", "url"}], raised_at a stored
+notices: [{"title", "ws_id", "text", "raised_at", "url"}] (ws_id empty for a
+notice of no run: the text alone), raised_at a stored
 UTC stamp, given to the top bar on the laboratory's clock;
 items: attention.items with their actions as {"label", "url"};
 equipment: [{"name", "status" (equipment_types.due), "url"}];
@@ -27,7 +28,8 @@ _EQUIP = {u"overdue": u"check overdue", u"missing": u"certificate missing"}
 
 def entries(notices, items, equipment, raw=None):
     for_you = [{"level": u"bad", "title": n.get("title") or u"",
-                "detail": u"%s: %s" % (n.get("ws_id") or u"", n.get("text") or u""),
+                "detail": (u"%s: %s" % (n.get("ws_id"), n.get("text") or u"") if n.get("ws_id")
+                           else n.get("text") or u""),
                 "at": lab_time.show(n.get("raised_at") or u""),
                 "actions": [{"label": u"Open", "url": n.get("url") or u""}]} for n in notices or []]
     actions = [{"level": i.get("level") or u"warn", "title": i.get("title") or u"",

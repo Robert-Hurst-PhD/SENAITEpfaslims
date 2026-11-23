@@ -3,18 +3,20 @@
 
    One dark frame with the top bar: the rail holds Home and the person's
    sections, an icon over a short label, each button 48 px or more; the
-   panel beside it shows one section as the navigation tree
-   (pfas-components.css .pfas-nav-tree), the others hidden until their rail
-   button is pressed (pfas-sidebar.js PFAS.nav). How it folds, opens over the
-   page and becomes a phone's bar and sheet is at the end. Colour only from
-   the frame tokens. */
+   panel beside it shows one section as groups of icon tiles like the rail's
+   (one list of links per group, a heading over it), the others hidden until
+   their rail button is pressed (pfas-sidebar.js PFAS.nav). On a computer the
+   panel is one tile wide and the tiles stack down its full height; the
+   phone's sheet draws groups of tiles across. How it folds, opens over the page and becomes a phone's bar and
+   sheet is at the end. Colour only from the frame tokens. */
 
 #sidebar.pfas-nav {
+  --tile-w: 80px;
+  --tile-gap: var(--sp-1);
   display: flex;
   flex: 0 0 auto;
-  min-width: calc(var(--pfas-rail-width) + var(--pfas-panel-width));
-  max-width: calc(var(--pfas-rail-width) + var(--pfas-panel-width));
-  overflow: hidden;
+  width: auto;
+  overflow: visible;
   background: var(--frame);
   color: var(--on-frame);
   font-size: var(--fs-sm);
@@ -58,11 +60,11 @@
 }
 .pfas-rail-btn svg {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: var(--icon-nav);
+  height: var(--icon-nav);
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -74,19 +76,20 @@
 
 /* ── The panel ────────────────────────────────────────────────────────── */
 .pfas-panel {
-  flex: 0 0 var(--pfas-panel-width);
-  width: var(--pfas-panel-width);
+  flex: 0 0 auto;
+  width: max-content;      /* what the shown section holds */
+  max-width: calc(100vw - var(--pfas-rail-width));
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  /* room under the last row for its menu (two rows), which opens below it */
-  padding: var(--sp-2) var(--sp-1) 100px;
-  scroll-padding-bottom: 100px;
+  padding: var(--sp-2) var(--sp-2) var(--sp-3);
 }
 .pfas-panel-section[hidden] { display: none; }
+/* a title or heading wraps inside the tiles' width and never sets it */
+.pfas-panel-title, .pfas-navtile-heading { contain: inline-size; overflow-wrap: anywhere; }
 .pfas-panel-title {
   margin: 0;
-  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) var(--sp-2);
   color: var(--on-frame-muted);
   font-family: inherit;
   font-size: var(--fs-xs);
@@ -95,12 +98,110 @@
   letter-spacing: .07em;
   text-transform: uppercase;
 }
+.pfas-navtile-heading {
+  margin: var(--sp-3) 0 var(--sp-1);
+  padding: 0 var(--sp-1);
+  color: var(--on-frame-muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-strong);
+  line-height: 16px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.pfas-navtile-group:first-of-type .pfas-navtile-heading { margin-top: 0; }
+
+/* ── Tiles: one page, an icon over its label, like a rail button ─────── */
+.pfas-nav-tiles {
+  --tile-cols: 3;
+  display: grid;
+  grid-template-columns: repeat(var(--tile-cols), var(--tile-w));
+  gap: var(--tile-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pfas-nav-tiles[data-cols="1"] { --tile-cols: 1; }
+.pfas-nav-tiles[data-cols="2"] { --tile-cols: 2; }
+.pfas-nav-tiles > li { position: relative; display: flex; min-width: 0; }
+.pfas-navtile {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  /* the label and icon as the rail's buttons draw theirs: one size, one
+     colour, one spacing, white on hover and on the current page */
+  gap: 4px;
+  min-height: 66px;
+  padding: 9px 3px 6px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--on-frame) 6%, transparent);
+  color: var(--on-frame-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.15;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.pfas-navtile svg {
+  flex: none;
+  width: var(--icon-nav);
+  height: var(--icon-nav);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pfas-navtile:hover { color: var(--on-frame); background: color-mix(in srgb, var(--on-frame) 14%, transparent); }
+.pfas-navtile[aria-current="page"] {
+  color: var(--on-frame);
+  background: color-mix(in srgb, var(--on-frame) 18%, transparent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.pfas-navtile[aria-current="page"] svg { color: var(--accent); }
+.pfas-navtile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* a pin's place, under its label, where another pin has the same label */
+.pfas-navtile-place { color: var(--on-frame-muted); font-size: var(--fs-xs); font-weight: var(--fw-body); }
+
+/* ── Computer panel, wider than the phone: one column of tiles ────────────────
+   The panel is one tile wide and the shown section stacks down its full
+   height. The groups and their lists draw no box of their own (their
+   headings and tiles are the section's flex items), so every tile shares the
+   height left after the headings, between a minimum and a maximum; below the
+   minimum the panel scrolls. A heading wraps inside the tile width. The
+   phone's sheet below keeps its own tiles across. */
+@media not all and (max-width: 768px) {
+  #sidebar.pfas-nav { --tile-w: 88px; }
+  .pfas-panel {
+    display: flex;
+    flex-direction: column;
+    width: calc(var(--tile-w) + 2 * var(--sp-2));
+  }
+  .pfas-panel-section:not([hidden]) {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tile-gap);
+  }
+  .pfas-navtile-group, .pfas-nav-tiles:not([hidden]) { display: contents; }
+  .pfas-panel-title, .pfas-navtile-heading { white-space: normal; }
+  .pfas-navtile-heading { margin-bottom: 0; }
+  .pfas-nav-tiles > li { flex: 1 1 66px; min-height: 66px; max-height: 96px; }
+  .pfas-navtile { justify-content: center; }
+}
+
 /* Home: the pins under Dashboard, a rule between */
-#pfas-nav-pins { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--pfas-rail-border); }
+#pfas-nav-pins { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--pfas-rail-border); }
+@media not all and (max-width: 768px) {
+  #pfas-nav-pins > li:first-child { margin-top: var(--sp-3); }   /* the list draws no box, so no rule: a gap */
+}
 #pfas-nav-pins[hidden] { display: none; }
-/* a pin's place, after its label, where another pin has the same label */
-.pfas-nav-place { flex: 0 1 auto; min-width: 0; margin-left: var(--sp-2); overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; color: var(--on-frame-muted); font-size: var(--fs-xs); }
 /* a Pin or Unpin that was not saved: the reason, a failure's mark beside it;
    empty, the line takes no room and stays a live region */
 .pfas-nav-status { margin: 0; padding: 0; color: var(--on-frame); font-size: var(--fs-sm); }
@@ -118,25 +219,25 @@
    come later at the same weight and replace these. */
 .pfas-nav-scrim { display: none; }
 @media not all and (max-width: 1279.98px) {
-  html.pfas-panel-folded #sidebar.pfas-nav:not(.is-open) {
-    min-width: var(--pfas-rail-width);
-    max-width: var(--pfas-rail-width);
-  }
-  html.pfas-panel-folded #sidebar.pfas-nav:not(.is-open) .pfas-panel { display: none; }
+  html.pfas-panel-folded #sidebar.pfas-nav:not(.is-open):not(.is-closing) .pfas-panel { display: none; }
 }
 @media (max-width: 1279.98px) {
-  #sidebar.pfas-nav:not(.is-open) {
-    min-width: var(--pfas-rail-width);
-    max-width: var(--pfas-rail-width);
-  }
-  #sidebar.pfas-nav:not(.is-open) .pfas-panel { display: none; }
+  #sidebar.pfas-nav:not(.is-open):not(.is-closing) .pfas-panel { display: none; }
 }
-#sidebar.pfas-nav.is-open {
-  position: relative;
-  z-index: 1040;
-  margin-right: calc(0px - var(--pfas-panel-width));
+/* open over the page: the panel hangs beside the rail at its own width, so the
+   page does not move */
+#sidebar.pfas-nav.is-open, #sidebar.pfas-nav.is-closing { position: relative; z-index: 1040; }
+#sidebar.pfas-nav.is-open .pfas-panel, #sidebar.pfas-nav.is-closing .pfas-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--pfas-rail-width);
+  background: var(--frame);
+  border-radius: 0 var(--radius-card) var(--radius-card) 0;
   box-shadow: var(--shadow-card-hover);
 }
+html:not(.pfas-panel-folded) #sidebar.pfas-nav.is-open .pfas-panel,
+html:not(.pfas-panel-folded) #sidebar.pfas-nav.is-closing .pfas-panel { box-shadow: none; }
 
 /* ── Phone, 768 px and less: a bar along the bottom and a sheet ────────────
    The rail is a fixed bar of Home and the person's sections; a button opens
@@ -183,20 +284,28 @@
   }
   .pfas-rail-btn[aria-current] { box-shadow: inset 0 3px 0 var(--accent); }
   #sidebar.pfas-nav .pfas-panel { display: none; }
-  #sidebar.pfas-nav.is-open .pfas-panel {
+  #sidebar.pfas-nav.is-open .pfas-panel, #sidebar.pfas-nav.is-closing .pfas-panel {
     display: block;
     position: fixed;
     z-index: 1;
+    top: auto;
     left: 0; right: 0;
     bottom: calc(var(--pfas-bar-height) + env(safe-area-inset-bottom, 0px));
     width: auto;
     max-height: calc(100vh - var(--pfas-header-h) - var(--pfas-bar-height) - var(--sp-5));
+    width: auto;
+    max-width: none;
     border-radius: var(--radius-card) var(--radius-card) 0 0;
     background: var(--frame);
     box-shadow: var(--shadow-card-hover);
     overscroll-behavior: contain;
   }
-  #sidebar.pfas-nav.is-open .pfas-nav-scrim {
+  /* the sheet's tiles fill its width, as many across as fit */
+  #sidebar.pfas-nav:is(.is-open, .is-closing) .pfas-nav-tiles,
+  #sidebar.pfas-nav:is(.is-open, .is-closing) .pfas-nav-tiles[data-cols] {
+    grid-template-columns: repeat(auto-fill, minmax(var(--tile-w), 1fr));
+  }
+  #sidebar.pfas-nav.is-open .pfas-nav-scrim, #sidebar.pfas-nav.is-closing .pfas-nav-scrim {
     display: block;
     position: fixed;
     inset: 0;
@@ -233,6 +342,43 @@
   body:not(.pfas-app) .pat-structure,
   body:not(.pfas-app) .container { overflow-x: auto; }
 }
+
+/* ── Motion: the panel arrives and leaves, tiles rise, the mark glides ─────
+   Opened over the page the panel slides 12 px out of the rail and fades in
+   on --t-reveal; unfolded beside the page it does the same (pfas-sidebar.js
+   marks it is-arriving: never on a page's first draw). Closed or folded it
+   is closed at once in every way that counts (is-open goes, the focus is
+   back); the nav keeps is-closing while the panel fades out on --t-quick,
+   drawn where an open one is, so the page takes its width at once and never
+   waits. On a phone the sheet rises 16 px from the bar and its backdrop
+   fades. A section shown, or a page newly pinned, rises 4 px. The pressed
+   fill is one mark behind the rail's buttons that glides by transform to the
+   pressed one. Only transform and opacity move; reduced motion zeroes the
+   tokens, so all of it is at once. Nothing here transforms the nav itself:
+   the phone's sheet and backdrop are fixed to the window. */
+@keyframes pfas-panel-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+@keyframes pfas-panel-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-12px); } }
+@keyframes pfas-sheet-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes pfas-sheet-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(16px); } }
+@keyframes pfas-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pfas-scrim-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes pfas-tiles-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+#sidebar.pfas-nav .pfas-panel.is-arriving { animation: pfas-panel-in var(--t-reveal) var(--ease); }
+#sidebar.pfas-nav.is-open .pfas-panel { animation: pfas-panel-in var(--t-reveal) var(--ease); }
+#sidebar.pfas-nav.is-closing .pfas-panel { animation: pfas-panel-out var(--t-quick) var(--ease) forwards; pointer-events: none; }
+.pfas-panel-section.is-arriving, .pfas-navtile.is-arriving { animation: pfas-tiles-in var(--t-fast) var(--ease); }
+@media (max-width: 768px) {
+  #sidebar.pfas-nav .pfas-panel.is-arriving, #sidebar.pfas-nav.is-open .pfas-panel { animation-name: pfas-sheet-in; }
+  #sidebar.pfas-nav.is-closing .pfas-panel { animation-name: pfas-sheet-out; }
+  #sidebar.pfas-nav.is-open .pfas-nav-scrim { animation: pfas-scrim-in var(--t-fast) var(--ease); }
+  #sidebar.pfas-nav.is-closing .pfas-nav-scrim { animation: pfas-scrim-out var(--t-quick) var(--ease) forwards; pointer-events: none; }
+}
+.pfas-rail { position: relative; }
+.pfas-rail-btn { position: relative; z-index: 1; }
+.pfas-rail-mark { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--on-frame) 16%, transparent); transition: transform var(--t-pill) var(--ease); }
+.pfas-rail.has-mark .pfas-rail-btn[aria-pressed="true"] { background: none; }
+.pfas-rail-mark[hidden] { display: none; }
 
 /* ── Print: no navigation on paper ─────────────────────────────────────── */
 @media print {

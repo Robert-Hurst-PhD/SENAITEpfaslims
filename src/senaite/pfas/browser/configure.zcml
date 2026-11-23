@@ -94,6 +94,15 @@
       permission="senaite.core.permissions.ManageBika"
       />
 
+  <!-- Report tiers: the catalogue of what a report package holds
+       (Reporting Setup, after QC Qualifiers) -->
+  <browser:page
+      name="pfas-report-tiers"
+      for="*"
+      class=".report_tiers_view.PFASReportTiersView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
   <!-- System map: the lab's live model as a tree (d3), one level per request -->
   <browser:page
       name="pfas-system-map"
@@ -110,6 +119,38 @@
       layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />
 
+  <!-- The sign dialog every signed step opens: context/@@pfas-esig-macros/macros/sign_dialog -->
+  <browser:page
+      name="pfas-esig-macros"
+      for="*"
+      class=".esig_views.PFASSignatureMacros"
+      permission="zope2.View"
+      />
+
+  <!-- A table row's menu, written once per row: context/@@pfas-row-menu/actions -->
+  <browser:page
+      name="pfas-row-menu"
+      for="*"
+      class=".row_menu.PFASRowMenu"
+      permission="zope2.Public"
+      />
+
+  <!-- Every other icon, from the one helper (icons.py): context/@@pfas-icons/svg -->
+  <browser:page
+      name="pfas-icons"
+      for="*"
+      class=".icons_view.PFASIcons"
+      permission="zope2.Public"
+      />
+
+  <!-- A sample type's icon, the same on every page: context/@@pfas-type-icons/svg -->
+  <browser:page
+      name="pfas-type-icons"
+      for="*"
+      class=".type_icons.PFASTypeIcons"
+      permission="zope2.Public"
+      />
+
   <!-- Shared METAL macro provider — access via context/@@pfas-macros/macros/page -->
   <browser:page
       name="pfas-macros"
@@ -118,12 +159,12 @@
       permission="zope2.Public"
       />
 
-  <!-- Logbook field widget macro — shared by the concise and guided renderers
-       via context/@@pfas-logbook-macros/macros/logbook_field -->
+  <!-- Record field widget macro — the guided extraction's stage questions
+       via context/@@pfas-record-macros/macros/logbook_field -->
   <browser:page
-      name="pfas-logbook-macros"
+      name="pfas-record-macros"
       for="*"
-      class=".logbook_macros.PFASLogbookMacrosView"
+      class=".record_macros.PFASRecordMacrosView"
       permission="zope2.Public"
       />
 
@@ -196,6 +237,22 @@
       for="bika.lims.interfaces.IWorksheet"
       class=".extraction_batch_view.PFASExtractionBatchView"
       permission="zope2.View"
+      />
+  <!-- A finalised extraction record corrected: amend, undo, confirm, send
+       back, re-extract (POST only; back to the batch record or Data Review) -->
+  <browser:page
+      name="pfas-extraction-corrections"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".extraction_corrections.PFASExtractionCorrectionsView"
+      permission="zope2.View"
+      />
+  <!-- A worksheet's method and matrix, and the received samples of both,
+       added through core (core's EditWorksheet, as its add_analyses) -->
+  <browser:page
+      name="pfas-worksheet-samples"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".worksheet_samples.PFASWorksheetSamplesView"
+      permission="senaite.core.permissions.EditWorksheet"
       />
   <!-- a Help figure's screenshot, captured at the release -->
   <browser:page
@@ -305,6 +362,15 @@
       permission="zope2.View"
       />
 
+  <!-- the analyst's route to a compound's expected retention time, from
+       the Raw Data card (POST; analyst or manager, review open) -->
+  <browser:page
+      name="pfas-set-expected-rt"
+      for="*"
+      class=".expected_rt.PFASSetExpectedRTView"
+      permission="zope2.View"
+      />
+
   <!-- Configuration change history (R1): who changed which setting, when,
        before and after. Viewing needs ManageBika (like Lab Settings): it shows
        every client's EDD settings. Revert is gated at TIER_CONFIG. -->
@@ -313,6 +379,28 @@
       for="*"
       class=".config_history_view.PFASConfigHistoryView"
       permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- The signature ledger for Managers: filters, the chain check, the CSV
+       export, orphans, withdrawal and the seal worker's health. Viewing
+       needs ManageBika and the Manager role (perms.MANAGER_VIEWS); the
+       chain check is gated at TIER_CONFIG, a withdrawal to the signer or a
+       Manager. -->
+  <browser:page
+      name="pfas-signatures"
+      for="*"
+      class=".signatures_page.PFASSignaturesView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- A signer withdraws their own signature from the record's Signatures
+       card (the Signatures page is the Manager's): POST only, the signer
+       or a Manager, with a reason and their password or PIN -->
+  <browser:page
+      name="pfas-signature-withdraw"
+      for="*"
+      class=".signatures_page.PFASSignatureWithdrawView"
+      permission="zope2.View"
       />
 
   <!-- The system's backups and a method's restore from one -->
@@ -462,14 +550,6 @@
       handler=".badges.enforce_terminal_idle"
       />
 
-  <!-- A batch logbook as a PDF from its issued design -->
-  <browser:page
-      name="pfas-logbook-pdf"
-      for="*"
-      class=".logbooks.PFASLogbookPDFView"
-      permission="zope2.View"
-      />
-
   <!-- Document Templates: the lab draws its documents with pdfme -->
   <browser:page
       name="pfas-document-templates"
@@ -564,14 +644,14 @@
       name="pfas-warm"
       for="*"
       class=".warm.PFASWarmView"
-      permission="cmf.ManagePortal"
+      permission="senaite.pfas.WorkerTasks"
       />
   <!-- The worker asks the site to send the notices that are due -->
   <browser:page
       name="pfas-notice-reminders"
       for="*"
       class=".notices.PFASNoticeRemindersView"
-      permission="cmf.ManagePortal"
+      permission="senaite.pfas.WorkerTasks"
       />
   <!-- The worker, once it has pushed a run, asks for the deviation its
        unset QC criteria call for -->
@@ -579,7 +659,7 @@
       name="pfas-unconfigured-deviation"
       for="*"
       class=".unconfigured_deviation.PFASUnconfiguredDeviationView"
-      permission="cmf.ManagePortal"
+      permission="senaite.pfas.WorkerTasks"
       />
   <!-- The worker applies a display setting to analyses it may edit -->
   <browser:page
@@ -594,6 +674,85 @@
       name="pfas-dilution-result"
       for="*"
       class=".dilution_retests.PFASDilutionResultView"
+      permission="zope2.View"
+      />
+  <!-- The worker hands over an above-range result's top of the range and
+       reading (the certificate prints "> top" with E) -->
+  <browser:page
+      name="pfas-above-range"
+      for="*"
+      class=".above_range_view.PFASAboveRangeView"
+      permission="zope2.View"
+      />
+  <!-- The package worker reads a report's preconditions and its parts
+       (refused inside the view without Manage Bika on the portal) -->
+  <browser:page
+      name="pfas-package-source"
+      for="*"
+      class=".report_packages_view.PFASPackageSourceView"
+      permission="zope2.View"
+      />
+
+  <!-- The package worker hands a report's package back, built or failed
+       (refused inside the view without Manage Bika on the portal) -->
+  <browser:page
+      name="pfas-package-done"
+      for="*"
+      class=".report_packages_view.PFASPackageDoneView"
+      permission="zope2.View"
+      />
+
+  <!-- The signing worker fetches a certificate stored with no package, to
+       seal it (refused inside the view without Manage Bika on the portal) -->
+  <browser:page
+      name="pfas-seal-source"
+      for="*"
+      class=".report_packages_view.PFASSealSourceView"
+      permission="zope2.View"
+      />
+
+  <!-- The signing worker hands a certificate's seal back, sealed or failed
+       (refused inside the view without Manage Bika on the portal) -->
+  <browser:page
+      name="pfas-seal-done"
+      for="*"
+      class=".report_packages_view.PFASSealDoneView"
+      permission="zope2.View"
+      />
+
+  <!-- A Manager queues a report's package again (refused inside the view
+       without Manage Bika on the portal) -->
+  <browser:page
+      name="pfas-package-retry"
+      for="*"
+      class=".report_packages_view.PFASPackageRetryView"
+      permission="zope2.View"
+      />
+
+  <!-- A Manager sends an issued certificate's waiting e-mail again
+       (refused inside the view without Manage Bika on the portal) -->
+  <browser:page
+      name="pfas-delivery-send"
+      for="*"
+      class=".certificate_delivery_view.PFASDeliverySendView"
+      permission="zope2.View"
+      />
+
+  <!-- A Manager deletes a stored certificate not yet issued (refused inside
+       the view without Manage Bika and the Manager role on the portal) -->
+  <browser:page
+      name="pfas-certificate-delete"
+      for="*"
+      class=".report_packages_view.PFASCertificateDeleteView"
+      permission="zope2.View"
+      />
+
+  <!-- A stored certificate's PDF for the register: core's downloaders and
+       the read-only inspector (refused inside the view otherwise) -->
+  <browser:page
+      name="pfas-certificate-pdf"
+      for="*"
+      class=".certificate_pdf.PFASCertificatePDFView"
       permission="zope2.View"
       />
 
@@ -630,6 +789,14 @@
       name="pfas-assigned-levels"
       for="*"
       class=".assigned_levels.PFASAssignedLevelsView"
+      permission="zope2.View"
+      />
+  <!-- the Make dialog of a requested dilution or re-injection, shared by
+       Run Builder and the guided extraction (dilution_make.py) -->
+  <browser:page
+      name="pfas-dilution-make-macros"
+      for="*"
+      class=".dilution_make.PFASDilutionMakeMacrosView"
       permission="zope2.View"
       />
   <browser:page
@@ -685,11 +852,19 @@
       permission="zope2.View"
       />
 
-  <!-- Extraction Logbook PDF (ReportLab) -->
+  <!-- The batch record, printed from its issued design -->
   <browser:page
       name="pfas-extraction-pdf"
       for="*"
       class=".extraction_pdf.PFASExtractionPDFView"
+      permission="zope2.View"
+      />
+
+  <!-- A preparation record, printed from its issued design -->
+  <browser:page
+      name="pfas-preparation-pdf"
+      for="*"
+      class=".preparation_pdf.PFASPreparationPDFView"
       permission="zope2.View"
       />
 
@@ -846,6 +1021,31 @@
       name="senaite.pfas.sample_method"
       />
 
+  <!-- An analysis goes only on a worksheet whose Method is its sample's
+       (worksheet_samples.assign_allowed) -->
+  <adapter
+      factory=".guards.WorksheetMethodGuard"
+      for="bika.lims.interfaces.IRoutineAnalysis"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.worksheet_method"
+      />
+
+  <!-- Only Send back reopens a submitted or verified worksheet: its
+       retract, and an analysis's retract on it, need the request's mark
+       (reopen_guard); the plain Retract is hidden and refused by URL -->
+  <adapter
+      factory=".guards.ReopenGuard"
+      for="bika.lims.interfaces.IWorksheet"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.reopen"
+      />
+  <adapter
+      factory=".guards.ReopenGuard"
+      for="bika.lims.interfaces.IRoutineAnalysis"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.reopen"
+      />
+
   <!-- Entering, reviewing or issuing needs a Lab Contact with initials and
        a signature (entry_rights.py) -->
   <adapter
@@ -900,6 +1100,22 @@
       for="bika.lims.interfaces.IAnalysisRequest"
       provides="bika.lims.interfaces.IGuardAdapter"
       name="senaite.pfas.receipt_compliance"
+      />
+  <!-- No certificate goes out while its package is building, failed, or
+       missing at a tier that needs one: every path that publishes -->
+  <adapter
+      factory=".guards.ReportPackageGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.report_package"
+      />
+  <!-- No certificate is issued without its authoriser's signature, given
+       by the publisher on Data Review before it was generated -->
+  <adapter
+      factory=".guards.SignatureGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.signature"
       />
 
   <!-- Controlled publication register (D65 B): record an immutable issuance
@@ -962,56 +1178,32 @@
       permission="zope2.View"
       />
 
-  <!-- Logbook definition manager (portal-level) -->
-  <browser:page
-      name="pfas-logbook-admin"
-      for="*"
-      class=".logbooks.PFASLogbookAdminView"
-      permission="zope2.View"
-      />
-
-  <!-- Per-batch logbooks (FM-ENV-001 through 253) — registered on Batch context -->
-  <browser:page
-      name="pfas-logbook-index"
-      for="*"
-      class=".logbooks.PFASLogbookIndexView"
-      permission="zope2.View"
-      />
-
-  <!-- Dynamic logbook renderer (PrepLogbookDef field_schema_json driven) -->
-  <browser:page
-      name="pfas-logbook-dynamic"
-      for="*"
-      class=".logbooks.PFASDynamicLogbookView"
-      permission="zope2.View"
-      />
-
   <browser:page
       name="pfas-retire-attachment"
       for="*"
-      class=".logbooks.PFASRetireAttachmentView"
+      class=".batch_api.PFASRetireAttachmentView"
+      permission="zope2.View"
+      />
+
+  <!-- the worker's daily sweep of the instrument archive (manager, POST) -->
+  <browser:page
+      name="pfas-instrument-archive-sweep"
+      for="*"
+      class=".batch_api.PFASInstrumentArchiveSweepView"
       permission="zope2.View"
       />
 
   <browser:page
       name="pfas-run-manifest"
       for="*"
-      class=".logbooks.PFASRunManifestView"
+      class=".batch_api.PFASRunManifestView"
       permission="zope2.View"
       />
 
   <browser:page
       name="pfas-batch-dilutions"
       for="*"
-      class=".logbooks.PFASBatchDilutionsView"
-      permission="zope2.View"
-      />
-
-  <!-- AJAX: Prepared Standard lot autocomplete (lot_ref fields) -->
-  <browser:page
-      name="pfas-lot-autocomplete"
-      for="*"
-      class=".logbooks.PFASLotAutocompleteView"
+      class=".batch_api.PFASBatchDilutionsView"
       permission="zope2.View"
       />
 
@@ -1024,24 +1216,8 @@
       permission="zope2.View"
       />
 
-  <!-- AJAX: Reagent inventory autocomplete (reagent_ref fields) -->
-  <browser:page
-      name="pfas-reagent-autocomplete"
-      for="*"
-      class=".logbooks.PFASReagentAutocompleteView"
-      permission="zope2.View"
-      />
-
-  <!-- Prep logbook definitions -->
-  <browser:page
-      name="pfas-prep-logbooks"
-      for="*"
-      class=".prep_logbooks.PFASPrepLogbooksView"
-      permission="zope2.View"
-      />
-
   <!-- Guided-step media (GIF / photo). GET is open so analysts can see the
-       image while filling a logbook; POST is manager-gated inside the view. -->
+       image while working through a stage; POST is manager-gated inside the view. -->
   <browser:page
       name="pfas-logbook-media"
       for="*"
@@ -1049,12 +1225,30 @@
       permission="zope2.View"
       />
 
-  <!-- Bench entry point: pick the batch whose logbooks you are filling in.
- -->
+  <!-- Bench: each worksheet's batch record, on SENAITE's own listing:
+       In progress (until verified) by default, the 50 oldest first;
+       ?record=<uid> one record (batch_records.PFASBatchRecordsView). -->
   <browser:page
-      name="pfas-logbook-batches"
+      name="pfas-batch-records"
       for="*"
-      class=".logbook_batches.PFASLogbookBatchesView"
+      class=".batch_records_listing.PFASBatchRecordsListing"
+      permission="zope2.View"
+      />
+
+  <!-- Materials & Containers: the reagent inventory over the lots whose
+       category has no expiry -->
+  <browser:page
+      name="pfas-materials"
+      for="*"
+      class=".reagents.PFASMaterialsView"
+      permission="zope2.View"
+      />
+
+  <!-- Lot extensions: the request on a lot, QA's queue, the signed approval -->
+  <browser:page
+      name="pfas-lot-extensions"
+      for="*"
+      class=".lot_extensions.PFASLotExtensionsView"
       permission="zope2.View"
       />
 
@@ -1176,10 +1370,27 @@
       permission="zope2.View"
       layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />
+  <!-- Under the sample's title while its newest certificate is interim -->
+  <browser:viewlet
+      for="bika.lims.interfaces.IAnalysisRequest"
+      name="senaite.pfas.sample-interim"
+      class=".core_sample.PFASSampleInterimViewlet"
+      manager="plone.app.layout.viewlets.interfaces.IBelowContentTitle"
+      permission="zope2.View"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
   <browser:page
       name="pfas-sample-attachments"
       for="bika.lims.interfaces.IAnalysisRequest"
       class=".core_sample.PFASSampleAttachmentsView"
+      permission="zope2.View"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+  <!-- a samples list offers no Add Samples: the chain of custody is the one way in -->
+  <browser:viewlet
+      name="senaite.core.listings.add_samples"
+      manager="senaite.core.browser.viewlets.interfaces.IListingTableTitle"
+      class=".core_sample.PFASNoAddSamplesViewlet"
       permission="zope2.View"
       layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />

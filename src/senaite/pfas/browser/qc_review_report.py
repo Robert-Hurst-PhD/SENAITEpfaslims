@@ -29,7 +29,6 @@ Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-import json
 import logging
 
 from Products.CMFCore.utils import getToolByName
@@ -103,14 +102,46 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
     template = ViewPageTemplateFile("templates/qc_review_report.pt")
 
     def print_css(self):
-        """The lab theme for this section (print_doc.certificate_css)."""
+        """The lab theme for this section (print_doc.certificate_css). The
+        page of its own also names itself at the foot of every page: the
+        report, its worksheet and laboratory, who printed it and when. Inside
+        an impress report the running header and footer are impress's."""
         from bika.lims import api
-        from senaite.pfas import print_doc
-        return print_doc.certificate_css(api.get_portal().absolute_url())
+        css = print_doc.certificate_css(api.get_portal().absolute_url())
+        if not self._standalone():
+            return css
+        worksheet = self.worksheet()
+        doc = u" \u00b7 ".join(x for x in (
+            u"QC Review Report", worksheet.getId() if worksheet is not None else u"",
+            self._lab_name()) if x)
+        return css + u"\n" + print_doc.document_css(
+            doc, None, print_doc.current_user_label(self.context), base=False)
+
+    def _standalone(self):
+        """True when this view is the page asked for, not a section of
+        another report."""
+        return (self.request.get("URL") or u"").rstrip("/").endswith(self.__name__ or u"\0")
+
+    def _lab_name(self):
+        """The laboratory's name: core's Laboratory record."""
+        from senaite.pfas import lab_identity
+        return lab_identity.lab_name()
+
+    @staticmethod
+    def column_parts(columns):
+        """A pivoted table's columns in the parts it prints as
+        (report_documents.column_parts): no table wider than the page."""
+        from senaite.pfas import report_documents
+        return report_documents.column_parts(columns)
 
     def __call__(self):
         flatten_form(self.request)
         return self.template()
+
+    @staticmethod
+    def no_run_plan():
+        from senaite.pfas.run_lots import NO_RUN_PLAN
+        return NO_RUN_PLAN
 
     # ── context ──────────────────────────────────────────────────────────
 
@@ -141,6 +172,7 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
     # ── 1. identity ──────────────────────────────────────────────────────
 
     def identity(self):
+        from senaite.pfas.doc_fields import utext
         review = self._review()
         worksheet = self.worksheet()
         if review is None:
@@ -151,10 +183,11 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
         out = {
             "worksheet": worksheet.getId(),
             "batch": batch.getId() if batch is not None else u"",
-            "batch_title": batch.Title() if batch is not None else u"",
-            "method": method_id,
+            "batch_title": utext(batch.Title()) if batch is not None else u"",
+            "method": self.method_name(method_id),
             "matrix": matrix,
-            "analyst": getattr(worksheet, "getAnalyst", lambda: u"")() or u"",
+            "lab_name": self._lab_name(),
+            "analyst": self._analyst(worksheet),
             "state": _review_status(worksheet),
         }
         try:
@@ -167,10 +200,41 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
                     break
         except Exception:
             pass
-        out["run_dates"] = self._run_dates()
+        out["run_dates"] = self._analysis_days()
         return out
 
+    def _analysis_days(self):
+        """The days the worksheet's results were analysed, Data Review's one
+        answer (analysis_dates: the certificate's reader, else the run's date
+        marked "by run date"), so the QC Review, Data Review and the
+        certificate never disagree."""
+        review = self._review()
+        if review is None:
+            return []
+        dates = review.analysis_dates(self.worksheet())
+        return [dates["text"]] if dates["by_run_date"] else list(dates["days"])
+
+    def _fullname(self, userid):
+        """A person by name, as the batch record names them; the id when
+        it names no user."""
+        from senaite.pfas.browser.sample_status import _fullname
+        return _fullname(self._portal(), userid) if userid else u""
+
+    def _analyst(self, worksheet):
+        """Who ran the batch, from the source the batch record prints its
+        lead analyst from: the extraction record's analyst; without one,
+        the worksheet's analyst by name."""
+        from senaite.pfas.browser.extraction_guide import _load_session
+        try:
+            named = (_load_session(worksheet) or {}).get("analyst") or u""
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("qc review analyst: %s", exc)
+            named = u""
+        return named or self._fullname(getattr(worksheet, "getAnalyst", lambda: u"")() or u"")
+
     def _run_dates(self):
+        """The run's dates as the QC store keys its calibrations (a lookup
+        key, never printed as when anything was analysed)."""
         review = self._review()
         rows = review._injection_rows() if review else []
         return sorted({r.get("run_date") for r in rows if r.get("run_date")})
@@ -243,7 +307,9 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
     def gates(self):
         if getattr(self, "_gates", None) is None:
             review = self._review()
-            self._gates = [_shown(g, "checked_at")
+            # who signed a check, by name as the batch record's review table
+            self._gates = [_shown(dict(g, checked_by=self._fullname(g["checked_by"]))
+                                  if g.get("checked_by") else g, "checked_at")
                            for g in (review.checklist_status() if review else [])]
         return self._gates
 
@@ -251,14 +317,43 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
         review = self._review()
         return review.get_qc_summary() if review else {}
 
+    def labelled_names(self, section):
+        """The analytes of a pivoted QC section that are labelled standards
+        (the compound library's roles)."""
+        from senaite.pfas import compound_library, compound_library_store
+        try:
+            lib = compound_library_store.library()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("qc review: compound library not read: %s", exc)
+            return []
+        return [r.get("analyte") for r in (section or {}).get("rows") or []
+                if compound_library.is_labelled(lib, r.get("analyte"))]
+
+    def kind_tables(self, section, types_key):
+        """The section as its natives' table and its labelled standards'
+        table, each with its own columns (report_documents.kind_tables)."""
+        from senaite.pfas import report_documents
+        labelled = set(self.labelled_names(section))
+        return report_documents.kind_tables(section, types_key, labelled.__contains__)
+
     def spike_qc(self):
         review = self._review()
         return review.spike_qc_page() if review else {}
 
 
     def traceability(self):
-        review = self._review()
-        return review.get_traceability_tree() if review else {}
+        """Data Review's traceability walk, built once per request."""
+        if getattr(self, "_trace", None) is None:
+            review = self._review()
+            self._trace = review.get_traceability_tree() if review else {}
+        return self._trace
+
+    @staticmethod
+    def traceability_rows(tree):
+        """The table's rows: every lot of the walk (worksheet_lots.trace_rows,
+        the rows the designed report prints)."""
+        from senaite.pfas import worksheet_lots
+        return worksheet_lots.trace_rows(tree)
 
     def final_data(self):
         review = self._review()
@@ -295,8 +390,8 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
         r2_min = ((profile.get("instrument_verification") or {})
                   .get("calibration") or {}).get("r2_min")
         try:
-            from senaite.pfas.qc.rules import method_toggles
-            if not method_toggles(profile, profile.get("method_id")).get("cal_r2", True):
+            from senaite.pfas import limit_states
+            if limit_states.box_state(profile, "cal_r2") == "off":
                 r2_min = None
         except Exception as exc:                            # noqa: BLE001
             logger.warning("calibrations: rule switches not read: %s", exc)
@@ -317,32 +412,16 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
     # ── 8. run versus plan ───────────────────────────────────────────────
 
     def run_vs_plan(self):
-        """What the Run Builder planned against what the instrument ran."""
+        """What the Run Builder planned against what the instrument ran: the
+        plan stored on the worksheet, read as Data Review reads it
+        (run_lots.against_plan)."""
         review = self._review()
         worksheet = self.worksheet()
         if review is None:
             return {}
-        batch = review._linked_batch(worksheet)
-        planned = []
-        if batch is not None:
-            try:
-                from senaite.pfas.browser.run_builder import RUN_MANIFEST_KEY
-                raw = IAnnotations(batch).get(RUN_MANIFEST_KEY)
-                if raw:
-                    manifest = json.loads(raw)
-                    planned = [r.get("name") for r in
-                               (manifest.get("rows") or []) if r.get("name")]
-            except Exception:
-                planned = []
-        actual = sorted({r.get("injection_name")
-                         for r in review._injection_rows()
-                         if r.get("injection_name")})
-        return {
-            "planned": planned,
-            "actual": actual,
-            "not_run": [p for p in planned if p not in actual],
-            "unplanned": [a for a in actual if planned and a not in planned],
-        }
+        from senaite.pfas import run_lots
+        acquired = [r.get("injection_name") for r in review._injection_rows()]
+        return run_lots.against_plan(review._run_manifest(worksheet), acquired)
 
     # ── 10. appendix: every per-injection measurement ────────────────────
 
@@ -352,9 +431,20 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
         if review is None:
             return []
         rows = review._injection_rows()
-        return sorted(rows, key=lambda r: (r.get("qc_type") or u"",
+        rows = sorted(rows, key=lambda r: (r.get("qc_type") or u"",
                                            r.get("injection_name") or u"",
                                            r.get("analyte") or u""))
+        # shown for reading only (qc_review_numbers); the stored rows are not
+        # changed, and the flag stays what the check judged
+        try:
+            rule = review._rounding_rule()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("qc review rounding rule: %s", exc)
+            rule = None
+        from senaite.pfas import method_engine, qc_review_numbers
+        places = method_engine.recovery_decimals(review._method_profile())
+        return [qc_review_numbers.display_row(r, rule or qc_review_numbers.rounding.DEFAULT_RULE, places)
+                for r in rows]
 
     def exceptions(self):
         """The flagged subset, so the failures can be read without wading
@@ -411,15 +501,13 @@ def designed_sections(view, collection):
         stamp = coa_document.stamp(att.controlled_doc_meta(collection).get("report_id") or u"")
     except Exception as exc:                                # noqa: BLE001
         logger.warning("qc review stamp: %s", exc)
-    lab_name = u""
-    try:
-        from senaite.pfas.print_settings import get_print_settings
-        lab_name = get_print_settings(view._portal()).get("lab_name") or u""
-    except Exception as exc:                                # noqa: BLE001
-        logger.warning("qc review lab name: %s", exc)
-    return {"lab_name": lab_name,
+    from senaite.pfas import lab_identity
+    qc = view.qc_summary()
+    return {"lab_name": view._lab_name(), "lab_address": lab_identity.lab_address(),
             "identity": view.identity(), "criteria": view.criteria(), "gates": view.gates(),
-            "calibrations": view.calibrations(), "qc_summary": view.qc_summary(),
+            "calibrations": view.calibrations(),
+            # each analyte's kind rides with the summary: its two tables
+            "qc_summary": dict(qc, labelled=view.labelled_names(qc)),
             "spike_qc": view.spike_qc(), "traceability": view.traceability(),
             "run_vs_plan": view.run_vs_plan(), "final_data": view.final_data(),
             "publications": view.publications(), "deviations": view.deviations(),

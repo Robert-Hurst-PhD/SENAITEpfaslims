@@ -27,29 +27,31 @@ from senaite.pfas import page_groups
 GROUPS = [("records", u"Records"), ("inventory", u"Reagents & standards"),
           ("pages", u"Pages"), ("equipment", u"Equipment"),
           ("method", u"Method settings"), ("settings", u"Lab settings"),
-          ("limits", u"Regulatory limits"), ("logbooks", u"Logbook templates"),
-          ("help", u"Help")]
+          ("limits", u"Regulatory limits"), ("help", u"Help")]
 GROUP_LABELS = dict(GROUPS)
 
 # Which Method Profile tab each section form lives on (method_profile_edit.pt:
 # form#section-<x> posts _section=<ids>). QC criteria's list is dynamic
 # (spike levels per QC type), so its prefix rule is below.
-SECTION_PANE = {"run_rules": "pane-qc", "qc_comp": "pane-run", "solv": "pane-run",
-                "xbatch": "pane-qc", "blk": "pane-qc", "mxb": "pane-qc",
-                "groups": "pane-qc", "tiers": "pane-qc", "tiers_lfb": "pane-qc", "dup": "pane-qc",
-                "lfsmd": "pane-qc", "engine_notes_rt": "pane-qc",
-                "mtx": "pane-matrices", "rtemp": "pane-matrices", "hold": "pane-matrices",
+SECTION_PANE = {"run_rules": "pane-run", "qc_comp": "pane-run", "solv": "pane-run",
+                "xbatch": "pane-run", "blk": "pane-qc", "mxb": "pane-qc",
+                "groups": "pane-qc", "tiers": "pane-qc", "tiers_lfb": "pane-qc", "qc_cells": "pane-qc", "dup": "pane-qc",
+                "lfsmd": "pane-qc", "flags_qc": "pane-qc",
+                "mtx": "pane-matrices", "rtemp": "pane-matrices", "hold": "pane-matrices", "mxtemp": "pane-matrices",
                 "scorr": "pane-matrices", "nom": "pane-matrices", "mf": "pane-matrices",
                 "ami": "pane-analytes", "engine_ami": "pane-analytes", "iso": "pane-analytes",
                 "rl": "pane-analytes", "salt": "pane-analytes", "sur": "pane-analytes",
-                "ls": "pane-standards", "surscope": "pane-standards", "cal_sur": "pane-standards",
-                "engine_sur": "pane-standards", "engine_fallback": "pane-standards",
-                "engine_notes_sur": "pane-standards", "eis_grid": "pane-standards",
+                "dilrec": "pane-analytes",
+                "ls": "pane-standards", "cmp": "pane-standards", "surscope": "pane-standards", "cal_sur": "pane-standards",
+                "engine_sur": "pane-standards", "cal_is": "pane-standards", "flags_std": "pane-standards",
+                "lrr": "pane-standards", "salt_std": "pane-standards",
+                "eis_grid": "pane-standards",
                 "rf": "pane-run", "al": "pane-run",
-                "cal": "pane-qc", "cal_levels": "pane-qc", "cal_scale": "pane-qc", "engine_notes_conf": "pane-qc", "engine_notes_is": "pane-qc",
+                "cal": "pane-qc", "cal_levels": "pane-qc", "cal_scale": "pane-qc",
                 "lbl": "pane-run", "solv_spe": "pane-run", "dil": "pane-run",
                 "engine": "pane-engine", "engine_names": "pane-engine", "engine_mcodes": "pane-engine", "qcnames": "pane-engine",
-                "engine_studies": "pane-engine", "engine_text": "pane-engine", "engine_notes": "pane-engine",
+                "engine_studies": "pane-engine", "engine_rec": "pane-engine",
+                "engine_text": "pane-engine",
                 "intg": "pane-run", "intg_an": "pane-run"}
 PANE_LABEL = {"pane-analytes": u"Analytes", "pane-standards": u"Isotope standards", "pane-qc": u"QC criteria",
               "pane-matrices": u"Matrices", "pane-run": u"Run & reporting", "pane-engine": u"Engine"}
@@ -157,8 +159,7 @@ def pages_from_map(roles, portal_url):
 # and the page each result opens (the method editor is for managers alone).
 SOURCES = {"inventory": page_groups.STAFF, "equipment": page_groups.STAFF,
            "equipment_types": page_groups.MGR, "method": page_groups.MGR,
-           "settings": page_groups.MGR, "limits": page_groups.MGR,
-           "logbooks": page_groups.MGR}
+           "settings": page_groups.MGR, "limits": page_groups.MGR}
 
 
 def sources_for(roles):
@@ -182,7 +183,7 @@ def method_settings(method_id, method_name, edit_url, sections, profile, titles=
     [Field] for a section whose columns depend on the profile. A tab ranks
     above a section, a section above one of its fields."""
     out = []
-    sub = u"%s (%s)" % (method_name, method_id)
+    sub = method_name or method_id
     for pane, label in sorted(PANE_LABEL.items()):
         out.append({"group": "method", "title": u"%s \u203a %s" % (method_name, label),
                     "subtitle": u"Method profile tab", "url": _link(edit_url, pane),

@@ -109,6 +109,39 @@
   --s-danger-lt:    #fce8e3;
   --s-danger-bd:    #f2b8a9;
   --s-danger-dk:    #a8412a;
+  /* a limit box's state placard (limit_placard.py): Enforced the brand
+     fill, Evaluate the information tint, Off a dashed grey ring; coral only
+     on a box Enforced with no limit (the run is refused) */
+  --s-placard-enforced:      var(--s-primary-dk);
+  --s-placard-on-enforced:   var(--s-bg);
+  --s-placard-evaluate:      var(--s-info-lt);
+  --s-placard-evaluate-text: var(--s-info-text);
+  --s-placard-evaluate-bd:   var(--s-info-bd);
+  --s-placard-off:           var(--s-secondary);
+  --s-placard-unset:         var(--s-danger-dk);
+  /* sample types (sample_type_icons.py): one icon per group, a category and
+     never a flag; none is mint, teal, the Off grey, amber or coral. Each is
+     5.7:1 or more on every ground; --type-na, a type a rule does not judge,
+     is pale on purpose (1.6 to 2.3:1) and its words say so */
+  --type-samples:     #4a3fb3;
+  --type-spiked:      #963a82;
+  --type-blanks:      #4e5d78;
+  --type-checks:      #1d5fa6;
+  --type-calibration: #1d5fa6;
+  --type-none:        var(--s-body);
+  --type-na:          #b9bfc8;
+  /* icon colours (icons.py): the meanings above at text strength, so an
+     icon passes 3:1 on every ground in both themes (the fill colours fail:
+     amber 2.16, OK green 2.41, mint 2.96 on white). Aliases, so the dark
+     theme follows; --ico-pale is for what is to come or does not apply,
+     always beside lit icons and named */
+  --ico-brand:   var(--s-primary-dk);
+  --ico-ok:      var(--s-success-text);
+  --ico-info:    var(--s-info-text);
+  --ico-warn:    var(--s-warn-text);
+  --ico-fail:    var(--s-danger-dk);
+  --ico-neutral: var(--s-secondary);
+  --ico-pale:    var(--s-input-border);
   /* recovery-tier colour key (categories, not flags): a grid cell and its
      tier row share one */
   --tier-c0: #2fa88a;
@@ -170,8 +203,14 @@
 
   /* ── Frame: identical on every page ───────────────────── */
   --pfas-header-h:    52px;
-  --pfas-panel-width: 236px;   /* the section panel */
   --pfas-rail-width:  72px;    /* the rail: an icon over a short label, and the top bar's menu button above it */
+  --icon-nav:         24px;    /* the navigation's icons, rail and tiles (was 20: undersized, 2026-11-20) */
+  --icon-sm:          16px;    /* an icon beside text: a table cell, a list row, a chip (icons.py) */
+  --icon-md:          20px;    /* in a button, a notice, a card heading */
+  --icon-lg:          24px;    /* a card's or a tile's own icon; the only size that takes a corner mark */
+  --icon-xl:          40px;    /* an empty state */
+  --icon-type:        1.15em;  /* a sample type's icon beside its words (sample_type_icons.py) */
+  --icon-type-row:    var(--fs-lg);  /* the same icon in a rule's Applies to row */
   --pfas-bar-height:  56px;    /* the rail as a phone's bottom bar */
   --frame-gutter-x:   30px;    /* the navigation's edge → content */
   --frame-gutter-y:   16px;
@@ -206,6 +245,9 @@
   --on-frame:       #ffffff;
   --on-frame-muted: rgba(255,255,255,.72);
   --focus:          var(--s-focus-ring);
+  /* a certificate's black-and-white variant: ink and paper, no hue */
+  --print-ink:      #000000;
+  --print-paper:    #ffffff;
   /* weights: a literal font-weight in a template is drift (373 found 2026-10-11) */
   --fw-body:   400;
   --fw-strong: 600;
@@ -218,12 +260,14 @@
   --shadow-card:       0 1px 3px rgba(0,0,0,.06);
   --shadow-card-hover: 0 4px 12px rgba(0,0,0,.12);
   --shadow-pill:       0 1px 2px rgba(0,0,0,.12);
-  /* motion: calm and short; reduced-motion switches it off */
-  --t-fast: 160ms; --t-pill: 180ms; --t-reveal: 220ms;
+  /* motion: calm and short, 120 to 200 ms; reduced-motion switches it off.
+     Only transform, opacity and height move; a colour changes at once */
+  --t-quick: 120ms; --t-fast: 160ms; --t-pill: 180ms; --t-reveal: 200ms;
+  --t-step: 15ms;   /* the gap between two rows that arrive one after the other */
   --ease: cubic-bezier(.2,.7,.2,1);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --t-fast: 0ms; --t-pill: 0ms; --t-reveal: 0ms; }
+  :root { --t-quick: 0ms; --t-fast: 0ms; --t-pill: 0ms; --t-reveal: 0ms; --t-step: 0ms; }
 }
 /* A smaller screen: below 1280 px wide (a laptop scaled to 125 % or 150 %)
    text and spacing step down one size and the panel folds to the rail
@@ -249,6 +293,7 @@ html[data-theme="dark"] {
   --s-info: #4fa39a; --s-info-lt: #17332f; --s-info-bd: #2c5a55; --s-info-text: #8fd0c8;
   --s-warn-lt: #3d2d12; --s-warn-bd: #6a4a1a; --s-warn-text: #f2c77a;
   --s-danger-lt: #3f1f18; --s-danger-bd: #6e3328; --s-danger-dk: #f4a08c;
+  --type-samples: #aea7f5; --type-spiked: #e8a2d6; --type-blanks: #a9b6cc; --type-checks: #8bbcf0; --type-calibration: #8bbcf0; --type-na: #4f5866;
   --tier-c1: #5f9bd0; --tier-c2: #a583d8; --tier-c3: #5f9a90; --tier-c4: #d59a3f; --tier-c5: #94a3b3;
   --series-1: #3dbb8f; --series-2: #5f9bd0; --series-3: #a583d8; --series-4: #5f9a90; --series-5: #7fc0e3; --series-6: #94a3b3;
   --surface-raised: #1c2825; --on-accent: #0f1a18; --on-frame: #e6efec; --on-frame-muted: rgba(230,239,236,.70);

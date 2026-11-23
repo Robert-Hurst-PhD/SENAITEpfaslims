@@ -79,6 +79,7 @@ def raise_for_open_worksheets(portal, request):
     that cannot be read is logged and the rest are still asked."""
     import time
     from bika.lims import api
+    from senaite.pfas import retired
     from senaite.pfas.browser.data_review import PFASDataReviewView
     found = []
     config, now = _config_mark(portal), time.time()
@@ -87,7 +88,7 @@ def raise_for_open_worksheets(portal, request):
     for brain in brains:
         try:
             ws = api.get_object(brain)
-            if api.get_review_status(ws) not in OPEN_STATES:
+            if api.get_review_status(ws) not in OPEN_STATES or retired.is_retired(ws):
                 continue
             mark = _mark(ws, config)
             if unchanged(api.get_uid(ws), mark, now):

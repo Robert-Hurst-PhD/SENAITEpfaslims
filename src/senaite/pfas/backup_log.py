@@ -23,7 +23,7 @@ import datetime
 import json
 
 KEY = "senaite.pfas.backup_log"
-KINDS = ("backup", "restore", "restore_test", "method_restore", "prune")
+KINDS = ("backup", "restore", "restore_test", "method_restore", "prune", "store_backup")
 LEVELS = ("full_install", "quarterly", "daily")
 STATUSES = ("ok", "failed")
 RESTORE_TEST_DAYS = 100
@@ -104,6 +104,56 @@ def summary(events, today):
         due = False
     return {"last_ok": last_ok, "last_failed": last_failed, "last_restore_test": last_test,
             "restore_test_due": bool(due)}
+
+
+# ── the status page: one line, four figures ─────────────────────────────────
+
+def stamp(value):
+    """A recorded stamp ("2026-11-06T08:43:00") as the backup tool's host
+    clock wrote it, to the minute: "2026-11-06 08:43"."""
+    value = value or u""
+    return u"%s %s" % (value[:10], value[11:16]) if len(value) > 10 else value
+
+
+def status_line(sm, st):
+    """The one line that says whether backups are working; tone is is-bad,
+    is-warn or is-ok."""
+    failed = sm["last_failed"]
+    if failed:
+        why = u", ".join(failed.get("failures") or []) or failed.get("note") or u""
+        return {"tone": u"is-bad", "text": u"Last backup failed %s%s" % (
+            stamp(failed.get("ended")), u": %s" % why if why else u"")}
+    if sm["restore_test_due"]:
+        return {"tone": u"is-warn", "text": u"The restore test is due."}
+    if not sm["last_ok"]:
+        return {"tone": u"is-warn", "text": u"No backup has run yet."}
+    return {"tone": u"is-ok", "text": u"Backups are running."}
+
+
+def figures(sm, st, run_at, label_of):
+    """The four figures: (label, value, detail, flagged). `label_of` names an
+    event's level."""
+    failed = sm["last_failed"]
+    done = sorted(sm["last_ok"].values(), key=lambda e: e.get("ended") or u"")
+    last = failed or (done[-1] if done else None)
+    if last:
+        when = stamp(last.get("ended"))
+        detail = u"%s, %s" % (when, label_of(last) or last.get("level") or u"")
+        first = (u"Failed" if failed else u"Done", detail.rstrip(u", "), bool(failed))
+    else:
+        first = (u"None yet", u"", False)
+    nxt = (u"Scheduled" if st.get("timers") is True else u"Not scheduled",
+           u"Set for %s every night" % run_at if run_at else u"", False)
+    free = st.get("free_gb")
+    test, due = sm["last_restore_test"], sm["restore_test_due"]
+    full = sm["last_ok"].get("full_install")
+    return [
+        (u"Last backup",) + first,
+        (u"Next backup",) + nxt,
+        (u"Free space", (u"%.0f GB" % free) if free is not None else u"\u2014", u"At the destination", False),
+        (u"Restore test", u"Due" if due else (test["ended"][:10] if test else u"Never"),
+         u"Last full install: %s" % (full["ended"][:10] if full else u"none"), bool(due)),
+    ]
 
 
 # ── storage (Zope) ───────────────────────────────────────────────────────────

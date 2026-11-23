@@ -11,8 +11,12 @@ pushed. Nothing here changes a value.
 
 Keys: "<kind>|<injection>|<analyte>", the same string a qc_results or
 injection_results row carries in prov_key. Kinds: IS, RT, ION, CAL, CCV, ICV,
-SUR, LFSM, LFSMD, LFSMD_REC, BLANK, LFB, LCS, DUP, RESULT (and "row" for an
-imported row itself).
+SUR, LFSM, LFSMD, LFSMD_REC, BLANK, LFB, LCS, DUP, RESULT, ID (a reviewer's
+identity correction the run was judged with), EA (an extraction correction
+the run was judged with) and "row" for an imported row
+itself. A QC result's key and record name the analyte by its
+keyword, as qc_results stores it (qc_analyte); the kinds a page opens from
+an injection row (AS_RECORDED) keep the row's own name.
 
 Python 3 (worker).
 """
@@ -24,8 +28,31 @@ from datetime import datetime
 from .models import reported_conc
 
 
+# the kinds whose record a page opens by an injection row's own analyte name
+# (Data Review builds RESULT / RT / ION keys from the row); every other kind
+# is a QC result, keyed by the analyte's keyword as qc_results stores it
+AS_RECORDED = frozenset(["RESULT", "RT", "ION", "SUR", "RUN", "row"])
+
+
+def qc_analyte(name):
+    """The name a QC result is stored and keyed under: the analyte's keyword
+    (analyte_alias.keyword_for); an isomer peak (lr- / br-) keeps its own
+    name, as it is reviewed, never reported as its summed analyte."""
+    if not name:
+        return name
+    from .addon import load
+    if load("isomers").is_peak_name(name):
+        return name
+    from .analyte_alias import keyword_for
+    return keyword_for(name) or name
+
+
+def _analyte_of(kind, analyte):
+    return analyte if kind in AS_RECORDED else qc_analyte(analyte)
+
+
 def key(kind, injection, analyte):
-    return "%s|%s|%s" % (kind, injection or "", analyte or "")
+    return "%s|%s|%s" % (kind, injection or "", _analyte_of(kind, analyte) or "")
 
 
 def term(symbol, label, value, unit="", source=None):
@@ -59,19 +86,175 @@ def raw_terms(row):
         return [], []
     quant = (json.loads(derived[len("raw:"):]) or {}).get("quant") or {}
     curve = quant.get("curve") or {}
+    if curve.get("quadratic") and quant.get("ratio") is not None:
+        return _quadratic_terms(row, quant, curve)
     if quant.get("ratio") is None or not curve.get("slope"):
         return [], []
-    terms = [term("A", "area of the peak", getattr(row, "response", None), "counts", src_row(row, "response")),
-             term("A_IS", "area of %s, its labelled standard" % (quant.get("is") or ""), quant.get("is_area"),
-                  "counts", {"computed": True}),
+    terms = _area_terms(row, quant)
+    terms += [
              term("m", "slope of this run's curve (%s, %s, origin %s, r² %s)" % (
                  curve.get("kind"), curve.get("weighting"), curve.get("origin"), curve.get("r2")),
                  curve.get("slope"), "", {"computed": True}),
              term("b", "intercept of this run's curve", curve.get("intercept"), "", {"computed": True})]
-    steps = [{"label": "response ratio", "expression": "R = A ÷ A_IS", "value": quant["ratio"]},
+    steps = _mean_steps(quant) + [
+             _ratio_step(quant),
              {"label": "read on this run's curve", "expression": "(R − b) ÷ m",
               "value": (quant["ratio"] - (curve.get("intercept") or 0.0)) / curve["slope"]}]
     return terms, steps
+
+
+def _members(quant):
+    return [m for m in quant.get("members") or [] if isinstance(m, dict)]
+
+
+def _area_terms(row, quant):
+    """The peak's area and its standard's: a composite names each member's
+    area in this injection, then their mean (the members are stored with the
+    record, so it names them after the composite is edited or removed).
+    Under the linked response ratio the standard is the surrogate (A_sur)
+    and the internal standard it is linked to gives A_IS."""
+    members = _members(quant)
+    linked = quant.get("linked") or {}
+    std = "A_sur" if linked else "A_IS"
+    terms = [term("A", "area of the peak", getattr(row, "response", None), "counts", src_row(row, "response"))]
+    if members:
+        terms += [term("A_%d" % (i + 1), "area of %s" % (m.get("kw") or ""), m.get("area"), "counts",
+                       {"computed": True}) for i, m in enumerate(members)]
+        terms.append(term(std, "mean of its members' areas, %s" % _mean_of(m.get("kw") for m in members),
+                          quant.get("is_area"), "counts", {"computed": True}))
+    else:
+        terms.append(term(std, "area of %s, its labelled standard" % (quant.get("is") or ""),
+                          quant.get("is_area"), "counts", {"computed": True}))
+    if linked:
+        terms.append(term("A_IS", "area of %s, the internal standard %s is linked to" % (
+            linked.get("is") or "", quant.get("is") or ""), linked.get("is_area"), "counts", {"computed": True}))
+    return terms
+
+
+def _ratio_step(quant):
+    """R = A / A_IS, or, linked, R = A x A_IS / A_sur: C_sur and C_IS are one
+    level in every injection, so they fold into the curve's slope."""
+    if quant.get("linked"):
+        return {"label": "linked response ratio (C_sur ÷ C_IS, one level in every injection, is in the slope)",
+                "expression": "R = A × A_IS ÷ A_sur", "value": quant.get("ratio")}
+    return {"label": "response ratio", "expression": "R = A ÷ A_IS", "value": quant.get("ratio")}
+
+
+def _mean_steps(quant):
+    """A composite's mean of its members' areas, as the first step."""
+    members = _members(quant)
+    if not members:
+        return []
+    return [{"label": "mean of the members' areas",
+             "expression": "%s = (%s) ÷ %d" % ("A_sur" if quant.get("linked") else "A_IS",
+                                                " + ".join("A_%d" % (i + 1) for i in range(len(members))),
+                                                  len(members)),
+             "value": quant.get("is_area")}]
+
+
+def _quant_of(row):
+    derived = getattr(row, "derived_from", "") or "" if row is not None else ""
+    if not derived.startswith("raw:"):
+        return {}
+    return (json.loads(derived[len("raw:"):]) or {}).get("quant") or {}
+
+
+def _sur_name(kw):
+    """A labelled standard's name as its rows (and its SUR record) carry it."""
+    try:
+        from .analyte_alias import labelled_display_name
+        return labelled_display_name(kw) or kw
+    except Exception:                                       # noqa: BLE001
+        return kw
+
+
+SPIKED_FROM = {"spiked_conc": "the amount the run record states was added",
+               "expected_conc": "the check standard's stated concentration",
+               "calibrators": "the calibrators' level of it, the level every sample is spiked to"}
+def recovery_terms(row):
+    """(terms, steps) of a raw labelled standard's recovery on the standard
+    it is linked to: the found amount's own readout (raw_terms), then
+    R = C_found / C_spiked x 100; ([], []) when the row has none."""
+    quant = _quant_of(row)
+    rec = quant.get("recovery") or {}
+    if rec.get("pct") is None:
+        return [], []
+    terms, steps = raw_terms(row)
+    if quant.get("salt"):
+        # both amounts are the acid form: the stated ones times the factor
+        terms = terms + [term("f_salt", "salt factor of %s: its stated amounts as acid, found and spiked alike"
+                              % (getattr(row, "compound_name", "") or ""), quant.get("salt"), "",
+                              {"computed": True})]
+    terms = terms + [
+        term("C_found", "amount found on %s, its internal standard" % (rec.get("is") or ""), rec.get("found"),
+             getattr(row, "conc_units", "") or "", {"computed": True}),
+        term("C_spiked", SPIKED_FROM.get(rec.get("from"), "amount added"), rec.get("spiked"),
+             getattr(row, "conc_units", "") or "", {"run_record": "injections[%s].%s" % (
+                 getattr(row, "injection_name", "") or "", rec.get("from") or "")})]
+    steps = steps + [{"label": "recovery on %s" % (rec.get("is") or "its internal standard"),
+                      "expression": "R = C_found ÷ C_spiked × 100", "value": rec.get("pct")}]
+    return terms, steps
+
+
+def linked_terms(row):
+    """(terms, steps) naming how a native was quantified: on its injection
+    standard (no linked ratio applies), or on a surrogate with the method's
+    linked response ratio, on or off; an export's number is the
+    instrument's and the LIMS recomputes nothing; a raw result whose linked
+    ratio could not be formed is held, saying why."""
+    of = getattr(row, "quantified_on", None) or {}
+    mode = getattr(row, "linked_ratio", "") or ""
+    if of.get("role") == "injection_is":
+        return [term("LRR", "quantified on %s, its injection standard: no linked response ratio applies"
+                     % of.get("standard"), None, "", {"computed": True})], []
+    if not mode:
+        return [], []
+    raw = (getattr(row, "derived_from", "") or "").startswith("raw:")
+    linked = _quant_of(row).get("linked") or {}
+    if not raw:
+        label = ("linked response ratio %s (the method's setting); the instrument quantified it on %s and "
+                 "the LIMS recomputes nothing" % (mode, of.get("standard") or "its surrogate"))
+    elif mode == "on":
+        label = ("linked response ratio on (the method's setting): read on A × A_IS ÷ A_sur, A_IS the area "
+                 "of %s, the internal standard %s is linked to" % (linked.get("is") or "its internal standard",
+                                                                    of.get("standard") or "its surrogate"))
+    else:
+        label = "linked response ratio off (the method's setting): read on A ÷ A_sur"
+    terms = [term("LRR", label, mode, "", {"profile_key": "linked_response_ratio"})]
+    held = getattr(row, "ratio_held", "") or ""
+    steps = [{"label": "held: " + held, "expression": "no number", "value": None}] if held else []
+    return terms, steps
+
+
+def _quadratic_terms(row, quant, curve):
+    """A value read on a quadratic curve: the curve's three terms, and its
+    reading on the rising branch, or that the ratio has none there."""
+    from .addon import load
+    terms = _area_terms(row, quant) + [
+             term("a", "x² term of this run's curve (%s, %s, origin %s, r² %s)" % (
+                 curve.get("kind"), curve.get("weighting"), curve.get("origin"), curve.get("r2")),
+                 curve.get("quadratic"), "", {"computed": True}),
+             term("m", "x term of this run's curve", curve.get("slope"), "", {"computed": True}),
+             term("b", "intercept of this run's curve", curve.get("intercept"), "", {"computed": True})]
+    steps = _mean_steps(quant) + [_ratio_step(quant)]
+    if quant.get("below"):
+        # a sample below the lowest calibrator: its reading on the rising
+        # branch, a number only at or above the MDL (pipeline.raw_below_mdl)
+        mdl = (" (the MDL %g on the sample basis)" % quant["mdl"]) if quant.get("mdl") is not None else ""
+        steps.append({"label": "%s; %s%s" % (quant["below"], quant.get("below_mdl") or "no number", mdl),
+                      "expression": "a·C² + m·C + b = R", "value": quant.get("below_reading")})
+        return terms, steps
+    steps.append({"label": ("read on this run's curve, where it rises" if not quant.get("no_reading")
+                            else "no reading: " + quant["no_reading"]),
+                  "expression": "a·C² + m·C + b = R",
+                  "value": load("quant_fit").concentration(curve, quant["ratio"])})
+    return terms, steps
+
+
+def _mean_of(names):
+    """"Mean of A and B", as the composite is named (composite_standards)."""
+    from .addon import load
+    return load("composite_standards").name_of(list(names))
 
 
 def src_row(row, column):
@@ -109,7 +292,8 @@ def record(batch, kind, injection, analyte, value, formula, terms, unit="", verd
     if recs is None:
         recs = batch.provenance = []
     k = key(kind, injection, analyte)
-    rec = {"key": k, "kind": kind, "injection": injection or "", "analyte": analyte or "",
+    rec = {"key": k, "kind": kind, "injection": injection or "",
+           "analyte": _analyte_of(kind, analyte) or "",
            "value": value, "value_text": value_text or "", "unit": unit or "", "verdict": verdict or "",
            "formula": formula, "terms": list(terms or []), "steps": list(steps or []),
            "rule": dict(rule or {})}
@@ -221,14 +405,29 @@ def record_run(batch, rows, profile, matrix):
     for e in getattr(batch, "surrogate_results", None) or []:
         inj, comp = e.get("injection_name"), e.get("compound")
         row = by.get((inj, comp))
-        terms = [term("R", "recovery reported by the instrument for the labelled standard", e.get("value"), "%",
-                      src_row(row, "pct_recovery_is"))]
+        # a raw run's recovery is this LIMS's own: its amounts and readout
+        terms, steps = recovery_terms(row)
+        formula = "R = C_found ÷ C_spiked × 100, judged rounded" if terms else "R (as exported), judged rounded"
+        if not terms:
+            terms = [term("R", "recovery reported by the instrument for the labelled standard",
+                          e.get("measured", e.get("value")), "%", src_row(row, "pct_recovery_is"))]
+        if e.get("dilution"):
+            # a diluted field sample's recovery, taken as the method chose
+            terms.append(term("DR", "a dilution's recovery: its own, corrected for its fold" if e.get("fold")
+                              else "a dilution's recovery: its own, as measured", e.get("dilution"), "",
+                              {"profile_key": "dilution_recovery"}))
+            if e.get("fold"):
+                terms.append(term("DF", "the dilution's fold (the extraction record)", e.get("fold"), "",
+                                  src_extraction("dilutions[%s]" % inj)))
+                steps = list(steps) + [{"label": "corrected for the dilution's fold", "expression": "R × DF",
+                                        "value": e.get("value")}]
         if e.get("window_min") is not None:
             terms.append(term("W", "the method's surrogate window%s" % (" (guidance)" if e.get("guidance") else ""),
                               "%s–%s %%" % (e.get("window_min"), e.get("window_max")), "",
                               src_profile(method, "qc_acceptance.SUR", e.get("std_role") or "")))
-        record(batch, "SUR", inj, comp, e.get("value"), "R (as exported), judged rounded", terms, "%",
-               e.get("status") or "", rule={"judged": e.get("judged"), "guidance": bool(e.get("guidance"))})
+        record(batch, "SUR", inj, comp, e.get("value"), formula, terms, "%",
+               e.get("status") or "", steps=steps,
+               rule={"judged": e.get("judged"), "guidance": bool(e.get("guidance"))})
 
     spikes = getattr(batch, "spikes", None) or {}
     for res in getattr(batch, "lfsm_results", None) or []:
@@ -354,18 +553,25 @@ def record_summary(batch, profile=None):
                               else "concentration the instrument reported", raw,
                               getattr(src, "conc_units", "") if src is not None else "", src_row(src, "calc_conc")))
             steps.append({"label": "as calculated" if raw_t else "as imported", "expression": "c₀", "value": raw})
+        value = raw
         if src is not None and getattr(src, "salt_factor", None):
             terms.append(term("f_salt", "salt (counter-ion) factor", src.salt_factor, "",
                               src_profile(method, "salt_factors.%s" % s.analyte)))
-            steps.append({"label": "salt correction", "expression": "c₀ × f_salt",
-                          "value": (raw or 0) * src.salt_factor if raw is not None else None})
+            value = value * src.salt_factor if value is not None else None
+            steps.append({"label": "salt correction", "expression": "c₀ × f_salt", "value": value})
         elif src is not None and getattr(src, "salt_basis", None) == "acid":
             terms.append(term("f_salt", "salt factor not applied: the calibration standards are stated as acid",
                               None, "", src_profile(method, "salt_factors.%s" % s.analyte)))
         if src is not None and getattr(src, "matrix_factor", None):
             terms.append(term("f_m", "matrix / per-sample factor (sample amount and final volume)", src.matrix_factor,
                               "", src_extraction("samples[%s]" % s.sample_injection)))
+            value = value * src.matrix_factor if value is not None else None
             steps.append({"label": "to the sample basis", "expression": "× f_m", "value": conc})
+        if src is not None:
+            # how it was quantified: the method's linked response ratio
+            lrr_t, lrr_s = linked_terms(src)
+            terms.extend(lrr_t)
+            steps.extend(lrr_s)
         if s.neat_result is not None or s.dilution_factor:
             terms.append(term("d", "dilution fold (the extraction record)", s.dilution_factor, "",
                               src_extraction("dilutions[%s]" % (s.source_injection or ""))))
@@ -407,6 +613,44 @@ def record_file(batch, file_name, import_profile):
     return record(batch, "RUN", file_name or "", "", None, "", [], rule={
         "layout": p.get("name") or "", "map": dict(p.get("map") or {}),
         "reader": dict(p.get("reader") or {})})
+
+
+def identity_step(c):
+    """The step a corrected injection's every record carries: what it was
+    judged as, what the reviewer corrected it to, who, when and why."""
+    return {"label": "identity corrected at review from %s to %s by %s at %s: %s" % (
+                c.get("from") or "?", c.get("to") or c.get("role") or "?", c.get("by") or "?",
+                c.get("at") or "?", c.get("reason") or ""),
+            "expression": "role", "value": None}
+
+
+def record_identity(batch, applied):
+    """For each injection a reviewer corrected the identity of ({injection:
+    the correction as the run applied it}): one record of kind ID (key
+    "ID|<injection>|", the correction's id as its text, the correction as
+    its rule; what Data Review reads to know the run was judged with it),
+    and its step first on every other record of that injection."""
+    for inj, c in sorted((applied or {}).items()):
+        step = identity_step(c)
+        for rec in getattr(batch, "provenance", None) or []:
+            name = rec.get("injection") or ""
+            if rec.get("kind") != "ID" and (name == inj or name.startswith(inj + "|")):
+                rec["steps"] = [step] + [s for s in rec.get("steps") or [] if s != step]
+        record(batch, "ID", inj, "", None, "role", [], verdict="corrected",
+               steps=[step], value_text=c.get("id") or "",
+               rule=dict((k, c.get(k) or "") for k in ("id", "from", "to", "role", "level", "by",
+                                                        "at", "reason")))
+    return getattr(batch, "provenance", None) or []
+
+
+def record_amendments(batch, ids):
+    """For each extraction correction the run was judged with (its id,
+    "EA-n", extraction_amendments): one record of kind EA (key
+    "EA|<id>|"), what Data Review reads to know the stored run applied it
+    and release need not wait for it."""
+    for i in sorted(set(ids or ())):
+        record(batch, "EA", i, "", None, "extraction record", [], verdict="applied", value_text=i)
+    return getattr(batch, "provenance", None) or []
 
 
 # ── persistence ──────────────────────────────────────────────────────────────

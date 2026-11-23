@@ -14,9 +14,6 @@
     .main { padding: 18px; min-width: 0; }
 
     /* the filter bar is the shared component (pfas-components.css) */
-    .date-range { display: flex; gap: 6px; align-items: center; }
-    .date-range input[type=date] { width: 148px; min-width: 0; }
-    .date-range span { font-size: var(--fs-xs); color: var(--s-secondary); }
     .limit-input { width: 80px; min-width: 0; }
     .pfas-filterbar .pfas-select, .pfas-filterbar .pfas-input { min-width: 140px; }
 
@@ -84,8 +81,7 @@
 
     @media (max-width: 768px) {
       .main { padding: 10px 12px; }
-      .pfas-field { flex: 1 1 100%; }
-      .date-range input[type=date] { width: 100%; }
+      .pfas-form-field { flex: 1 1 100%; }
       .chart-container { height: 220px; }
       .stats-bar { gap: 8px; }
       .stat-box { min-width: 70px; padding: 6px 10px; }
@@ -109,19 +105,15 @@
   <form class="pfas-filterbar" method="GET" action="" id="filterForm"
         tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
 
-    <div class="pfas-field">
-      <label for="method">Method</label>
-      <select id="method" name="method" class="pfas-select" onchange="this.form.submit()">
-        <option value="">&#8212; all methods &#8212;</option>
-        <tal:methods tal:repeat="m view/methods">
-          <option tal:attributes="value m;
-                                  selected python:m == view.selected_method()"
-                  tal:content="m">FDA_32PFAS</option>
-        </tal:methods>
-      </select>
+    <div class="pfas-form-field"
+         tal:define="mc_choices python:[{'value': u'', 'label': u'All methods'}] + [{'value': m, 'label': view.method_name(m)} for m in view.methods()];
+                     mc_value python:view.selected_method() or u''; mc_label string:Method; mc_id string:method; mc_name string:method;
+                     mc_submit python:True">
+      <span>Method</span>
+      <metal:m use-macro="context/@@pfas-macros/macros/method-choice" />
     </div>
 
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <label for="qc_type">QC type</label>
       <select id="qc_type" name="qc_type" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all QC types &#8212;</option>
@@ -130,15 +122,17 @@
                                   selected python:qt == view.selected_qc_type()"
                   tal:content="python:view.qc_type_label(qt)">CCV</option>
         </tal:types>
+        <option value="ASYM" tal:attributes="selected python:view.asymmetry_mode() or None"
+                tal:content="view/asymmetry_label">Peak asymmetry</option>
       </select>
     </div>
 
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <label>Analytes</label>
       <details class="pick-list" tal:define="picked view/selected_analytes">
         <summary><span class="pick-list-text"
                  tal:content="python:(u', '.join(picked[:3]) + (u' +%d' % (len(picked) - 3) if len(picked) > 3 else u'')) or u'Choose'">PFOA</span><span
-                 class="pick-list-caret" aria-hidden="true">&#9662;</span></summary>
+                 class="pick-list-caret" aria-hidden="true"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('expand', hidden=True)" /></span></summary>
         <div class="pick-list-items">
           <label tal:repeat="a python:view.analytes(view.selected_qc_type())" class="pfas-switch">
             <input type="checkbox" value="1"
@@ -148,7 +142,7 @@
       </details>
     </div>
 
-    <div class="pfas-field">
+    <div class="pfas-form-field" tal:condition="not:view/asymmetry_mode">
       <label for="qc_level">QC level</label>
       <select id="qc_level" name="qc_level" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all levels &#8212;</option>
@@ -162,7 +156,7 @@
 
     <!-- the mode switches: one segmented control each (the value posts
          through its hidden input; without script the Apply button below) -->
-    <div class="pfas-field" tal:define="ct view/selected_chart_type_override">
+    <div class="pfas-form-field" tal:condition="not:view/asymmetry_mode" tal:define="ct view/selected_chart_type_override">
       <span>Chart</span>
       <input type="hidden" name="chart_type_override" tal:attributes="value ct" />
       <div class="pfas-seg pfas-seg-sm" data-name="chart_type_override" aria-label="Chart type">
@@ -175,7 +169,7 @@
       </div>
     </div>
 
-    <div class="pfas-field" tal:define="vm view/selected_view_mode">
+    <div class="pfas-form-field" tal:condition="not:view/asymmetry_mode" tal:define="vm view/selected_view_mode">
       <span>Rules</span>
       <input type="hidden" name="view_mode" tal:attributes="value vm" />
       <div class="pfas-seg pfas-seg-sm" data-name="view_mode" aria-label="Rules">
@@ -186,7 +180,7 @@
       </div>
     </div>
 
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <label for="analyst">Analyst</label>
       <select id="analyst" name="analyst" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all analysts &#8212;</option>
@@ -198,7 +192,7 @@
       </select>
     </div>
 
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <label for="instrument_id">Instrument</label>
       <select id="instrument_id" name="instrument_id" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all instruments &#8212;</option>
@@ -212,23 +206,18 @@
 
 
     <!-- Date range — bounded to the dates the database actually holds -->
-    <div class="pfas-field" tal:define="bounds view/date_bounds">
-      <span>Date range</span>
-      <div class="date-range">
-        <input type="date" name="date_from" class="pfas-input" onchange="this.form.submit()"
-               tal:attributes="value view/selected_date_from;
-                               min bounds/min; max bounds/max;
-                               title string:Earliest in database: ${bounds/min}" />
-        <span>&#8594;</span>
-        <input type="date" name="date_to" class="pfas-input" onchange="this.form.submit()"
-               tal:attributes="value view/selected_date_to;
-                               min bounds/min; max bounds/max;
-                               title string:Latest in database: ${bounds/max}" />
-      </div>
+    <div class="pfas-form-field" role="group" aria-labelledby="cc-range" tal:define="bounds view/date_bounds">
+      <span id="cc-range">Date range</span>
+      <tal:r define="dr_id string:cc; dr_from_name string:date_from; dr_to_name string:date_to;
+                     dr_from view/selected_date_from; dr_to view/selected_date_to;
+                     dr_min bounds/min; dr_max bounds/max; dr_submit python:True;
+                     dr_from_title string:Earliest in database: ${bounds/min};
+                     dr_to_title string:Latest in database: ${bounds/max}">
+        <metal:r use-macro="context/@@pfas-macros/macros/date_range" /></tal:r>
     </div>
 
-    <div class="pfas-field">
-      <label for="limit">Last runs</label>
+    <div class="pfas-form-field">
+      <label for="limit">Runs shown</label>
       <input class="pfas-input limit-input" type="number" id="limit" name="limit"
              min="5" max="300" onchange="this.form.submit()"
              tal:attributes="value view/selected_limit"
@@ -275,7 +264,7 @@
           <div class="no-data">
             <strong>No QC database found</strong>
             Expected at <code tal:content="view/db_path">/data/qc/pfas_qc_results.db</code>.
-            Run the batch pipeline to populate results.
+            Process a run to populate results.
           </div>
         </div>
       </tal:nodbwarn>
@@ -293,7 +282,7 @@
         <div class="history-banner" tal:condition="python:data.get('demo_points')">
           <strong>Example data.</strong>
           <span tal:replace="python:'%d of these %d points are' % (data['demo_points'], data['n_points'])">25 of these points are</span>
-          generated example runs (batches DEMO-CC-&#8230;), not laboratory results.
+          generated example runs (worksheets DEMO-CC-&#8230;), not laboratory results.
           Remove them with <code>tools/demo_control_charts.py --remove</code>.
         </div>
 
@@ -317,11 +306,12 @@
           </div>
 
           <!-- tinted only for a flag; a threshold chart counts what is above
-               its threshold; nothing judged (too few points, no threshold)
-               says so -->
+               its threshold, a chart with nothing to review (peak asymmetry)
+               its marked points; nothing judged (too few points, no
+               threshold) says so -->
           <div class="stat-box"
                tal:define="thr python:data.get('chart_type') == 'threshold';
-                           n python:data['point_severity'].count('reject') if thr else len(violations);
+                           n python:data['point_severity'].count('reject') if thr else (len(violations) or len([s for s in data['point_severity'] if s]));
                            judged python:not data.get('too_few_points') and not (thr and data.get('threshold') is None)"
                tal:attributes="class python:'stat-box rej' if n and (thr or data.get('has_rejects')) else ('stat-box warn' if n else 'stat-box')">
             <div class="stat-label" tal:content="python:'Above threshold' if thr else 'Warnings'">Warnings</div>
@@ -342,76 +332,99 @@
             <span class="btn-sm btn-secondary viol-show">Show</span>
           </summary>
           <p class="cc-hint" tal:condition="can">Dismiss a warning, or remove the point from the mean and SD. Both need a reason and can be undone.</p>
-          <table class="vt" data-col-resize="controlchart-vt">
-            <thead><tr><th>Rule</th><th>Warning</th><th>Date</th><th>Batch</th><th>Value</th>
-              <th tal:condition="can">Action</th></tr></thead>
+          <table class="vt" data-col-resize="controlchart-vt" tal:define="rm context/@@pfas-row-menu">
+            <thead><tr><th>Rule</th><th>Warning</th><th>Date</th><th>Worksheet</th><th>Value</th></tr></thead>
             <tbody>
-              <tr tal:repeat="v violations">
+              <tr tal:repeat="v violations"
+                  tal:attributes="data-row-actions python:rm.actions(
+                                      (u'Dismiss or remove the point', 'modal', u'cc-act-%d' % repeat['v'].index) if can else None)">
                 <td><span tal:attributes="class python:'badge badge-rej' if v['severity']=='reject' else 'badge badge-warn'"
                           tal:content="v/rule">2SD</span></td>
                 <td tal:content="v/message">Beyond 2 SD</td>
                 <td tal:content="v/date">2026-10-01</td>
                 <td tal:content="v/batch_id">B-1</td>
                 <td tal:content="v/value">1.0</td>
-                <td tal:condition="can">
-                  <form method="POST" class="cc-act" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
-                    <input type="hidden" name="came_from" tal:attributes="value here_url" />
-                    <input type="hidden" name="result_id" tal:attributes="value v/point_id" />
-                    <input type="hidden" name="rule" tal:attributes="value v/rule" />
-                    <input type="text" name="reason" required="required" placeholder="Reason" />
-                    <button type="submit" name="chart_action" value="dismiss" class="btn-sm btn-secondary">Dismiss</button>
-                    <button type="submit" name="chart_action" value="remove" class="btn-sm btn-secondary">Remove point</button>
-                  </form>
-                </td>
               </tr>
             </tbody>
           </table>
         </details>
+        <!-- a warning's Dismiss or Remove point: a reason, then either -->
+        <tal:d tal:condition="python:can and violations and not view.is_stacked()">
+        <div class="pfas-modal" tal:repeat="v violations" tal:attributes="id string:cc-act-${repeat/v/index}">
+          <div class="pfas-modal-box is-narrow">
+            <h2 tal:content="python:u'%s \u00b7 %s' % (v['rule'], v['date'])">2SD &#183; 2026-10-01</h2>
+            <div class="pfas-meta-row"><span class="pfas-muted">Warning</span> <strong tal:content="v/message">Beyond 2 SD</strong></div>
+            <div class="pfas-meta-row"><span class="pfas-muted">Worksheet</span> <strong tal:content="v/batch_id">B-1</strong></div>
+            <div class="pfas-meta-row"><span class="pfas-muted">Value</span> <strong tal:content="v/value">1.0</strong></div>
+            <form method="POST" class="cc-act" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
+              <input type="hidden" name="came_from" tal:attributes="value here_url" />
+              <input type="hidden" name="result_id" tal:attributes="value v/point_id" />
+              <input type="hidden" name="rule" tal:attributes="value v/rule" />
+              <div class="pfas-form-field is-full">
+                <label tal:attributes="for string:cc-act-reason-${repeat/v/index}">Reason</label>
+                <input type="text" name="reason" required="required" class="pfas-input"
+                       tal:attributes="id string:cc-act-reason-${repeat/v/index}" />
+              </div>
+              <div class="form-actions is-end">
+                <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                <button type="submit" name="chart_action" value="dismiss" class="btn btn-primary">Dismiss</button>
+                <button type="submit" name="chart_action" value="remove" class="btn btn-secondary">Remove point</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        </tal:d>
 
         <div class="viol-card" tal:condition="python:data.get('dismissed') and not view.is_stacked()">
           <h3>Dismissed warnings</h3>
-          <table class="vt" data-col-resize="controlchart-vt-1">
-            <thead><tr><th>Rule</th><th>Date</th><th>Batch</th><th>Value</th><th>Reason</th><th>By</th><th>When</th>
-              <th tal:condition="can"></th></tr></thead>
+          <table class="vt" data-col-resize="controlchart-vt-1" tal:define="rm context/@@pfas-row-menu">
+            <thead><tr><th>Rule</th><th>Date</th><th>Worksheet</th><th>Value</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
             <tbody>
-              <tr tal:repeat="v data/dismissed">
+              <tr tal:repeat="v data/dismissed"
+                  tal:attributes="data-row-actions python:rm.actions(
+                                      (u'Undo the dismissal', 'form', u'cc-undismiss-%d' % repeat['v'].index) if can else None)">
                 <td tal:content="v/rule">2SD</td><td tal:content="v/date">d</td>
                 <td tal:content="v/batch_id">b</td><td tal:content="v/value">v</td>
                 <td tal:content="v/note/reason">reason</td><td tal:content="v/note/by_user">who</td>
                 <td tal:content="python:view.lab_at(v['note'].get('at'), v['note'].get('at'))">when</td>
-                <td tal:condition="can">
-                  <form method="POST" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
-                    <input type="hidden" name="came_from" tal:attributes="value here_url" />
-                    <input type="hidden" name="result_id" tal:attributes="value v/point_id" />
-                    <input type="hidden" name="rule" tal:attributes="value v/rule" />
-                    <button type="submit" name="chart_action" value="undismiss" class="btn-sm btn-secondary">Undo</button>
-                  </form>
-                </td>
               </tr>
             </tbody>
           </table>
+          <!-- each row's Undo, sent from its menu -->
+          <tal:f tal:condition="can" tal:repeat="v data/dismissed">
+          <form method="POST" hidden="hidden" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart;
+                                                              id string:cc-undismiss-${repeat/v/index}">
+            <input type="hidden" name="came_from" tal:attributes="value here_url" />
+            <input type="hidden" name="result_id" tal:attributes="value v/point_id" />
+            <input type="hidden" name="rule" tal:attributes="value v/rule" />
+            <button type="submit" name="chart_action" value="undismiss" class="btn-sm btn-secondary">Undo</button>
+          </form>
+          </tal:f>
         </div>
 
         <div class="viol-card" tal:condition="python:data.get('removed') and not view.is_stacked()">
           <h3>Removed points (not on the chart, not in the mean / SD)</h3>
-          <table class="vt" data-col-resize="controlchart-vt-2">
-            <thead><tr><th>Date</th><th>Batch</th><th>Value</th><th>Reason</th><th>By</th><th>When</th>
-              <th tal:condition="can"></th></tr></thead>
+          <table class="vt" data-col-resize="controlchart-vt-2" tal:define="rm context/@@pfas-row-menu">
+            <thead><tr><th>Date</th><th>Worksheet</th><th>Value</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
             <tbody>
-              <tr tal:repeat="p data/removed">
+              <tr tal:repeat="p data/removed"
+                  tal:attributes="data-row-actions python:rm.actions(
+                                      (u'Restore the point', 'form', u'cc-restore-%d' % repeat['p'].index) if can else None)">
                 <td tal:content="p/date">d</td><td tal:content="p/batch_id">b</td>
                 <td tal:content="p/value">v</td><td tal:content="p/note/reason">reason</td>
                 <td tal:content="p/note/by_user">who</td><td tal:content="python:view.lab_at(p['note'].get('at'), p['note'].get('at'))">when</td>
-                <td tal:condition="can">
-                  <form method="POST" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
-                    <input type="hidden" name="came_from" tal:attributes="value here_url" />
-                    <input type="hidden" name="result_id" tal:attributes="value p/id" />
-                    <button type="submit" name="chart_action" value="restore" class="btn-sm btn-secondary">Restore</button>
-                  </form>
-                </td>
               </tr>
             </tbody>
           </table>
+          <!-- each row's Restore, sent from its menu -->
+          <tal:f tal:condition="can" tal:repeat="p data/removed">
+          <form method="POST" hidden="hidden" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart;
+                                                              id string:cc-restore-${repeat/p/index}">
+            <input type="hidden" name="came_from" tal:attributes="value here_url" />
+            <input type="hidden" name="result_id" tal:attributes="value p/id" />
+            <button type="submit" name="chart_action" value="restore" class="btn-sm btn-secondary">Restore</button>
+          </form>
+          </tal:f>
           <p class="pfas-muted" tal:condition="data/removed_more"
              tal:content="python:u'and %d more' % data['removed_more']"></p>
         </div>
@@ -439,7 +452,7 @@
             <div class="chart-subtitle">
               <tal:sub tal:content="string:${data/n_points} data points"></tal:sub>
               <tal:meth tal:condition="data/method">
-                &nbsp;&bull; Method: <strong tal:replace="data/method">FDA_32PFAS</strong>
+                &nbsp;&bull; Method: <strong tal:replace="python:view.method_name(data['method'])">FDA 32-PFAS in Food</strong>
               </tal:meth>
               <tal:lev tal:condition="data/qc_level">
                 &nbsp;&bull; Level: <tal:l tal:replace="python:view.level_label(data['qc_level'])">Expected 16</tal:l>
@@ -466,6 +479,7 @@
 
           <div class="no-data" tal:condition="not:view/has_data">
             <strong>No data for this selection</strong>
+            <tal:asym tal:condition="view/asymmetry_mode">Peak asymmetry is measured on runs integrated from raw data.</tal:asym>
             <tal:noanalyte tal:condition="not:view/selected_analyte">
               Select a test (analyte) from the sidebar to view its control chart.
             </tal:noanalyte>
@@ -498,12 +512,12 @@
             <input type="hidden" name="method" tal:attributes="value view/selected_method" />
             <input type="hidden" name="qc_type" tal:attributes="value view/selected_qc_type" />
             <input type="hidden" tal:repeat="a picked" tal:attributes="name string:an.${a}" value="1" />
-            <label class="pfas-field"><span>This blank</span>
+            <label class="pfas-form-field"><span>This blank</span>
               <select name="a" class="pfas-select" onchange="this.form.submit()">
                 <option tal:repeat="r bruns" tal:content="string:${r/run_date} ${r/key}"
                         tal:attributes="value r/key; selected python:pr[0] and r['key'] == pr[0]['key']">run</option>
               </select></label>
-            <label class="pfas-field"><span>Against</span>
+            <label class="pfas-form-field"><span>Against</span>
               <select name="b" class="pfas-select" onchange="this.form.submit()">
                 <option tal:repeat="r bruns" tal:content="string:${r/run_date} ${r/key}"
                         tal:attributes="value r/key; selected python:pr[1] and r['key'] == pr[1]['key']">run</option>
@@ -516,7 +530,10 @@
         </div>
       </tal:blanks>
 
-      <div class="cc-note" tal:condition="view/db_available">
+      <div class="cc-note" tal:condition="python:view.db_available and view.asymmetry_mode()">
+        Each run's mid-level calibrator, measured at 10 % of the peak height. Tracked, not reviewed.
+      </div>
+      <div class="cc-note" tal:condition="python:view.db_available and not view.asymmetry_mode()">
         Control limits are computed from the first 20 in-control results.
         Westgard rules: <strong>1-2S</strong> warn &bull;
         <strong>1-3S / 2-2S / R-4S / 4-1S / 10X</strong> reject.
@@ -698,7 +715,7 @@
         afterBody: function (items) {
           var idx = items[0].dataIndex, lines = [];
           var g = function (k) { return (CHART_DATA[k] || [])[idx] || ''; };
-          if (g('batch_ids'))   lines.push('Batch: ' + g('batch_ids'));
+          if (g('batch_ids'))   lines.push('Worksheet: ' + g('batch_ids'));
           if (g('analysts'))    lines.push('Analyst: ' + g('analysts'));
           if (g('instruments')) lines.push('Instrument: ' + g('instruments'));
           if ((CHART_DATA.point_nd || [])[idx]) lines.push('Not detected');

@@ -19,12 +19,12 @@
    and under it who printed it and when (set per document beside this sheet);
    centre: Page x of y; right: "Issued: <date>" when the document has one */
 @page { margin: 16mm 15mm 18mm;
-        @bottom-left { width: 45%; font-family: var(--font-sans); font-size: 9px; white-space: pre;
+        @bottom-left { width: 45%; font-family: var(--font-sans); font-size: 9.5px; white-space: pre;
                        color: var(--s-secondary); vertical-align: top; padding-top: 6px; }
-        @bottom-center { font-family: var(--font-sans); font-size: 9px; font-weight: 700;
+        @bottom-center { font-family: var(--font-sans); font-size: 9.5px; font-weight: 700;
                          color: var(--s-secondary); vertical-align: top; padding-top: 6px;
                          content: "Page " counter(page) " of " counter(pages); }
-        @bottom-right { font-family: var(--font-sans); font-size: 9px;
+        @bottom-right { font-family: var(--font-sans); font-size: 9.5px;
                         color: var(--s-secondary); vertical-align: top; padding-top: 6px; } }
 
 .pd { font-family: var(--font-sans); font-size: 12px; line-height: 17px; color: var(--s-body);
@@ -69,6 +69,11 @@
 .pd-lab-sub { color: var(--s-secondary); font-size: 11px; line-height: 15px; }
 
 /* the control block: document, revision, date, who printed it */
+/* an identifier, a date or a status word never breaks inside: it moves to
+   the next line whole (print_doc sets every control value this way) */
+.pd-id, .pd-status { white-space: nowrap; }
+.pd .pd-ctl-rows { margin: 0 0 14px; }
+.pd .pd-ctl-rows table.pd-ctl { margin: 0 0 -1.5px; }
 .pd table.pd-ctl { border-collapse: separate; border-spacing: 0; margin: 0 0 14px;
                    border: 1.5px solid var(--s-body); border-radius: 6px; }
 .pd table.pd-ctl td { padding: 5px 10px; vertical-align: top; border: 0;
@@ -79,7 +84,7 @@
 .pd-ctl b { font-family: var(--font-heading); font-weight: 700; font-size: 13px; line-height: 18px; }
 
 /* flags: a label and a shape, never colour alone */
-.pd-flag { display: inline-block; border: 1.5px solid var(--s-body); border-radius: 3px; padding: 0 5px;
+.pd-flag { display: inline-block; white-space: nowrap; border: 1.5px solid var(--s-body); border-radius: 3px; padding: 0 5px;
            font-weight: 700; font-size: 10px; line-height: 15px; text-transform: uppercase;
            letter-spacing: .03em; }
 .pd-flag-ok:before { content: "\2713\00a0"; }
@@ -102,6 +107,11 @@
 .pd .sr-stamp span { margin-right: 14px; }
 .pd .sr-intro, .pd .sr-meta { margin: 3px 0; }
 .pd .sr-table th { background: var(--s-light); }
+/* a method's settings sections: a wide one prints in parts (settings_report.
+   section_parts) with columns of equal width, so none is wider than the
+   page, and a long word wraps in its cell */
+.pd .sr-fixed { table-layout: fixed; }
+.pd .sr-fixed th, .pd .sr-fixed td { word-wrap: break-word; overflow-wrap: break-word; }
 .pd .sr-how { color: var(--s-secondary); font-size: 10px; }
 .pd .sr-yes { color: var(--s-success-text); font-weight: 700; }
 .pd .sr-no { color: var(--s-danger-dk); font-weight: 700; }
@@ -110,42 +120,85 @@
 .pd .pd-note { font-size: 10px; color: var(--s-secondary); margin-top: 12px; }
 
 /* ---- the certificate (senaite.impress, drawn by WeasyPrint) ---------------
-   The sections keep impress's own row classes so its paginator places them. */
+   The sections keep impress's own row classes so its paginator places them.
+   Banded: small mint section labels, the two sample IDs large in a tinted
+   box, the method in a solid band over its results, a boxed key. */
 .pfas-coa { font-family: var(--font-sans); font-size: 10px; color: var(--s-body); font-feature-settings: "tnum"; }
-.pfas-coa-lab { display: flex; align-items: flex-end; }
-.pfas-coa-sample { width: 100%; }
-.pfas-coa-head { width: 100%; display: flex; justify-content: space-between; align-items: flex-end;
-  border-bottom: 3px solid var(--s-primary); padding-bottom: 6px; margin-bottom: 8px; }
-.pfas-coa-head .lab { font-family: var(--font-heading); font-size: 15px; font-weight: 700; }
-.pfas-coa-head .sub { font-size: 9px; color: var(--s-secondary); margin-top: 2px; }
+.pfas-coa-sample { width: 100%; margin-bottom: 12px; page-break-inside: auto; }
+.pfas-coa-head { width: 100%; border-collapse: collapse; border-bottom: 3px solid var(--s-primary-dk);
+  margin-bottom: 4px; }
+.pfas-coa-head td { vertical-align: bottom; padding: 0 0 4px; }
+/* the logo beside the laboratory's name: a box as tall as the header block
+   down to its rule, the picture fitted into it keeping its proportions */
+.pfas-coa-head td.pfas-coa-logo { width: 150px; padding: 0 12px 0 0; background-repeat: no-repeat;
+  background-position: left center; background-size: contain; background-clip: content-box; background-origin: content-box; }
+.pfas-coa-head .lab { font-family: var(--font-heading); font-size: 16px; font-weight: 800; letter-spacing: .02em; }
+.pfas-coa-head .sub { font-size: 9px; color: var(--s-secondary); margin-top: 1px; }
 .pfas-coa-head .doc { text-align: right; }
-.pfas-coa-head .doc .t { font-family: var(--font-heading); font-size: 14px; font-weight: 800; letter-spacing: .02em; }
-.pfas-coa-head img { max-height: 42px; max-width: 160px; margin-right: 10px; }
-.pfas-coa-info { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
-.pfas-coa-info th { text-align: left; font-weight: 600; color: var(--s-secondary); width: 16%;
-  padding: 2px 6px 2px 0; white-space: nowrap; }
-.pfas-coa-info td { padding: 2px 10px 2px 0; width: 34%; }
+.pfas-coa-head .doc .t { font-family: var(--font-heading); font-size: 15px; font-weight: 800;
+  letter-spacing: .01em; color: var(--s-primary-dk); }
+.pfas-coa-head .doc .meta { font-size: 9px; color: var(--s-secondary); margin-top: 2px; }
+.pfas-coa-head .doc .meta span { margin-left: 10px; white-space: nowrap; }
+.pfas-coa-head .doc .meta strong { color: var(--s-body); }
+.pfas-coa-head img { max-height: 42px; max-width: 160px; display: block; }
+/* a section label, and the results' own sub-table captions */
+.pfas-coa-sec,
+.pfas-coa-res caption { caption-side: top; text-align: left; font-size: 8.5px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--s-primary-dk); margin: 12px 0 5px; padding: 0; }
+.pfas-coa-res caption { padding: 10px 0 5px; }
+.pfas-coa .k { font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--s-secondary); }
+/* the two sample IDs, large, in a tinted box joined to the facts under it */
+.pfas-coa-ids { width: 100%; border-collapse: collapse; border: 1px solid var(--s-input-border); }
+.pfas-coa-ids td { width: 50%; padding: 6px 10px; background: var(--s-primary-lt); vertical-align: top; }
+.pfas-coa-ids td + td { border-left: 1px solid var(--s-input-border); }
+.pfas-coa-ids .v { font-family: var(--font-heading); font-size: 15px; font-weight: 800; margin-top: 1px; }
+.pfas-coa-info { width: 100%; border-collapse: collapse; border: 1px solid var(--s-input-border); border-top: 0;
+  margin: 0 0 4px; }
+.pfas-coa-info td { width: 25%; padding: 5px 10px; vertical-align: top; border-top: 1px solid var(--s-border); }
+.pfas-coa-info .v { font-weight: 600; }
+/* the method band: a solid bar over its results table */
+.pfas-coa-band { margin: 12px 0 0; padding: 5px 8px; background: var(--s-primary-dk); color: var(--on-accent);
+  font-weight: 700; font-size: 10.5px; page-break-after: avoid; }
+.pfas-coa-band .k { color: var(--on-accent); margin-right: 6px; }
+/* a code the batch or report carries, beside the results heading */
+.pfas-coa-band .pfas-coa-batch { margin-left: 8px; font-weight: bold; }
 .pfas-coa-res { width: 100%; border-collapse: collapse; }
-.pfas-coa-res caption { caption-side: top; text-align: left; font-family: var(--font-heading);
-  font-weight: 700; font-size: 11px; padding: 4px 0; }
-.pfas-coa-res th { font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--s-secondary); border-bottom: 1.5px solid var(--s-body);
-  padding: 3px 5px; text-align: left; }
-.pfas-coa-res td { padding: 2px 5px; border-bottom: 1px solid var(--s-border); }
+.pfas-coa-res th { font-size: 8.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--s-secondary); background: var(--s-light); border-bottom: 1.5px solid var(--s-body);
+  padding: 5px 6px; text-align: left; }
+/* each row with room above and below its text, a wrapped name included */
+.pfas-coa-res td { padding: 4px 6px; line-height: 1.3; border-bottom: 1px solid var(--s-border); }
 .pfas-coa-res .num { text-align: right; white-space: nowrap; }
-.pfas-coa-res tr.det td.res { font-weight: 700; }
-.pfas-coa-qcstd { margin-top: 8px; }
+.pfas-coa-res tr.det td.res { font-weight: 800; }
+.pfas-coa-qcstd { margin-top: 4px; }
 .pfas-coa-res tr.out td.st { font-weight: 700; color: var(--s-danger-dk); }
 .pfas-coa-res tr.out td.st:before { content: "\25C6\00a0"; }
-.pfas-coa-legend { font-size: 8.5px; color: var(--s-secondary); margin-top: 4px; }
-.pfas-coa-sample { margin-bottom: 12px; page-break-inside: auto; }
+/* the key: boxed, its heading a section label, its lines in two columns */
+.pfas-coa-legend { margin-top: 8px; padding: 6px 10px; border: 1px solid var(--s-input-border);
+  background: var(--s-light); font-size: 8.5px; color: var(--s-body); page-break-inside: avoid; }
+.pfas-coa-legend .h { font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--s-primary-dk); margin-bottom: 2px; }
+.pfas-coa-legend span { display: inline-block; width: 48%; margin-right: 1%; vertical-align: top; padding: 1px 0; }
+.pfas-coa-legend span.pfas-coa-error { width: 98%; }
+.pfas-coa-note { margin-top: 4px; }
+/* the key on a page of its own (report_format coa_legend_page) */
+.pfas-coa-legend.is-page { break-before: page; page-break-before: always; break-after: page; page-break-after: always; }
 .pfas-coa-foot { font-family: var(--font-sans); font-size: 8.5px; color: var(--s-secondary); }
+/* the accreditation status on the left, the report and its template
+   revision on the right: each wraps inside its 40 %, so neither runs under
+   the page number in the centre */
+.pfas-coa-foot table.pfas-coa-foot-row { width: 100%; border-collapse: collapse; }
+.pfas-coa-foot-row td { padding: 0; vertical-align: top; }
+.pfas-coa-foot-row td.l { width: 40%; text-align: left; }
+.pfas-coa-foot-row td.c { width: 20%; }
+.pfas-coa-foot-row td.r { width: 40%; text-align: right; }
 .pfas-coa-reg { margin-top: 8px; padding: 6px 8px; border: 1px solid var(--s-input-border); page-break-inside: avoid; }
 .pfas-coa-reg .h { font-family: var(--font-heading); font-weight: 700; font-size: 11px; margin-bottom: 3px; }
 .pfas-coa-reg .finding { margin: 2px 0; }
 .pfas-coa-reg .finding.exceeds { border-left: 3px solid var(--s-danger-dk); padding-left: 5px; }
 .pfas-coa-reg .finding.exceeds:before { content: "\25C6\00a0"; color: var(--s-danger-dk); }
-.pfas-coa-reg .finding.undetermined { border-left: 3px solid var(--s-warn-text); padding-left: 5px; }
+.pfas-coa-reg .finding.undetermined { border-left: 3px dashed var(--s-warn-text); padding-left: 5px; }
 .pfas-coa-reg .finding.undetermined:before { content: "\25B2\00a0"; color: var(--s-warn-text); }
 .pfas-coa-reg .cite { color: var(--s-secondary); }
 .pfas-coa-reg .links { margin-top: 4px; }
@@ -153,25 +206,27 @@
 .pfas-coa-error { color: var(--s-danger-dk); font-weight: 700; }
 .pfas-coa-box { margin-top: 14px; padding: 8px 10px; border: 1px solid var(--s-input-border); page-break-inside: avoid; }
 .pfas-coa-box.scope { padding: 9px 11px; border: 2px solid var(--s-body); }
-.pfas-coa-box .bh { font-family: var(--font-heading); font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+.pfas-coa-box .bh { font-size: 8.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--s-primary-dk); margin-bottom: 4px; }
 .pfas-coa-box .bt { font-size: 10px; margin-bottom: 6px; }
 .pfas-coa-box table { width: 100%; font-size: 10px; border-collapse: collapse; }
-.pfas-coa-box td { vertical-align: top; padding: 3px 4px; }
+.pfas-coa-box td { vertical-align: top; padding: 4px 5px; line-height: 1.3; }
 .pfas-coa-box td.code { width: 34px; font-weight: 700; }
 .pfas-coa-box td.dot { width: 14px; }
 .pfas-coa-box .bn { font-size: 9px; color: var(--s-secondary); margin-top: 5px; }
 .pfas-coa-box .affected { color: var(--s-secondary); margin-top: 2px; }
-.pfas-coa-stamp { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--s-border);
-  font-size: 10px; color: var(--s-secondary); text-align: center; }
+.pfas-coa-stamp { font-family: var(--font-sans); margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--s-border);
+  font-size: 9px; color: var(--s-secondary); text-align: center; }
 .qc-qualifier { font-size: .8em; font-weight: 600; vertical-align: super; margin-left: .15em;
   color: var(--s-warn-text); white-space: nowrap; }
 
-/* the attestation: who prepared, verified and authorised the certificate */
-.pfas-coa-attestation { margin: 22px 0 6px; page-break-inside: avoid; }
-.pfas-coa-attestation .coa-att-title { font-family: var(--font-heading); font-size: 12px; font-weight: 700;
-  letter-spacing: .04em; text-transform: uppercase; color: var(--s-primary-dk);
-  border-bottom: 1.5px solid var(--s-body); padding-bottom: 4px; margin-bottom: 10px; }
-.pfas-coa-attestation .coa-att-id { float: right; font-family: var(--font-mono); font-weight: 600; }
+/* the attestation: who prepared, verified and authorised the certificate,
+   under a mint rule, each signer in a box of their own */
+.pfas-coa-attestation { font-family: var(--font-sans); margin: 18px 0 6px; padding-top: 7px;
+  border-top: 2px solid var(--s-primary-dk); page-break-inside: avoid; }
+.pfas-coa-attestation .coa-att-title { font-size: 8.5px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--s-primary-dk); margin-bottom: 7px; }
+.pfas-coa-attestation .coa-att-id { float: right; font-family: var(--font-mono); font-weight: 700; }
 .pfas-coa-attestation table.coa-att-tbl { width: 100%; border-collapse: collapse; }
 .pfas-coa-attestation td { padding: 8px 8px; vertical-align: top; border-bottom: 1px solid var(--s-border); }
 .pfas-coa-attestation td.role { width: 110px; font-weight: 600; color: var(--s-secondary); font-size: 11px;
@@ -179,16 +234,58 @@
 .pfas-coa-attestation .person { display: inline-block; min-width: 190px; margin: 0 22px 6px 0; vertical-align: bottom; }
 .pfas-coa-attestation .sig { max-height: 46px; max-width: 180px; display: block; margin-bottom: 2px; }
 .pfas-coa-attestation .sigline { height: 40px; border-bottom: 1px solid var(--s-body); width: 180px; margin-bottom: 2px; }
-.pfas-coa-attestation .nm { font-weight: 600; font-size: 12px; }
-.pfas-coa-attestation .jt { color: var(--s-secondary); font-size: 11px; }
-.pfas-coa-attestation .dt { color: var(--s-secondary); font-size: 11px; white-space: nowrap; }
-.pfas-coa-attestation table.coa-att-compact { width: 100%; border-collapse: collapse; }
-.pfas-coa-attestation table.coa-att-compact td { width: 33%; vertical-align: top; padding: 4px 8px 4px 0;
-  border-bottom: 0; font-size: 10px; }
-.pfas-coa-attestation table.coa-att-compact .role { font-size: 9px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .03em; color: var(--s-secondary); margin-bottom: 2px; }
-.pfas-coa-attestation .sig-sm { max-height: 26px; max-width: 120px; display: block; }
-.pfas-coa-attestation .coa-att-note { margin-top: 10px; font-size: 10px; color: var(--s-secondary); font-style: italic; }
+.pfas-coa-attestation .nm { font-weight: 700; font-size: 11px; }
+.pfas-coa-attestation .jt { color: var(--s-secondary); font-size: 10px; }
+.pfas-coa-attestation .dt { color: var(--s-secondary); font-size: 10px; white-space: nowrap; }
+.pfas-coa-attestation table.coa-att-compact { width: 100%; border-collapse: separate; border-spacing: 8px 0; }
+.pfas-coa-attestation table.coa-att-compact td { width: 33%; vertical-align: top; padding: 6px 10px;
+  border: 1px solid var(--s-input-border); font-size: 10px; }
+.pfas-coa-attestation table.coa-att-compact .role { font-size: 8px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--s-secondary); margin-bottom: 3px; }
+.pfas-coa-attestation table.coa-att-compact .nm { display: block; }
+.pfas-coa-attestation .sig-sm { max-height: 26px; max-width: 120px; display: block; margin: 2px 0; }
+.pfas-coa-attestation .coa-att-note { margin-top: 8px; font-size: 9.5px; color: var(--s-secondary); font-style: italic; }
+
+/* the black-and-white variant a client may choose (Client reporting): the
+   same layout and words in ink on paper. A band stays a solid bar, a tint
+   becomes a ruled box, a flag keeps its shape, weight and rule; no hue is
+   left. Each rule repeats its coloured selector with the variant's class. */
+.pfas-coa.pfas-coa-mono, .pfas-coa.pfas-coa-mono .k, .pfas-coa-mono .pfas-coa-sec,
+.pfas-coa-mono .pfas-coa-head .sub, .pfas-coa-mono .pfas-coa-head .doc .t,
+.pfas-coa-mono .pfas-coa-head .doc .meta, .pfas-coa-mono .pfas-coa-head .doc .meta strong,
+.pfas-coa-mono .pfas-coa-res caption, .pfas-coa-mono .pfas-coa-res th,
+.pfas-coa-mono .pfas-coa-res tr.out td.st, .pfas-coa-mono .pfas-coa-legend,
+.pfas-coa-mono .pfas-coa-legend .h, .pfas-coa-mono .pfas-coa-error,
+.pfas-coa-mono .pfas-coa-reg .finding.exceeds:before, .pfas-coa-mono .pfas-coa-reg .finding.undetermined:before,
+.pfas-coa-mono .pfas-coa-reg .cite, .pfas-coa-mono .pfas-coa-reg a, .pfas-coa-mono .qc-qualifier,
+.pfas-coa-foot.pfas-coa-mono,
+.pfas-coa-box.pfas-coa-mono .bh, .pfas-coa-box.pfas-coa-mono .bn, .pfas-coa-box.pfas-coa-mono .affected,
+.pfas-coa-stamp.pfas-coa-mono,
+.pfas-coa-attestation.pfas-coa-mono .coa-att-title, .pfas-coa-attestation.pfas-coa-mono td.role,
+.pfas-coa-attestation.pfas-coa-mono .jt, .pfas-coa-attestation.pfas-coa-mono .dt,
+.pfas-coa-attestation.pfas-coa-mono table.coa-att-compact .role,
+.pfas-coa-attestation.pfas-coa-mono .coa-att-note { color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-head { border-bottom-color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-ids { border: 1.5px solid var(--print-ink); }
+.pfas-coa-mono .pfas-coa-ids td { background: var(--print-paper); }
+.pfas-coa-mono .pfas-coa-ids td + td { border-left-color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-info { border-color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-info td { border-top-color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-band { background: var(--print-ink); color: var(--print-paper); }
+.pfas-coa-mono .pfas-coa-band .k { color: var(--print-paper); }
+.pfas-coa-mono .pfas-coa-res th { background: var(--print-paper); border-bottom: 2px solid var(--print-ink); }
+.pfas-coa-mono .pfas-coa-res td { border-bottom: .5px solid var(--print-ink); }
+.pfas-coa-mono .pfas-coa-legend { background: var(--print-paper); border: 1.5px solid var(--print-ink); }
+.pfas-coa-mono .pfas-coa-reg { border-color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-reg .finding.exceeds,
+.pfas-coa-mono .pfas-coa-reg .finding.undetermined { border-left-color: var(--print-ink); }
+.pfas-coa-mono .pfas-coa-reg a { text-decoration: underline; }
+.pfas-coa-box.pfas-coa-mono, .pfas-coa-box.scope.pfas-coa-mono { border-color: var(--print-ink); }
+.pfas-coa-stamp.pfas-coa-mono { border-top-color: var(--print-ink); }
+.pfas-coa-attestation.pfas-coa-mono { border-top-color: var(--print-ink); }
+.pfas-coa-attestation.pfas-coa-mono td { border-bottom-color: var(--print-ink); }
+.pfas-coa-attestation.pfas-coa-mono table.coa-att-compact td { border-color: var(--print-ink); }
+.pfas-coa-attestation.pfas-coa-mono .sigline { border-bottom-color: var(--print-ink); }
 
 /* the QC review report (the reviewer's counterpart to the certificate) */
 .qcr { font-family: var(--font-sans); font-size: 11px; color: var(--s-body); font-feature-settings: "tnum"; }
@@ -197,7 +294,19 @@
   padding-bottom: 3px; border-bottom: 1.5px solid var(--s-body); text-transform: uppercase;
   letter-spacing: .04em; color: var(--s-primary-dk); }
 .qcr .lead { font-size: 11px; color: var(--s-secondary); margin: 0 0 14px; }
+/* no table is wider than the page: a long name wraps inside its cell, a
+   pivoted table prints in parts (.qcr-fixed: equal columns, the name
+   columns wider), and a heading row repeats on every page it runs onto.
+   The smallest text is 9.5px, 7 pt on paper. */
 .qcr table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.qcr thead { display: table-header-group; }
+.qcr tr { page-break-inside: avoid; }
+.qcr td, .qcr th { word-wrap: break-word; overflow-wrap: break-word; }
+.qcr table.qcr-fixed { table-layout: fixed; }
+.qcr table.qcr-fixed th { letter-spacing: 0; }
+.qcr th.qcr-first { width: 22%; }
+.qcr th.qcr-wide { width: 12%; }
+.qcr th.qcr-narrow { width: 5%; }
 .qcr th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em;
   color: var(--s-secondary); border-bottom: 1.5px solid var(--s-body); padding: 4px 6px; }
 .qcr td { padding: 3px 6px; border-bottom: 1px solid var(--s-border); vertical-align: top; }
@@ -214,5 +323,23 @@
 .qcr .note { background: var(--s-light); border-left: 3px solid var(--s-input-border);
   padding: 7px 10px; font-size: 10px; color: var(--s-secondary); margin: 6px 0 12px; }
 .qcr .sect { page-break-inside: avoid; }
-.qcr .appendix { page-break-before: always; }
-.qcr .appendix td, .qcr .appendix th { font-size: 9px; padding: 2px 4px; }
+.qcr h2 { page-break-after: avoid; }
+/* the QC summary's tables, natives and labelled standards: every QC type
+   of a kind in one table, sized to its words, so no word breaks and no
+   part repeats the analytes */
+.qcr h3 { font-family: var(--font-heading); font-size: 11px; font-weight: 700; margin: 10px 0 4px;
+  color: var(--s-body); page-break-after: avoid; }
+.qcr table.qcr-kind th { white-space: nowrap; letter-spacing: 0; }
+/* the appendices hold one row per measurement in up to thirteen columns:
+   they print on landscape pages (a named page; where the engine has none
+   they stay portrait and the cells wrap) */
+@page qcr-landscape { size: landscape; }
+.qcr .appendix { page-break-before: always; page: qcr-landscape; }
+.qcr .appendix td, .qcr .appendix th { font-size: 9.5px; padding: 2px 3px; }
+.qcr .appendix th { letter-spacing: 0; }
+
+/* a sample type's icon on a page printed from the screen (sample_type_icons.py):
+   kept, in ink, its shape carrying the group; a type a rule does not judge
+   stays pale. The PDFs draw no type icon. */
+svg.pfas-type { color: var(--print-ink); }
+svg.pfas-type.is-na { color: var(--print-ink); opacity: 0.35; }

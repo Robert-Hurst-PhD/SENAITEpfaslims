@@ -154,14 +154,15 @@ class PFASLabStaffView(ViewHelpers, BrowserView):
             holder = staff_pool.initials_holder(api.get_portal(), contact.UID(), initials) if initials else None
             if holder:
                 return u"error:Initials {0} are already used by {1}.".format(initials, holder)
-        if form.get("signs_as"):
-            sign_as = staff.sign_as_for(_text(form, "signs_as"))
-            if sign_as is None:
-                return u"error:Choose None, Preparer, Reviewer or Both."
-        else:
-            sign_as = sign_as_values or form.get("sign_as") or []
-            if not isinstance(sign_as, (list, tuple)):
-                sign_as = [sign_as]
+        # one value per switch that is on; none posted means no sign right
+        sign_as = sign_as_values or form.get("sign_as") or []
+        if not isinstance(sign_as, (list, tuple)):
+            sign_as = [sign_as]
+        sign_as = [safe_unicode(x) for x in sign_as]
+        # a value that is not one of the sign rights refuses the save
+        if [x for x in sign_as if x not in [k for k, _t in staff.SIGN_ROLES]]:
+            titles = [t for _k, t in staff.SIGN_ROLES]
+            return u"error:Choose from %s and %s." % (u", ".join(titles[:-1]), titles[-1])
         _track(userid, u"Staff settings of %s" % userid)
         if initials is not None:
             contact.getField("pfas_initials").set(contact, initials)
@@ -172,7 +173,7 @@ class PFASLabStaffView(ViewHelpers, BrowserView):
         contact.setJobTitle(_text(form, "jobtitle"))
         IAnnotations(contact)[staff.STAFF_KEY] = {
             "credentials": _text(form, "credentials"),
-            "sign_as": staff.clean_sign_as([safe_unicode(x) for x in sign_as])}
+            "sign_as": staff.clean_sign_as(sign_as)}
         contact.reindexObject()
         return u"ok:Saved %s." % contact.getFullname()
 
@@ -205,8 +206,8 @@ class PFASLabStaffView(ViewHelpers, BrowserView):
             self._badge_error = u"error:No badge for %s: %s." % (userid, exc)
             return None
         info = staff.staff_info(userid)
-        from senaite.pfas.print_settings import get_print_settings
-        lab = get_print_settings(api.get_portal()).get("lab_name") or u""
+        from senaite.pfas import lab_identity
+        lab = lab_identity.lab_name()
         self.issued = {"name": info["fullname"], "code_grouped": u" ".join(code[i:i + 4] for i in range(0, len(code), 4)),
                        "json": dt.script_json({"name": info["fullname"], "title": info["jobtitle"],
                                                "lab": lab, "code": code})}
@@ -237,9 +238,82 @@ def gated_actions():
     return out
 
 
+PIN_ACTIONS = ("set_my_pin", "remove_my_pin", "sign_with")
+PIN_PASSWORD = u"Enter your password to set a PIN."
+PIN_MISMATCH = u"The two PINs differ."
+
+
+# what the PIN form posts; each name holds "passw", so Zope's error log
+# obscures it, and each is taken off the request as it is read
+PIN_FIELDS = ("current_password", "new_pin_password", "new_pin_password_again")
+
+
+def _taken(form, other, key):
+    value = form.pop(key, None)
+    if isinstance(other, dict):
+        other.pop(key, None)
+    return safe_unicode(value or u"")
+
+
+def pin_action(action, userid, form, other=None):
+    """A person's own signing PIN (esig.credentials): set or change it with
+    their password, remove it, or choose which one signing asks for. A
+    wrong password counts as a failed signing attempt. Returns the page's
+    "ok:..." or "error:..." message; no PIN or password is ever logged."""
+    from senaite.pfas.esig import credentials as cr
+    from senaite.pfas.esig import signing
+    at = signing.stamp()
+    if action == "remove_my_pin":
+        cr.remove_pin(userid, at)
+        return u"ok:Your PIN is removed: signing asks for your password."
+    if action == "sign_with":
+        use_pin = form.get("sign_with_pin") in ("on", "1", "true")
+        got = cr.set_default(userid, use_pin, at)
+        return u"ok:Signing asks for your %s." % signing.CREDENTIAL_WORDS[got]
+    password, pin, again = (_taken(form, other, k) for k in PIN_FIELDS)
+    rules = signing.rules()
+    wait = cr.locked(userid, signing._now(), rules=rules)
+    if wait:
+        return u"error:" + signing.LOCKED % max(1, (wait + 59) // 60)
+    if not password:
+        return u"error:" + PIN_PASSWORD
+    if not signing._check_password(userid, password):
+        cr.failure(userid, cr.PASSWORD, signing._now(), at, rules=rules)
+        return u"error:" + signing.WRONG_SECRET % u"password"
+    if pin != again:
+        return u"error:" + PIN_MISMATCH
+    try:
+        cr.set_pin(userid, pin, at, rules=rules)
+    except ValueError as exc:
+        return u"error:%s" % exc
+    cr.clear(userid)
+    return u"ok:Your PIN is set. Signing asks for your %s." % signing.CREDENTIAL_WORDS[cr.method(userid)]
+
+
+def signing_summary(info):
+    """The profile's one line on what signing asks for: the PIN after a
+    badge sign-in (none set: set one), an expired credential, else the
+    person's default."""
+    word = u"PIN" if info.get("method") == "pin" else u"password"
+    if info.get("badge") and not info.get("has_pin"):
+        return u"You signed in with your badge: set a PIN to sign."
+    if info.get("expired"):
+        return (u"Your PIN has expired: set a new one to sign." if word == u"PIN"
+                else u"Your password has expired: change it to sign.")
+    if info.get("badge"):
+        return u"You signed in with your badge: every signature asks for your PIN."
+    return u"Every signature asks for your %s." % word
+
+
 class PFASMyProfileView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/my_profile.pt")
+
+    @staticmethod
+    def sign_titles(keys):
+        """The sign rights held, by their titles (staff.SIGN_ROLES)."""
+        titles = dict(staff.SIGN_ROLES)
+        return [titles.get(k, k) for k in keys or []]
 
     def __call__(self):
         flatten_form(self.request)
@@ -255,7 +329,15 @@ class PFASMyProfileView(ViewHelpers, BrowserView):
                 return refuse(req)
             msg = u"error:Unknown action."
             contact = staff.contact_for(userid)
-            if action == "set_avatar":
+            if action in PIN_ACTIONS:
+                # what signing asks for needs no Lab Contact; a store that
+                # cannot be read refuses
+                try:
+                    msg = pin_action(action, userid, req.form, getattr(req, "other", None))
+                except Exception:                           # noqa: BLE001
+                    logger.error("signing PIN of %s not changed", userid, exc_info=True)
+                    msg = u"error:Your PIN could not be changed."
+            elif action == "set_avatar":
                 # the sign-in tile's picture: needs no Lab Contact
                 from senaite.pfas import avatars
                 try:
@@ -325,6 +407,29 @@ class PFASMyProfileView(ViewHelpers, BrowserView):
         for page, action, tier in gated_actions():
             pages.setdefault(page, []).append((action, tiers.get(tier, False)))
         return sorted(pages.items())
+
+    def signing(self):
+        """{"method": "password" | "pin", "has_pin", "badge", "expired",
+        "pin_rule"}: what signing asks this person for in this session (the
+        PIN after a badge sign-in), whether that has expired, and the PIN
+        rule in force."""
+        from senaite.pfas.esig import credentials as cr
+        from senaite.pfas.esig import signing as sg
+        userid = self.userid()
+        try:
+            rules = sg.rules()
+            kind = sg.credential_kind(self.request, userid)
+            expired = (cr.pin_expired(userid, sg.utcnow(), rules) if kind == cr.PIN
+                       else sg.password_expired(userid, rules))
+            out = {"method": kind, "has_pin": cr.has_pin(userid),
+                   "badge": sg._badge_session(self.request, userid),
+                   "expired": expired, "pin_rule": cr.pin_format(rules)}
+        except Exception:                                   # noqa: BLE001
+            logger.warning("signing credentials not readable", exc_info=True)
+            out = {"method": cr.PASSWORD, "has_pin": False, "badge": False, "expired": False,
+                   "pin_rule": cr.PIN_FORMAT}
+        out["summary"] = signing_summary(out)
+        return out
 
     def badge(self):
         try:

@@ -127,7 +127,8 @@ def _expiry(field):
 
 
 def _raw_share(field):
-    """The raw-data share (System): unset until entered, no seed."""
+    """The raw-data share (System): unset until entered, no seed; the
+    deletion switch is off until turned on."""
     def _hook(portal, setting):
         try:
             from senaite.pfas import raw_share
@@ -135,8 +136,43 @@ def _raw_share(field):
         except Exception as exc:                            # noqa: BLE001
             logger.warning("settings hook for %s: %s", setting.key, exc)
             return {"value": None, "seed": None, "source": "unknown"}
-        return {"value": value, "seed": None, "source": "override" if value is not None else "unset",
+        given = value not in (None, False)
+        return {"value": value, "seed": None, "source": "override" if given else "unset",
+                "customised": given}
+
+    return _hook
+
+
+def _coc_limits(field, seed=None):
+    """The client CoC limits (System): unset until entered, or `seed` where
+    the setting has a default."""
+    def _hook(portal, setting):
+        try:
+            from senaite.pfas import coc_limits
+            value = coc_limits.load(portal).get(field)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("settings hook for %s: %s", setting.key, exc)
+            return {"value": None, "seed": seed, "source": "unknown"}
+        if value is None and seed is not None:
+            return {"value": seed, "seed": seed, "source": "seed", "customised": False}
+        return {"value": value, "seed": seed, "source": "override" if value is not None else "unset",
                 "customised": value is not None}
+
+    return _hook
+
+
+def _signing_rules(field):
+    """The signing rules (System): seeded, the expiry unset (never)."""
+    def _hook(portal, setting):
+        from senaite.pfas import signing_rules
+        seed = signing_rules.SEEDS.get(field)
+        try:
+            value = signing_rules.load(portal).get(field)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("settings hook for %s: %s", setting.key, exc)
+            return {"value": None, "seed": seed, "source": "unknown"}
+        return {"value": value, "seed": seed, "source": "override" if value != seed else "seed",
+                "customised": value != seed}
 
     return _hook
 
@@ -249,6 +285,34 @@ def declare_all(portal=None):
     _link("raw.settle_minutes", u"Raw data unchanged before it is pulled",
           GROUP_THRESHOLDS, KIND_INT, _raw_share("settle_minutes"), "pfas-system",
           unit=u"minutes", tier=TIER_STRUCTURAL)
+    _link("raw.delete_reinjection_files", u"Delete archived re-injection files",
+          GROUP_THRESHOLDS, KIND_BOOL, _raw_share("delete_reinjection_files"), "pfas-system",
+          tier=TIER_STRUCTURAL)
+
+    # What a client may do with CoC records
+    _link("coc.daily_cap", u"New CoCs a client may start in a day",
+          GROUP_THRESHOLDS, KIND_INT, _coc_limits("daily_cap"), "pfas-system",
+          unit=u"CoCs")
+    _link("coc.unsubmitted_days", u"Days an unsubmitted CoC is kept",
+          GROUP_THRESHOLDS, KIND_INT, _coc_limits("unsubmitted_days"), "pfas-system",
+          unit=u"days")
+    from senaite.pfas.coc_limits import PAPER_DAYS_DEFAULT
+    _link("coc.unsubmitted_paper_days", u"Days an unsubmitted paper CoC is kept",
+          GROUP_THRESHOLDS, KIND_INT, _coc_limits("unsubmitted_paper_days", PAPER_DAYS_DEFAULT),
+          "pfas-system", unit=u"days")
+
+    # How a person signs: the PIN, the lock after wrong tries, and when a
+    # password and a PIN expire
+    _link("signing.pin_min", u"Shortest signing PIN", GROUP_THRESHOLDS, KIND_INT,
+          _signing_rules("pin_min"), "pfas-system", unit=u"digits")
+    _link("signing.pin_max", u"Longest signing PIN", GROUP_THRESHOLDS, KIND_INT,
+          _signing_rules("pin_max"), "pfas-system", unit=u"digits")
+    _link("signing.lock_tries", u"Wrong signing tries before a lock", GROUP_THRESHOLDS, KIND_INT,
+          _signing_rules("lock_tries"), "pfas-system", unit=u"tries")
+    _link("signing.lock_minutes", u"Signing tries counted over, and lock", GROUP_THRESHOLDS, KIND_INT,
+          _signing_rules("lock_minutes"), "pfas-system", unit=u"minutes")
+    _link("signing.expiry_days", u"Passwords and PINs expire after", GROUP_THRESHOLDS, KIND_INT,
+          _signing_rules("expiry_days"), "pfas-system", unit=u"days")
 
     # Balance acceptance is the balance TYPE's tolerance, % of nominal
     # (equipment_types.py), never a lab-wide value in grams.
@@ -295,7 +359,6 @@ def declare_all(portal=None):
         _link("print." + field, label, GROUP_WORDING, KIND_TEXT, _print(field),
               "pfas-laboratory")
     for field, label, kind in (
-            ("footer_text", u"Printed-document footer", KIND_TEXT),
             ("show_signoff", u"Print the QA sign-off block", KIND_BOOL),
             # the certificate's columns, non-detect print and significant
             # figures are each method's (Reporting tab, report_format.py),

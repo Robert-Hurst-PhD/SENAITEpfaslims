@@ -50,6 +50,14 @@ def _now_iso():
     return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def _names(analyte):
+    """The stored names a chart query reads for one analyte: a name, or
+    every spelling it was stored under (a list)."""
+    if isinstance(analyte, (list, tuple)):
+        return [a for a in analyte if a] or [u""]
+    return [analyte]
+
+
 # ── Store ───────────────────────────────────────────────────────────────────────
 
 # the measures an LFSMD row carries in its qc_level ("RPD <injection>")
@@ -271,6 +279,28 @@ class QCResultStore(object):
                      "VALUES (?,?,?,?,?,?)",
                      (_now_iso(), by_user or u"", kind, u"%s" % ref, action, json.dumps(detail, sort_keys=True)))
 
+    # a run rejected at review as invalid: its batch status, and the QC
+    # statuses it voids (every row a gate, chart or comparison reads)
+    VOIDED_RUN = "failed"
+    VOIDABLE = ("active", "unevaluated", "cleared", "flagged_reanalysis")
+
+    def void_run(self, batch_id, by_user, reason):
+        """A run rejected as invalid leaves the control charts, the
+        Calibration Archive and the blank comparisons: its QC rows are voided
+        and the run is marked failed ("all results voided"). The act is
+        logged; nothing is deleted. Returns the rows voided."""
+        with self._connect() as conn:
+            n = conn.execute(
+                "UPDATE qc_results SET result_status='voided' WHERE batch_id=? AND result_status IN (%s)"
+                % ",".join("?" * len(self.VOIDABLE)), (batch_id,) + self.VOIDABLE).rowcount
+            conn.execute("UPDATE batches SET status=?, notes=?, updated_at=? WHERE batch_id=?",
+                         (self.VOIDED_RUN, u"voided: %s" % (reason or u""), _now_iso(), batch_id))
+            self._log(conn, "run", batch_id, "voided", by_user, {"reason": reason or u"", "rows": n})
+        return n
+
+    # the calibration archive's runs leave out a voided run's curves
+    NOT_VOIDED = " AND batch_id NOT IN (SELECT batch_id FROM batches WHERE status='failed')"
+
     def review_log(self, kind, ref):
         """[{at, by_user, action, detail}] of one record's review acts, oldest first."""
         with self._connect() as conn:
@@ -362,10 +392,12 @@ class QCResultStore(object):
         else:
             status_clause = "result_status='active'"
 
+        names = _names(analyte)
         sql = ("FROM qc_results r "
                "LEFT JOIN batches b ON r.batch_id = b.batch_id "
-               "WHERE r.analyte=? AND r.qc_type=? AND " + status_clause)
-        params = [analyte, qc_type]
+               "WHERE r.analyte IN (%s) AND r.qc_type=? AND " % ",".join("?" * len(names))
+               + status_clause)
+        params = names + [qc_type]
 
         if not include_test:
             # control charts show real runs only: no TEST_DATA* flags, no
@@ -460,8 +492,9 @@ class QCResultStore(object):
                "WHERE result_status='active' AND qc_type=?")
         params = [qc_type]
         if analyte:
-            sql += " AND analyte=?"
-            params.append(analyte)
+            names = _names(analyte)
+            sql += " AND analyte IN (%s)" % ",".join("?" * len(names))
+            params.extend(names)
         if method:
             sql += " AND method=?"
             params.append(method)
@@ -502,7 +535,7 @@ class QCResultStore(object):
         Synthetic/seeded batches are always excluded (same policy as
         get_chart_data) so the calibration pane reflects real runs only."""
         sql = ("SELECT * FROM calibrations WHERE 1=1"
-               " AND batch_id NOT LIKE 'SYNTHETIC_%'")
+               " AND batch_id NOT LIKE 'SYNTHETIC_%'" + self.NOT_VOIDED)
         params = []
         if analyte:
             sql += " AND analyte=?"
@@ -519,9 +552,10 @@ class QCResultStore(object):
     def calibration_archive_runs(self, method=None, analyte=None, limit=30):
         """The calibration runs on record, newest first: one per worksheet
         that RAN a curve set ({run_date, batch_id, method, n}); a worksheet
-        that only re-used a curve is not a run of its own."""
+        that only re-used a curve is not a run of its own, and a voided run
+        (void_run) is not listed."""
         sql = ("SELECT run_date, batch_id, method, COUNT(*) AS n, MAX(id) AS last_id "
-               "FROM calibrations WHERE batch_id NOT LIKE 'SYNTHETIC_%'")
+               "FROM calibrations WHERE batch_id NOT LIKE 'SYNTHETIC_%'" + self.NOT_VOIDED)
         params = []
         if method:
             sql += " AND method=?"
@@ -546,8 +580,9 @@ class QCResultStore(object):
         """(methods, analytes) on record; analytes of `method` when given."""
         with self._connect() as conn:
             methods = [r[0] for r in conn.execute(
-                "SELECT DISTINCT method FROM calibrations WHERE method != '' ORDER BY method")]
-            sql, params = "SELECT DISTINCT analyte FROM calibrations WHERE analyte != ''", []
+                "SELECT DISTINCT method FROM calibrations WHERE method != ''" + self.NOT_VOIDED
+                + " ORDER BY method")]
+            sql, params = "SELECT DISTINCT analyte FROM calibrations WHERE analyte != ''" + self.NOT_VOIDED, []
             if method:
                 sql += " AND method=?"
                 params.append(method)
@@ -602,18 +637,21 @@ class QCResultStore(object):
             rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-    def import_problems(self, batch_id):
+    def import_problems(self, batch_id, refused=False):
         """The worksheet's run files the worker has not imported: retrying
         or failed, with the attempts and the last error (pfas_pipeline.
-        import_log). [] when every delivery imported."""
+        import_log). [] when every delivery imported. A delivery refused
+        for a worksheet that takes no further run is no problem of the
+        record that stands: listed only with `refused`."""
         if not batch_id:
             return []
+        skip = ("imported",) if refused else ("imported", "refused")
         with self._connect() as conn:
             try:
                 rows = conn.execute(
                     "SELECT file, status, attempts, error, updated_at FROM run_imports "
-                    "WHERE batch_id=? AND status != 'imported' ORDER BY updated_at DESC",
-                    (batch_id,)).fetchall()
+                    "WHERE batch_id=? AND status NOT IN (%s) ORDER BY updated_at DESC"
+                    % ",".join("?" * len(skip)), (batch_id,) + skip).fetchall()
             except sqlite3.Error:
                 return []
         return [dict(r) for r in rows]

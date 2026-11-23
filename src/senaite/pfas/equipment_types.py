@@ -55,6 +55,9 @@ KINDS = [
     ("eyewash", u"Eye wash station"),
     # satellite accumulation areas: registered so the Waste log lists them
     ("saa", u"SAA (waste container)"),
+    # SPE manifolds: each holds its own ports (spe_ports), offered at the
+    # extraction stage that records the port each member was loaded on
+    ("spe_manifold", u"SPE manifold"),
     ("other", u"Other"),
 ]
 KIND_KEYS = [k for k, _l in KINDS]
@@ -62,7 +65,8 @@ BALANCE_KINDS = ("balance_analytical", "balance_prep")
 # Kinds with no DAILY check: tracked by their due dates on the Equipment page,
 # not listed on the Daily Checklist.
 NOT_DAILY_KINDS = ("analytical", "pipette", "other", "saa", "thermometer", "ir_gun",
-                   "nitrogen_evaporator", "reference_thermometer", "homogeniser")
+                   "nitrogen_evaporator", "reference_thermometer", "homogeniser", "spe_manifold")
+SPE_MANIFOLD = "spe_manifold"
 FIELDS = ("kind", "cal_frequency_days", "correction_factor_required",
           "external_cert_required", "unit", "tolerance_pct", "correction_model")
 # how a corrected thermometer is corrected (temp_calibration): one factor, or a
@@ -198,6 +202,24 @@ def working_temps(raw):
             out.append(float(u"%s" % v))
         except (TypeError, ValueError):
             continue
+    return out
+
+
+def spe_ports(raw):
+    """An SPE manifold's ports, in the order the lab lists them, each once:
+    from its stored JSON list or a typed comma list ("1, 2, 3" or "A1, A2")."""
+    import json
+    vals = raw
+    if isinstance(raw, (type(u""), str)):
+        try:
+            vals = json.loads(raw)
+        except ValueError:
+            vals = raw.split(u",")
+    out = []
+    for v in vals if isinstance(vals, list) else []:
+        port = (u"%s" % v).strip() if v is not None else u""
+        if port and port.upper() not in [p.upper() for p in out]:
+            out.append(port)
     return out
 
 

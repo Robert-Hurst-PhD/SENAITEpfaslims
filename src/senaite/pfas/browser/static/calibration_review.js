@@ -104,6 +104,40 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     return 'y = '+slope.toExponential(4)+'x'+_fmtCoeff(intercept,false);
   }
 
+  /* The fitted curve as the shared equation draws it, the inline size
+     (pfas-components.js, PFAS.equation): the response from the
+     concentration, then the concentration read back, each coefficient in
+     its colour and named under the line. Without the component, the line's
+     plain text. Always shown, to the right of the curve's title. */
+  function eqCoef(v) {
+    var a = Math.abs(v);
+    if (a !== 0 && (a >= 1e6 || a < 1e-3)) return a.toExponential(3);
+    var s = String(Number(a.toPrecision(5))), parts = s.split('.');
+    if (a >= 10000) parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009');
+    return parts.join('.');
+  }
+  function curveEquation(fn, fitType, useResp) {
+    var E = window.PFAS && window.PFAS.equation;
+    if (!E) return calEsc('Fit: ' + formatEquation(fn, fitType));
+    var ft = (fitType||'').toLowerCase().replace(/\s/g,''), y = useResp ? 'RR' : 'y', f, t;
+    if (ft === 'averagerf' || ft === 'avg_rf') {
+      var rf = eqCoef(fn(1));
+      t = [{symbol: rf, label: 'mean response factor'}];
+      f = [y + ' = ' + rf + ' \u00d7 C', 'C = ' + y + ' \u00f7 ' + rf];
+    } else if (ft === 'quadratic') {
+      var q = fn.model.coef, a = eqCoef(q.c2), b = eqCoef(q.c1), c = eqCoef(q.c0);
+      t = [{symbol: a, label: 'a'}, {symbol: b, label: 'b'}, {symbol: c, label: 'c'}];
+      f = [y + ' = ' + (q.c2 < 0 ? '\u2212' : '') + a + ' \u00d7 C\u00b2 ' + (q.c1 < 0 ? '\u2212 ' : '+ ') + b +
+           ' \u00d7 C ' + (q.c0 < 0 ? '\u2212 ' : '+ ') + c];
+    } else {
+      var co = fn.model.coef, m = eqCoef(co.c1), k = eqCoef(co.c0), neg = co.c0 < 0;
+      t = [{symbol: m, label: 'slope'}, {symbol: k, label: 'intercept'}];
+      f = [y + ' = ' + (co.c1 < 0 ? '\u2212' : '') + m + ' \u00d7 C ' + (neg ? '\u2212 ' : '+ ') + k,
+           'C = (' + y + (neg ? ' + ' : ' \u2212 ') + k + ') \u00f7 ' + (co.c1 < 0 ? '\u2212' : '') + m];
+    }
+    return E.lines(f, t) + E.key(t, 'from this fit');
+  }
+
   // a concentration with the method's calibration unit (ppt: in the sample;
   // or in the extract), as the method profile states it
   function conc(cal, v) {
@@ -115,7 +149,15 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
      dialog (R5-82, R5-85): a calibrator against the fit drawn on this card
      (calibration_fit.js readout), the calibrator's own record (its imported
      line) when the page can open records, and "Open the calculation". */
-  function calEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  /* a pass or a fail as the drawn mark (icons.py through PFAS.components.icon):
+   a tick, or the failure diamond; its words are its name. Without the page's
+   icon drawings, the words alone. */
+function calMark(ok, words) {
+  var I = window.PFAS && window.PFAS.components && window.PFAS.components.icon;
+  var s = I ? I.svg(ok ? 'pass' : 'fail', {label: words}) : '';
+  return s || calEsc(words);
+}
+function calEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
   function calNum(v, d) { return v == null || !isFinite(v) ? '—' : (Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0) ? v.toExponential(3) : v.toFixed(d == null ? 3 : d)); }
   function calDialog(title, html, foot) {
     var d = window.PFAS && window.PFAS.components && window.PFAS.components.drawer;
@@ -135,7 +177,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
         ['Measured', calEsc(conc(cal, point.value != null ? parseFloat(point.value).toFixed(3) : '?'))],
         ['Response ratio', calEsc(point.response_ratio != null ? point.response_ratio.toExponential(4) : 'not recorded')],
         ['Deviation', calEsc(point.pct_dev != null ? (point.pct_dev > 0 ? '+' : '') + point.pct_dev.toFixed(2) + ' %' : '—')],
-        ['Result', point.passed ? '✓ Pass' : '✗ Fail'],
+        ['Result', calMark(point.passed, point.passed ? 'Pass' : 'Fail') + ' ' + (point.passed ? 'Pass' : 'Fail')],
         ['Run', calEsc((cal.run_date || '') + (cal.batch_id ? ' · ' + cal.batch_id : ''))]]));
       return;
     }
@@ -150,7 +192,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       ['The fit at x', calEsc(calNum(r.fit_y, 4))],
       ['Read back off the fit from y', calEsc(conc(cal, calNum(r.back)))],
       ['Deviation from the fit', calEsc(r.dev == null ? '—' : (r.dev > 0 ? '+' : '') + r.dev.toFixed(1) + ' %') +
-        (win ? ' against ±' + calEsc(win.hi) + ' % ' + (r.within ? '✓' : '✗') : ' (no window set)')]];
+        (win ? ' against ±' + calEsc(win.hi) + ' % ' + calMark(r.within, r.within ? 'Within the window' : 'Outside the window') : ' (no window set)')]];
     if (cal._useResp && point.calculated != null) {
       rows.push(['The instrument read back', calEsc(conc(cal, point.calculated.toFixed(3))) +
         (point.pct_deviation != null ? ' (' + (point.pct_deviation > 0 ? '+' : '') + point.pct_deviation.toFixed(1) + ' %)' : '')]);
@@ -230,26 +272,54 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     wins.forEach(function (w) { if (w) m = Math.max(m, Math.abs(w.lo) * 1.15, Math.abs(w.hi) * 1.15); });
     return Math.ceil(m / 10) * 10;     // a round axis end
   }
-  /* Where a curve's Weighting and Origin start: the curve's own change, else
-     the method profile (Calibration & CCV), else what the file says. "none"
-     stores a per-curve None; "" in the select is None. */
+  /* Where a curve's Fit, Weighting and Origin start: the curve's own change,
+     else the method profile (QC criteria, Calibration), else what the run's
+     row records, else Linear. "none" stores a per-curve None; "" in the
+     select is None. */
+  function startFit(cal) {
+    return cal.fit_type_override || cal.profile_fit || cal.fit_type || 'Linear';
+  }
   function startWt(cal) {
     if (cal.weight_override) return cal.weight_override === 'none' ? '' : cal.weight_override;
     if (cal.profile_weight != null) return cal.profile_weight;
     return cal.weight_type || '';
   }
-  function startOri(cal) { return cal.origin_override || cal.profile_origin || 'exclude'; }
-  function markChanged(uid, cal, wt, ori) {
+  /* an Average RF passes through the origin by definition: its origin is
+     Force, and cannot be changed */
+  var AVG_RF = 'Average RF', AVG_RF_ORIGIN = 'An average RF passes through the origin';
+  function startOri(cal) {
+    if (startFit(cal) === AVG_RF) return 'force';
+    return cal.origin_override || cal.profile_origin || 'exclude';
+  }
+  function markChanged(uid, cal, wt, ori, ft) {
     var el = document.getElementById(uid + '_chg');
     if (!el) return;
     var pw = cal.profile_weight != null ? cal.profile_weight : (cal.weight_type || '');
-    el.hidden = (wt === pw) && (ori === (cal.profile_origin || 'exclude'));
+    var pf = cal.profile_fit || cal.fit_type || 'Linear';
+    // the origin is not compared for an Average RF: it has only Force
+    var sameOri = ft === AVG_RF || ori === (cal.profile_origin || 'exclude');
+    el.hidden = (wt === pw) && sameOri && (ft === pf);
+  }
+  /* the Origin list for a fit: Force and unavailable for an Average RF */
+  function lockOrigin(uid, cal, ft) {
+    var oriEl = document.getElementById(uid + '_ori');
+    if (!oriEl) return;
+    var avg = ft === AVG_RF;
+    if (avg) oriEl.value = 'force';
+    // leaving an Average RF, the curve's own origin comes back
+    else if (oriEl.disabled) oriEl.value = cal.origin_override || cal.profile_origin || 'exclude';
+    oriEl.disabled = avg;
+    oriEl.title = avg ? AVG_RF_ORIGIN : '';
+  }
+  function refusedText(analyte) {
+    return 'The quadratic for ' + analyte + ' turns within its calibration range. '
+      + 'Choose Linear, or narrow the range at its ends.';
   }
   function relog(uid) {
     var cal = CAL_BY_UID[uid];
     if (!cal) return;
     cal._log = !!(document.getElementById(uid + '_log') || {}).checked;
-    drawPlot1(uid, cal, cal._ft || cal.fit_type_override || cal.fit_type || 'Linear',
+    drawPlot1(uid, cal, cal._ft || startFit(cal),
               cal._wt != null ? cal._wt : startWt(cal),
               cal._ori || startOri(cal));
   }
@@ -273,7 +343,19 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     }
     var xy = pts.map(function(p){return{x:p.x,y:p.y};});
     var fn = computeFn(xy, fitType, wtype, origin);
-    if (!fn) return;
+    /* a quadratic that turns within its calibration range is not drawn:
+       the card says so, as the worker refuses the run */
+    var refused = document.getElementById(uid+'_refused');
+    var why = fn ? null : PFASCalFit.refusal(xy, {type: fitType, weight: wtype, origin: origin});
+    if (refused) {
+      refused.hidden = !why;
+      refused.textContent = why ? refusedText(cal.analyte) : '';
+    }
+    if (!fn) {
+      if (_ch[uid+'c1']) { _ch[uid+'c1'].destroy(); delete _ch[uid+'c1']; }
+      cal._fn = null;
+      return;
+    }
     // what the point readout and the calculation read (showPointDetail, showCalculation)
     cal._uid = uid; cal._fn = fn; cal._useResp = useResp; cal._pts = pts;
     var r2c = computeR2(xy, fn);
@@ -290,7 +372,14 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       + (wtype ? wtype.replace('x2', 'x\u00B2') : 'unweighted')
       + ' \u00B7 R\u00B2 ' + (r2c !== null ? r2c.toFixed(4) : '\u2014');
     var eqEl = document.getElementById(uid+'_eq');
-    if (eqEl) eqEl.textContent = 'Fit: ' + formatEquation(fn, fitType);
+    var keyEl = document.getElementById(uid+'_eqkey');
+    if (eqEl) {
+      eqEl.innerHTML = curveEquation(fn, fitType, useResp);
+      /* the colour key (slope, intercept: what each coloured value is) moves
+         out of the equation to the title row's top right */
+      var kn = eqEl.querySelector('.pv-formula-key');
+      if (keyEl) { keyEl.innerHTML = ''; if (kn) keyEl.appendChild(kn); }
+    }
     // the R² and the equation open the calculation behind them
     [r2el, eqEl].forEach(function (el) {
       if (!el || el.__calc) return;
@@ -383,8 +472,11 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       canvas.parentNode.classList.add('is-empty'); canvas.parentNode.innerHTML = '<div class="plot-empty">No % deviation data</div>';
       return;
     }
-    // each calibrator by its concentration, so it ties to the curve's x axis
-    var labels = lvs.map(function(l){ return conc(cal, l.expected != null ? l.expected : '?'); });
+    /* each calibrator by its concentration, so it ties to the curve's x
+       axis; the unit is said once, in the axis title, and the labels stay
+       level: where they do not fit side by side, some are left out rather
+       than any two overlapping */
+    var labels = lvs.map(function(l){ return l.expected != null ? String(l.expected) : '?'; });
     var devs   = lvs.map(function(l){ return l.pct_deviation; });
     var wins   = lvs.map(function(l){ return calWindow(uid, l); });
     var yMax   = devRange(devs, wins);
@@ -415,7 +507,10 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
           }}}
         },
         scales:{
-          x:{ticks:{font:{size:10}}, grid:{display:false}, offset:true},
+          x:{title:{display:true, font:{size:10},
+                    text:'Expected concentration' + (cal.level_unit ? ' (' + cal.level_unit + ')' : '')},
+             ticks:{font:{size:10}, maxRotation:0, autoSkip:true, autoSkipPadding:8},
+             grid:{display:false}, offset:true},
           y:{title:{display:true, text:'% deviation', font:{size:10}},
              ticks:{font:{size:10}}, min:-yMax, max:yMax}
         }
@@ -438,7 +533,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
           var val = r.value!=null ? parseFloat(r.value).toFixed(4) : '—';
           return '<button type="button" class="'+cls+'" title="Click for detail" '
             +"onclick=\"showPointDetail(window['_calRef_"+uid+"'],window['_ccbRef_"+uid+"']["+i+"],'QC')\">"
-            +'CCB'+(i>0?' '+(i+1):'')+': '+conc(cal, val)+' '+(r.passed?'✓':'✗')
+            +'CCB'+(i>0?' '+(i+1):'')+': '+conc(cal, val)+' '+calMark(r.passed, r.passed ? 'Pass' : 'Fail')
             +'</button>';
         }).join('');
         chipWrap.classList.add('shown');
@@ -503,10 +598,10 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
 
   function renderCard(cal) {
     drawPlot1(cal._uid, cal,
-              cal.fit_type_override||cal.fit_type||'Linear',
+              startFit(cal),
               startWt(cal),
               startOri(cal));
-    markChanged(cal._uid, cal, startWt(cal), startOri(cal));
+    markChanged(cal._uid, cal, startWt(cal), startOri(cal), startFit(cal));
     drawPlot2(cal._uid, cal);
     drawPlot3(cal._uid, cal);
   }
@@ -517,21 +612,19 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     var r2disp = cal.r2 != null ? 'R\u00B2 '+cal.r2.toFixed(4) : 'R\u00B2 —';
     CAL_BY_UID[uid] = cal;
     var r2cls  = r2Class(cal.r2, cal.r2_ok === false);
-    var eqText = cal.fit_type_override
-      ? (cal.fit_type_override+(cal.weight_override?' / '+cal.weight_override:'')
-         +' (orig: '+cal.equation+')')
-      : (cal.equation||'');
+    /* the instrument's equation until the card's own fit is drawn over it */
+    var eqText = calEsc(cal.equation || '');
 
     var approvedBadge = cal.rule_fail
       ? '<span class="pfas-tag is-flag">Failed</span>'
       : (cal.approved_by
          ? '<span>Approved</span>'
-         : '<span class="pfas-tag">Pending</span>');     // a state, not a fault: grey
+         : '<span class="pfas-tag">Not approved</span>');     // a state, not a fault: grey
 
     var ctrlHtml = '';
     if (IS_MGR) {
       var fitOpts = ['Linear','Quadratic','Average RF'].map(function(f){
-        var s=(cal.fit_type_override||cal.fit_type||'Linear')===f?' selected':'';
+        var s=startFit(cal)===f?' selected':'';
         return '<option value="'+f+'"'+s+'>'+f+'</option>';
       }).join('');
       var wtOpts = ['','1/x','1/x2'].map(function(w){
@@ -545,7 +638,8 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       ctrlHtml = '<div class="card-controls">'
         +'<label>Fit <select id="'+uid+'_ft" onchange="refit(\''+uid+'\')">'+fitOpts+'</select></label>'
         +'<label>Weighting <select id="'+uid+'_wt" onchange="refit(\''+uid+'\')">'+wtOpts+'</select></label>'
-        +'<label>Origin <select id="'+uid+'_ori" onchange="refit(\''+uid+'\')">'+origOpts+'</select></label>'
+        +'<label>Origin <select id="'+uid+'_ori" onchange="refit(\''+uid+'\')"'
+        +(startFit(cal) === AVG_RF ? ' disabled="disabled" title="'+AVG_RF_ORIGIN+'"' : '')+'>'+origOpts+'</select></label>'
         +'<span class="badge badge-warn" id="'+uid+'_chg" hidden>Changed from profile</span>'
         +'<span class="card-controls-gap"></span>'
         +'<button type="button" class="btn btn-secondary" onclick="resetToProfile('+cal.id+',\''+uid+'\')">Reset to method profile</button>'
@@ -562,6 +656,7 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       '  </div>',
       ruleHTML(cal),
       ctrlHtml,
+      '  <div class="card-refused" id="'+uid+'_refused" role="alert" hidden></div>',
       '  <div class="card-plots">',
       '    <div class="plot-section">',
       '      <div class="plot-label">',
@@ -569,7 +664,11 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       '        <button type="button" class="btn-help" data-help-entry="calibration-curve" aria-label="Help: Calibration curve" aria-haspopup="dialog">?</button>',
       '        <label class="plot-opt pfas-switch"><input type="checkbox" id="'+uid+'_log" onchange="relog(\''+uid+'\')"><span class="pfas-switch-track"></span> Log scale</label>',
       '      </div>',
-      '      <div class="plot-title" id="'+uid+'_p1t"></div>',
+      '      <div class="plot-title-row">',
+      '        <div class="plot-title" id="'+uid+'_p1t"></div>',
+      '        <div class="pv-formula is-inline cal-eq" id="'+uid+'_eq" title="Computed equation">'+eqText+'</div>',
+      '        <div class="cal-eq-key" id="'+uid+'_eqkey"></div>',
+      '      </div>',
       '      <div class="plot-canvas-wrap"><canvas id="'+uid+'_p1"></canvas></div>',
       '    </div>',
       '    <div class="plot-section">',
@@ -582,7 +681,6 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
       '      <div class="ccb-chips" id="'+uid+'_ccb"></div>',
       '    </div>',
       '  </div>',
-      '  <div class="eq-line" id="'+uid+'_eq" title="Computed equation">'+eqText+'</div>',
       '</div>',
     ].join('\n');
   }
@@ -591,7 +689,8 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     var n  = run.analytes.length;
     var allApproved = run.analytes.every(function(a){return a.approved_by;});
     var anyApproved = run.analytes.some(function(a){return a.approved_by;});
-    var meta = [esc(run.instrument_id), esc(run.analyst), esc(run.method)].filter(Boolean).join(' • ');
+    /* the method by its one name (method_name); its id is never printed */
+    var meta = [esc(run.instrument_id), esc(run.analyst), esc(run.method_name)].filter(Boolean).join(' • ');
     /* the run's R² count: coral only when a curve fails; plain otherwise */
     var nFail = run.analytes.filter(function(a){return a.r2_ok === false || a.rule_fail;}).length;
     var passBadge = '<span class="'+(nFail ? 'pass-badge pass-fail' : 'run-meta')+'">'+r2Count(run)+'</span>';
@@ -632,11 +731,17 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
                   +'<button type="submit" class="btn btn-danger">Reject</button>'
                   +'</form>';
     } else {
+      /* the archive: a run waiting for approval names where it is given,
+         its worksheet's Data Review, and offers the button there */
+      var next = (st !== 'rejected' && run.review_url)
+        ? '<span>Approved in Data Review, on the worksheet\u2019s Calibration tab.</span>'
+          +'<a class="btn-sm btn-secondary" href="'+esc(run.review_url)+'">Approve in Data Review</a>'
+        : '';
       approveBar = '<div class="approve-bar"><span class="approve-label">Run '+esc(run.run_date)+'</span>'
                   /* coral for a rejected curve only; waiting for approval is a state */
                   +'<span class="'+(st === 'rejected' ? 'pass-badge pass-fail' : 'pfas-tag')+'">'
                   +(st === 'rejected' ? 'Rejected' : (anyApproved ? 'Partly approved' : 'Not approved'))
-                  +'</span></div>';
+                  +'</span>'+next+'</div>';
     }
 
     var runsHTML = [
@@ -720,10 +825,11 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     var ftEl  = document.getElementById(uid+'_ft');
     var wtEl  = document.getElementById(uid+'_wt');
     var oriEl = document.getElementById(uid+'_ori');
-    var ft  = ftEl  ? ftEl.value  : (cal.fit_type   || 'Linear');
+    var ft  = ftEl  ? ftEl.value  : startFit(cal);
+    lockOrigin(uid, cal, ft);
     var wtp = wtEl  ? wtEl.value  : startWt(cal);
     var ori = oriEl ? oriEl.value : startOri(cal);
-    markChanged(uid, cal, wtp, ori);
+    markChanged(uid, cal, wtp, ori, ft);
     // Redraw Plot 1 with new fit
     drawPlot1(uid, cal, ft, wtp, ori);
 
@@ -781,19 +887,23 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     }
   }
 
-  /* Back to the method profile: the curve's own change is cleared. */
+  /* Back to the method profile: the curve's own fit, weighting and origin
+     are cleared. */
   function resetToProfile(calId, uid) {
     var cal = CAL_BY_UID[uid];
     if (!cal) return;
-    cal.weight_override = ''; cal.origin_override = ''; cal._wt = null; cal._ori = null;
+    cal.fit_type_override = ''; cal.weight_override = ''; cal.origin_override = '';
+    cal._ft = null; cal._wt = null; cal._ori = null;
+    var ftEl = document.getElementById(uid+'_ft');
     var wtEl = document.getElementById(uid+'_wt'), oriEl = document.getElementById(uid+'_ori');
+    if (ftEl) ftEl.value = startFit(cal);
     if (wtEl) wtEl.value = startWt(cal);
-    if (oriEl) oriEl.value = startOri(cal);
+    if (oriEl) { oriEl.disabled = false; oriEl.value = startOri(cal); }
     refit(uid);
     var fd = new FormData();
     fd.append('action','override');
     fd.append('calibration_id',calId);
-    fd.append('fit_type_override',(document.getElementById(uid+'_ft')||{}).value||'');
+    fd.append('fit_type_override','');
     fd.append('weight_override','');
     fd.append('origin_override','');
     fetch(CAL_URL,{method:'POST',body:fd}).catch(function(e){console.error('resetToProfile:',e);});
@@ -809,7 +919,8 @@ if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).f
     fd.append('calibration_id',calId);
     fd.append('fit_type_override',ft);
     fd.append('weight_override',wtp === '' ? 'none' : wtp);
-    fd.append('origin_override',ori);
+    // an Average RF has no origin of its own to keep: it is Force
+    fd.append('origin_override',ft === AVG_RF ? '' : ori);
     fetch(CAL_URL,{method:'POST',body:fd})
       .then(function(r){return r.json();})
       .then(function(d){

@@ -20,6 +20,22 @@
     <div class="alert alert-danger" tal:condition="view/errors">
       <tal:e repeat="e view/errors"><div tal:content="e">error</div></tal:e></div>
     <div class="alert alert-danger" tal:condition="not:rec">No such CoC.</div>
+    <!-- a temperature with no range to judge it against: its own amber line,
+         apart from the confirmation, with the way to the setting -->
+    <div class="pfas-banner is-warn" id="coc-not-judged"
+         tal:define="nj python:view.not_judged() if rec and rec['status'] == 'received' else None"
+         tal:condition="nj">
+      <span tal:condition="nj/unset"><strong>Not judged: no receipt range is set</strong>
+        &#183; <span tal:replace="python:u', '.join(nj['unset'])">DW-0001</span></span>
+      <span tal:condition="nj/other" tal:content="python:u'Not judged: ' + u'\u003b '.join(nj['other'])">Not judged: DW-0001: no temperature</span>
+      <span class="pfas-banner-end" tal:condition="nj/methods">
+        <tal:m repeat="m nj/methods">
+          <a class="btn-sm btn-secondary" tal:condition="view/may_set_range"
+             tal:attributes="href m/url" tal:content="python:u'Receipt range for %s' % m['title']">Receipt range for EPA 537.1</a>
+        </tal:m>
+        <span tal:condition="not:view/may_set_range">A manager sets the range on the method profile.</span>
+      </span>
+    </div>
 
     <tal:one condition="rec">
     <p class="pfas-lead">
@@ -49,7 +65,7 @@
       <input type="hidden" name="action" value="receive" />
       <fieldset class="pfas-ro" tal:attributes="disabled python:'disabled' if rec['status'] == 'received' else None">
       <table class="pfas-table" data-col-resize="coc-receive-1">
-        <thead><tr><th>Sample</th><th>Client sample ID</th><th>Matrix</th><th>Collected</th>
+        <thead><tr><th>Sample</th><th>Client sample ID</th><th>Matrix</th><th>Sampled</th>
                    <th>State</th><th>Allowed (method)</th><th>Temperature (°C)</th></tr></thead>
         <tbody>
           <tr tal:repeat="s view/samples">
@@ -57,42 +73,46 @@
             <td tal:content="s/matrix">Drinking Water</td><td tal:content="s/sampled">x</td>
             <td tal:content="s/state">sample_due</td>
             <td tal:content="s/range_text">2 to 6</td>
-            <td><input type="number" step="0.1" tal:attributes="name string:t__${s/uid};
+            <td tal:condition="python:rec['status'] == 'received'"
+                tal:content="python:view.recorded_temperature(rec, s['id'])">4.0</td>
+            <td tal:condition="python:rec['status'] != 'received' and s['temperature']"><input type="number" step="0.1" tal:attributes="name string:t__${s/uid};
                        value python:view.value('t__' + s['uid'])" /></td>
+            <td class="pfas-muted" tal:condition="python:rec['status'] != 'received' and not s['temperature']">Not asked</td>
           </tr>
           <tr tal:condition="not:view/samples"><td colspan="7">No samples on this CoC yet.</td></tr>
         </tbody>
       </table>
 
-      <div class="field-grid">
-        <label>Received at
+      <tal:entry condition="python:rec['status'] != 'received'">
+      <div class="pfas-form-row">
+        <label class="pfas-form-field">Received at
           <input type="datetime-local" name="received_at"
                  tal:attributes="value python:view.value('received_at', view.now_local())" /></label>
-        <label>Receipt thermometer
+        <tal:t condition="view/asks_temperature">
+        <label class="pfas-form-field">Receipt thermometer
           <select name="thermometer" tal:define="ts view/thermometers">
             <option value="" tal:content="python:'Choose' if ts else 'None registered under Equipment'">Choose</option>
             <option tal:repeat="t ts" tal:attributes="value t/id;
                     selected python:'selected' if t['id'] == view.value('thermometer') else None"
                     tal:content="python:u'%s \u00b7 S/N %s' % (t.get('name'), t.get('serial_number'))">IR gun</option>
           </select></label>
-        <label class="pfas-switch field-check"><input type="checkbox" name="on_ice" value="on"
-                      tal:attributes="checked python:'checked' if view.value('on_ice') else None" /><span class="pfas-switch-track"></span>
-          Received on ice</label>
-        <label>Temperature blank (°C)
+        <label class="pfas-form-field">Temperature blank (°C)
           <input type="number" step="0.1" name="temp_blank" tal:attributes="value python:view.value('temp_blank')" /></label>
+        </tal:t>
       </div>
-      <div class="field-grid">
-        <tal:q repeat="q python:[('seals_intact', 'Custody seals intact'), ('labels_legible', 'Labels legible'), ('holding_time_ok', 'Within holding time'), ('compliant', 'Compliant overall')]">
-          <label><span tal:replace="python:q[1]">Seals</span>
-            <select tal:attributes="name python:q[0]">
-              <option value=""></option>
-              <option value="yes" tal:attributes="selected python:'selected' if view.value(q[0]) == 'yes' else None">Yes</option>
-              <option value="no" tal:attributes="selected python:'selected' if view.value(q[0]) == 'no' else None">No</option>
-            </select></label>
-        </tal:q>
+      <!-- every check this receipt asks, one Yes / No control: on ice where
+           a sample's method sets a receipt temperature range, within holding
+           time where one sets a holding time -->
+      <div class="pfas-form-row" id="coc-receipt-checks">
+        <fieldset tal:repeat="q view/receipt_checks">
+          <legend tal:content="python:q[1]">Labels legible</legend>
+          <tal:yn define="yn_name python:q[0]; yn_value python:view.value(q[0]); yn_label python:q[1]"><metal:m
+              use-macro="context/@@pfas-macros/macros/yes-no-na" /></tal:yn>
+        </fieldset>
       </div>
-      <label>Note (needed for any no)
+      <label>Note, needed for any No
         <textarea name="note" rows="2" tal:content="python:view.value('note')"></textarea></label>
+      </tal:entry>
       </fieldset>
       <button class="btn btn-primary" type="submit" tal:condition="python:rec['status'] != 'received'">Receive</button>
     </form>
@@ -101,15 +121,50 @@
       <div class="section-group-hdr">Receipt</div>
       <table class="pfas-table">
         <tbody>
-          <tr><th>Received</th><td tal:content="python:'%s by %s' % (rc.get('received_at'), rc.get('received_by'))">x</td></tr>
+          <tr><th>Received</th><td tal:content="python:'%s by %s' % (view.received_in_force(), rc.get('received_by'))">x</td></tr>
+          <tr tal:repeat="c view/corrections"><th tal:content="c/label">Correction</th>
+            <td><span tal:replace="c/line">Corrected from A to B by DEMO: reason</span>
+                <span class="pfas-muted" tal:condition="c/signed" tal:content="python:u'E-signed %s' % c['signed']">E-signed DEMO, 2026-11-11 10:00</span></td></tr>
           <tr><th>Thermometer</th><td tal:content="python:(rc.get('thermometer') or {}).get('name') or ''">x</td></tr>
-          <tr><th>Temperatures</th><td tal:content="python:u'; '.join(u'%s %s \u00b0C (corrected %s)' % (t['sample_id'], t['observed'], t['corrected'] if t['corrected'] is not None else u'\u2014') for t in rc.get('readings') or [])">x</td></tr>
-          <tr><th>Flags</th><td tal:content="python:u'; '.join(rc.get('flags') or []) or u'Compliant'">x</td></tr>
+          <tr><th>Temperatures</th><td tal:content="python:u'\u003b '.join(u'%s %s \u00b0C (corrected %s)' % (t['sample_id'], t['observed'], t['corrected'] if t['corrected'] is not None else u'\u2014') for t in rc.get('readings') or [])">x</td></tr>
+          <tr><th>Flags</th><td tal:content="python:view.verdict(rc)">x</td></tr>
           <tr><th>Note</th><td tal:content="rc/note|nothing">x</td></tr>
-          <tr tal:condition="rc/not_judged|nothing"><th>Not judged</th>
-              <td tal:content="python:u'; '.join(rc['not_judged'])">x</td></tr>
         </tbody>
       </table>
+      <div class="form-actions">
+        <a class="btn btn-secondary" target="_blank"
+           tal:attributes="href string:${purl}/@@pfas-receipt?coc=${rec/number}">Print receipt</a>
+        <button class="btn btn-secondary" type="button" data-modal-open="coc-correct-modal">Correct receipt date</button>
+      </div>
+      <!-- a signed correction: the date received is kept, the new date is
+           in force for every sample of the CoC -->
+      <div class="pfas-modal" id="coc-correct-modal">
+        <div class="pfas-modal-box is-narrow" role="dialog" aria-modal="true" aria-labelledby="coc-correct-title">
+          <h2 id="coc-correct-title">Correct receipt date</h2>
+          <p class="pfas-hint is-flush" tal:content="python:u'In force now: %s' % view.received_in_force()"></p>
+          <form method="post" tal:attributes="action string:${purl}/@@pfas-coc-receive?coc=${rec/number}">
+            <input type="hidden" name="action" value="correct_date" />
+            <div class="pfas-form-row">
+              <div class="pfas-form-field">
+                <label for="coc-corrected-at">Corrected date and time</label>
+                <input type="datetime-local" id="coc-corrected-at" name="corrected_at"
+                       tal:attributes="value python:view.value('corrected_at')" />
+              </div>
+              <div class="pfas-form-field is-full">
+                <label for="coc-correction-reason">Reason</label>
+                <textarea id="coc-correction-reason" name="correction_reason" rows="2"
+                          tal:content="python:view.value('correction_reason')"></textarea>
+              </div>
+              <tal:s define="sign_id string:coc-correct-secret"><metal:s
+                  use-macro="context/@@pfas-esig-macros/macros/sign_secret" /></tal:s>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">Sign correction</button>
+              <button class="btn btn-secondary" type="button" data-modal-close="data-modal-close">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </tal:done>
     </tal:one>
 

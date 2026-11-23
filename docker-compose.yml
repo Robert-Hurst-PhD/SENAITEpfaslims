@@ -35,11 +35,16 @@ services:
       - ZEO_SHARED_BLOB_DIR=on
       # QC control-chart SQLite database (shared with pfas-worker)
       - PFAS_QC_DB=/data/qc/pfas_qc_results.db
+      # report packages: the folder SENAITE queues job files in and the worker builds from (the same on both)
+      - PFAS_PACKAGE_DIR=/data/qc/packages
     volumes:
       # Mount the entire project root so buildout can find setup.py
       - .:/addon
       - senaite-data:/data
       - pfas-qc:/data/qc
+    # the seal key's folder is the worker's alone: SENAITE sees it empty
+    tmpfs:
+      - /addon/secrets
     # this machine only: the LAN and the tunnel go through nginx (the ZMI
     # would otherwise be on every interface over HTTP)
     ports: ["127.0.0.1:8080:8080"]
@@ -59,8 +64,10 @@ services:
     environment:
       - HOME=/tmp
       - SENAITE_URL=http://senaite:8080/senaite
-      - SENAITE_USER=admin
-      - SENAITE_PASS=admin
+      # the worker's own account and its password, a secret
+      # tools/worker_account.py writes (never the administrator's)
+      - SENAITE_USER=pfas-worker
+      - SENAITE_PASS_FILE=/run/secrets/pfas_worker_pass
       - WATCH_DIR=/data/instrument_output
       - OUTPUT_DIR=/data/reports
       # QC control-chart SQLite database (shared with senaite container)
@@ -70,6 +77,22 @@ services:
       # unset: Waters folders read natively; "service": native first, then pfas-convert for
       # other folders; "native": mzML converted on a Windows PC
       - PFAS_CONVERTER=${PFAS_CONVERTER:-}
+      # report packages: the job files SENAITE queues and the worker builds, polled and timed out in seconds
+      - PFAS_PACKAGE_DIR=/data/qc/packages
+      - PACKAGE_POLL_SECONDS=30
+      - PACKAGE_TIMEOUT_SECONDS=1200
+      # the records seal: the signature ledger SENAITE appends to, the seal
+      # certificates kept beside it, and the lab key from the secrets below
+      # (tools/esig/make_lab_ca.py makes them; readable by uid 500 only)
+      - PFAS_SIGNATURES_DB=/data/qc/signatures.db
+      - PFAS_SIGNATURE_CERTS=/data/qc/signatures_certs
+      - PFAS_SEAL_P12=/run/secrets/pfas_seal_p12
+      - PFAS_SEAL_PASS=/run/secrets/pfas_seal_pass
+      - SIGNING_POLL_SECONDS=30
+    secrets:
+      - pfas_seal_p12
+      - pfas_seal_pass
+      - pfas_worker_pass
     volumes:
       - ./pfas_pipeline:/app/pfas_pipeline
       # The canonical instrument-column vocabulary is owned by the add-on and
@@ -127,6 +150,21 @@ volumes:
   pfas-reports:
   pfas-qc:
   pfas-raw-runs:
+
+# The lab's seal key, given to the worker alone; never committed (secrets/
+# is in .gitignore). tools/esig/make_lab_ca.py makes the two files. Compose
+# refuses to start any service while either file is missing: before the lab
+# has a key, `make_lab_ca.py --placeholders secrets` writes them empty and the
+# worker reads that as "Seal key unavailable".
+secrets:
+  pfas_seal_p12:
+    file: ./secrets/pfas_seal.p12
+  pfas_seal_pass:
+    file: ./secrets/pfas_seal.pass
+  # the worker's SENAITE password: tools/worker_account.py writes it (and
+  # makes the account) before the worker is started with it
+  pfas_worker_pass:
+    file: ./secrets/pfas_worker.pass
 
 networks:
   senaite:

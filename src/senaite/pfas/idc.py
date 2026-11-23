@@ -11,8 +11,10 @@ system already holds where it can:
   pa           §9.2.3/4 precision and accuracy (method_studies)
   qcs          §9.2.7  the method's ICV on the IDC's runs, as judged there
                        (the QCS is the ICV: same check, the method's criterion)
-  asymmetry    §9.2.5  typed for the first two eluting peaks with a PDF of
-                       the calculation (§9.3.9): 0.8 - 1.5
+  asymmetry    §9.2.5  the first two eluting peaks of a mid-level CAL
+                       standard (§9.3.9), in the profile's window: measured
+                       on a chosen run (asymmetry_track), or typed with a
+                       PDF of the calculation
   mrl          §9.2.6  MRL confirmation (method_studies)
 
 A method has an IDC when its profile holds an IDC spec (method_engine
@@ -79,9 +81,44 @@ def isomers(profile, analyte=u"PFOA"):
     return {"verdict": PASS, "linear": entry.get("linear") or u"", "branched": branched}
 
 
-def asymmetry(values, pdf_present, window=None):
-    """`values` = the factors typed for the first two eluting peaks;
+# the places a measured factor is shown and judged at
+SHOWN_PLACES = 2
+
+
+def _measured(measured, window):
+    """The verdict of factors measured on a run's mid-level calibrator:
+    {"batch", "injection", "values": [{"analyte", "factor"}]}, the first
+    two eluting method analytes (asymmetry_track.first_eluting). Judged as
+    shown, to two places, the window's ends inside."""
+    entries = list(measured.get("values") or [])[:2]
+    run = measured.get("batch") or u""
+    if len(entries) < 2:
+        return {"verdict": OPEN, "run": run,
+                "reason": u"run %s has fewer than two method analytes in its mid-level calibrator" % run}
+    missing = [e.get("analyte") or u"" for e in entries if e.get("factor") is None]
+    if missing:
+        return {"verdict": OPEN, "run": run,
+                "reason": u"%s has no measured asymmetry in run %s" % (u" and ".join(missing), run)}
+    nums = [round(float(e["factor"]), SHOWN_PLACES) for e in entries]
+    detail = u"%s, run %s" % (u", ".join(u"%s %.2f" % (e.get("analyte") or u"", v)
+                                         for e, v in zip(entries, nums)), run)
+    out = {"values": nums, "analytes": [e.get("analyte") for e in entries], "run": run,
+           "injection": measured.get("injection") or u"", "detail": detail}
+    if window is None:
+        out.update(verdict=OPEN, reason=u"the method profile sets no asymmetry window")
+        return out
+    lo, hi = window
+    out.update(verdict=PASS if all(lo <= v <= hi for v in nums) else FAIL, window=[lo, hi])
+    return out
+
+
+def asymmetry(values, pdf_present, window=None, measured=None):
+    """`values` = the factors typed for the first two eluting peaks, with
+    the PDF of their calculation; `measured` = factors measured on a run
+    (_measured), which need no PDF and are judged in their place;
     `window` = the spec's (low, high)."""
+    if measured:
+        return _measured(measured, window)
     nums = []
     for v in values or []:
         try:

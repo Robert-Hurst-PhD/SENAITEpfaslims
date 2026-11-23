@@ -44,7 +44,8 @@ CANONICAL_FIELDS = [
     ("measured_conc",       "Measured Conc. (pre-adjustment, direct from cal. curve)"),
     ("calculated_conc",     "Calculated / Final Conc. (post-adjustment, reported value)"),
     ("expected_conc",       "Expected / Standard Concentration (cal. standard target)"),
-    ("reporting_limit",     "Reporting Limit (drives the BLoQ qualifier)"),
+    # the method's printed RL decides BLoQ; this column only where it has none
+    ("reporting_limit",     "Reporting Limit (BLoQ where the method sets none)"),
     ("conc_units",          "Concentration Units (what the results are reported in)"),
     ("sample_factor",       "Sample Dilution / Weight Factor"),
 

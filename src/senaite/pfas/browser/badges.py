@@ -78,6 +78,23 @@ def terminal_from_request(request):
         con.close()
 
 
+def badge_session(request, userid):
+    """True when this request is `userid`'s session at a registered
+    terminal and they signed in there by badge: no password was typed, so
+    signing asks for their PIN (esig.signing). Elsewhere, no lookup."""
+    if not userid:
+        return False
+    token = request.cookies.get(COOKIE) if request is not None else None
+    if not token:
+        return False
+    con = _con()
+    try:
+        term = bs.terminal_for_token(con, safe_unicode(token))
+        return term is not None and bs.signed_in_by_badge(con, term["id"], userid)
+    finally:
+        con.close()
+
+
 def _portal_roles(userid):
     user = api.get_user(userid)
     if user is None:

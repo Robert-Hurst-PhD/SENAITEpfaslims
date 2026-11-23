@@ -4,12 +4,13 @@
 
 Everything derives from the relational spine — nothing method-specific is
 hardcoded here:
-  * batch → METHOD via the same resolution logbooks use (extraction session >
-    logbook annotations > SENAITE batch method);
-  * the method's OWN extraction logbook (the extraction-titled entry of its
-    `required_logbooks`) supplies the per-sample
-    rows — sample id, MATRIX (varies per sample) and SPIKE — with the batch's
-    linked samples (matrix = core SampleType) as fallback;
+  * batch → METHOD by the one resolver every page uses (batch_method.of:
+    the analyses' method, core's Batch Method, the guided extraction's
+    session, then the extraction record);
+  * the extraction batch's members supply the per-sample rows — sample id,
+    MATRIX (varies per sample) and SPIKE — then the guided extraction's
+    sample table (extraction_store), with the batch's linked samples
+    (matrix = core SampleType) as fallback;
   * CCV interval comes from the method profile
     (instrument_verification.ccv.frequency);
   * analyst initials come from the laboratory staff pool (LabContacts).
@@ -19,6 +20,7 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -61,8 +63,9 @@ RUN_MANIFEST_KEY = u"senaite.pfas.run_manifest"
 from senaite.pfas.extraction_batch import QC_ROLES as _QC_ROLES
 EXTRACTION_QC = frozenset(r.upper() for r in _QC_ROLES)
 
-# The run files uploaded for an extraction batch ([{file, kind, at}]): a
-# supplementary run is processed together with them.
+# The run files uploaded for an extraction batch ([{file, kind, at}], a
+# supplementary run's with the requests it carried): a supplementary run is
+# processed together with them.
 RUN_FILES_KEY = u"senaite.pfas.run_files"
 UPLOAD_DIR = os.environ.get("PFAS_INSTRUMENT_UPLOAD_DIR",
                             "/addon/data/instrument_output")
@@ -151,6 +154,62 @@ def in_progress_batches(portal, request):
     return out
 
 
+NOT_FINALISED = u"Extraction not finalised"
+RUN_DONE = u"Run built and its results imported"
+
+
+def stages_recorded(row):
+    """An extraction's state as its batch record's stages say it: "N of M
+    stages recorded", or "Not started" before any (extraction_queue row)."""
+    total, done = row.get("total") or 0, row.get("done") or 0
+    if not total:
+        return row.get("label") or u""
+    return u"%d of %d stages recorded" % (done, total)
+
+
+BUILD_REFUSED = u"Extraction not finalised: finalise it in the Extraction Guide, then build the run."
+
+
+def build_refusal(session):
+    """Why a run may not be built for a worksheet, or None: its extraction
+    (the guided extraction's session) is not finalised. The same test the
+    Ready to build list reads."""
+    return None if (session or {}).get("finalized") else BUILD_REFUSED
+
+
+def not_ready_reason(row):
+    """Why an open worksheet is neither ready to build nor waiting at a
+    later step, from its extraction queue row (extraction_queue): its
+    extraction not finalised, else its run built and its results in."""
+    if not row.get("finalized"):
+        return NOT_FINALISED
+    return RUN_DONE
+
+
+def other_batches(portal, request, listed):
+    """Every open worksheet the two lists do not hold (`listed`: their
+    ids), each with its extraction's state and the reason it is not ready:
+    [{"id", "about", "state", "reason", "url", "next_label", "next_url"}],
+    the next button opening the page where it moves on (the Extraction
+    Guide, or Data Review once its results are in)."""
+    from senaite.pfas.browser.extraction_guide import extraction_queue
+    base = portal.absolute_url()
+    out = []
+    for r in extraction_queue(portal, request):
+        if r["id"] in listed:
+            continue
+        reason = not_ready_reason(r)
+        if reason == NOT_FINALISED:
+            nxt = (u"Extraction Guide", u"%s/@@pfas-extraction-guide?batch_uid=%s" % (base, r["uid"]))
+        else:
+            nxt = (u"Data Review", u"%s/worksheets/%s/@@pfas-data-review" % (base, r["id"]))
+        out.append({"id": r["id"], "about": _about(r["id"], r.get("title")),
+                    "state": stages_recorded(r), "reason": reason,
+                    "url": u"%s/@@pfas-run-builder?batch_id=%s" % (base, r["id"]),
+                    "next_label": nxt[0], "next_url": nxt[1]})
+    return out
+
+
 # Building a run and requesting one are bench work. The run template is
 # method configuration, and the export upload is what the worker imports.
 RUN_BUILDER_GATES = {
@@ -165,6 +224,70 @@ RUN_BUILDER_GATES = {
 # .rawstatus.json, .rawfail) are written only by the LIMS and the worker.
 EXPORT_TYPES = (".csv", ".txt", ".tsv")
 
+
+
+def _worksheet_by_id(ws_id):
+    from bika.lims import api
+    hits = api.search({"portal_type": "Worksheet", "getId": ws_id}, "senaite_catalog_worksheet") if ws_id else []
+    return api.get_object(hits[0]) if hits else None
+
+
+def acid_basis_of(portal, batch_obj, find=None):
+    """(analytes, known): the analytes whose calibration lots, as loaded
+    for the curve's run (its run manifest), are all stated as acid
+    (run_lots.acid_analytes). A run reusing an earlier curve takes the
+    curve run's basis -- one curve, one basis; `known` is False when that
+    run cannot be found. `find(batch id)` gives that run's worksheet. The
+    run record carries this to the worker, and the certificate reads it
+    again from the same manifest, so a result's reporting limit and its
+    salt correction follow one basis."""
+    from senaite.pfas import run_lots
+    from senaite.pfas.browser.prepared_standards import _get
+    find = find or _worksheet_by_id
+
+    def manifest_of(obj):
+        try:
+            return json.loads(IAnnotations(obj).get(RUN_MANIFEST_KEY) or "{}") if obj is not None else {}
+        except (TypeError, ValueError):
+            return {}
+    manifest = manifest_of(batch_obj)
+    cal = manifest.get("calibration") or {}
+    if cal.get("new_curve") is False:
+        try:
+            from senaite.pfas.qc.store import QCResultStore, DEFAULT_DB_PATH
+            rows = QCResultStore(DEFAULT_DB_PATH).get_calibrations(method=manifest.get("method_id"), limit=500)
+        except Exception:                               # noqa: BLE001
+            rows = []
+        bid = run_lots.curve_batch(rows, (cal.get("last_curve") or {}).get("run_date"))
+        manifest = manifest_of(find(bid)) if bid else {}
+        if not manifest:
+            return [], False
+    lots = [lot for slot, lot in (manifest.get("standards") or {}).items()
+            if (slot or u"").upper().startswith(u"CAL-") and lot.get("kind") == u"prepared_standard"]
+    return run_lots.acid_analytes([(_get(portal, lot.get("uid")) or {}).get("analyte_concentrations") or []
+                                   for lot in lots]), True
+
+
+def analysis_acid_basis(analysis, cache):
+    """The acid-basis analytes of the run an analysis was measured in (its
+    worksheet's, acid_basis_of), [] when it is on no worksheet or the
+    curve's run is not found (the method's salt factors apply, as the
+    worker applies them). `cache` {worksheet id: analytes} spans one page."""
+    try:
+        ws = analysis.getWorksheet()
+    except Exception:                                   # noqa: BLE001
+        ws = None
+    if ws is None:
+        return []
+    key = ws.getId()
+    if key not in cache:
+        try:
+            from bika.lims import api
+            cache[key] = acid_basis_of(api.get_portal(), ws)[0]
+        except Exception as exc:                        # noqa: BLE001
+            logger.warning("acid basis of %s: %s", key, exc)
+            cache[key] = []
+    return cache[key]
 
 class PFASRunBuilderView(ViewHelpers, BrowserView):
     template = ViewPageTemplateFile("templates/run_builder.pt")
@@ -186,6 +309,8 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
                 return self._handle_save_template()
             if action == "make_request":
                 return self._handle_make_request()
+            if action == "mark_loaded":
+                return self._handle_mark_loaded()
         if action == "download_csv":
             return self._handle_download_csv()
         if action == "download_masslynx":
@@ -202,18 +327,23 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         return self.error or self.request.form.get("error", "")
 
     def selected_batch(self):
-        return _first(self.request.form.get("batch_id", ""))
+        """The worksheet the run is for: the form's batch_id, else the
+        worksheet whose address the page was opened under."""
+        bid = _first(self.request.form.get("batch_id", ""))
+        if not bid and getattr(self.context, "portal_type", "") == "Worksheet":
+            bid = self.context.getId()
+        return bid
 
     def import_problems(self):
         """The selected worksheet's delivered runs the worker has not
         imported (import_log; "will import it" was promised and a failure
-        never shown)."""
+        never shown), a refused one with them."""
         b = self._batch()
         if b is None:
             return []
         try:
             from senaite.pfas.qc.store import QCResultStore, DEFAULT_DB_PATH
-            return QCResultStore(DEFAULT_DB_PATH).import_problems(b.getId())
+            return QCResultStore(DEFAULT_DB_PATH).import_problems(b.getId(), refused=True)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("import_problems: %s", exc)
             return []
@@ -263,105 +393,91 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         # a planned dilution run with its sample's run is in that run already
         return [r for r in extraction_batch.load_requests(b) if r.get("status") == u"made" and not r.get("in_run")]
 
-    # The landing's two lists. A list that cannot be read is None, which the
+    # The landing's lists. A list that cannot be read is None, which the
     # page says ("Could not list the worksheets"), never an empty list.
+    # Each is read once per page.
     def ready_to_build(self):
-        try:
-            return ready_batches(self._portal(), self.request)
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("ready to build: %s", exc)
-            return None
+        if not hasattr(self, "_ready"):
+            try:
+                self._ready = ready_batches(self._portal(), self.request)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("ready to build: %s", exc)
+                self._ready = None
+        return self._ready
 
     def in_progress(self):
-        try:
-            return in_progress_batches(self._portal(), self.request)
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("in progress: %s", exc)
+        if not hasattr(self, "_going"):
+            try:
+                self._going = in_progress_batches(self._portal(), self.request)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("in progress: %s", exc)
+                self._going = None
+        return self._going
+
+    def other_worksheets(self):
+        """Every open worksheet neither list holds, with its state and why
+        it is not ready (other_batches); None when they cannot be read."""
+        ready, going = self.ready_to_build(), self.in_progress()
+        if ready is None or going is None:
             return None
+        listed = set(r["id"] for r in (ready or []) + (going or []))
+        try:
+            return other_batches(self._portal(), self.request, listed)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("other worksheets: %s", exc)
+            return None
+
+    def selected_not_ready(self):
+        """The chosen worksheet when its extraction is not finalised, which
+        refuses a build: {"id", "state", "reason", "guide_url"}; else None."""
+        if hasattr(self, "_not_ready"):
+            return self._not_ready
+        self._not_ready = None
+        bid = self.selected_batch()
+        if not bid:
+            return None
+        try:
+            from senaite.pfas.browser.extraction_guide import extraction_queue
+            rows = [r for r in extraction_queue(self._portal(), self.request) if r["id"] == bid]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("selected not ready: %s", exc)
+            return None
+        if not rows or not_ready_reason(rows[0]) != NOT_FINALISED:
+            return None
+        r = rows[0]
+        self._not_ready = {"id": bid, "state": stages_recorded(r), "reason": NOT_FINALISED,
+                           "guide_url": u"%s/@@pfas-extraction-guide?batch_uid=%s" % (self.portal_url(), r["uid"])}
+        return self._not_ready
 
     def review_requests(self, b=None):
         """Step 4: every dilution and re-injection review asked for on this
-        batch, open or made, with what the table shows."""
-        from senaite.pfas import extraction_batch as eb
-        b = b if b is not None else self._batch()
-        if b is None or not eb.is_worksheet(b):
-            return []
-        out = []
-        for r in eb.load_requests(b):
-            prep = r.get("prep") or {}
-            out.append(dict(r, asked=(u"Dilution 1:%s" % r.get("fold")) if r.get("kind") == u"dilution"
-                            else u"Re-injection", matches=prep.get("matches")))
-        return out
+        batch, open or made, with what the table shows (dilution_make.listed)."""
+        from senaite.pfas.dilution_make import listed
+        return listed(b if b is not None else self._batch())
 
-    def handlings(self):
-        from senaite.pfas import extraction_batch as eb
-        return eb.HANDLINGS
-
-    def _lots(self, kind):
-        from senaite.pfas.browser.bench_inventory import PREPARED, REAGENT, usable_lots
-        try:
-            items = usable_lots(self._portal(), lab_time.today().isoformat())
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("usable lots: %s", exc)
-            items = []
-        want = REAGENT if kind == "reagent" else PREPARED
-        return [(i["uid"], u"%s \u00b7 %s" % (i.get("name") or u"", i.get("lot_number") or u""))
-                for i in items if i.get("kind") == want]
-
-    def diluent_lots(self):
-        return self._lots("reagent")
-
-    def standard_lots(self):
-        return self._lots("prepared")
+    def make_options(self):
+        """The Make dialog's choices (dilution_make.options)."""
+        from senaite.pfas.dilution_make import options
+        return options(self._portal())
 
     def _handle_make_request(self):
         """Step 4's Make: a request made at the bench, its injection named; a
-        dilution records its vial's prep (extract, final volume, diluent, the
-        IS and surrogate), and is written to the extraction log (FM-ENV-003)
-        the worker reads, as the extraction batch page does."""
+        dilution records its vial's prep and is written to the extraction
+        record the worker reads (dilution_make.make, as the guided
+        extraction's Dilutions stage does)."""
         from senaite.pfas import entry_rights
-        from senaite.pfas import extraction_batch as eb
+        from senaite.pfas.dilution_make import make
         from senaite.pfas.browser.staff import may_enter
         if not may_enter():                 # it writes the extraction log
             self.error = entry_rights.REFUSAL
             return self.template()
         f = self.request.form
         b = self._batch(f.get("batch_id"))
-        if b is None or not eb.is_worksheet(b):
-            self.error = u"No such batch."
-            return self.template()
-        rid = (f.get("request") or u"").strip()
-        requests = eb.load_requests(b)
-        req = next((r for r in requests if r.get("id") == rid), None)
-        prep = None
-        if req is not None and req.get("kind") == u"dilution":
-            prep = eb.prep_from_form(f, rid)
-            problems = eb.prep_problems(prep, req.get("fold"))
-            if problems:
-                self.error = problems[0]
-                return self.template()
-        who = self._current_user_name()
         at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        requests, req, error = eb.mark_made(requests, rid, who, at, prep=prep)
+        error = make(b, f, self._current_user_name(), at, self.dilution_settings(b) if b is not None else None)
         if error:
             self.error = error
             return self.template()
-        if req["kind"] == u"dilution":
-            from senaite.pfas import sample_table
-            from senaite.pfas.browser.logbooks import _get_logbook, _save_logbook
-            log = dict(_get_logbook(b, "252") or {})
-            # a re-prepared aliquot is recorded, with its aliquot and approval,
-            # in the guided extraction of the batch it is re-prepared in
-            route = sample_table.route_key(req.get("route"))
-            rows, derr = sample_table.append_dilution(
-                log.get("samples"), req["injection"], req["new_injection"], req["fold"], who, at,
-                route=route, settings=None if route == u"reprep" else self.dilution_settings(b))
-            if derr:
-                self.error = derr
-                return self.template()
-            log["samples"] = rows
-            _save_logbook(b, "252", log)
-        eb.save_requests(b, requests)
         self.request.response.redirect(u"%s/@@pfas-run-builder?batch_id=%s#step-4" % (
             self.portal_url(), f.get("batch_id") or u""))
         return u""
@@ -453,17 +569,15 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
 
     # ── method / extraction-log resolution (all dynamic) ─────────────────
     def batch_method(self, batch=None):
-        """Method id for the selected batch — same resolution as logbooks."""
+        """Method id for the selected batch, by the one resolver (batch_method.of)."""
         b = batch or self._batch()
         if b is None:
             return ""
-        from senaite.pfas.browser.logbooks import PFASLogbookIndexView
-        if PFASLogbookIndexView is not None:
-            try:
-                return PFASLogbookIndexView(b, self.request).batch_method() or ""
-            except Exception:
-                pass
-        return ""
+        from senaite.pfas import batch_method as bm
+        try:
+            return bm.of(b) or ""
+        except Exception:                                   # noqa: BLE001
+            return ""
 
     def dilution_settings(self, batch=None):
         """The batch's dilution settings: its method's, with its project's
@@ -491,39 +605,16 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
             return {}
 
     def extraction_logbook_slug(self, method_id):
-        """The METHOD'S extraction logbook: the extraction-titled entry among
-        its `required_logbooks`.
-
-        An `extraction_logbook` profile override used to be consulted first.
-        Nothing could write it -- no editor field, no seed, no migration -- so
-        it was a setting the UI offered and could never honour, and every
-        method silently took the fallback. The configurability audit found it by
-        enumerating the keys this code READS rather than the keys the profile
-        data happens to hold.
-
-        It is removed rather than given a producer: `required_logbooks` already
-        records which logbooks a method uses and is editable, so a second key
-        naming one of them would be a second source of truth for one fact.
-        """
-        d = self._extraction_def(method_id)
-        return u"%s" % d.get("slug") if d else ""
-
-    def _extraction_def(self, method_id):
-        prof = self._profile(method_id)
-        try:
-            from senaite.pfas.form_codes import extraction_def
-            from senaite.pfas.logbook_store import get_active_logbook_defs
-            return extraction_def(get_active_logbook_defs(self._portal()),
-                                  prof.get("required_logbooks"))
-        except Exception:
-            return None
+        """The storage slug of the extraction record's sample table: one
+        record for every method, the guided extraction (dilution_ref
+        LOGBOOK_SLUG); none without a method."""
+        from senaite.pfas.dilution_ref import LOGBOOK_SLUG
+        return u"%s" % LOGBOOK_SLUG if method_id else u""
 
     def extraction_logbook_label(self, method_id):
-        """The extraction logbook as the lab names it ("FM-ENV-003 Extraction
-        Log"); never the storage slug."""
-        from senaite.pfas.form_codes import label
-        d = self._extraction_def(method_id) if method_id else None
-        return label(d) if d else u""
+        """The extraction record, named by its kind; never the storage
+        slug or a form number."""
+        return u"the guided extraction" if method_id else u""
 
     def ccv_interval(self, method_id, batch=None):
         """CCV frequency: project QAPP -> lab method profile -> published-
@@ -785,9 +876,10 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
             return {}
 
     def sample_rows(self, batch_id=None):
-        """[{sample_id, matrix, spike}] — extraction log of the method's own
-        logbook first; batch-linked samples (matrix = core SampleType) as
-        fallback. Matrix varies PER SAMPLE; spike is per the extraction log."""
+        """[{sample_id, matrix, spike}]: the extraction batch's members
+        first, then the guided extraction's sample table; batch-linked
+        samples (matrix = core SampleType) as fallback. Matrix varies PER
+        SAMPLE; spike is per the sample table."""
         b = self._batch(batch_id)
         if b is None:
             return []
@@ -891,7 +983,7 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
             "batch_id": bid,
             "method_id": method_id or "(unresolved)",
             "extraction_slug": slug,
-            "extraction_label": self.extraction_logbook_label(method_id) or u"None set on the method",
+            "extraction_label": self.extraction_logbook_label(method_id) or u"none set on the method",
             "ccv_interval": self.ccv_interval(method_id, batch=b) if method_id else 6,
             "rows": rows,
             "n_samples": len(rows),
@@ -942,9 +1034,11 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
 
     def slot_options(self, key, method_id):
         """[(lot key, label)] usable today and made for this slot: a
-        calibration level, check or LC channel takes the lots its prep
-        entry made for it (run_lots.lots_for_slot); an LC channel also
-        takes purchased solvent loaded as it is."""
+        calibration level, check or LC channel takes the lots its
+        preparation record made for it (run_lots.lots_for_slot); an LC
+        channel also takes purchased solvent loaded as it is. Every kind
+        of record is read: a single standard's record makes the check or
+        channel lot its recipe names."""
         from senaite.pfas import prep_entries, run_lots
         from senaite.pfas.bench_queue import is_usable
         today = lab_time.today().isoformat()
@@ -958,22 +1052,23 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
             label = u"%s \u00b7 %s \u00b7 exp %s" % (i.get("name") or u"", i.get("lot_number") or u"",
                                                     i.get("expiry") or u"?")
             if i["pending"]:
-                label += u" \u00b7 pending verification"
+                label += u" \u00b7 pending acceptance"
             out.append((u"%s:%s" % (i["kind"], i["uid"]), label))
         return out
 
     def series_options(self, method_id):
-        """The calibration sittings that made every level, newest first."""
+        """The calibration series preparations that made every level,
+        newest first; none prepared, none offered."""
         from senaite.pfas import prep_entries, run_lots
-        return run_lots.series_options(prep_entries.list_entries(self._portal(), u"FM-ENV-002")[:30],
+        return run_lots.series_options(prep_entries.list_entries(self._portal(), kind=u"series")[:30],
                                        self.run_slots(method_id, True))
 
     def _run_lots(self, method_id, include_cal):
         """(chosen, slots, lots by key) from the build form."""
         from senaite.pfas import prep_entries, run_lots
         sl = self.run_slots(method_id, include_cal)
-        # the calibration levels come from one sitting
-        entries = prep_entries.list_entries(self._portal(), u"FM-ENV-002")
+        # the calibration levels come from one series preparation
+        entries = prep_entries.list_entries(self._portal(), kind=u"series")
         return run_lots.from_series(self.request.form, entries, sl), sl, self._inventory()
 
     def _record_run_lots(self, batch_obj, standards, solvents, by, stage):
@@ -1097,7 +1192,8 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         """Assemble the injection worklist by walking the method's run sequence.
 
         Each row carries a lot-code injection NAME (the linked prepared-standard
-        lot where one exists — cal lot / spike lot from FM-ENV-002 — else the
+        lot where one exists — cal lot / spike lot from the calibration series
+        preparation — else the
         method code) and a human DESCRIPTION (analyst · QC type · lot · prep
         date). CAL opens the CCV-bracketed body; instrument-cal injections
         (CAL/ICV/CCV/CCB) don't advance the interval; extraction QC + samples do;
@@ -1334,7 +1430,14 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         batch_id = _first(f.get("batch_id")).strip()
         initials = _first(f.get("initials")).strip().upper()
         if not batch_id:
-            return self._redirect_err(batch_id, "Select a batch first")
+            return self._redirect_err(batch_id, "Select a worksheet first")
+        # a run is built only for a finalised extraction; the page shows the
+        # reason beside the Extraction Guide button
+        from senaite.pfas.browser.extraction_guide import _load_session
+        ws = self._batch(batch_id)
+        why = build_refusal(_load_session(ws) if ws is not None else None)
+        if why:
+            return self._redirect_err(batch_id, why)
         if not initials:
             return self._redirect_err(batch_id, "Select the analyst")
         # A new calibration curve or not: the method
@@ -1351,7 +1454,7 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         method_id = self.batch_method(self._batch(batch_id))
         if not method_id:
             return self._redirect_err(
-                batch_id, "Batch has no method — fill its extraction log first")
+                batch_id, "Worksheet has no method — fill its extraction log first")
         rows_in = self.sample_rows(batch_id)
         # manual additions (one per line) are appended, matrix left blank
         for s in _first(f.get("extra_samples")).splitlines():
@@ -1495,6 +1598,41 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         except Exception:
             return None
 
+    def can_mark_loaded(self):
+        """May the Loaded button stamp this run? Only a built run that waits
+        at step 2 (run_plan.waiting_step): not one sent back, and not one whose
+        results are already in."""
+        from senaite.pfas import extraction_batch as eb
+        from senaite.pfas import run_plan
+        b = self._batch()
+        m = self.manifest() if b is not None else None
+        if not m:
+            return False
+        imports = []
+        try:
+            from senaite.pfas.qc.store import QCResultStore, DEFAULT_DB_PATH
+            imports = QCResultStore(DEFAULT_DB_PATH).import_log(b.getId())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("loaded: import log unread: %s", exc)
+        return run_plan.waiting_step(m, self.run_files(b), eb.load_requests(b), imports) == u"2"
+
+    def _handle_mark_loaded(self):
+        """Stamp the built run with who loaded it on the instrument and when.
+        Once stamped it stays: a second press changes nothing."""
+        from senaite.pfas import run_plan
+        bid = _first(self.request.form.get("batch_id")).strip()
+        b = self._batch(bid)
+        m = self.manifest() if b is not None else None
+        if not m:
+            return self._redirect_err(bid, u"No built run")
+        if self.can_mark_loaded() and not m.get("loaded"):
+            m["loaded"] = run_plan.loaded_stamp(self._current_user_name(),
+                                                u"{0:%Y-%m-%d %H:%M} UTC".format(datetime.utcnow()))
+            IAnnotations(b)[RUN_MANIFEST_KEY] = json.dumps(m)
+        self.request.response.redirect("{0}/@@pfas-run-builder?batch_id={1}&step=3".format(
+            self.portal_url(), bid))
+        return u""
+
     def _handle_download_csv(self):
         m = self.manifest()
         if not m:
@@ -1555,13 +1693,13 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         # the batch's runs are one record: a supplementary run joins every
         # earlier file; the full run, uploaded again, joins the supplementary
         # runs already recorded
-        joins = [x["file"] for x in files if x.get("file") != fname
+        joins = [x["file"] for x in files if x.get("file") != fname and not x.get("deleted")
                  and (supplementary or x.get("kind") == "supplementary")]
         if joins:
             extra["supplementary_of"] = joins
         if supplementary:
             if not joins:
-                return u"", (u"No earlier run of this batch is on record: "
+                return u"", (u"No earlier run of this worksheet is on record: "
                              u"upload its run first, then this one")
         # The run record goes in FIRST: the worker starts on the CSV the
         # moment it appears and reads the record beside it then.
@@ -1579,9 +1717,16 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         logger.info("run_builder: uploaded %s to watch dir (%s)", fname, note)
         if b is not None:
             from senaite.pfas import extraction_batch
-            files = [x for x in files if x.get("file") != fname] + [{
-                "file": fname, "kind": "supplementary" if supplementary else "full",
-                "at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}]
+            # the checksum names the file on record, and outlives it
+            # (instrument_files.mark_deleted)
+            entry = {"file": fname, "kind": "supplementary" if supplementary else "full",
+                     "at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     "sha256": hashlib.sha256(data).hexdigest()}
+            if supplementary:
+                # the requests the follow-up run carried: what makes its file a
+                # re-injection's (instrument_files.reinjection_file)
+                entry["requests"] = list(m.get("requests") or [])
+            files = [x for x in files if x.get("file") != fname or x.get("deleted")] + [entry]
             IAnnotations(b)[RUN_FILES_KEY] = json.dumps(files)
             if supplementary and extraction_batch.is_worksheet(b):
                 reqs = extraction_batch.load_requests(b)
@@ -1611,35 +1756,9 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         return found[0] if len(found) == 1 else u""
 
     def _acid_basis(self, batch_obj):
-        """(analytes, known): the analytes whose calibration lots, as loaded
-        for the curve's run (its run manifest), are all stated as acid
-        (run_lots.acid_analytes). A run reusing an earlier curve takes the
-        curve run's basis -- one curve, one basis; `known` is False when that
-        run cannot be found."""
-        from senaite.pfas import run_lots
-        from senaite.pfas.browser.prepared_standards import _get
-
-        def manifest_of(obj):
-            try:
-                return json.loads(IAnnotations(obj).get(RUN_MANIFEST_KEY) or "{}") if obj is not None else {}
-            except (TypeError, ValueError):
-                return {}
-        manifest = manifest_of(batch_obj)
-        cal = manifest.get("calibration") or {}
-        if cal.get("new_curve") is False:
-            try:
-                from senaite.pfas.qc.store import QCResultStore, DEFAULT_DB_PATH
-                rows = QCResultStore(DEFAULT_DB_PATH).get_calibrations(method=manifest.get("method_id"), limit=500)
-            except Exception:                               # noqa: BLE001
-                rows = []
-            bid = run_lots.curve_batch(rows, (cal.get("last_curve") or {}).get("run_date"))
-            manifest = manifest_of(self._batch(bid)) if bid else {}
-            if not manifest:
-                return [], False
-        lots = [lot for slot, lot in (manifest.get("standards") or {}).items()
-                if (slot or u"").upper().startswith(u"CAL-") and lot.get("kind") == u"prepared_standard"]
-        return run_lots.acid_analytes([(_get(self._portal(), lot.get("uid")) or {}).get("analyte_concentrations") or []
-                                       for lot in lots]), True
+        """(analytes, known) for the run built on `batch_obj`
+        (acid_basis_of)."""
+        return acid_basis_of(self._portal(), batch_obj, self._batch)
 
     def _write_raw_expectation(self, b, batch_id, method_id, manifest):
         """`<stem>.rawexpect.json` in the watch folder for a method whose
@@ -1658,7 +1777,9 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
             branched = self._branched_fractions(prof, manifest)
             data = raw_expect.raw_expectation(
                 manifest["rows"], self._sidecar_record(batch_id), prof, self.export_columns(b),
-                lot_values=lots, calibration=manifest.get("calibration"), run=stem, branched=branched)
+                lot_values=lots, calibration=manifest.get("calibration"), run=stem, branched=branched,
+                lot_names=dict(((slot or u"").upper(), (lot or {}).get("lot") or (lot or {}).get("name") or u"")
+                               for slot, lot in (manifest.get("standards") or {}).items()))
             path = os.path.join(UPLOAD_DIR, stem + ".rawexpect.json")
             text = json.dumps(data, indent=2, sort_keys=True)
             with open(path + ".part", "wb") as out:
@@ -1746,7 +1867,7 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         the run record holds, for the confirmation message."""
         record = self._sidecar_record(batch_id, extra)
         if record is None:
-            return u"no batch chosen, so no method, matrix or extraction record"
+            return u"no worksheet chosen, so no method, matrix or extraction record"
         path = os.path.join(UPLOAD_DIR, "{0}_extraction.json".format(stem))
         tmp = path + ".part"
         data = json.dumps(record, indent=2, sort_keys=True)
@@ -1771,6 +1892,7 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         with no batch."""
         from senaite.pfas.extraction_sidecar import build_sidecar
         from senaite.pfas.browser.extraction_guide import _load_session
+        from senaite.pfas.browser.sample_status import _fullname
         from senaite.pfas.browser.batch_project_viewlet import _batch_matrix
         from senaite.pfas.method_profile_store import get_profile
         from bika.lims import api
@@ -1809,7 +1931,8 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         record = build_sidecar(sess, names, worksheet_id=ws_id,
                                senaite_batch_id=cb.getId() if cb is not None else u"",
                                matrix=matrix,
-                               client_uid=api.get_uid(client) if client else u"")
+                               client_uid=api.get_uid(client) if client else u"",
+                               fullname=lambda uid: _fullname(self.context, uid))
         # the run's instrument: the worker's import layout is matched for it
         instr = self._instrument(b)
         record["instrument_uid"] = api.get_uid(instr) if instr is not None else u""

@@ -45,11 +45,7 @@ class PFASMacrosView(ViewHelpers, BrowserView):
     def lab_name(self):
         """The laboratory's name (core's Laboratory), for the tab title."""
         from senaite.pfas import lab_identity
-        portal = getToolByName(self.context, 'portal_url').getPortalObject()
-        try:
-            return lab_identity.read(portal)["name"]
-        except Exception:                                   # noqa: BLE001
-            return u""
+        return lab_identity.lab_name()
 
     def asset_version(self):
         """?v= for the add-on's CSS and JS URLs (asset_version.py)."""
@@ -58,10 +54,10 @@ class PFASMacrosView(ViewHelpers, BrowserView):
 
     def data_lab_today(self):
         """The laboratory's date for the page's scripts (data-lab-today on
-        its root element) while the zone converts; None otherwise, so the
-        attribute is left out and a script keeps its own clock."""
+        its root element): the laboratory's day while the zone converts, the
+        server's UTC date otherwise, so an expiry is judged on one day."""
         from senaite.pfas import lab_time
-        return lab_time.today().isoformat() if lab_time.active() else None
+        return lab_time.today().isoformat()
 
     def print_settings(self):
         """Print header/footer settings for the shared printhead macro —
@@ -173,7 +169,10 @@ class PFASMacrosView(ViewHelpers, BrowserView):
                     {"kind": "title", "label": "", "url": None}]
         out = [{"kind": "link" if url else "text", "label": label, "url": url}
                for label, url in trail]
-        if pg.same_page(trail[-1][1] or "", path) or pg.is_row_page(path):
+        step = pg.step_label(path, query)
+        if step and pg.same_page(trail[-1][1] or "", path):
+            out.append({"kind": "here", "label": step, "url": None})
+        elif pg.same_page(trail[-1][1] or "", path) or pg.is_row_page(path):
             out[-1]["kind"] = "here"
         else:
             out.append({"kind": "title", "label": "", "url": None})
@@ -190,7 +189,8 @@ class PFASMacrosView(ViewHelpers, BrowserView):
     # (label, url path, roles that may create it) -- the "+" menu. Each target
     # is the page that already creates the thing; ?new= opens its form.
     _CREATE = [
-        (u"Sample", "samples/ar_add?ar_count=1",
+        # samples are added on a CoC: the entry opens the New CoC dialog
+        (u"Sample", "@@pfas-coc?new=1",
          ("LabClerk", "Analyst", "LabManager", "Manager", "Sampler")),
         (u"Batch", "batches/createObject?type_name=Batch", ("LabClerk", "LabManager", "Manager")),
         (u"Reagent lot", "@@pfas-reagents?new=1", ("LabClerk", "Analyst", "LabManager", "Manager")),
@@ -202,8 +202,9 @@ class PFASMacrosView(ViewHelpers, BrowserView):
          ("LabManager", "Manager")),
     ]
 
-    _USER_ICONS = {"site-setup": u"fa-wrench", "my-organization": u"fa-building",
-                   "user-profile": u"fa-user-cog", "logout": u"fa-sign-out-alt"}
+    # each action's picture (icons.py)
+    _USER_ICONS = {"site-setup": u"settings", "my-organization": u"building",
+                   "user-profile": u"person", "logout": u"sign-out"}
 
     def terminal(self):
         """This browser is a registered lab terminal: the bar
@@ -242,12 +243,12 @@ class PFASMacrosView(ViewHelpers, BrowserView):
                 # every signed-in person's own signature, badge and
                 # permissions, just before Log out
                 out.append({"id": u"pfas-profile", "title": u"Profile & signature",
-                            "url": u"%s/@@pfas-my-profile" % purl, "icon": u"fa-signature"})
+                            "url": u"%s/@@pfas-my-profile" % purl, "icon": u"sig-wait"})
                 if self.terminal():
                     out.append({"id": u"pfas-switch", "title": u"Switch user (scan badge)",
-                                "url": u"%s/@@pfas-badge-signin" % purl, "icon": u"fa-id-badge"})
+                                "url": u"%s/@@pfas-badge-signin" % purl, "icon": u"badge"})
             out.append({"id": aid, "title": a.get("title") or aid, "url": a.get("url") or u"#",
-                        "icon": self._USER_ICONS.get(aid, u"fa-user")})
+                        "icon": self._USER_ICONS.get(aid, u"person")})
         return out
 
     def create_items(self):
@@ -255,6 +256,19 @@ class PFASMacrosView(ViewHelpers, BrowserView):
         base = self.portal_url()
         return [{"label": label, "url": u"%s/%s" % (base, path)}
                 for label, path, allowed in self._CREATE if roles & set(allowed)]
+
+    def user_picture(self):
+        """The URL of the sign-in picture the signed-in person chose on their
+        profile, or None: it shows as their picture in the top bar."""
+        from AccessControl import getSecurityManager
+        from senaite.pfas import avatars
+        user = getSecurityManager().getUser()
+        userid = user.getId() if user is not None else None
+        if not userid:
+            return None
+        portal = self._portal()
+        mine = avatars.chosen(portal, userid)
+        return avatars.url(portal.absolute_url(), mine) if mine else None
 
     def user_initials(self):
         """Two letters for the avatar: the full name's initials, else the

@@ -8,21 +8,45 @@ A core template override, listed in the decisions record with its upgrade risk:
   * the analyses list folds to one line saying what it holds; it opens on
     request (core's registry switch collapses it; the title is ours)
   * the results interpretation reads "Comments on the certificate"
+  * a sample whose newest certificate is interim says "Interim issued,
+    final pending" under its title (the register's Awaiting issue list
+    says the same)
+  * a samples list offers no Add Samples box: samples come in on a chain
+    of custody, the one way in (core's AddSamplesViewlet, over every
+    samples list: the site's, a client's, a batch's)
 
 Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
+import logging
+
 from bika.lims import api
+from plone.app.layout.viewlets.common import ViewletBase
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.core.browser.viewlets.add_samples import AddSamplesViewlet
 from senaite.core.browser.viewlets.attachments import AttachmentsViewlet
 from senaite.core.browser.viewlets.resultsinterpretation import ResultsInterpretationViewlet
 from senaite.core.browser.viewlets.sampleanalyses import LabAnalysesViewlet
+from ZODB.POSException import ConflictError
+
+logger = logging.getLogger("senaite.pfas.core_sample")
 
 
 class PFASSampleAttachmentsViewlet(AttachmentsViewlet):
     """Not under the sample's title: Attachments is a tab of its own."""
+
+    def render(self):
+        return u""
+
+
+class PFASNoAddSamplesViewlet(AddSamplesViewlet):
+    """No count box and Add Samples on a samples list: a sample is entered
+    on its chain of custody."""
+
+    def available(self):
+        return False
 
     def render(self):
         return u""
@@ -79,3 +103,23 @@ class PFASResultsInterpretationViewlet(ResultsInterpretationViewlet):
     sample's certificate, under each department's heading."""
     index = ViewPageTemplateFile("templates/resultsinterpretation.pt")
     title = u"Comments on the certificate"
+
+
+class PFASSampleInterimViewlet(ViewletBase):
+    """Under the sample's title, while its newest certificate is interim:
+    "Interim issued, final pending", so the sample's own page does not read
+    as finished. Nothing otherwise, and nothing when the register cannot
+    be read (logged)."""
+
+    def render(self):
+        from senaite.pfas.browser.controlled_publications import INTERIM_PENDING, current_is_interim
+        try:
+            interim = current_is_interim(self.context)
+        except ConflictError:
+            raise
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("sample interim line: %s", exc)
+            return u""
+        if not interim:
+            return u""
+        return u'<div class="pfas-banner is-warn">%s</div>' % INTERIM_PENDING

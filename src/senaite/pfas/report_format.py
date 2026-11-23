@@ -59,9 +59,12 @@ BOOLEAN = set(k for k, _l, c, _d in SETTINGS if c is YES_NO)
 # Rules the code applies, not settings the lab sets, recorded the same way:
 # coa_mdl_dilution "yes" = a diluted result's MDL scales with the fold, as
 # its RL does (printed, and for the J decision); coa_dilution_code "yes" = a
-# diluted result carries D (and the legend its line).
-RULE_DEFAULTS = {"coa_mdl_dilution": "yes", "coa_dilution_code": "yes"}
-LEGACY_DEFAULTS = {"coa_between_mdl_rl": "lt_rl", "coa_mdl_dilution": "no", "coa_dilution_code": "no"}
+# diluted result carries D (and the legend its line); coa_legend_page "yes" =
+# the key (the legend: every code's full wording) prints on a page of its
+# own, nothing under the results table.
+RULE_DEFAULTS = {"coa_mdl_dilution": "yes", "coa_dilution_code": "yes", "coa_legend_page": "yes"}
+LEGACY_DEFAULTS = {"coa_between_mdl_rl": "lt_rl", "coa_mdl_dilution": "no", "coa_dilution_code": "no",
+                   "coa_legend_page": "no"}
 
 
 def recorded_defaults():

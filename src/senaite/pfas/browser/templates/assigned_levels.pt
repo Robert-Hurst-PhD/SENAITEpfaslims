@@ -8,7 +8,12 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Assigned Levels</tal:t>
-  <tal:t metal:fill-slot="header-context"><span class="pfas-chip" tal:content="view/label">lot</span></tal:t>
+  <tal:t metal:fill-slot="header-context"><span class="pfas-chip" tal:condition="view/lot" tal:content="view/label">lot</span></tal:t>
+
+  <!-- the lot's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:condition="python:view.can_configure() and view.lot()"
+      tal:define="sb_form string:levels-form; sb_name string:action; sb_value string:save"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
 
   <metal:fill fill-slot="content"
               tal:define="cur view/current; edit view/can_configure; probs view/problems">
@@ -17,16 +22,34 @@
     </ul>
     <div class="bench-sub" tal:condition="view/saved">Saved.</div>
 
+    <!-- no lot asked for: the lots that carry assigned levels, each with its way in -->
+    <section class="bench-block" tal:condition="not:view/uid" tal:define="lots view/reference_lots">
+      <p class="form-note" tal:condition="not:lots">No reference material lot.
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-reagents">Reagent Inventory</a></p>
+      <table class="pfas-table" data-col-resize="assigned-levels-lots" tal:condition="lots">
+        <thead><tr><th>Lot</th><th>Lot number</th><th>Levels in force</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="l lots" tal:attributes="data-row-open l/url">
+            <td><strong tal:content="l/name">DEMO CRM</strong></td>
+            <td tal:content="l/lot_number">L1</td>
+            <td tal:content="python:l['levels'] or u'None yet'">12</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="form-note" tal:condition="python:view.uid() and not view.lot()">No such lot.
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-assigned-levels">Choose a lot</a></p>
+
     <section class="bench-block" tal:condition="view/lot">
       <form method="get" tal:attributes="action string:${view/portal_url}/@@pfas-assigned-levels">
         <input type="hidden" name="uid" tal:attributes="value view/uid" />
-        <select name="method">
-          <option tal:repeat="m view/methods" tal:content="m"
-                  tal:attributes="value m; selected python:'selected' if m == view.method() else None">EPA_537_1</option>
-        </select>
-        <button class="btn-sm btn-secondary" type="submit">Show</button>
+        <tal:mc tal:define="mc_choices python:[{'value': m, 'label': view.method_name(m)} for m in view.methods()];
+                            mc_value view/method; mc_label string:Method; mc_id string:al-method; mc_name string:method;
+                            mc_submit python:True"><metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></tal:mc>
+        <noscript><button class="btn-sm btn-secondary" type="submit">Show</button></noscript>
       </form>
-      <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-assigned-levels">
+      <form method="post" id="levels-form" tal:attributes="action string:${view/portal_url}/@@pfas-assigned-levels">
         <input type="hidden" name="uid" tal:attributes="value view/uid" />
         <input type="hidden" name="method" tal:attributes="value view/method" />
         <input tal:replace="structure context/@@authenticator/authenticator" />
@@ -64,7 +87,6 @@
             </tal:x>
           </tbody>
         </table>
-        <button class="btn-sm btn-primary" type="submit" name="action" value="save" tal:condition="edit">Save</button>
       </form>
     </section>
 

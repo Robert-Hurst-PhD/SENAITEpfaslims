@@ -3,7 +3,7 @@
 
 The HTML certificate is drawn from PFASCoASectionsView (lab(), doc_meta(),
 _sample()) and PFASCoAAttestationView (signatories, QC qualifications,
-accreditation scope, the controlled stamp). A designed certificate takes the
+accreditation scope, the time zone note). A designed certificate takes the
 SAME values: data(...) only flattens them into the fields and tables of the
 "coa" kind (document_templates.KINDS). Where the HTML composes a sentence
 (the legend, departures, the regulatory comparison), the words here are the
@@ -16,8 +16,14 @@ from __future__ import absolute_import, unicode_literals
 
 from senaite.pfas.print_style import PALETTE as _P
 
+from senaite.pfas import analysed_at as _analysed_at
+from senaite.pfas import coa_format
 from senaite.pfas import coa_qc_standards as _qcs
 from senaite.pfas import doc_fields as _df
+from senaite.pfas import regulatory_limits as _rl
+# the Signatures table's columns (report_documents imports neither this
+# module nor anything that does)
+from senaite.pfas.report_documents import NOT_YET_SIGNED, SIGNATURES_TABLE
 
 # The data fields, grouped as the designer offers them under the shared
 # categories (doc_fields: sample; analysis; laboratory; preparer / reviewer /
@@ -33,6 +39,7 @@ GROUPS = [
         ("batch", "Batch", "B-DEMO"),
         ("sampled", "Sampled", "2026-10-01 09:00"),
         ("received", "Received", "2026-10-02 10:00"),
+        ("report_tier", "Certificate tier", "T3 Results, QC and calibration"),
     ]),
     (_df.ANALYSIS, [
         ("method", "Method", "EPA 537.1"),
@@ -41,6 +48,9 @@ GROUPS = [
         ("result_unit", "Result unit", "ng/L"),
         ("dilution_notes", "Dilution notes", "\u00b9 Re-analysed at a 1:5 dilution on 2026-10-07 09:12"),
         ("legend", "Legend (qualifiers, RL, MDL)", "U = not detected at or above the reporting limit (RL)."),
+        # the codes the batch or report carries, beside the results heading;
+        # their full wording is the legend's
+        ("batch_codes", "Report codes (beside the results heading)", "B"),
         ("note", "Standard note", "DEMO standard note"),
         ("regulatory", "MCL / action level comparison", "DEMO regulatory comparison"),
         ("interpretation", "Results interpretation", "DEMO results interpretation"),
@@ -69,7 +79,7 @@ GROUPS = [
         ("preparer_credentials", "Preparer credentials", "B.Sc."),
         ("preparer_date", "Prepared on", "2026-10-03"),
         ("preparer_signature", "Preparer signature", ""),
-        ("prepared_by", "Prepared by (everyone, with dates)", "AN1 2026-10-03"),
+        ("prepared_by", "Everyone who prepared, with date and time", "AN1 2026-10-03 10:12"),
     ]),
     (_df.REVIEWER, [
         ("reviewer_label", "Reviewer heading", "Reviewed by"),
@@ -78,7 +88,7 @@ GROUPS = [
         ("reviewer_credentials", "Reviewer credentials", "M.Sc."),
         ("reviewer_date", "Reviewed on", "2026-10-04"),
         ("reviewer_signature", "Reviewer signature", ""),
-        ("verified_by", "Verified by (everyone, with dates)", "AN2 2026-10-04"),
+        ("verified_by", "Everyone who reviewed, with date and time", "AN2 2026-10-04 09:30"),
     ]),
     (_df.DIRECTOR, [
         ("director_label", "Director heading", "Laboratory Director"),
@@ -92,14 +102,29 @@ GROUPS = [
         ("director2_title", "Director block: title", "Director, DEMO Laboratory"),
         ("director2_credentials", "Director block: credentials", "Ph.D."),
         ("director2_signature", "Director block: signature", ""),
-        ("authorized_by", "Authorized by (who published)", "AN3 2026-10-05"),
+        ("authorized_by", "Authorised by: name, title and signing date", "AN3 2026-10-05"),
         ("authorizer", "Authorizing person: name and role", "AN3 \u00b7 Laboratory Director"),
+        # the authoriser as signed: the signature given on Data Review when
+        # the certificate is generated, the ledger row on a reprint; "Not
+        # yet signed" when nobody signed. The body prints no hash: the
+        # register, the Signatures page and the verifier hold it.
+        ("authoriser_label", "Authoriser heading", "Authorised by"),
+        ("authoriser_name", "Authoriser", "AN3"),
+        ("authoriser_credentials", "Authoriser credentials", "DEMO Ph.D."),
+        ("authorised_at", "Authoriser signing time", "Signed 2026-10-05 14:02 UTC"),
+        ("authoriser_signature", "Authoriser signature", ""),
     ]),
     (_df.DOCUMENT, [
         ("report_id", "Report", "DEMO-0001-R1"),
         ("issued", "Issued", "2026-10-05"),
         ("template_rev", "Template revision", "1"),
+        # what a layout issued earlier may still place; the starting
+        # layout prints none
         ("stamp", "Controlled stamp", "Controlled documentation publication · DEMO-0001-R1 · uncontrolled when printed"),
+        ("issue_mark", "Issue mark", "INTERIM"),
+        # the certificate's times are on the laboratory's clock: one note
+        # at its end names the zone (document_templates.compile_document)
+        ("times_note", "Time zone note", "Times are DEMO/Zone."),
     ]),
 ]
 FIELDS = [f for _g, fs in GROUPS for f in fs]
@@ -107,11 +132,11 @@ FIELDS = [f for _g, fs in GROUPS for f in fs]
 # Image fields: the value is a picture (PNG / JPEG data URI); the designer
 # places them as images bound to the data.
 IMAGES = ("lab_logo", "preparer_signature", "reviewer_signature", "director_signature",
-          "director2_signature")
+          "director2_signature", "authoriser_signature")
 
 # (column key, title, example), in the lab's order. "analyte" is the REPORTED
 # name (the abbreviation, e.g. PFOS; a summed analyte's reported label);
-# "analyte_name" the full name, isomer-aware (isomers.full_name). The unit is
+# "analyte_name" the full name, without a bracketed remark (isomers.full_name). The unit is
 # not a column: one per matrix, it is data()["result_unit"], for the Result
 # heading.
 RESULT_COLUMNS = [
@@ -144,7 +169,7 @@ COLUMN_ALIASES = {"results": {"analysis_date": ("Date of analysis",), "unit": ("
                   "qc_standards": {"standard": ("Labelled standard",)}}
 # Signer headings that layouts issued earlier print as fixed text: a warning
 # on re-issue, not a refusal (document_templates.warnings).
-HEADING_FIELDS = ("preparer_label", "reviewer_label", "director_label")
+HEADING_FIELDS = ("preparer_label", "reviewer_label", "director_label", "authoriser_label")
 
 # the surrogate / internal-standard sub-table
 QC_STANDARD_COLUMNS = _qcs.COLUMNS
@@ -163,17 +188,28 @@ REQUIRED_FIELDS = ("report_id", "issued", "lab_name", "sample_id", "client", "ma
                    "method", "legend", "note", "qc_standards_note", "qs_statement", "departures", "regulatory",
                    "accreditation", "qc_qualifications", "remarks", "interpretation",
                    ("preparer_name", "prepared_by"), ("reviewer_name", "verified_by"),
-                   ("authorizer", "authorized_by"), "stamp",
+                   ("authorizer", "authorized_by"),
                    "preparer_signature", "reviewer_signature", ("director2_name", "director_name"),
                    ("director2_signature", "director_signature"))
 REQUIRED_COLUMNS = {"results": ("analyte", "result", "qual", "rl"),
                     "qc_standards": _qcs.REQUIRED}
 
+# Fields the certificate states that a layout issued earlier may lack: it
+# keeps printing and re-issues with a warning naming each (the tier a sample
+# reports at belongs in its sample block; without the time zone note the
+# zone prints at the foot of every page instead of once at the end).
+EXPECTED_FIELDS = ("report_tier", "times_note")
+
+# The sample block's fields: one line as designed, and a long value (a
+# method's name, a client's sample ID) makes its box taller and moves what is
+# under its row down, in any layout (document_templates.compile_document).
+GROWING_FIELDS = ("client", "contact", "matrix", "sampled", "method", "sample_id", "client_sid",
+                  "batch", "received", "analysed", "report_tier")
+
 # words copied from the templates (test_coa_document checks they are there)
 QC_TITLE = "Surrogate and internal-standard quality control"
 LEGEND_U = "U = not detected at or above the reporting limit (RL)."
 LEGEND_MDL = "MDL = method detection limit."
-LEGEND_CODES = "Other codes: see Quality control qualifications."
 LEGEND_NO_RL = "No reporting limits are configured for this method and matrix."
 DEPARTURES_A = "Quality control criteria for project"
 DEPARTURES_B = "less stringent than the laboratory method:"
@@ -185,6 +221,8 @@ REG_NO_UNIT = "not compared: the result unit cannot be converted to that of the"
 REG_OTHERS_BELOW = "All other results compared are below the applicable limits."
 REG_ALL_BELOW = "All results compared are below the applicable limits."
 REG_MORE = "For more information:"
+REG_TEST_DATA = ("DEMO test data: a limit compared here is an invented value, "
+                 "not a regulatory limit.")
 ACCRED_TITLE = "Not covered by the laboratory's accreditation"
 ACCRED_TEXT = ("This sample was analysed under project-specific requirements that depart "
                "from the published method. The departures are stated below. Results are "
@@ -193,6 +231,10 @@ QUALS_TITLE = "Quality control qualifications"
 QUALS_TEXT = ("The results below were released although a quality control criterion was "
               "not met. Each qualified result carries the code shown.")
 QUALS_AFFECTED = "Affected analytes:"
+# a QC type the method requires every run that the run did not hold, released
+# by a closed missing-data deviation (qc_deviation.not_run)
+QUALS_NOT_RUN = "not run, though the method requires it every run"
+QUALS_RELEASED_BY = "released by deviation"
 
 
 def _s(v):
@@ -201,14 +243,21 @@ def _s(v):
 
 def legend(smp):
     parts = [LEGEND_U, LEGEND_MDL]
-    # the J and D lines, in the lab's wording (QC Qualifiers), when a row
-    # carries them
-    parts += [c.get("line") or "" for c in smp.get("rule_codes") or [] if c.get("line")]
-    if smp.get("codes"):
-        parts.append(LEGEND_CODES)
+    # a line per code on the page, in the lab's wording (QC Qualifiers): the
+    # reporting rules' J, D, N.Q. and E, every QC code and the report's own
+    # (coa_format.legend_lines); a code not on the page adds nothing
+    parts += [c.get("line") or "" for c in legend_lines(smp) if c.get("line")]
     if not smp.get("any_rl"):
         parts.append(LEGEND_NO_RL)
     return " ".join(parts)
+
+
+def legend_lines(smp):
+    """The sample's legend lines: as the certificate's sections built them,
+    else read from its rows (a sample assembled without them)."""
+    if "legend_codes" in smp:
+        return smp.get("legend_codes") or []
+    return coa_format.legend_lines(smp.get("rows") or [], {}, None)
 
 
 def departures(smp):
@@ -245,6 +294,8 @@ def regulatory(reg):
         lines.append(text)
     if reg.get("below"):
         lines.append(REG_OTHERS_BELOW if reg.get("findings") else REG_ALL_BELOW)
+    if reg.get("test_data"):
+        lines.append(REG_TEST_DATA)
     if reg.get("links"):
         lines.append("%s %s" % (REG_MORE, " · ".join(
             "%s (%s)" % (_s(l.get("label")), _s(l.get("url"))) for l in reg["links"])))
@@ -258,15 +309,28 @@ def accreditation(accred):
     return "\n".join(lines)
 
 
-def qc_qualifications(quals):
-    if not quals:
+def not_run_line(item):
+    """"LFSM not run, though the method requires it every run; released by
+    deviation DEV-2026-004." (the deviation only where one released it)."""
+    line = "%s %s" % (_s(item.get("qc_type")), QUALS_NOT_RUN)
+    if item.get("dev_id"):
+        line += "; %s %s" % (QUALS_RELEASED_BY, item["dev_id"])
+    return line + "."
+
+
+def qc_qualifications(quals, not_run=None):
+    """The Quality control qualifications text: each qualified result's code
+    and statement, then each QC type the method requires every run that was
+    not run, with the deviation that released it."""
+    if not quals and not not_run:
         return ""
-    lines = [QUALS_TITLE, QUALS_TEXT]
-    for q in quals:
+    lines = [QUALS_TITLE] + ([QUALS_TEXT] if quals else [])
+    for q in quals or []:
         line = "%s  %s" % (_s(q.get("code")), _s(q.get("statement")))
         if q.get("analytes"):
             line += " (%s %s)" % (QUALS_AFFECTED, q["analytes"])
         lines.append(line)
+    lines += [not_run_line(n) for n in not_run or []]
     return "\n".join(lines)
 
 
@@ -298,15 +362,11 @@ def interpretation(ris):
 
 def unsupported(signatories, attachments):
     """What the standard certificate would print that a designed one cannot
-    show: a second signature image in a role (the design has ONE signature
-    per role: preparer, reviewer, director), and attachments marked for the
-    report. A certificate with either is refused, never printed without them."""
+    show: attachments marked for the report. A certificate with any is
+    refused, never printed without them. A role with several signers is
+    shown: the first signer's image beside the list of everyone in the role
+    (prepared_by, verified_by)."""
     out = []
-    sig = signatories or {}
-    for role, people in (("preparer", sig.get("prepared")), ("reviewer", sig.get("verified"))):
-        signed = [p.get("fullname") or "" for p in people or [] if p and p.get("signature_url")]
-        if len(signed) > 1:
-            out.append("more than one %s signature (%s)" % (role, ", ".join(signed)))
     if attachments:
         out.append("attachments marked to show in the report (%s)" % ", ".join(attachments))
     return out
@@ -342,8 +402,10 @@ def action_levels(limits, programs=None):
         if not lim.get("verified") or len(analytes) != 1 or lim.get("value") is None:
             continue
         prog = (programs.get(lim.get("program")) or {}).get("name") or lim.get("program") or ""
-        text = "%s %s (%s)" % (_s(lim.get("value")), _s(lim.get("unit")),
-                               " ".join(x for x in (prog, _s(lim.get("kind"))) if x))
+        # test data names no programme: it is not a limit anyone set
+        said = (_rl.TEST_DATA_MARK if _rl.is_test_data(lim)
+                else " ".join(x for x in (prog, _s(lim.get("kind"))) if x))
+        text = "%s %s (%s)" % (_s(lim.get("value")), _s(lim.get("unit")), said)
         kw = analytes[0]
         out[kw] = "; ".join(x for x in (out.get(kw), text.replace(" ()", "")) if x)
     return out
@@ -397,10 +459,14 @@ def signers(preparer=None, reviewer=None, director=None, reviewer_is_director=Fa
     director's even when the director also reviewed. The labels say how the
     roles fall: when the reviewer is the Laboratory Director the reviewer's
     heading is "Reviewed and authorized by", with the director's title when
-    the reviewer has none, and the director's heading is empty."""
+    the reviewer has none, and the director's heading is empty. A role
+    nobody has acted in yet names itself NOT_YET_SIGNED, as the authoriser's
+    block does; the reviewer's NOT_YET_VERIFIED (an interim certificate is
+    issued before the run is verified)."""
     empty = signatory(None)
-    out = {"preparer": dict(preparer or empty, label="Prepared by"),
-           "reviewer": dict(reviewer or empty, label="Reviewed by"),
+    unsigned = dict(empty, name=NOT_YET_SIGNED)
+    out = {"preparer": dict(preparer or unsigned, label="Prepared by"),
+           "reviewer": dict(reviewer or dict(empty, name=NOT_YET_VERIFIED), label="Reviewed by"),
            "director": dict(director or empty, label="Laboratory Director")}
     if reviewer_is_director and reviewer:
         d = director or {}
@@ -410,10 +476,30 @@ def signers(preparer=None, reviewer=None, director=None, reviewer_is_director=Fa
     return out
 
 
-AUTHORIZING_PLACEHOLDER = "[authorizing person]"
+# the reviewer's block before the run is verified (an interim certificate);
+# the words the standard certificate prints there too
+NOT_YET_VERIFIED = "Not yet verified"
 # a submitter or verifier with neither a Lab Contact name nor a full name
-NO_STAFF_RECORD = "[no lab staff record]"
+NO_STAFF_RECORD = "Name not on file"
 NO_PUBLISHER = "The person publishing has no lab staff record; add one in People & Roles"
+# an interim certificate says so on every page (the issue_mark field)
+INTERIM = "INTERIM"
+# an interim certificate is refused from a design without the mark on every page
+NO_ISSUE_MARK = "The certificate design has no issue mark: place it before issuing an interim certificate."
+
+
+def issue_mark(interim):
+    """The issue_mark field: INTERIM on an interim certificate, else empty."""
+    return INTERIM if interim else ""
+
+
+def is_interim(entry, pending):
+    """Whether the revision printed is interim: its register entry says so
+    once it is issued; before, the authoriser's pending signature does, as
+    the mark recorded at Generate reads it (none waiting is a final)."""
+    if entry is not None:
+        return bool(entry.get("interim"))
+    return bool((pending or {}).get("interim"))
 
 
 def staff_name(info, userid):
@@ -431,14 +517,14 @@ def authorizing_role(jobtitle, is_director=False, sign_as=None):
         return jobtitle
     if is_director:
         return "Laboratory Director"
-    names = {"preparer": "Preparer", "reviewer": "Reviewer"}
-    return " and ".join(names[r] for r in ("preparer", "reviewer") if r in (sign_as or []))
+    names = (("preparer", "Preparer"), ("reviewer", "Reviewer"), ("authoriser", "Authoriser"))
+    return " and ".join(label for r, label in names if r in (sign_as or []))
 
 
 def _authorizing_name(info):
-    """The publishing person's name from their People & Roles record, or the
-    placeholder: never an account id."""
-    return _s(info.get("fullname")) if info.get("has_contact") else AUTHORIZING_PLACEHOLDER
+    """The publishing person's name from their People & Roles record, or
+    nothing: never an account id."""
+    return _s(info.get("fullname")) if info.get("has_contact") else ""
 
 
 def authorized_line(info):
@@ -508,20 +594,46 @@ def signatory(info, signature=""):
             "signature": signature or ""}
 
 
-def data(lab, meta, smp, signatories=None, quals=None, accred=None, remarks="", interpretation_text="",
+class DatesRefused(ValueError):
+    """A certificate refused because results were analysed before the
+    sample was received: its sample id (`sample`), the receipt as the
+    certificate prints it (`received`) and [(analyte, analysed)] (`rows`),
+    so the refusal can show the dates side by side."""
+
+    def __init__(self, text, sample, received, rows):
+        ValueError.__init__(self, text)
+        self.sample, self.received, self.rows = sample, received, list(rows or [])
+
+
+def data(lab, meta, smp, signatories=None, accred=None, remarks="", interpretation_text="",
          extra=None, preview=False):
     """One sample's certificate data. `lab`, `meta` and `smp` are what
     PFASCoASectionsView.lab(), doc_meta() and _sample() return; the rest come
     from PFASCoAAttestationView. A sample _sample() could not assemble raises
-    ValueError: a certificate never silently loses a sample."""
+    ValueError: a certificate never silently loses a sample. The
+    qualification text is read from the rows printed, never handed in: a
+    code it lists is on its row."""
     if smp.get("error"):
         raise ValueError("%s: %s" % (smp.get("id"), smp["error"]))
+    why = _analysed_at.refusal(smp.get("undated"))
+    if why:
+        # preview, issue and a report package's certificate all draw their data here
+        raise ValueError("%s: %s" % (smp.get("id"), why))
+    # a result analysed before its sample was received, on the laboratory's clock
+    why = _analysed_at.early_refusal(smp.get("early"), smp.get("received"))
+    if why:
+        raise DatesRefused("%s: %s" % (smp.get("id"), why), smp.get("id"), smp.get("received"),
+                           smp.get("early_at") or [(n, u"") for n in smp["early"]])
     if smp.get("enrich_error"):
         raise ValueError("%s: the designed certificate's fields could not be assembled (%s)"
                          % (smp.get("id"), smp["enrich_error"]))
     if smp.get("qc_error"):
         raise ValueError("%s: the surrogate and internal-standard results could not be read (%s)"
                          % (smp.get("id"), smp["qc_error"]))
+    if smp.get("qc_not_run_error") and not preview:
+        # a required QC type not run is stated: a gate not read is no "none"
+        raise ValueError("%s: the QC types not run could not be read (%s)"
+                         % (smp.get("id"), smp["qc_not_run_error"]))
     sig = signatories or {}
     fmt = smp.get("fmt") or {}
     qcs = smp.get("qc_standards") or {"state": "none", "rows": [], "injections": 0}
@@ -548,18 +660,33 @@ def data(lab, meta, smp, signatories=None, quals=None, accred=None, remarks="", 
         "matrix": _s(smp.get("matrix")), "batch": _s(smp.get("batch")),
         "sampled": _s(smp.get("sampled")), "received": _s(smp.get("received")),
         "analysed": _s(smp.get("analysed")), "method": _s(smp.get("method")),
+        "batch_codes": ", ".join(_s(c) for c in smp.get("batch_codes") or [] if c),
+        "report_tier": _s(smp.get("report_tier")),
         "units": _s(smp.get("units")), "note": _s(fmt.get("coa_note")),
         "result_unit": _s(smp.get("result_unit") or smp.get("units")),
         "dilution_notes": notes,
         "legend": legend(smp), "qs_statement": _s(smp.get("qs")),
         "departures": departures(smp), "regulatory": regulatory(smp.get("regulatory")),
-        "accreditation": accreditation(accred), "qc_qualifications": qc_qualifications(quals),
+        "accreditation": accreditation(accred), "qc_qualifications": qc_qualifications(coa_format.qualifications(rows), smp.get("qc_not_run")),
         "remarks": _s(remarks), "interpretation": _s(interpretation_text),
+        # everyone in the role, with dates: empty when nobody yet (the
+        # role's own block says so, once)
         "prepared_by": _people(sig.get("prepared") or []),
         "verified_by": _people(sig.get("verified") or []),
         "authorized_by": authorized_by(authorized),
         "authorizer": authorized_line(authorized),
+        # the authoriser as signed (esig.print_rows): the meaning, the kept
+        # image and the signing time; never the certificate's hash
+        "authoriser_label": _s((authorized or {}).get("label")),
+        "authoriser_name": _authorizing_name(authorized) if authorized else "",
+        "authoriser_credentials": _s((authorized or {}).get("credentials")),
+        "authoriser_signature": (authorized or {}).get("signature") or "",
+        "authorised_at": _s((authorized or {}).get("authorised_at")),
+        "issue_mark": _s(sig.get("issue_mark")) or issue_mark(sig.get("interim")),
+        "signatures": list(extra.get("signatures") or []),
         "stamp": stamp(_s(meta.get("report_id"))),
+        # written when the document is compiled, from every time it prints
+        "times_note": "",
         # "unit" stays on each row for a layout issued with a Units column
         "results": [{"analyte": _s(r.get("title")), "analyte_name": _s(r.get("analyte_name")),
                      "cas": _s(r.get("cas")), "analysis_date": _s(r.get("analysis_date")),
@@ -609,9 +736,12 @@ def _fixed(name, text, x, y, w, h, size=8, align="left", **kw):
 
 # the results table: each column's share of the width (Analyte, the full
 # name, widest) and the columns whose numbers align right
-RESULT_WIDTHS = {"analyte_name": 21.5, "analyte": 11, "cas": 9, "analysis_date": 10, "result": 9,
-                 "qual": 7, "mdl": 6, "rl": 6, "action_level": 14.5, "dil": 6}
+RESULT_WIDTHS = {"analyte_name": 20.5, "analyte": 11, "cas": 9, "analysis_date": 10, "result": 9,
+                 "qual": 7, "mdl": 6, "rl": 6, "action_level": 14.5, "dil": 7}
 RIGHT_ALIGNED = ("result", "mdl", "rl", "action_level")
+# an identifier read and copied as a whole never breaks over two lines:
+# its column is as wide as its longest value (compile_document)
+UNBROKEN_COLUMNS = {"results": ("cas",)}
 # the columns the designer's table chooser starts ticked: the starting
 # layout's, Dilution included (it prints only where Certificate format
 # shows it)
@@ -622,81 +752,171 @@ RESULT_DEFAULT_COLUMNS = ("analyte_name", "analyte", "cas", "analysis_date", "re
 RESULT_HEADING = "Result {result_unit}"
 
 
+# the banded starting layout's type: section labels and field labels small
+# and bold, the sample IDs large, the brand colour on the title, the labels,
+# the rules and the method band (a client's black-and-white certificate is
+# the same layout recoloured: document_templates.monochrome)
+BOLD = "Nunito Sans Bold"
+HEAVY = "Nunito ExtraBold"
+VALUE = "Nunito Sans SemiBold"
+
+
+def _section(name, text, x, y, w, **kw):
+    """A small mint section label."""
+    return _fixed(name, text, x, y, w, 4, 6.5, fontName=BOLD, fontColor=_P["s-primary-dk"],
+                  characterSpacing=0.4, **kw)
+
+
+def _label(name, text, x, y, w):
+    """A field's small label, over its value."""
+    return _fixed(name, text, x, y, w, 3.5, 6, fontName=BOLD, fontColor=_P["s-secondary"],
+                  characterSpacing=0.3)
+
+
+def _rule(name, x, y, w, colour, weight=0.2, **kw):
+    return dict({"name": name, "type": "line", "position": {"x": x, "y": y}, "width": w,
+                 "height": weight, "readOnly": True, "color": colour}, **kw)
+
+
+# the footer's right-hand text: the template revision the certificate is
+# drawn from, and nothing else
+FOOT_REVISION = "footer_revision"
+FOOT_REVISION_TEXT = "Template revision {template_rev}"
+
+# the header: one line pitch for the laboratory's lines and the report's,
+# the rule under them, and where the content starts below it (mm)
+HEADER_LINE = 4.2
+HEADER_META = 16.0
+HEADER_RULE = 29.6
+# the header block starts at its topmost line; the logo's box spans from here
+# to the rule, and the laboratory's lines sit beside it
+HEADER_TOP = 4.5
+LOGO_WIDTH = 40.0
+LAB_LEFT = 10.0 + LOGO_WIDTH + 3.0
+LAB_RIGHT = 119.0
+CONTENT_TOP = 32.6
+# a table row's padding above and below its text (mm) and its line height
+ROW_PAD = 1.7
+ROW_LINE_HEIGHT = 1.15
+
+
 def starter(width=210.0, height=297.0):
     """A certificate laid out like the standard one, with every required part
     in place, for the lab to rearrange (the designer offers it when a
     certificate design is empty, and Document Templates starts a draft from
     it). pdfme fills in each field's other settings when the designer opens
     it. Coordinates in mm; content flows below the header and above the
-    footer on every page."""
+    footer on every page. Banded: the two sample IDs large in a tinted box,
+    the sample's facts label over value four to a row, the method in a
+    solid band over its results, a ruled key and signer blocks under a
+    brand rule, the time zone said once at the end. The foot of each page:
+    the accreditation status, the page number in the centre, the template
+    revision."""
     every = {"pfasEveryPage": True}
     right = width - 10.0
     wide = width - 20.0
+    # the laboratory block sits beside its logo; with no logo it moves
+    # left into the logo's place (document_templates.BESIDE)
+    lab = dict(every, pfasBeside="lab_logo")
+    line, meta = HEADER_LINE, HEADER_META
     header = [
-        _image("lab_logo", 10, 8, 28, 18, **every),
+        _image("lab_logo", 10, HEADER_TOP, LOGO_WIDTH, HEADER_RULE - HEADER_TOP, **every),
         # two fixed lines: a long name or address prints smaller, never over
         # the line under it
-        _t("lab_name", 42, 8, 80, 7, 14, dynamicFontSize={"min": 9, "max": 14, "fit": "horizontal"},
-           **every),
-        _t("lab_address", 42, 15.5, 80, 4.5, 7.5,
-           dynamicFontSize={"min": 6, "max": 7.5, "fit": "horizontal"}, **every),
-        _t("lab_phone", 42, 20, 38, 4.5, 7.5, **every),
-        _t("lab_email", 81, 20, 41, 4.5, 7.5, **every),
-        _t("lab_accreditation", 42, 24.5, 80, 4.5, 7.5, **every),
-        _fixed("title", "Certificate of Analysis", right - 76, 10, 76, 7, 13, "right", **every),
-        _fixed("label_report", "Report", right - 76, 18, 25, 5, **every),
-        _t("report_id", right - 51, 18, 51, 5, 9, "right", **every),
-        _fixed("label_issued", "Issued", right - 76, 23, 25, 5, **every),
-        _t("issued", right - 51, 23, 51, 5, 9, "right", **every),
-        _fixed("label_template_rev", "Template revision", right - 76, 28, 30, 5, **every),
-        _t("template_rev", right - 46, 28, 46, 5, 9, "right", **every),
-        dict({"name": "header_rule", "type": "line", "position": {"x": 10, "y": 34},
-              "width": wide, "height": 0.4, "readOnly": True, "color": _P["s-body"]}, **every),
+        _t("lab_name", LAB_LEFT, 9, LAB_RIGHT - LAB_LEFT, 7, 14, dynamicFontSize={"min": 9, "max": 14, "fit": "horizontal"},
+           fontName=HEAVY, **lab),
+        _t("lab_address", LAB_LEFT, meta, LAB_RIGHT - LAB_LEFT, line, 7.5,
+           dynamicFontSize={"min": 6, "max": 7.5, "fit": "horizontal"}, **lab),
+        _t("lab_phone", LAB_LEFT, meta + line, 30, line, 7.5, **lab),
+        _t("lab_email", LAB_LEFT + 30, meta + line, LAB_RIGHT - LAB_LEFT - 30, line, 7.5, **lab),
+        # INTERIM on an interim certificate, on every page above the title
+        _t("issue_mark", right - 76, HEADER_TOP, 76, 5, 10, "right", fontName=HEAVY, **every),
+        _fixed("title", "Certificate of Analysis", right - 76, 9.5, 76, 6.5, 14, "right",
+               fontName=HEAVY, fontColor=_P["s-primary-dk"], **every),
+        _fixed("label_report", "Report", right - 76, meta, 25, line, **every),
+        _t("report_id", right - 51, meta, 51, line, 9, "right", fontName=BOLD, **every),
+        _fixed("label_issued", "Issued", right - 76, meta + line, 25, line, **every),
+        _t("issued", right - 51, meta + line, 51, line, 9, "right", fontName=BOLD, **every),
+        _rule("header_rule", 10, HEADER_RULE, wide, _P["s-primary-dk"], 0.8, **every),
     ]
-    block = []
-    pairs = [("Client", "client", "Lab sample ID", "sample_id"),
-             ("Contact", "contact", "Client sample ID", "client_sid"),
-             ("Matrix", "matrix", "Batch", "batch"),
-             ("Sampled", "sampled", "Received", "received"),
-             ("Method", "method", "Analysed", "analysed")]
-    for i, (l1, k1, l2, k2) in enumerate(pairs):
-        y = 40 + i * 6
-        block += [_fixed("label_" + k1, l1, 10, y, 28, 5), _t(k1, 38, y, 62, 5),
-                  _fixed("label_" + k2, l2, 105, y, 30, 5), _t(k2, 135, y, right - 135, 5)]
+    half = wide / 2.0
+    quarter = wide / 4.0
+    # the two sample IDs, large, on a tint between two rules; the rule under
+    # them starts below their row, so a long ID that wraps moves it down
+    ids = dict(fontName=HEAVY)
+    top0 = CONTENT_TOP
+    block = [
+        _section("label_sample", "Sample", 10, top0, 40),
+        {"name": "sample_box", "type": "rectangle", "position": {"x": 10, "y": top0 + 4}, "width": wide,
+         "height": 10.5, "readOnly": True, "color": _P["s-primary-lt"], "borderColor": "",
+         "borderWidth": 0, "radius": 0},
+        _rule("sample_box_top", 10, top0 + 4, wide, _P["s-input-border"]),
+        _rule("sample_box_divider", 10 + half, top0 + 4, 0.2, _P["s-input-border"], 10.5),
+        _label("label_sample_id", "Lab sample ID", 13, top0 + 4.7, half - 6),
+        _t("sample_id", 13, top0 + 8, half - 6, 6, 12, **ids),
+        _label("label_client_sid", "Client sample ID", 13 + half, top0 + 4.7, half - 6),
+        _t("client_sid", 13 + half, top0 + 8, half - 6, 6, 12, **ids),
+        _rule("sample_box_bottom", 10, top0 + 14.5, wide, _P["s-input-border"]),
+    ]
+    # label over value, four to a row; each rule starts under its row, so a
+    # long value that wraps moves it down with what follows
+    rows = [(("Client", "client"), ("Contact", "contact"), ("Matrix", "matrix"), ("Batch", "batch")),
+            (("Sampled", "sampled"), ("Received", "received"), ("Analysed", "analysed"),
+             ("Certificate tier", "report_tier"))]
+    y = top0 + 15.3
+    for i, row in enumerate(rows):
+        for j, (text, key) in enumerate(row):
+            x = 13 + j * quarter
+            block += [_label("label_" + key, text, x, y, quarter - 4),
+                      _t(key, x, y + 3, quarter - 4, 4.5, 8.5, fontName=VALUE)]
+        block.append(_rule("sample_rule_%d" % (i + 1), 10, y + 7.8, wide, _P["s-input-border"]))
+        y += 8.3
+    # the method heads its results in a solid band: white on the brand colour
+    band = dict(backgroundColor=_P["s-primary-dk"], fontColor=_P["on-accent"], verticalAlignment="middle")
+    # the report's codes at the band's right end, beside the results heading
+    block += [_fixed("label_method", "Method", 10, y + 0.6, 22, 5.5, 6.5, "center", fontName=BOLD,
+                     characterSpacing=0.4, **band),
+              _t("method", 32, y + 0.6, wide - 22 - BATCH_CODES_WIDTH, 5.5, 9, fontName=BOLD, **band),
+              _t("batch_codes", 10 + wide - BATCH_CODES_WIDTH, y + 0.6, BATCH_CODES_WIDTH, 5.5, 9, "right",
+                 fontName=BOLD, **band)]
+    top = y + 6.6
     # the lab's column list, in its order; drop any in the designer
     cols = list(RESULT_DEFAULT_COLUMNS)
     titles = dict((k, t) for k, t, _e in RESULT_COLUMNS)
     titles["result"] = RESULT_HEADING
-    table = {"name": "results", "type": "table", "position": {"x": 10, "y": 72},
+    table = {"name": "results", "type": "table", "position": {"x": 10, "y": top},
              "width": wide, "height": 20, "showHead": True, "repeatHead": True,
              "head": [titles[k] for k in cols],
              "headWidthPercentages": [RESULT_WIDTHS[k] for k in cols],
              "pfasColumns": list(cols),
              "content": "[]",
-             # the standard certificate's table: small, black on white, ruled
+             # the standard certificate's table: small, ruled, its heading on
+             # a light tint under the method band; each row with room above
+             # and below its text (the QC and signatures tables are copies)
              "tableStyles": {"borderColor": _P["s-body"], "borderWidth": 0.2},
-             "headStyles": {"fontSize": 6.5, "fontColor": _P["s-body"], "backgroundColor": "",
+             "headStyles": {"fontSize": 7, "fontColor": _P["s-secondary"], "backgroundColor": _P["s-light"],
                             "borderColor": _P["s-body"],
                             "borderWidth": {"top": 0.3, "right": 0, "bottom": 0.3, "left": 0},
-                            "padding": {"top": 1.5, "right": 1.5, "bottom": 1.5, "left": 1.5}},
-             "bodyStyles": {"fontSize": 7, "borderColor": _P["s-border"], "alternateBackgroundColor": "",
+                            "padding": {"top": 1.8, "right": 1.5, "bottom": 1.8, "left": 1.5}},
+             "bodyStyles": {"fontSize": 7, "lineHeight": ROW_LINE_HEIGHT, "borderColor": _P["s-border"],
+                            "alternateBackgroundColor": "",
                             "borderWidth": {"top": 0, "right": 0, "bottom": 0.1, "left": 0},
-                            "padding": {"top": 1, "right": 1.5, "bottom": 1, "left": 1.5}},
+                            "padding": {"top": ROW_PAD, "right": 1.5, "bottom": ROW_PAD, "left": 1.5}},
              "columnStyles": {"alignment": dict((str(i), "right") for i, k in enumerate(cols)
                                                 if k in RIGHT_ALIGNED)}}
     flow = []
-    # under the table: the dilution notes its marks point to, then the legend
-    flow.append(_t("dilution_notes", 10, 93, wide, 3.5, 7, overflow="expand"))
-    y = 97
-    for key in ("legend", "note"):
-        flow.append(_t(key, 10, y, wide, 5, 8 if key == "note" else 7.5, overflow="expand"))
-        y += 6
+    # under the table: the dilution notes its marks point to; the key has a
+    # page of its own (key_page)
+    flow.append(_t("dilution_notes", 10, top + 21, wide, 3.5, 7, overflow="expand"))
+    y = top + 25
+    flow.append(_t("note", 10, y, wide, 5, 8, overflow="expand"))
+    y += 6
     # surrogates and internal standards: their own table and note
     qtitles = dict((k, ti) for k, ti, _e in QC_STANDARD_COLUMNS)
     qcols = [k for k, _t2, _e in QC_STANDARD_COLUMNS]
     import copy
     qtable = copy.deepcopy(table)
-    flow.append(_fixed("label_qc_standards", QC_TITLE, 10, y + 2, wide, 5, 8.5))
+    flow.append(_section("label_qc_standards", QC_TITLE, 10, y + 2, wide))
     y += 6
     qtable.update(name="qc_standards", position={"x": 10, "y": y + 1}, height=10,
                   head=[qtitles[k] for k in qcols], headWidthPercentages=[18, 18, 17, 17, 9, 10, 11],
@@ -708,12 +928,14 @@ def starter(width=210.0, height=297.0):
     for key in ("qs_statement", "departures", "regulatory",
                 "accreditation", "qc_qualifications", "remarks", "interpretation"):
         flow.append(_t(key, 10, y, wide, 5, 8, overflow="expand"))
-        y += 6
-    y += 4
-    # one block per role: name, title, credentials and date, the signature
-    # beside them. The headings are data ("Reviewed and authorized by" when
-    # the reviewer is the Laboratory Director); the director's own block is
-    # then empty.
+        y += 5.5
+    # one block per role: name, title and credentials, the signature beside
+    # them, and under them every person who prepared or reviewed, each with
+    # the date and time of their signature. The headings are data ("Reviewed
+    # and authorized by" when the reviewer is the Laboratory Director); the
+    # director's own block is then empty.
+    # the signer blocks under a brand rule
+    flow.append(_rule("signers_rule", 10, y - 0.4, wide, _P["s-primary-dk"], 0.5))
     for role, who in (("preparer", "preparer"), ("reviewer", "reviewer"), ("director", "director2")):
         flow += [_t(role + "_label", 10, y, 30, 5, 8),
                  _t(who + "_name", 40, y, 70, 5, 9),
@@ -721,17 +943,57 @@ def starter(width=210.0, height=297.0):
                  _t(who + "_credentials", 40, y + 9.5, 70, 4.5, 7.5),
                  _image(who + "_signature", right - 55, y, 55, 16)]
         if role != "director":
-            flow.append(_t(role + "_date", 40, y + 14, 70, 4.5, 7.5))
-        y += 21
-    # who published: name and role from People & Roles
-    flow += [_fixed("label_authorizer", "Authorized by", 10, y, 30, 5),
-             _t("authorizer", 40, y, wide - 30, 5)]
+            flow.append(_t("prepared_by" if role == "preparer" else "verified_by", 40, y + 14,
+                           right - 55 - 42, 4.5, 7.5, overflow="expand"))
+        y += 18.5
+    # the authoriser as signed: the meaning ("Authorised by" or "Released
+    # interim"), name and role, credentials, the signing time and the image
+    # kept at signing; "Not yet signed" when nobody signed
+    flow += [_t("authoriser_label", 10, y, 30, 5, 8),
+             _t("authorizer", 40, y, 70, 5, 9),
+             _t("authoriser_credentials", 40, y + 5, 70, 4.5, 7.5),
+             _t("authorised_at", 40, y + 9.5, 70, 4.5, 7.5),
+             _image("authoriser_signature", right - 55, y, 55, 14)]
+    y += 17
+    # the certificate's signatures: optional, so a layout issued before the
+    # table keeps printing without it
+    stitles = [ti for _k, ti, _e in SIGNATURES_TABLE]
+    stable = copy.deepcopy(table)
+    stable.update(name="signatures", position={"x": 10, "y": y + 5.5}, height=7.5, head=stitles,
+                  headWidthPercentages=[16, 20, 14, 18, 20, 12],
+                  pfasColumns=[k for k, _t2, _e in SIGNATURES_TABLE], columnStyles={})
+    flow += [_section("heading_signatures", "Signatures", 10, y + 1, wide), stable]
+    # the time zone of every time printed above, said once at the end
+    flow.append(_t("times_note", 10, y + 13.5, wide, 4, 7.5))
+    # the foot of every page: the laboratory's accreditation status on the
+    # left, the page number in the centre, the template revision it
+    # is drawn from on the right
+    third = wide / 3.0
     footer = [
-        dict({"name": "footer_rule", "type": "line", "position": {"x": 10, "y": height - 17},
-              "width": wide, "height": 0.3, "readOnly": True, "color": _P["s-input-border"]}, **every),
-        _t("stamp", 10, height - 15, wide - 50, 5, 7, **every),
-        _fixed("pager", "Page {currentPage} of {totalPages}", right - 50, height - 15, 50, 5, 7,
-               "right", **every),
+        _rule("footer_rule", 10, height - 17, wide, _P["s-input-border"], 0.3, **every),
+        _t("lab_accreditation", 10, height - 15, third, 7, 7, **every),
+        _fixed("pager", "Page {currentPage} of {totalPages}", 10 + third, height - 15, third, 5, 7,
+               "center", **every),
+        dict(_t(FOOT_REVISION, right - third, height - 15, third, 5, 7, "right", **every),
+             type="multiVariableText", text=FOOT_REVISION_TEXT,
+             variables=["template_rev"], content="{}"),
     ]
-    return {"basePdf": {"width": width, "height": height, "padding": [38, 10, 20, 10]},
-            "schemas": [header + block + [table] + flow + footer]}
+    return {"basePdf": {"width": width, "height": height, "padding": [CONTENT_TOP, 10, 20, 10]},
+            "schemas": [header + block + [table] + flow + footer, key_page(wide)]}
+
+
+# the width of the report's codes at the right end of the Method band (mm)
+BATCH_CODES_WIDTH = 30.0
+KEY_TITLE = "Key"
+
+
+def key_page(wide):
+    """The starting layout's last page: the key alone, every code on the
+    certificate with its full wording (the report's codes included), ruled
+    above and below on a light tint. The header and the foot print on it as
+    on every page."""
+    y = CONTENT_TOP
+    return [_section("label_key", KEY_TITLE, 10, y, wide),
+            _rule("key_rule_top", 10, y + 4.6, wide, _P["s-input-border"]),
+            _t("legend", 10, y + 5.2, wide, 8, 8, overflow="expand", backgroundColor=_P["s-light"]),
+            _rule("key_rule_bottom", 10, y + 13.8, wide, _P["s-input-border"])]

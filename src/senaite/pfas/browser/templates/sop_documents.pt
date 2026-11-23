@@ -8,6 +8,9 @@
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Controlled Documents</tal:t>
+<tal:r metal:fill-slot="header-right">
+  <button type="button" class="btn-sm btn-primary" tal:condition="view/can_manage" onclick="openSOPModal()">+ New Document</button>
+</tal:r>
 <metal:content metal:fill-slot="content">
 <tal:def tal:define="
   purl      view/portal_url;
@@ -30,7 +33,7 @@
   <!-- ── Unsigned document banner ─────────────────────────────────────────── -->
   <tal:unsigned tal:condition="python:unsigned and not msg">
     <div class="alert alert-warn">
-      <svg class="pfas-ico" aria-hidden="true"><use href="#ico-warning"/></svg>
+      <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('warn', hidden=True, size='md')" />
       You have <strong tal:content="python:len(unsigned)">0</strong>
       document<tal:pl tal:condition="python:len(unsigned)!=1">s</tal:pl>
       requiring your sign-off.
@@ -50,16 +53,13 @@
         tal:attributes="action string:${purl}/@@pfas-sop">
     <input type="hidden" name="method" tal:condition="active_tab" tal:attributes="value active_tab"/>
     <input type="hidden" name="doc_type" tal:condition="active_type_tab" tal:attributes="value active_type_tab"/>
-    <div class="pfas-field">
+    <div class="pfas-form-field"
+         tal:define="mc_choices python:[{'value': t['key'], 'label': t['label'], 'url': u'%s/@@pfas-sop?method=%s' % (purl, t['key'])} for t in tabs];
+                     mc_value active_tab; mc_label string:Method">
       <span>Method</span>
-      <nav class="pfas-seg pfas-seg-strip" aria-label="Method">
-        <a class="pfas-seg-item" tal:repeat="tab tabs"
-           tal:attributes="href string:${purl}/@@pfas-sop?method=${tab/key};
-                           aria-selected python:'true' if active_tab == tab['key'] else 'false'"
-           tal:content="tab/label">Tab</a>
-      </nav>
+      <metal:m use-macro="context/@@pfas-macros/macros/method-choice" />
     </div>
-    <div class="pfas-field">
+    <div class="pfas-form-field">
       <span>Type</span>
       <nav class="pfas-seg pfas-seg-strip" aria-label="Document type">
         <a class="pfas-seg-item" tal:repeat="ttab type_tabs"
@@ -76,14 +76,13 @@
     </label>
     <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
     <span class="pfas-filterbar-spacer"></span>
-    <tal:mgr tal:condition="can_mgr">
-      <button type="button" class="btn btn-primary" onclick="openSOPModal()">+ New Document</button>
-    </tal:mgr>
   </form>
 
-  <!-- ── Document table ───────────────────────────────────────────────────── -->
+  <!-- ── Document table: the row opens the document's dialog; its actions
+       are the row's menu ──────────────────────────────────────────────── -->
   <div class="table-wrap">
-  <table class="pfas-table sop-table" data-col-resize="sop-documents-sop-table">
+  <table class="pfas-table sop-table" data-col-resize="sop-documents-sop-table"
+         tal:define="rm context/@@pfas-row-menu">
     <thead>
       <tr>
         <th>ID</th>
@@ -94,34 +93,40 @@
         <th>Rev</th>
         <th>Activated</th>
         <th>Status</th>
-        <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       <tal:nosops tal:condition="python:not sops">
         <tr>
-          <td colspan="9" class="pfas-cell-empty">
+          <td colspan="8" class="pfas-cell-empty">
             No documents yet.
-            <tal:mgr tal:condition="can_mgr">
-              <button type="button" class="btn-sm btn-secondary" onclick="openSOPModal()">Upload the first document.</button>
-            </tal:mgr>
+            <tal:mgr tal:condition="can_mgr">New Document, at the top right, uploads the first.</tal:mgr>
           </td>
         </tr>
       </tal:nosops>
       <tal:rows tal:repeat="sop sops">
-        <tal:skip tal:condition="python:
-          active_tab == 'general' and sop['method_slug'] or
-          (active_tab and active_tab != 'general' and sop['method_slug'] != active_tab)">
+        <tal:skip tal:condition="python:(active_tab == 'general' and sop['method_slug'] or
+                                         (active_tab and active_tab != 'general' and sop['method_slug'] != active_tab))">
         </tal:skip>
-        <tal:show tal:condition="python:
-          (not active_tab or
-           (active_tab == 'general' and not sop['method_slug']) or
-           (active_tab and active_tab != 'general' and sop['method_slug'] == active_tab))
-          and
-          (not active_type_tab or sop['doc_type'] == active_type_tab)">
-          <tr class="pfas-row-toggle"
-              tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
-              tal:attributes="onclick string:sopToggle('detail-${sop_id_js}')">
+        <tal:show tal:condition="python:((not active_tab or
+                                           (active_tab == 'general' and not sop['method_slug']) or
+                                           (active_tab and active_tab != 'general' and sop['method_slug'] == active_tab))
+                                          and (not active_type_tab or sop['doc_type'] == active_type_tab))">
+          <tr tal:define="sop_id_js python:sop['sop_id'].replace('-','_');
+                          ar_rev python:sop['active_rev'] and sop['active_rev']['rev_num']"
+              tal:attributes="data-row-dialog string:detail-${sop_id_js};
+                              data-row-open string:${purl}/@@pfas-sop?sop_id=${sop/sop_id};
+                              data-sop-id sop/sop_id;
+                              data-row-actions python:rm.actions(*([
+                                  (u'Read and sign', 'modal', u'detail-%s' % sop_id_js) if sop['active_rev'] and not sop['user_signed'] else None,
+                                  (u'Download', 'href', u'%s/@@pfas-sop?action=download_sop&amp;sop_id=%s&amp;rev_num=%s&amp;view=0' % (purl, sop['sop_id'], ar_rev), {'blank': True}) if sop['active_rev'] else None,
+                                  (u'Cover page', 'href', u'%s/@@pfas-sop-cover?sop_id=%s' % (purl, sop['sop_id']), {'blank': True}) if sop['active_rev'] else None]
+                                + [(u'Activate Rev %s' % dr['rev_num'], 'form', u'sop-activate-%s-%s' % (sop_id_js, dr['rev_num']))
+                                   for dr in (sop['draft_revs'] if can_mgr else [])]
+                                + [(u'Clear Laboratory QAM' if sop['sop_id'] == qam_id else u'Mark as Laboratory QAM', 'form', u'sop-qam-%s' % sop_id_js)
+                                       if can_mgr and sop['doc_type'] != 'QAPP' else None,
+                                   (u'New revision', 'event', u'sop-new-revision') if can_mgr else None,
+                                   (u'Delete', 'form', u'sop-delete-%s' % sop_id_js, {'danger': True}) if can_mgr else None]))">
             <td class="cell-nowrap"><strong tal:content="sop/sop_id">SOP-001</strong></td>
             <td><span tal:replace="sop/title">Title</span>
                 <span class="badge badge-active" tal:condition="python:sop['sop_id'] == qam_id">Laboratory QAM</span></td>
@@ -142,79 +147,35 @@
               </tal:rev>
               <tal:norev tal:condition="python:not sop['active_rev']">—</tal:norev>
             </td>
-            <!-- Active = signed and in force; amber with a "!" naming what is missing -->
+            <!-- Active = signed and in force; amber with a "!" naming what is
+                 missing; Read and sign, in the row's menu, opens its dialog -->
             <td>
               <tal:rev tal:condition="sop/active_rev"
-                       tal:define="attn_label string:Active;
+                       tal:define="attn_family string:document; attn_label string:Active;
                                    attn_cls string:badge badge-ok;
                                    attn_reasons python:[] if sop['user_signed'] else [u'You have not signed this revision']">
                 <metal:a use-macro="context/@@pfas-macros/macros/status-attention" />
               </tal:rev>
               <tal:norev tal:condition="python:not sop['active_rev']"><span class="badge badge-draft">Draft</span></tal:norev>
             </td>
-            <td class="row-plus-cell" onclick="event.stopPropagation()">
-             <details class="row-more">
-              <summary class="row-plus" aria-label="Actions for this document" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <tal:hasrev tal:condition="sop/active_rev"
-                            tal:define="ar_rev python:sop['active_rev'] and sop['active_rev']['rev_num']">
-                  <a class="btn-sm btn-secondary" target="_blank"
-                     tal:attributes="href string:${purl}/@@pfas-sop?action=download_sop&amp;sop_id=${sop/sop_id}&amp;rev_num=${ar_rev}&amp;view=0"
-                     >Download</a>
-                  <a class="btn-sm btn-secondary" target="_blank"
-                     tal:attributes="href string:${purl}/@@pfas-sop-cover?sop_id=${sop/sop_id}"
-                     >Cover page</a>
-                </tal:hasrev>
-                <tal:drafts tal:condition="python:can_mgr and sop['draft_revs']">
-                  <tal:each tal:repeat="dr python:sop['draft_revs']">
-                    <form method="POST" class="pfas-inline-form"
-                          tal:attributes="action string:${purl}/@@pfas-sop">
-                      <input type="hidden" name="action" value="activate_revision"/>
-                      <input type="hidden" name="sop_id"
-                             tal:attributes="value sop/sop_id"/>
-                      <input type="hidden" name="rev_num"
-                             tal:attributes="value dr/rev_num"/>
-                      <button type="submit" class="btn-sm btn-success">
-                        Activate Rev <tal:n tal:replace="dr/rev_num">1</tal:n>
-                      </button>
-                    </form>
-                  </tal:each>
-                </tal:drafts>
-                <form method="POST" class="pfas-inline-form" data-autosubmit="data-autosubmit"
-                      tal:condition="python:can_mgr and sop['doc_type'] != 'QAPP'"
-                      tal:attributes="action string:${purl}/@@pfas-sop">
-                  <input type="hidden" name="action" value="lab_qam"/>
-                  <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
-                  <label class="pfas-switch">
-                    <input type="checkbox" name="on" value="1"
-                           tal:attributes="checked python:'checked' if sop['sop_id'] == qam_id else None"/>
-                    <span class="pfas-switch-track"></span>
-                    <span>Laboratory QAM</span>
-                  </label>
-                </form>
-                <tal:mgr tal:condition="can_mgr">
-                  <button type="button" class="btn-sm btn-secondary"
-                          tal:define="sop_id_safe sop/sop_id"
-                          tal:attributes="onclick string:openSOPModal('${sop_id_safe}')"
-                          >New revision</button>
-                  <form method="POST" class="pfas-inline-form"
-                        tal:attributes="action string:${purl}/@@pfas-sop"
-                        onsubmit="return confirm('Delete this document? It will be moved to Archived; its number is not reused.');">
-                    <input type="hidden" name="action" value="delete_sop"/>
-                    <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
-                    <button type="submit" class="btn-sm btn-danger">Delete</button>
-                  </form>
-                </tal:mgr>
-              </div>
-             </details>
-            </td>
           </tr>
-          <!-- ── Detail panel ─────────────────────────────────────────────── -->
-          <tr>
-            <td colspan="9" class="pfas-flush">
-              <div class="pfas-detail"
-                   tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
-                   tal:attributes="id string:detail-${sop_id_js}">
+        </tal:show>
+      </tal:rows>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- ── Each shown document: its dialog (the document, its revisions, its
+       sign-off) and the forms its row's menu posts ───────────────────────── -->
+  <tal:rows tal:repeat="sop sops">
+    <tal:show tal:condition="python:((not active_tab or
+                                       (active_tab == 'general' and not sop['method_slug']) or
+                                       (active_tab and active_tab != 'general' and sop['method_slug'] == active_tab))
+                                      and (not active_type_tab or sop['doc_type'] == active_type_tab))"
+      tal:define="sop_id_js python:sop['sop_id'].replace('-','_')">
+      <div class="pfas-modal" tal:attributes="id string:detail-${sop_id_js}">
+        <div class="pfas-modal-box is-wide">
+          <h2 tal:content="python:u'%s %s' % (sop['sop_id'], sop['title'])">SOP-001 Title</h2>
 
                 <div data-tabs="data-tabs">
                 <div class="pfas-seg pfas-seg-sm">
@@ -232,7 +193,6 @@
 
                 <!-- Viewer tab -->
                 <div class="pfas-pane is-active"
-                     tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-viewer">
                   <tal:hasrev tal:condition="sop/active_rev"
                               tal:define="ar_rev python:sop['active_rev'] and sop['active_rev']['rev_num']">
@@ -248,14 +208,14 @@
                           <input type="hidden" name="sop_id"
                                  tal:attributes="value sop/sop_id"/>
                           <button type="submit" class="btn btn-success btn-sign">
-                            &#10003; I have read and will follow this document to the best of my abilities
+                            I have read and will follow this document to the best of my abilities
                           </button>
                         </form>
                       </div>
                     </tal:unsigned>
                     <tal:signed tal:condition="sop/user_signed">
                       <div class="pfas-mt">
-                        <span class="badge badge-ok">&#10003; You have signed this revision.</span>
+                        <span class="pfas-doc-state"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('sig-signed', hidden=True, size='md')" /> You have signed this revision.</span>
                       </div>
                     </tal:signed>
                   </tal:hasrev>
@@ -269,7 +229,6 @@
 
                 <!-- History tab -->
                 <div class="pfas-pane"
-                     tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-history">
                   <table class="pfas-table rev-table" data-col-resize="sop-documents-rev-table">
                     <thead><tr>
@@ -297,7 +256,6 @@
                 <!-- Sign-off roster tab (manager only) -->
                 <div class="pfas-pane"
                      tal:condition="can_mgr"
-                     tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-signoffs">
                   <tal:hasrev tal:condition="sop/active_rev">
                     <p class="pfas-muted">
@@ -319,14 +277,52 @@
                 </div>
                 </div><!-- /tabs -->
 
-              </div><!-- /detail -->
-            </td>
-          </tr>
-        </tal:show>
-      </tal:rows>
-    </tbody>
-  </table>
-  </div>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <tal:mgr tal:condition="can_mgr">
+        <tal:drafts tal:condition="python:sop['draft_revs']">
+          <tal:each tal:repeat="dr python:sop['draft_revs']">
+            <form method="POST" class="pfas-inline-form" hidden="hidden"
+                  tal:attributes="action string:${purl}/@@pfas-sop; id string:sop-activate-${sop_id_js}-${dr/rev_num}">
+              <input type="hidden" name="action" value="activate_revision"/>
+              <input type="hidden" name="sop_id"
+                     tal:attributes="value sop/sop_id"/>
+              <input type="hidden" name="rev_num"
+                     tal:attributes="value dr/rev_num"/>
+              <button type="submit" class="btn-sm btn-success">
+                Activate Rev <tal:n tal:replace="dr/rev_num">1</tal:n>
+              </button>
+            </form>
+          </tal:each>
+        </tal:drafts>
+        <!-- the Laboratory QAM switch, sent from the menu: it posts the
+             switch's new state, on for a document not marked, off for the one marked -->
+        <form method="POST" class="pfas-inline-form" hidden="hidden"
+              tal:condition="python:sop['doc_type'] != 'QAPP'"
+              tal:attributes="action string:${purl}/@@pfas-sop; id string:sop-qam-${sop_id_js}">
+          <input type="hidden" name="action" value="lab_qam"/>
+          <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
+          <label class="pfas-switch">
+            <input type="checkbox" name="on" value="1"
+                   tal:attributes="checked python:None if sop['sop_id'] == qam_id else 'checked'"/>
+            <span class="pfas-switch-track"></span>
+            <span>Laboratory QAM</span>
+          </label>
+        </form>
+        <form method="POST" class="pfas-inline-form" hidden="hidden"
+              tal:attributes="action string:${purl}/@@pfas-sop; id string:sop-delete-${sop_id_js}"
+              onsubmit="return confirm('Delete this document? It will be moved to Archived; its number is not reused.');">
+          <input type="hidden" name="action" value="delete_sop"/>
+          <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
+          <button type="submit" class="btn-sm btn-danger">Delete</button>
+        </form>
+      </tal:mgr>
+    </tal:show>
+  </tal:rows>
 
   <!-- ── Archived Documents (Manager) ─────────────────────────────────────── -->
   <tal:archived tal:condition="python:can_mgr and request.form.get('show_archived') == '1' and view.archived_sops()"
@@ -335,13 +331,15 @@
       <h3 class="pfas-label">
         Archived Documents (<tal:n tal:replace="python:len(arch)">0</tal:n>)
       </h3>
-      <table class="pfas-table sop-table" data-col-resize="sop-documents-sop-table-1">
+      <table class="pfas-table sop-table" data-col-resize="sop-documents-sop-table-1"
+             tal:define="rm context/@@pfas-row-menu">
         <thead>
           <tr><th>ID</th><th>Title</th><th>Type</th><th>Category</th><th>Method</th>
-              <th>Deleted</th><th>By</th><th></th></tr>
+              <th>Deleted</th><th>By</th></tr>
         </thead>
         <tbody>
-          <tr tal:repeat="a arch">
+          <tr tal:repeat="a arch"
+              tal:attributes="data-row-actions python:rm.actions((u'Restore', 'form', u'sop-restore-%s' % a['sop_id'].replace('-', '_')))">
             <td><strong tal:content="a/sop_id">SOP-002</strong></td>
             <td tal:content="a/title">Title</td>
             <td tal:content="a/doc_type_label">SOP</td>
@@ -349,17 +347,16 @@
             <td tal:content="a/method_label">General</td>
             <td tal:content="python:a['archived_at'] or u'\u2014'">&#8212;</td>
             <td tal:content="python:a['archived_by'] or u'\u2014'">&#8212;</td>
-            <td>
-              <form method="POST" class="pfas-inline-form"
-                    tal:attributes="action string:${purl}/@@pfas-sop">
-                <input type="hidden" name="action" value="restore_sop"/>
-                <input type="hidden" name="sop_id" tal:attributes="value a/sop_id"/>
-                <button type="submit" class="btn-sm btn-secondary">Restore</button>
-              </form>
-            </td>
           </tr>
         </tbody>
       </table>
+      <!-- Restore, from the row's menu -->
+      <form method="POST" class="pfas-inline-form" hidden="hidden" tal:repeat="a arch"
+            tal:attributes="action string:${purl}/@@pfas-sop; id python:u'sop-restore-%s' % a['sop_id'].replace('-', '_')">
+        <input type="hidden" name="action" value="restore_sop"/>
+        <input type="hidden" name="sop_id" tal:attributes="value a/sop_id"/>
+        <button type="submit" class="btn-sm btn-secondary">Restore</button>
+      </form>
       <p class="pfas-aux">
         Deleted document numbers are never reused &#8212; the next new document of
         that type always takes the next number in its sequence.
@@ -379,44 +376,45 @@
         <input type="hidden" name="sop_id" id="sopModalSopId" value=""/>
 
         <div id="sopNewFields">
+          <div class="pfas-form-row">
+            <div class="pfas-form-field is-spaced">
+              <label>Title</label>
+              <input type="text" name="title" id="sopTitle" placeholder="e.g. PFAS Extraction Procedure"/>
+            </div>
+            <div class="pfas-form-field is-spaced">
+              <label>Document type</label>
+              <select name="doc_type">
+                <tal:each tal:repeat="dt doc_types">
+                  <option tal:attributes="value dt/code; selected dt/is_default"
+                          tal:content="dt/label">Option</option>
+                </tal:each>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="pfas-form-row">
           <div class="pfas-form-field is-spaced">
-            <label>Title</label>
-            <input type="text" name="title" id="sopTitle" placeholder="e.g. PFAS Extraction Procedure"/>
+            <span>Method</span>
+            <tal:mc tal:define="mc_choices python:[{'value': m['slug'], 'label': m['label']} for m in methods];
+                                mc_value string:; mc_label string:Method; mc_id string:sop-method; mc_name string:method_slug"><metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></tal:mc>
           </div>
           <div class="pfas-form-field is-spaced">
-            <label>Document type</label>
-            <select name="doc_type">
-              <tal:each tal:repeat="dt doc_types">
-                <option tal:attributes="value dt/code; selected dt/is_default"
-                        tal:content="dt/label">Option</option>
-              </tal:each>
-            </select>
+            <label>Category</label>
+            <input type="text" name="category" placeholder="e.g. Extraction, Calibration, Safety"/>
           </div>
-        </div>
-        <div class="pfas-form-field is-spaced">
-          <label>Method</label>
-          <select name="method_slug">
-            <tal:each tal:repeat="m methods">
-              <option tal:attributes="value m/slug" tal:content="m/label">Option</option>
-            </tal:each>
-          </select>
-        </div>
-        <div class="pfas-form-field is-spaced">
-          <label>Category</label>
-          <input type="text" name="category" placeholder="e.g. Extraction, Calibration, Safety"/>
-        </div>
-        <div class="pfas-form-field is-spaced">
-          <label>Description</label>
-          <textarea name="description" placeholder="Brief description of this document's scope"></textarea>
-        </div>
-        <div class="pfas-form-field is-spaced">
-          <label>Release notes</label>
-          <textarea name="release_notes"
-                    placeholder="What changed in this revision?"></textarea>
-        </div>
-        <div class="pfas-form-field is-spaced">
-          <label>Document file * (PDF only)</label>
-          <input type="file" name="sop_file" accept=".pdf,application/pdf" required/>
+          <div class="pfas-form-field is-spaced is-full">
+            <label>Description</label>
+            <textarea name="description" placeholder="Brief description of this document's scope"></textarea>
+          </div>
+          <div class="pfas-form-field is-spaced is-full">
+            <label>Release notes</label>
+            <textarea name="release_notes"
+                      placeholder="What changed in this revision?"></textarea>
+          </div>
+          <div class="pfas-form-field is-spaced">
+            <label>Document file * (PDF only)</label>
+            <input type="file" name="sop_file" accept=".pdf,application/pdf" required/>
+          </div>
         </div>
         <div class="form-actions is-end">
           <button type="button" class="btn btn-secondary" onclick="closeSopModal()">Cancel</button>
@@ -440,12 +438,6 @@ function sopPills(el) {
   for (var i = 0; i < segs.length; i++) { PFAS.components.placePill(segs[i]); }
 }
 
-function sopToggle(id) {
-  var el = document.getElementById(id);
-  if (!el) return;
-  el.classList.toggle('open');
-  sopPills(el);
-}
 
 function openSOPModal(sopId) {
   var overlay = document.getElementById('sopModalOverlay');
@@ -470,7 +462,13 @@ function closeSopModal() {
   if (overlay) overlay.classList.remove('open');
 }
 
-// Auto-open detail panel for selected document after redirect
+/* a row's "New revision" opens the upload dialog for that document */
+document.addEventListener('pfas:row-action', function (e) {
+  var row = e.detail && e.detail.row;
+  if (row && e.detail.name === 'sop-new-revision') openSOPModal(row.getAttribute('data-sop-id'));
+});
+
+// Auto-open the selected document's dialog after a redirect or from its address
 (function() {
   var qs = new URLSearchParams(window.location.search);
   var sel = qs.get('sop_id');

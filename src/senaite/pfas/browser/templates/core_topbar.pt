@@ -4,5 +4,5 @@
   <!-- Core SENAITE pages: the same bar as PFAS pages (browser/topbar.py). -->
   <tal:t metal:fill-slot="bar-title" tal:content="view/page_title">Samples</tal:t>
   <ul class="navbar-nav pfas-topbar-views" metal:fill-slot="bar-context"
-      tal:content="structure view/base_render"></ul>
+      tal:content="structure view/context_views"></ul>
 </metal:use>

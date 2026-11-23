@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""The per-sample table the guided extraction records into FM-ENV-003's
-`samples` rows -- the table the pipeline already reads -- and the dilution
+"""The per-sample table the guided extraction records into the extraction
+record's `samples` rows -- the table the pipeline already reads -- and the dilution
 log ("Form numbers, per-sample correction, dilutions").
 
 A sample row: sample_id, matrix_type, and what the bench measured --
@@ -15,17 +15,17 @@ re-injected, and the record of it must not change after the result exists.
 
     capture_column(stage)                 -> "amount" | "final_volume_ml" | "spe_port" | ""
     merge_ports(ports, edits)             -> {injection: port}
-    port_warnings(edits)                  -> ["needs a note", ...]
+    port_warnings(edits, ports)           -> ["needs a note", ...]
     rows_for_card(rows, batch_samples)    -> the sample rows to show
     merge_samples(rows, edits, column)    -> rows with the column recorded
     missing(rows, edits, column)          -> sample ids with no value
     append_dilution(rows, parent, injection, factor, by, at) -> (rows, error)
-    processing_stage(stages)              -> the stage that is the Sample
-                                             Processing Log (FM-ENV-004)
+    processing_stage(stages)              -> the extraction record's
+                                             processing stage
 
 Spikes are not recorded here: an extraction batch's QC and each one's
-parent and level are its members (extraction_batch.py); FM-ENV-003 `spikes`
-rows are read by dilution_ref.spikes_from_rows.
+parent and level are its members (extraction_batch.py); the extraction
+record's `spikes` rows are read by dilution_ref.spikes_from_rows.
 
 Pure; Python 2.7 and 3.
 """
@@ -133,10 +133,12 @@ def merge_ports(ports, edits):
     return out
 
 
-def port_warnings(edits):
+def port_warnings(edits, ports=None):
     """What the stage's deviation note must explain: a member with no port,
-    and a port given to more than one member."""
+    a port given to more than one member, and, where the SPE manifold used
+    lists its `ports`, a port that is not one of them."""
     out, used = [], {}
+    known = set(p.upper() for p in ports or [])
     for e in edits or []:
         sid = (e.get("sample_id") or u"").strip()
         port = (u"%s" % (e.get("value") or u"")).strip()
@@ -146,6 +148,8 @@ def port_warnings(edits):
             out.append(u"%s: no SPE port recorded" % sid)
         else:
             used.setdefault(port.upper(), []).append(sid)
+            if known and port.upper() not in known:
+                out.append(u"%s: SPE port %s is not a port of the manifold" % (sid, port))
     for port, who in sorted(used.items()):
         if len(who) > 1:
             out.append(u"SPE port %s: used by %s" % (port, u", ".join(who)))
@@ -253,7 +257,7 @@ def dilutions(rows):
 
 def processing_stage(stages):
     """The stage where the test portion is taken -- the first one recording
-    the sample amount. It is the Sample Processing Log, FM-ENV-004 (the
+    the sample amount. It is the extraction record's processing stage (the
     guided extraction is the one record of homogenising and weighing out
     aliquots), or None when the method has no such stage."""
     for st in sorted(stages or [], key=lambda s: s.get("order", 0)):

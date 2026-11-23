@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Signatures</title>
+  <metal:fill fill-slot="header-title">Signatures</metal:fill>
+
+  <div metal:fill-slot="content" tal:define="editable view/can_configure">
+  <div class="page-body">
+
+    <div tal:condition="view/message"
+         tal:attributes="class python:'alert alert-success' if view.message['ok'] else 'alert alert-error'"
+         tal:content="view/message/text">Chain whole through row 12</div>
+
+    <p class="form-note">Every electronic signature recorded, newest first. Rows are never changed or deleted: a withdrawal is a row of its own. <tal:h define="hid string:signatures"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+
+    <!-- the seal worker as its last head line says -->
+    <div class="section-group-hdr">Seal worker</div>
+    <table class="pfas-table" tal:define="h view/health">
+      <tbody>
+        <tr><th>Seal key</th>
+          <td tal:condition="python:h['key_ok'] is True">Ready</td>
+          <td tal:condition="python:h['key_ok'] is not True"><span class="badge badge-quarantine">Seal key unavailable</span></td></tr>
+        <tr><th>Unsealed for over 10 minutes</th>
+          <td tal:condition="python:h['unsealed_old'] is not None" tal:content="h/unsealed_old">0</td>
+          <td tal:condition="python:h['unsealed_old'] is None" tal:content="h/error">The signatures could not be read.</td></tr>
+        <tr><th>Worker last reported</th>
+          <td><span tal:replace="python:view.shown(h['head_at']) if h['head_at'] else u'Never'">2026-11-06 12:00</span>
+            <div class="alert alert-error" tal:condition="h/stale">The worker has not reported for over 10 minutes.</div></td></tr>
+        <tr tal:condition="h/cert_not_after"><th>Seal certificate valid until</th>
+          <td tal:content="python:view.shown(h['cert_not_after'])">2027-01-01 00:00</td></tr>
+      </tbody>
+    </table>
+
+    <div class="form-actions">
+      <form method="post" tal:condition="editable" tal:attributes="action view/page_url">
+        <input type="hidden" name="action" value="check_chain" />
+        <input type="hidden" tal:repeat="f view/hidden_filters"
+               tal:attributes="name python:f[0]; value python:f[1]" />
+        <button type="submit" class="btn btn-primary">Check chain</button>
+      </form>
+      <a class="btn-sm btn-secondary" tal:attributes="href view/csv_url">Export CSV</a>
+      <a class="btn-sm btn-secondary" tal:attributes="href view/records_url">Export records</a>
+    </div>
+
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+          tal:attributes="action view/page_url">
+      <input type="hidden" name="kind" tal:attributes="value view/kind_filter" />
+      <input type="hidden" name="state" tal:attributes="value view/state_filter" />
+      <div class="pfas-form-field"><label>Kind</label>
+        <nav class="pfas-seg" aria-label="Kind">
+          <a class="pfas-seg-item" tal:repeat="k view/kind_links"
+             tal:attributes="href k/url; aria-selected python:'true' if k['on'] else 'false'"
+             tal:content="k/label">Certificate</a>
+        </nav></div>
+      <div class="pfas-form-field"><label for="sg-signer">Signer</label>
+        <input type="text" name="signer" id="sg-signer" class="pfas-input" placeholder="User name"
+               tal:attributes="value view/signer_filter" /></div>
+      <div class="pfas-form-field"><label for="sg-meaning">Meaning</label>
+        <select name="meaning" id="sg-meaning" class="pfas-select">
+          <option value="">All meanings</option>
+          <option tal:repeat="m view/meanings"
+                  tal:attributes="value python:m[0]; selected python:m[0] == view.meaning_filter()"
+                  tal:content="python:m[1]">Prepared by</option>
+        </select></div>
+      <div class="pfas-form-field" role="group" aria-labelledby="sg-range"><span id="sg-range">Date range</span>
+        <tal:r define="dr_id string:sg; dr_from_name string:from; dr_to_name string:to; dr_from view/date_from; dr_to view/date_to">
+          <metal:r use-macro="context/@@pfas-macros/macros/date_range" /></tal:r></div>
+      <div class="pfas-form-field"><label>State</label>
+        <nav class="pfas-seg" aria-label="State">
+          <a class="pfas-seg-item" tal:repeat="s view/state_links"
+             tal:attributes="href s/url; aria-selected python:'true' if s['on'] else 'false'"
+             tal:content="s/label">Orphan</a>
+        </nav></div>
+      <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
+    </form>
+
+    <tal:p tal:define="rows view/items; pg view/paging">
+    <div class="alert alert-error" tal:condition="view/read_error"
+         tal:content="view/read_error">The signatures could not be read.</div>
+    <div class="alert alert-error" tal:repeat="m view/failed_messages"
+         tal:content="m">The batch records could not be read: their rows have no link and no orphan check.</div>
+    <p tal:condition="python:not rows and not view.read_error" class="form-note">No signatures for these filters.</p>
+
+    <table class="pfas-table sg-table" data-col-resize="signatures-sg-table" tal:condition="rows"
+           tal:define="rm context/@@pfas-row-menu">
+      <thead>
+        <tr><th>Row</th><th>Signed, server clock</th><th>Record</th>
+          <th>Meaning</th><th>Signer</th><th>State</th></tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="r rows"
+            tal:attributes="data-row-open r/url;
+                            data-row-actions python:rm.actions(
+                                (u'Withdraw this signature', 'modal', u'sg-withdraw-%s' % r['seq'], {'danger': True}) if view.can_withdraw(r) else None)">
+          <td class="pfas-mono" tal:content="r/seq">12</td>
+          <td class="cell-nowrap" tal:content="r/shown_at">2026-11-06 09:30</td>
+          <td><strong tal:content="r/record_id">DEMO-PREP-1</strong>
+            <div class="form-note" tal:content="r/kind_label">Preparation record</div></td>
+          <td><span tal:replace="r/meaning_label">Prepared by</span>
+            <div class="form-note" tal:condition="r/withdraws" tal:content="string:Withdraws row ${r/withdraws}">Withdraws row 3</div>
+            <div class="form-note" tal:condition="r/supersedes" tal:content="string:Replaces row ${r/supersedes}">Replaces row 2</div>
+            <div class="form-note" tal:condition="r/note" tal:content="r/note">wrong lot</div></td>
+          <td><span tal:replace="r/fullname">AN1 DEMO</span>
+            <div class="form-note" tal:content="r/signer">an1</div></td>
+          <tal:c replace="nothing">a state only when it is not Sealed; the seal's time only
+            when it came late; a certificate's own seal only while it is not sealed</tal:c>
+          <td><tal:m tal:condition="python:r['state'] != 'sealed'" tal:define="ic context/@@pfas-icons"
+                    tal:replace="structure python:ic.tip({'unsealed': 'sig-wait', 'orphan': 'warn', 'superseded': 'doc-superseded', 'withdrawn': 'sig-withdrawn'}.get(r['state'], 'sig-withdrawn'), r['state_label'])" />
+            <div class="form-note" tal:condition="r/marked_by" tal:content="string:By row ${r/marked_by}">By row 7</div>
+            <div class="form-note" tal:condition="r/seal_line" tal:content="r/seal_line">Sealed</div>
+            <div class="form-note" tal:condition="r/certificate_flag"
+                 tal:content="string:Certificate: ${r/certificate_flag}">Certificate: Seal pending</div></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- one withdrawal dialog per row, opened by Withdraw in the row's menu -->
+    <tal:w repeat="r rows">
+            <div class="pfas-modal" tal:condition="python:view.can_withdraw(r)"
+                 tal:attributes="id string:sg-withdraw-${r/seq}">
+              <div class="pfas-modal-box is-narrow">
+                <h2>Withdraw signature</h2>
+                <form method="post" tal:attributes="action view/page_url">
+                  <input type="hidden" name="action" value="withdraw" />
+                  <input type="hidden" name="seq" tal:attributes="value r/seq" />
+                  <input type="hidden" tal:repeat="f view/hidden_filters"
+                         tal:attributes="name python:f[0]; value python:f[1]" />
+                  <div class="pfas-meta-row"><span class="pfas-muted">Record</span>
+                    <strong tal:content="r/record_id">DEMO-PREP-1</strong></div>
+                  <div class="pfas-meta-row"><span class="pfas-muted">Signature</span>
+                    <strong tal:content="string:${r/meaning_label} ${r/fullname}">Prepared by AN1 DEMO</strong></div>
+                  <div class="pfas-form-field is-full">
+                    <label tal:attributes="for string:sg-reason-${r/seq}">Reason</label>
+                    <textarea name="reason" rows="2" class="pfas-textarea" required="required"
+                              tal:attributes="id string:sg-reason-${r/seq}"></textarea>
+                  </div>
+                  <tal:s define="sign_id string:sg-secret-${r/seq}"><metal:s
+                      use-macro="context/@@pfas-esig-macros/macros/sign_secret" /></tal:s>
+                  <p class="fld-help">The signature stops counting. The record needs it given again.</p>
+                  <div class="form-actions is-end">
+                    <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                    <button type="submit" class="btn btn-warn">Withdraw</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+    </tal:w>
+
+    <metal:p use-macro="context/@@pfas-macros/macros/paging" />
+    </tal:p>
+
+    <!-- a password set by another account: what its person signed until they changed it -->
+    <tal:r define="resets view/resets" condition="resets">
+    <div class="section-group-hdr">Password resets to review</div>
+    <table class="pfas-table" data-col-resize="signatures-resets">
+      <thead><tr><th>Person</th><th>Set by</th><th>Set, server clock</th><th>Changed by them</th><th>Signatures since</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="r resets" tal:attributes="data-row-open python:r['url'] if r['seqs'] else None">
+          <td tal:content="r/userid">an1</td>
+          <td tal:content="r/by">mgr1</td>
+          <td class="cell-nowrap" tal:content="r/shown_at">2026-11-06 09:30</td>
+          <td class="cell-nowrap"><span tal:condition="r/closed_at" tal:replace="r/shown_closed">2026-11-06 10:00</span>
+            <span class="badge badge-draft" tal:condition="not:r/closed_at">Not yet</span></td>
+          <td><span tal:condition="r/seqs" tal:replace="python:u'Rows ' + u', '.join([u'%s' % q for q in r['seqs']])">Rows 12, 15</span>
+            <span tal:condition="not:r/seqs">None</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </tal:r>
+
+    <div class="section-group-hdr">Signing attempts</div>
+    <tal:a define="attempts view/attempts">
+    <p class="form-note" tal:condition="not:attempts">No failed signing attempts.</p>
+    <table class="pfas-table" data-col-resize="signatures-attempts" tal:condition="attempts">
+      <thead><tr><th>Time, server clock</th><th>Person</th><th>What happened</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="a attempts">
+          <td class="cell-nowrap" tal:content="a/at">2026-11-06 09:30</td>
+          <td tal:content="a/userid">an1</td>
+          <td tal:content="a/what">Wrong PIN</td>
+        </tr>
+      </tbody>
+    </table>
+    </tal:a>
+  </div>
+  </div>
+</html>

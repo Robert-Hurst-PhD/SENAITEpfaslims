@@ -38,8 +38,11 @@
   .pass-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
 
   /* the curve's rule, failing: the worker's sentence and the calibrators off by hand */
-  .card-rule { padding:8px 14px; background:var(--s-danger-lt); color:var(--s-danger-dk);
+  .card-rule, .card-refused { padding:8px 14px; background:var(--s-danger-lt); color:var(--s-danger-dk);
                border-bottom:1px solid var(--s-border); font-size:var(--fs-sm); }
+  /* a quadratic the card will not draw: it turns within its range */
+  .card-refused { font-weight:600; }
+  .card-refused[hidden] { display:none; }
   .card-rule p { margin:0; font-weight:600; }
   .card-dropped { margin:4px 0 0; padding-left:18px; }
   .approve-hold { flex:2; font-size:var(--fs-sm); color:var(--s-danger-dk); }
@@ -91,9 +94,22 @@
   .plot-empty { height:80px; display:flex; align-items:center; justify-content:center;
                 font-size:var(--fs-xs); color:var(--s-secondary); font-style:italic; }
 
-  .eq-line { font-size:var(--fs-xs); color:var(--s-secondary); font-family: var(--font-mono);
-             padding:4px 14px 8px; overflow:hidden; text-overflow:ellipsis;
-             white-space:nowrap; }
+  /* the curve's title at the left, its fitted equation centred over the
+     chart (the shared equation's inline size, pfas-components.css); the colour
+     colour key (what each coloured value is) sits at the row's top right. Below the
+     card's breakpoint the title and the equation stack, the equation centred */
+  .plot-title-row { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+                    align-items:start; gap:var(--sp-1) var(--sp-4); margin-bottom:var(--sp-1); }
+  .plot-title-row .plot-title { margin-bottom:0; grid-column:1; }
+  .plot-title-row .cal-eq { grid-column:2; justify-self:center; text-align:center; max-width:100%; }
+  .plot-title-row .cal-eq:empty { display:none; }
+  .plot-title-row .cal-eq-key { grid-column:3; grid-row:1; justify-self:end; text-align:right; }
+  .plot-title-row .cal-eq-key:empty { display:none; }
+  @media (max-width: 900px) {
+    .plot-title-row { grid-template-columns:minmax(0,1fr); }
+    .plot-title-row .plot-title, .plot-title-row .cal-eq { grid-column:1; }
+    .plot-title-row .cal-eq-key { grid-column:1; grid-row:auto; justify-self:start; text-align:left; order:3; }
+  }
 
   /* CCB blank chips */
   .ccb-chips { display:none; gap:6px; flex-wrap:wrap;

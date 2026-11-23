@@ -15,6 +15,10 @@ A Batch is linked to a Project by annotation, not by a schema field — Batch
 is a core SENAITE type and this add-on never forks core. See
 senaite.pfas.project_ref.
 
+One project per client may be standing: a batch created for that client
+naming no project is linked to it when it is created (project_ref.
+on_batch_initialized). A project saved before the field existed reads no.
+
 Python 2.7 compatible.
 """
 from plone.dexterity.content import Item
@@ -50,6 +54,14 @@ class IPFASProject(model.Schema):
                        u"project with none falls back to the lab's internal "
                        u"quality system."),
         required=False,
+    )
+    # At most one project per client is standing; a batch created for the
+    # client that names no project is linked to it (project_ref).
+    standing = schema.Bool(
+        title=_(u"Standing"),
+        description=_(u"Used by this client's batches that name no project."),
+        required=False,
+        default=False,
     )
     start_date = schema.Date(
         title=_(u"Start Date"),

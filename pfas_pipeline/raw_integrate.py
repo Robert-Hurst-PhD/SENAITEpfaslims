@@ -159,6 +159,10 @@ class Peak:
     levels: Optional[list] = None
     valley_share: Optional[float] = None
     skim_share: Optional[float] = None
+    # the peak asymmetry factor on its quantifier trace (peak_asymmetry),
+    # or why it has none
+    asymmetry: Optional[float] = None
+    asymmetry_note: Optional[str] = None
 
 
 # ── shapes ──────────────────────────────────────────────────────────────────

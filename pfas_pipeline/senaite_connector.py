@@ -28,6 +28,7 @@ from typing import Optional
 import requests
 
 from . import lab_clock
+from .constants import QUALIFIER_ALOQ
 from .models import QCFlag, SummaryResult
 
 logger = logging.getLogger(__name__)
@@ -60,14 +61,42 @@ EDITABLE_STATES = ("unassigned", "assigned")
 DEAD_SAMPLE_STATES = ("invalid", "cancelled", "rejected")
 
 
-def credentials_from_env(env):
+# the worker's own SENAITE account (tools/worker_account.py makes it): its
+# role and group hold only what the worker's calls need, and what it does is
+# recorded as the worker, never as a person or the administrator
+WORKER_USER = "pfas-worker"
+
+
+def credentials_from_env(env, read=None):
     """(user, password) for the worker's SENAITE account from the
-    environment. The password has no default: a worker started without
-    SENAITE_PASS refuses to start rather than try a built-in one."""
-    password = (env.get("SENAITE_PASS") or "").strip()
+    environment: SENAITE_USER (the worker's own account unless named), and
+    the password from the file SENAITE_PASS_FILE names (a Docker secret),
+    else SENAITE_PASS. The password has no default: a worker started
+    without one refuses to start rather than try a built-in one."""
+    path = (env.get("SENAITE_PASS_FILE") or "").strip()
+    if path:
+        read = read or (lambda p: open(p, encoding="utf-8").read())
+        try:
+            password = (read(path) or "").strip()
+        except OSError as exc:
+            raise RuntimeError("SENAITE_PASS_FILE %s cannot be read: %s" % (path, exc))
+        if not password:
+            raise RuntimeError("SENAITE_PASS_FILE %s is empty: run tools/worker_account.py" % path)
+    else:
+        password = (env.get("SENAITE_PASS") or "").strip()
     if not password:
         raise RuntimeError("SENAITE_PASS is not set: the worker needs its SENAITE account's password")
-    return (env.get("SENAITE_USER") or "admin", password)
+    return (env.get("SENAITE_USER") or WORKER_USER, password)
+
+
+def pick_analysis(analyses):
+    """The analysis a push writes: the editable one (EDITABLE_STATES) where
+    a keyword has several (a retracted result and its retest), else the
+    first; None when there is none."""
+    for a in analyses or []:
+        if (a.get("review_state") or "") in EDITABLE_STATES:
+            return a
+    return (analyses or [None])[0]
 
 
 class SenaiteConnector:
@@ -132,6 +161,20 @@ class SenaiteConnector:
             return int((r.json() or {}).get("sent") or 0)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("notice reminders not sent: %s", exc)
+            return 0
+
+    def sweep_instrument_archive(self) -> int:
+        """Ask the add-on to sweep the instrument archive
+        (instrument_files.decide: nothing is deleted while its switch is
+        off). Returns how many files went; a failure is logged and asked
+        again on the next day."""
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-instrument-archive-sweep", data={},
+                                  timeout=self.timeout)
+            r.raise_for_status()
+            return len([f for f in (r.json() or {}).get("files") or [] if f.get("deleted")])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("instrument archive not swept: %s", exc)
             return 0
 
     # ── Batch ────────────────────────────────────────────────────────────────
@@ -261,11 +304,14 @@ class SenaiteConnector:
             self.last_push["reason"] = "the sample has no analysis for this analyte"
             return False
 
-        uid = analyses[0]["uid"]
+        # a retracted result and its retest share the keyword: the retest
+        # is the one filed
+        picked = pick_analysis(analyses)
+        uid = picked["uid"]
         # A submitted, verified or published result is never overwritten by a
         # reprocess: SENAITE refuses the edit with 401. It is skipped with a
         # reason, retracted in SENAITE first, then the run is uploaded again.
-        state = analyses[0].get("review_state") or ""
+        state = picked.get("review_state") or ""
         if state and state not in EDITABLE_STATES:
             self.last_push = {"analysis_uid": uid, "value": "",
                               "reason": "the analysis is {0}: a reprocess does not overwrite it "
@@ -282,6 +328,14 @@ class SenaiteConnector:
                            else (result.neat_qualifier or "ALoQ")),
                 "Remarks": "{0}; reported from dilution {1}".format(
                     result.neat_qualifier or "ALoQ", result.source_injection),
+            }
+        elif result.qualifier == QUALIFIER_ALOQ:
+            # Above the calibration range with no dilution: no number is
+            # reported extrapolated. The Result is the qualifier; the top of
+            # the range and the reading go to the add-on (push_above_range).
+            payload = {
+                "Result": QUALIFIER_ALOQ,
+                "Remarks": " ".join(result.flags) if result.flags else "",
             }
         else:
             payload = {
@@ -302,7 +356,33 @@ class SenaiteConnector:
         self.last_push = {"analysis_uid": uid, "value": str(payload["Result"]), "reason": ""}
         if diluted:
             self.push_dilution(uid, result)
+        if diluted:
+            # a dilution reports it: what an earlier push of the neat kept goes
+            self.push_above_range(uid, None)
+        elif payload["Result"] == QUALIFIER_ALOQ and result.range_top is not None:
+            # the top of the range for an undiluted ALoQ; with none known the
+            # certificate prints the word ALoQ with E
+            self.push_above_range(uid, result)
         return True
+
+    def push_above_range(self, analysis_uid: str, result: "SummaryResult | None") -> bool:
+        """Hand the add-on an ALoQ result's record (@@pfas-above-range): the
+        top of the calibration range on the sample basis, the extrapolated
+        reading where there is one, the injection. None clears it."""
+        body = {"analysis_uid": analysis_uid, "clear": result is None}
+        if result is not None:
+            body.update(limit=result.range_top, reading=result.result_ppt,
+                        injection=result.source_injection or result.sample_injection)
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-above-range", json=body, timeout=self.timeout)
+            r.raise_for_status()
+            ok = bool((r.json() or {}).get("ok"))
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("above-range record for %s not kept: %s", analysis_uid, exc)
+            return False
+        if not ok:
+            logger.error("above-range record for %s refused: %s", analysis_uid, r.text[:200])
+        return ok
 
     def push_dilution(self, analysis_uid: str, result: SummaryResult) -> bool:
         """Hand the dilution's result to the add-on, which keeps it on the
@@ -414,8 +494,9 @@ class SenaiteConnector:
         return r.json()
 
     # ── Extraction log + report attachments ─────────────────────────────────
-    def delete_attachments(self, parent_uid: str, label: str) -> int:
-        """Remove existing attachments on *parent_uid* carrying *label*.
+    def delete_attachments(self, parent_uid: str, label: str, keep_as: str = "") -> int:
+        """Remove existing attachments on *parent_uid* carrying *label*, or,
+        with *keep_as*, keep each under that label instead.
 
         Re-importing a run must SUPERSEDE its artefacts, not stack another copy
         beside them, so the reviewer can tell which file the current results
@@ -426,15 +507,21 @@ class SenaiteConnector:
         # where it reports the refusal.
         try:
             r = self.session.post(f"{self.base}/@@pfas-retire-attachment",
-                                  data={"parent_uid": parent_uid,
-                                        "label": label},
+                                  data=dict({"parent_uid": parent_uid,
+                                             "label": label},
+                                            **({"keep_as": keep_as} if keep_as else {})),
                                   timeout=self.timeout)
             if r.status_code == 200:
-                retired = (r.json() or {}).get("retired") or []
+                answer = r.json() or {}
+                retired = answer.get("retired") or []
+                kept = answer.get("superseded") or []
                 if retired:
                     logger.info("Retired %d superseded %r attachment(s)",
                                 len(retired), label)
-                return len(retired)
+                if kept:
+                    logger.info("Kept %d earlier %r attachment(s) as %r",
+                                len(kept), label, keep_as)
+                return len(retired) + len(kept)
             logger.warning("Retire endpoint returned %s; leaving previous "
                            "%r attachment(s) in place", r.status_code, label)
         except (requests.HTTPError, requests.ConnectionError, ValueError) as e:
@@ -443,8 +530,10 @@ class SenaiteConnector:
         return 0
 
     def attach_file(self, parent_uid: str, file_path: str | Path,
-                    label: str = "", replace: bool = True) -> Optional[str]:
-        """Upload a file (extraction log JSON, report PDF) as an Attachment."""
+                    label: str = "", replace: bool = True, keep_as: str = "") -> Optional[str]:
+        """Upload a file (extraction log JSON, report PDF) as an Attachment.
+        With *replace*, the earlier ones under *label* are retired, or kept
+        under *keep_as* when it is given."""
         file_path = Path(file_path)
         if not parent_uid:
             logger.error("attach_file(%s): no container given. SENAITE allows "
@@ -452,7 +541,7 @@ class SenaiteConnector:
                          file_path.name)
             return None
         if replace and label:
-            n = self.delete_attachments(parent_uid, label)
+            n = self.delete_attachments(parent_uid, label, keep_as)
             if n:
                 logger.info("Superseded %d previous %r attachment(s)", n, label)
         import base64

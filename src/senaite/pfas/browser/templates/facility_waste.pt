@@ -20,9 +20,13 @@
           <input type="date" name="log_date" id="wstDate" required/></div>
         <div class="pfas-form-field"><label>Time</label>
           <input type="time" name="log_time" id="wstTime"/></div>
-        <div class="pfas-form-field"><label>Operator initials</label>
-          <input type="text" name="operator" maxlength="10" required/></div>
-        <div class="pfas-form-field"><label>Container</label>
+        <div class="pfas-form-field"><label>Operator</label>
+          <input type="text" name="operator" readonly="readonly" tal:attributes="value view/signed_in" /></div>
+      </div>
+      <!-- the container, with the button that registers one, has a row wide
+           enough for both; the condition stands clear of the button -->
+      <div class="pfas-form-row">
+        <div class="pfas-form-field is-wide"><label>Container</label>
           <div class="pfas-inline">
             <select name="unit_id" required="required">
               <option value="">Choose</option>
@@ -42,7 +46,7 @@
         </div>
       </div>
       <div class="pfas-form-row">
-        <div class="pfas-form-field is-grow"><label>Notes</label>
+        <div class="pfas-form-field is-full"><label>Notes</label>
           <input type="text" name="notes"/></div>
       </div>
       <button type="submit" class="btn btn-primary">

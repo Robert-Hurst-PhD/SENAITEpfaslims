@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Batch records</title>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Batch records</tal:t>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url; rec view/record_view">
+
+  <!-- one record: its signatures, read from the ledger against the record now -->
+  <tal:one tal:condition="rec">
+  <p class="pfas-lead">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-batch-records">Batch records</a>
+  </p>
+  <div class="pfas-card">
+    <h2 tal:content="rec/title">WS-329</h2>
+    <dl class="rc-facts">
+      <div><dt>State</dt><dd tal:content="rec/state_label">Finalised</dd></div>
+      <div tal:condition="rec/matrix"><dt>Matrix</dt><dd tal:content="rec/matrix">Drinking Water</dd></div>
+      <div tal:condition="rec/client"><dt>Client</dt><dd tal:content="rec/client">DEMO client</dd></div>
+      <div tal:condition="rec/revision_words|nothing"><dt>Record</dt><dd tal:content="rec/revision_words">Record rev 1</dd></div>
+      <div tal:condition="rec/correction_card/chips|nothing"><dt>Corrections</dt>
+        <dd><tal:c repeat="c rec/correction_card/chips"><span class="pfas-tag" tal:content="c">Amended</span> </tal:c></dd></div>
+    </dl>
+    <div class="form-actions" tal:define="can rec/correction_card/can|nothing">
+      <a class="btn-sm btn-secondary"
+         tal:attributes="href string:${purl}/@@pfas-extraction-guide?batch_uid=${rec/uid}">Open extraction</a>
+      <a class="btn-sm btn-secondary" tal:condition="rec/printable"
+         tal:attributes="href string:${purl}/@@pfas-extraction-pdf?batch_uid=${rec/uid}">Print record</a>
+      <!-- the record's corrections: each opens its window -->
+      <button type="button" class="btn-sm btn-secondary" data-modal-open="ea-amend"
+              tal:condition="can/amend|nothing">Amend…</button>
+      <button type="button" class="btn-sm btn-secondary" data-modal-open="ea-reextract"
+              tal:condition="can/reextract|nothing">Needs re-extraction…</button>
+      <button type="button" class="btn-sm btn-secondary" data-modal-open="ea-send-back"
+              tal:condition="can/send_back|nothing">Send back…</button>
+    </div>
+  </div>
+  <div class="pfas-card" tal:define="stages rec/stage_rows">
+    <h3>Stages</h3>
+    <p class="pfas-muted" tal:condition="not:stages">No stages planned.</p>
+    <table class="pfas-table" data-col-resize="batch-records-stages" tal:condition="stages">
+      <thead><tr><th>Signed</th><th>Stage</th><th>Name</th><th>Completed</th><th>Analyst</th><th>Deviations</th></tr></thead>
+      <tbody tal:define="ic context/@@pfas-icons"><tr tal:repeat="st stages">
+        <td tal:content="structure python:ic.tip('sig-signed', u'Signed') if st['recorded'] else ic.tip('sig-wait', u'Not recorded', colour='warn')">signed</td>
+        <td tal:content="st/order">1</td>
+        <td tal:content="st/name">Set-up</td>
+        <td class="cell-nowrap" tal:content="python:st['completed'] if st['recorded'] else u''">2026-11-06 09:12</td>
+        <td tal:content="st/analyst">DEMO analyst</td>
+        <td tal:content="st/deviations">none</td>
+      </tr></tbody>
+    </table>
+  </div>
+  <div class="pfas-card" tal:define="lots rec/lot_rows">
+    <h3>Lots</h3>
+    <p class="pfas-muted" tal:condition="not:lots">No lots recorded.</p>
+    <p class="pfas-muted" tal:condition="lots" tal:content="rec/lot_summary">23 lots recorded.</p>
+    <table class="pfas-table" data-col-resize="batch-records-lots" tal:condition="lots"
+           tal:define="ti context/@@pfas-type-icons">
+      <thead><tr><th>Where</th><th>Kind</th><th>Name</th><th>Lot</th><th>Quantity</th></tr></thead>
+      <tbody><tr tal:repeat="l lots">
+        <td tal:content="structure python:ti.cell(l['where'])">Stage 1</td>
+        <td tal:content="l/kind">Reagent</td>
+        <td tal:content="l/name">DEMO methanol</td>
+        <td class="pfas-mono" tal:content="l/lot">DEMO-MEOH-1</td>
+        <td tal:content="l/qty">5 mL</td>
+      </tr></tbody>
+    </table>
+  </div>
+  <div class="pfas-card" tal:define="ids rec/identity_rows" tal:condition="ids">
+    <h3>Injection identity corrected</h3>
+    <table class="pfas-table" data-col-resize="batch-records-identity" tal:define="ti context/@@pfas-type-icons">
+      <thead><tr><th>Injection</th><th>Change</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
+      <tbody><tr tal:repeat="c ids">
+        <td tal:content="c/injection">CCV-2</td>
+        <td tal:content="structure python:ti.change(c)">CCV, lowest level to CCV</td>
+        <td tal:content="c/reason">One CCV level on this method</td>
+        <td tal:content="c/by">DEMO analyst</td>
+        <td class="cell-nowrap" tal:content="c/when">2026-11-20 10:12</td>
+      </tr></tbody>
+    </table>
+  </div>
+  <div class="pfas-card" tal:define="sbs rec/send_back_rows" tal:condition="sbs">
+    <h3>Sent back</h3>
+    <table class="pfas-table" data-col-resize="batch-records-sent-back">
+      <thead><tr><th>Change</th><th>Reason</th><th>By</th><th>When</th><th>Sign-offs cleared</th></tr></thead>
+      <tbody><tr tal:repeat="c sbs">
+        <td tal:content="c/change">Sent back to Data Review</td>
+        <td tal:content="c/reason">Look again</td>
+        <td tal:content="c/by">DEMO manager</td>
+        <td class="cell-nowrap" tal:content="c/when">2026-11-20 12:00</td>
+        <td tal:content="c/cleared">Final Data Summary</td>
+      </tr></tbody>
+    </table>
+  </div>
+  <div class="pfas-card" tal:define="sigs rec/signatures">
+    <h3>Signatures</h3>
+    <div class="alert alert-success" tal:condition="python:view.ok_msg() and not view.ea_msg()" tal:content="view/ok_msg">Signatures checked</div>
+    <div class="alert alert-error" tal:condition="python:view.error_msg() and not view.ea_msg()" tal:content="view/error_msg">Signed content changed</div>
+    <div tal:define="sig_rows sigs; sig_resize string:batch-records-signatures;
+                     sig_verify python:{'url': u'%s/@@pfas-batch-records?action=verify_record&amp;record=%s' % (purl, rec['uid']),
+                                        'title': u'Recompute the record\u2019s content hashes and check each signature in the ledger'}"><metal:s
+         use-macro="context/@@pfas-esig-macros/macros/signature_list" /></div>
+  </div>
+
+  <!-- what was corrected after Finalise: every entry in time order; a
+       row's menu undoes an amendment before it is confirmed, or confirms it -->
+  <div class="pfas-card" id="ea-corrections" tal:define="co rec/correction_card" tal:condition="co">
+    <h3>Corrections <tal:h define="hid string:extraction-corrections"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h3>
+    <div class="alert alert-success" tal:condition="python:view.ea_msg() and view.ok_msg()" tal:content="view/ok_msg">Amended.</div>
+    <div class="alert alert-error" tal:condition="python:view.ea_msg() and view.error_msg()" tal:content="view/error_msg">Not done.</div>
+    <table class="pfas-table" data-col-resize="batch-records-corrections">
+      <thead><tr><th>Id</th><th>What</th><th>Change</th><th>Reason</th><th>By</th><th>When</th><th>Countersign</th></tr></thead>
+      <tbody><tr tal:repeat="r co/rows"
+                 tal:attributes="data-row-actions r/actions; class python:None if r.get('in_force') else 'is-archived'">
+        <td class="pfas-mono" tal:content="r/id">EA-1</td>
+        <td tal:content="r/what">Amended WS-358-LFB1 level</td>
+        <td><del tal:condition="r/before" tal:content="r/before">Mid</del>
+          <span tal:condition="r/after" tal:content="r/after">High</span></td>
+        <td tal:content="r/reason">High spike volume added</td>
+        <td tal:content="r/by">DEMO bench</td>
+        <td class="cell-nowrap" tal:content="r/at">2026-11-21 09:12</td>
+        <td tal:define="ic context/@@pfas-icons"><tal:m tal:condition="r/countersign"
+                  tal:replace="structure python:ic.tip('sig-signed', r['countersign']) if r.get('countersigned') else ic.tip('sig-wait', r['countersign'], colour='warn')" /></td>
+      </tr>
+      <tr tal:condition="co/error|nothing"><td colspan="7">The corrections could not be read.</td></tr>
+      <tr tal:condition="python:not co['rows'] and not co.get('error')"><td colspan="7">No corrections recorded.</td></tr></tbody>
+    </table>
+    <form method="post" id="ea-confirm" tal:attributes="action string:${co/ws_url}/@@pfas-extraction-corrections">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="action" value="confirm" />
+      <input type="hidden" name="back" value="record" />
+      <input type="hidden" name="entry" value="" />
+      <button type="submit" hidden="hidden">Confirm</button>
+    </form>
+    <tal:u repeat="u co/undo">
+    <div class="pfas-modal" tal:attributes="id string:ea-undo-${u/id}">
+      <form method="post" class="pfas-modal-box is-narrow"
+            tal:attributes="action string:${co/ws_url}/@@pfas-extraction-corrections">
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <input type="hidden" name="action" value="revert" />
+        <input type="hidden" name="back" value="record" />
+        <input type="hidden" name="entry" tal:attributes="value u/id" />
+        <h2 tal:content="string:Undo ${u/id}">Undo EA-1</h2>
+        <div class="pfas-meta-row"><span class="pfas-muted">Correction</span>
+          <strong tal:content="u/what">Amended WS-358-LFB1 level</strong></div>
+        <div class="pfas-form-field is-full">
+          <label tal:attributes="for string:ea-undo-reason-${u/id}">Reason</label>
+          <textarea name="reason" rows="3" class="pfas-textarea" required="required"
+                    tal:attributes="id string:ea-undo-reason-${u/id}"></textarea>
+        </div>
+        <div class="form-actions is-end">
+          <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+          <button type="submit" class="btn btn-danger">Undo</button>
+        </div>
+      </form>
+    </div>
+    </tal:u>
+  </div>
+
+  <tal:windows tal:define="co rec/correction_card" tal:condition="co/can|nothing">
+  <!-- Amend: one fact, to a value the method defines; the original stays -->
+  <div class="pfas-modal" id="ea-amend" tal:condition="co/can/amend"
+       tal:attributes="class python:'pfas-modal open' if co['open'] == 'amend' else 'pfas-modal'">
+    <form method="post" class="pfas-modal-box is-narrow" id="ea-amend-form"
+          tal:attributes="action string:${co/ws_url}/@@pfas-extraction-corrections">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="action" value="amend" />
+      <input type="hidden" name="back" value="record" />
+      <h2>Amend <tal:h define="hid string:extraction-corrections"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h2>
+      <div class="pfas-form-field is-full">
+        <label for="ea-amend-member">Member</label>
+        <select id="ea-amend-member" name="member" required="required">
+          <option value="">Choose a member</option>
+          <option tal:repeat="m co/members" tal:content="m/label"
+                  tal:attributes="value m/value; selected python:'selected' if m['value'] == co['member'] else None;
+                                  disabled python:'disabled' if m['withheld'] else None">WS-358-LFB1 · LFB</option>
+          <optgroup label="Extracted amounts" tal:condition="co/sample_rows">
+            <option tal:repeat="m co/sample_rows" tal:attributes="value m/value" tal:content="m/label">DW-0920 · extracted amount</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label>What changes</label>
+        <input type="hidden" id="ea-amend-field" name="field" value="" />
+        <div class="pfas-seg pfas-seg-sm is-fit ea-amend-fields" role="group" aria-label="What changes"
+             data-field="data-field" data-quiet="data-quiet" data-input="ea-amend-field">
+          <button type="button" class="pfas-seg-item" aria-pressed="false" disabled="disabled"
+                  tal:repeat="fd co/fields" tal:attributes="data-value fd/value" tal:content="fd/label">Level</button>
+        </div>
+      </div>
+      <div class="pfas-meta-row"><span class="pfas-muted">Recorded</span>
+        <strong class="ea-amend-now">Choose what changes</strong></div>
+      <div class="pfas-form-field is-full">
+        <label for="ea-amend-pick">Should be</label>
+        <input type="hidden" id="ea-amend-to" name="to" value="" />
+        <div class="pfas-seg pfas-seg-sm is-fit ea-amend-values" role="group" aria-label="Should be" hidden="hidden"
+             data-field="data-field" data-quiet="data-quiet" data-input="ea-amend-to"></div>
+        <select id="ea-amend-pick" class="ea-amend-pick" hidden="hidden"></select>
+        <input type="number" step="any" min="0" class="pfas-num-in ea-amend-number" hidden="hidden" aria-label="Should be" />
+      </div>
+      <div class="pfas-form-field is-full">
+        <label for="ea-amend-reason">Reason</label>
+        <textarea id="ea-amend-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+      </div>
+      <div class="pfas-form-field is-full ea-amend-what" hidden="hidden">
+        <label>What will be judged again</label>
+        <ul class="ea-amend-lines"></ul>
+      </div>
+      <div class="form-actions is-end">
+        <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+        <button type="submit" class="btn btn-primary ea-amend-submit" disabled="disabled"
+                tal:condition="not:co/released">Amend</button>
+        <button type="button" class="btn btn-primary ea-amend-submit" disabled="disabled"
+                data-modal-open="esig-ea_amend" tal:condition="co/released">Amend and sign</button>
+      </div>
+    </form>
+  </div>
+  <!-- a released record is amended as its next revision, signed -->
+  <tal:sg tal:condition="co/esig"><div tal:define="esig co/esig"><metal:d
+      use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div></tal:sg>
+
+  <!-- Needs re-extraction: the wrong amount added; nothing is reported -->
+  <div class="pfas-modal" id="ea-reextract" tal:condition="co/can/reextract"
+       tal:attributes="class python:'pfas-modal open' if co['open'] == 'reextract' else 'pfas-modal'">
+    <form method="post" class="pfas-modal-box is-narrow"
+          tal:attributes="action string:${co/ws_url}/@@pfas-extraction-corrections">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="action" value="reextract" />
+      <input type="hidden" name="back" value="record" />
+      <h2>Needs re-extraction <tal:h define="hid string:extraction-corrections"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h2>
+      <div class="pfas-form-field is-full">
+        <label for="ea-re-member">Member</label>
+        <select id="ea-re-member" name="member" required="required">
+          <option value="">Choose a member</option>
+          <tal:m repeat="m co/members"><option tal:condition="not:m/withheld" tal:content="m/label"
+                  tal:attributes="value m/value; selected python:'selected' if m['value'] == co['member'] else None">DW-0921 · Sample</option></tal:m>
+        </select>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label>What went wrong</label>
+        <input type="hidden" id="ea-re-what" name="what" value="" />
+        <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="What went wrong"
+             data-field="data-field" data-quiet="data-quiet" data-input="ea-re-what">
+          <button type="button" class="pfas-seg-item" aria-pressed="false" tal:repeat="o co/what"
+                  tal:attributes="data-value o/value" tal:content="o/label">Surrogate</button>
+        </div>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label>Re-extract</label>
+        <input type="hidden" id="ea-re-scope" name="scope" value="" />
+        <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Re-extract"
+             data-field="data-field" data-quiet="data-quiet" data-input="ea-re-scope">
+          <button type="button" class="pfas-seg-item" aria-pressed="false" tal:repeat="o co/scopes"
+                  tal:attributes="data-value o/value" tal:content="o/label">This sample</button>
+        </div>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label for="ea-re-left">Sample left</label>
+        <label class="pfas-switch"><input type="checkbox" id="ea-re-left" name="sample_left" value="1" checked="checked" /><span
+            class="pfas-switch-track"></span><span class="pfas-switch-word">Enough for a re-extraction</span></label>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label for="ea-re-reason">Reason</label>
+        <textarea id="ea-re-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+      </div>
+      <div class="form-actions is-end">
+        <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+        <button type="submit" class="btn btn-danger">Withhold, not undone</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Send back: the batch returns to an earlier step; nothing is deleted -->
+  <div class="pfas-modal" id="ea-send-back" tal:condition="co/can/send_back"
+       tal:attributes="class python:'pfas-modal open' if co['open'] == 'send_back' else 'pfas-modal'">
+    <form method="post" class="pfas-modal-box is-narrow"
+          tal:attributes="action string:${co/ws_url}/@@pfas-extraction-corrections">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="action" value="send_back" />
+      <input type="hidden" name="back" value="record" />
+      <h2>Send back <tal:h define="hid string:extraction-corrections"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></h2>
+      <div class="pfas-form-field is-full">
+        <label>Return to</label>
+        <input type="hidden" id="ea-send-to" name="to" value="" />
+        <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Return to"
+             data-field="data-field" data-quiet="data-quiet" data-input="ea-send-to">
+          <button type="button" class="pfas-seg-item" aria-pressed="false" tal:repeat="o co/targets"
+                  tal:attributes="data-value o/value" tal:content="o/label">Stages</button>
+        </div>
+      </div>
+      <div class="pfas-form-field is-full ea-send-stage" hidden="hidden">
+        <label for="ea-send-stage">From stage</label>
+        <select id="ea-send-stage" name="stage">
+          <option value="">Choose a stage</option>
+          <option tal:repeat="o co/stages" tal:attributes="value o/value" tal:content="o/label">3 · Isotope spike addition</option>
+        </select>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label for="ea-send-reason">Reason</label>
+        <textarea id="ea-send-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+      </div>
+      <div class="pfas-form-field is-full">
+        <label>What happens</label>
+        <ul class="ea-send-lines">
+          <li data-to="members" hidden="hidden">The members and labels reopen; the stages are kept.</li>
+          <li data-to="stages" hidden="hidden">The guided extraction reopens from the stage chosen; earlier stages are kept.</li>
+          <li data-to="members stages" hidden="hidden">Finalise again: a new preparer signature replaces the old one, which is kept.</li>
+          <li data-to="run" hidden="hidden">The run is built again in the Run Builder; the extraction stays finalised.</li>
+          <li data-to="import" hidden="hidden">The data is imported again; the extraction and the run are kept.</li>
+          <li>Release waits until the run is built again.</li>
+          <li>Every Data Review sign-off is cleared.</li>
+          <li tal:condition="co/submitted">The submitted results are retracted; their retests return the worksheet to open.</li>
+        </ul>
+      </div>
+      <div class="form-actions is-end">
+        <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+        <button type="submit" class="btn btn-danger">Send back</button>
+      </div>
+    </form>
+  </div>
+
+  <script type="application/json" id="ea-dialog" tal:content="structure co/dialog_json">{}</script>
+  <script>
+  /* Amend offers what the chosen member allows: its facts in What changes,
+     their values in Should be (a segmented control up to six, else a
+     list; a number for an extracted amount), and what will be judged
+     again. Send back asks for a stage only when it returns to Stages. */
+  (function () {
+    var data = {};
+    try { data = JSON.parse(document.getElementById('ea-dialog').textContent || '{}'); } catch (e) { data = {}; }
+    var form = document.getElementById('ea-amend-form');
+    if (form) {
+      var member = form.querySelector('#ea-amend-member'), field = form.querySelector('#ea-amend-field'),
+          to = form.querySelector('#ea-amend-to'), now = form.querySelector('.ea-amend-now'),
+          seg = form.querySelector('.ea-amend-values'), pick = form.querySelector('.ea-amend-pick'),
+          num = form.querySelector('.ea-amend-number'), what = form.querySelector('.ea-amend-what'),
+          lines = form.querySelector('.ea-amend-lines'), reason = form.querySelector('textarea[name="reason"]'),
+          submits = form.querySelectorAll('.ea-amend-submit');
+      var fieldsOf = function () { return (data[member.value] || {}).fields || {}; };
+      var ready = function () {
+        var ok = !!(member.value && field.value && to.value && reason.value.trim());
+        Array.prototype.forEach.call(submits, function (b) { b.disabled = !ok; });
+      };
+      var choices = function () {
+        var f = fieldsOf()[field.value];
+        to.value = ''; seg.innerHTML = ''; pick.innerHTML = ''; lines.innerHTML = ''; num.value = '';
+        seg.hidden = pick.hidden = num.hidden = true;
+        now.textContent = f ? f.now : 'Choose what changes';
+        what.hidden = !f;
+        if (f) {
+          f.rejudged.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; lines.appendChild(li); });
+          if (f.number) {
+            num.hidden = false;
+          } else if (f.offered.length <= 6) {
+            f.offered.forEach(function (o) {
+              var b = document.createElement('button');
+              b.type = 'button'; b.className = 'pfas-seg-item'; b.setAttribute('aria-pressed', 'false');
+              b.setAttribute('data-value', o[0]); b.textContent = o[1];
+              seg.appendChild(b);
+            });
+            seg.hidden = false;
+          } else {
+            var first = document.createElement('option'); first.value = ''; first.textContent = 'Choose a value';
+            pick.appendChild(first);
+            f.offered.forEach(function (o) {
+              var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; pick.appendChild(op);
+            });
+            pick.hidden = false;
+          }
+        }
+        ready();
+      };
+      var fields = function () {
+        var fs = fieldsOf();
+        Array.prototype.forEach.call(form.querySelectorAll('.ea-amend-fields .pfas-seg-item'), function (b) {
+          b.disabled = !fs[b.getAttribute('data-value')];
+          b.setAttribute('aria-pressed', 'false');
+        });
+        field.value = '';
+        choices();
+      };
+      member.addEventListener('change', fields);
+      field.addEventListener('change', choices);
+      to.addEventListener('change', ready);
+      pick.addEventListener('change', function () { to.value = pick.value; ready(); });
+      num.addEventListener('input', function () { to.value = num.value; ready(); });
+      reason.addEventListener('input', ready);
+      fields();
+    }
+    var sendTo = document.getElementById('ea-send-to');
+    if (sendTo) {
+      var box = sendTo.closest('form'), stage = box.querySelector('.ea-send-stage');
+      sendTo.addEventListener('change', function () {
+        stage.hidden = sendTo.value !== 'stages';
+        box.querySelector('#ea-send-stage').required = sendTo.value === 'stages';
+        Array.prototype.forEach.call(box.querySelectorAll('.ea-send-lines li[data-to]'), function (li) {
+          li.hidden = (' ' + li.getAttribute('data-to') + ' ').indexOf(' ' + sendTo.value + ' ') < 0;
+        });
+      });
+    }
+  })();
+  </script>
+  </tal:windows>
+  </tal:one>
+
+  <tal:list tal:condition="not:rec">
+  <div class="pfas-empty is-boxed">Record not found.
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-batch-records">Batch records</a></div>
+  </tal:list>
+
+  </tal:def>
+</metal:content>
+</body>
+</html>

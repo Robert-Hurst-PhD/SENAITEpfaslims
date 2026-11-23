@@ -21,7 +21,7 @@ Viewing follows the surrounding management views (zope2.View, same as
 reagents.py) -- any authenticated user who can reach the page can see the
 list. Creating and editing are manager-only (senaite.pfas.browser.perms.
 require_manager), enforced both server-side (403 on an unauthorised POST,
-matching prep_logbooks.py) and in the template (the create/edit controls
+as on the other management views) and in the template (the create/edit controls
 are not rendered for a non-manager, per).
 
 Python 2.7 compatible.
@@ -43,6 +43,7 @@ from senaite.pfas.browser.perms import require_manager
 from senaite.pfas.holding_time import date_to_iso as _date_to_str, parse_date as _str_to_date
 from senaite.pfas.content.project import STATUS_ACTIVE, STATUS_CLOSED
 from senaite.pfas import method_profile_store
+from senaite.pfas import project_ref
 from senaite.pfas.browser.perms import refuse
 
 logger = logging.getLogger("senaite.pfas.browser.projects")
@@ -178,6 +179,7 @@ def _obj_to_dict(obj, portal):
         "project_code": obj.project_code or u"",
         "qapp_document_id": obj.qapp_document_id or u"",
         "qapp_label": _qapp_title(portal, obj.qapp_document_id),
+        "standing": project_ref.is_standing(obj),
         "start_date": _date_to_str(obj.start_date),
         "end_date": _date_to_str(obj.end_date),
         "status": obj.status or STATUS_ACTIVE,
@@ -190,6 +192,7 @@ def _populate_obj(obj, data):
     obj.client_uid = data.get("client_uid") or u""
     obj.project_code = data.get("project_code") or u""
     obj.qapp_document_id = data.get("qapp_document_id") or None
+    obj.standing = bool(data.get("standing"))
     obj.start_date = _str_to_date(data.get("start_date"))
     obj.end_date = _str_to_date(data.get("end_date"))
     obj.status = data.get("status") or STATUS_ACTIVE
@@ -210,14 +213,18 @@ def _save_project(portal, data):
         obj = folder[uid]
 
     _populate_obj(obj, data)
-    try:
-        obj.reindexObject()
-    except Exception:
-        pass
-    try:
-        notify(ObjectModifiedEvent(obj))
-    except Exception:
-        pass
+    # a client has one standing project at most: marking this one clears
+    # it on the client's others
+    others = project_ref.clear_other_standing(project_ref.all_projects(portal), obj)
+    for changed in [obj] + others:
+        try:
+            changed.reindexObject()
+        except Exception:
+            pass
+        try:
+            notify(ObjectModifiedEvent(changed))
+        except Exception:
+            pass
     return uid
 
 
@@ -345,6 +352,7 @@ class PFASProjectsView(ViewHelpers, BrowserView):
             "client_uid": (f.get("client_uid") or "").strip(),
             "project_code": (f.get("project_code") or "").strip(),
             "qapp_document_id": (f.get("qapp_document_id") or "").strip(),
+            "standing": bool((f.get("standing") or "").strip()),
             "start_date": (f.get("start_date") or "").strip(),
             "end_date": (f.get("end_date") or "").strip(),
             "status": (f.get("status") or STATUS_ACTIVE).strip(),
@@ -354,6 +362,10 @@ class PFASProjectsView(ViewHelpers, BrowserView):
             url = "{0}?error=Project+Name%2C+Project+Code+and+Client+are+required".format(
                 self._self_url())
             return self._redirect(url)
+        refusal = project_ref.standing_refusal(data["standing"], data["qapp_document_id"])
+        if refusal:
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(), refusal.replace(" ", "+")))
         uid = _save_project(self._portal(), data)
         url = "{0}?ok=Project+saved+%28{1}%29".format(
             self._self_url(), data["project_code"].replace(" ", "+"))

@@ -17,8 +17,17 @@ corrected.
     stage_using(session, uid)                       -> stage order or None
     apply(manifest, session, stage, reason, lot, who, at, uid=None)
                                                     -> (manifest, session)
+    by_person(manifest, session, to, stage, reason, who, at)
+                                                    -> (manifest, session)
     blocks_release(manifest)                        -> bool
     clear(manifest)                                 -> manifest
+
+A person sends the batch back too (by_person), with a reason, to the
+members, to a stage, to the Run Builder or to the data import: the members
+and the stages reopen the finalised extraction as a rejected lot does
+(the stage from the one chosen); the run build and the import leave the
+extraction finalised. The run build marks the run's manifest, so release
+waits for the run built again; the import waits for the run filed again.
 
 Pure; Python 2.7 and 3.
 """
@@ -67,6 +76,39 @@ def apply(manifest, session, stage, reason, lot, who, at, uid=None):
     session, why = extraction_review.reopen(session, order, reason, who, at)
     if why:
         raise ValueError(why)
+    session.setdefault("sent_back", []).append(record)
+    return manifest, session
+
+
+# where a person sends the batch back (extraction_amendments.TARGETS)
+MEMBERS, STAGES, RUN_BUILD, IMPORT = u"members", u"stages", u"run", u"import"
+
+
+def by_person(manifest, session, to, stage, reason, who, at):
+    """A person sends the batch back to `to`: the members or a stage
+    reopen the finalised extraction (the finalising kept in the session's
+    "sent_back" list; a stage is reopened with the reason, refused when it
+    was never completed: ValueError); the run build and the import leave it
+    finalised. A built run's manifest is marked, so release waits until
+    the run is built again; the import is not marked: release waits until
+    the run is filed again."""
+    manifest = dict(manifest or {})
+    # the import is not rebuilt: release waits for the run filed again
+    # after the send back (extraction_amendments.send_back_pending)
+    if manifest.get("built_at") and to != IMPORT:
+        manifest["sent_back"] = {"stage": RUN if to == RUN_BUILD else EXTRACTION, "to": to,
+                                 "reason": reason, "lot": u"", "by": who, "at": at}
+    session = copy.deepcopy(session or {})
+    if to not in (MEMBERS, STAGES):
+        return manifest, session
+    record = {"to": to, "stage": stage if to == STAGES else u"", "reason": reason, "by": who, "at": at,
+              "was_finalized_at": session.get("finalized_at") or u"",
+              "was_finalized_by": session.get("finalized_by") or u""}
+    session["finalized"] = False
+    if to == STAGES:
+        session, why = extraction_review.reopen(session, stage, reason, who, at)
+        if why:
+            raise ValueError(why)
     session.setdefault("sent_back", []).append(record)
     return manifest, session
 

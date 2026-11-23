@@ -9,6 +9,7 @@ for Data Review and the logbook.
     done_on(data)                      -> the day a stage was FIRST completed
     unconfirmed(stage_def, ticked)     -> the stage's checks left unticked
     review(session, stages_def)        -> every stage, in order
+    finalise_refusal(session, stages_def) -> why it may not be finalised, or None
 
 A completed stage is corrected by reopening it with a reason: the previous
 version is kept under "corrections" and travels with the stage (logbook PDF,
@@ -131,3 +132,29 @@ def review(session, stages_def):
         "unnoted": [s["order"] for s in out if s["warnings"] and not s["deviations"]],
         "corrections": sum(len(s["corrections"]) for s in out),
     }
+
+
+def _named(stages):
+    return u" and ".join(u"%s %s" % (s.get("order"), s.get("name") or u"") for s in stages).replace(u"  ", u" ")
+
+
+def finalise_refusal(session, stages_def):
+    """Why the extraction may not be finalised yet, or None. Finalised means
+    every stage of its plan recorded: one missing, or one open for
+    correction, refuses it, named; so does a plan with no stages."""
+    session = session or {}
+    stages = sorted(stages_def or [], key=lambda s: s.get("order", 0))
+    if not stages:
+        return u"Not finalised: the extraction has no planned stages."
+    done = _done(session)
+    missing = [s for s in stages if u"%s" % s.get("order") not in done]
+    if missing:
+        return u"Not finalised: %s %s %s not recorded." % (
+            u"stages" if len(missing) > 1 else u"stage", _named(missing).strip(),
+            u"are" if len(missing) > 1 else u"is")
+    if session.get("reopened") is not None:
+        open_ = [s for s in stages if u"%s" % s.get("order") == u"%s" % session["reopened"]] or \
+            [{"order": session["reopened"]}]
+        return u"Not finalised: stage %s is open for correction. Record it again first." % \
+            _named(open_).strip()
+    return None

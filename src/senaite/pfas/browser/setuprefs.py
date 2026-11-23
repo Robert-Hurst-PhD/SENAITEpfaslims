@@ -371,7 +371,7 @@ class PFASSetupRefsView(ViewHelpers, BrowserView):
             elif strategy == "rpd":
                 tiers = ((profile.get("qc_acceptance") or {}).get(code, {}) or {}).get("tiers") or []
                 rpd = tiers[0].get("rpd_max") if tiers else None
-                spec_desc = ("RPD <= {:g}%".format(rpd) if rpd is not None
+                spec_desc = ("RPD \u2264 {:g}%".format(rpd) if rpd is not None
                              else "Not set on the method profile")
             else:
                 spec_desc = "—"

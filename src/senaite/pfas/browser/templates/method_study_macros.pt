@@ -22,16 +22,75 @@
           <td tal:content="python:{'mdl': u'%s (%s / %s)' % (view.fmt(res.get('mdl')), view.fmt(res.get('mdl_s')), view.fmt(res.get('mdl_b'))), 'mrl': u'%s / %s' % (view.fmt(res.get('upper_pir_pct')), view.fmt(res.get('lower_pir_pct'))), 'pa': u'%s / %s' % (view.fmt(res.get('rsd_pct')), view.fmt(res.get('mean_recovery_pct'))), 'dl': view.fmt(res.get('dl'))}.get(rec['kind'])">0.3</td>
           <td tal:content="python:view.fmt(view.existing().get(kw)) if rec['kind'] == 'mdl' else u''">0.25</td>
           <td tal:content="res/verdict">pass</td>
-          <td tal:content="python:u'; '.join([x for x in (res.get('reason'), res.get('mdl_b_rule')) if x] + list(res.get('notes') or []) + ([u'may keep the MDL in force (App. B 4(f))'] if res.get('may_keep_existing') else []))">notes</td>
+          <td tal:content="python:view.study_notes(res)">notes</td>
         </tal:d>
       </tr>
     </tbody>
   </table>
   </tal:lv>
+  <metal:a define-macro="applied">
   <h3 class="bench-h" tal:condition="applied">Reporting Limits on approval</h3>
   <table class="pfas-table" tal:condition="applied">
     <tbody><tr tal:repeat="item python:sorted(applied.items())">
       <td tal:content="python:item[0]">PFOA</td>
       <td tal:content="python:u', '.join(u'%s %s' % (k, v) for k, v in sorted(item[1].items()))">mdl 0.3</td></tr></tbody>
   </table>
+  </metal:a>
 </metal:results>
+
+<!-- the page's annual MDL study: per spiking level, the spiked results and the
+     method blanks one column per run -->
+<metal:m define-macro="mdl_levels">
+  <tal:lv repeat="lv view/mdl_levels">
+  <h3 class="bench-h" tal:condition="lv/title" tal:content="lv/title">Mid (80)</h3>
+  <h4 class="bench-h">Spiked results by run</h4>
+  <table class="pfas-table" data-col-resize="method-study-macros-3">
+    <thead><tr>
+      <th>Analyte</th>
+      <th class="is-right" tal:repeat="run lv/spike_runs"><span tal:content="run/batch">WS-346</span>
+        <span class="pfas-hint" tal:content="run/when"></span></th>
+      <th class="is-right">Mean<span class="pfas-hint" tal:condition="lv/n" tal:content="string:of ${lv/n}"></span></th>
+      <th class="is-right">s</th>
+      <th class="is-right">MDLs<span class="pfas-hint">from spikes</span></th>
+      <th class="is-right">MDLb<span class="pfas-hint">from blanks</span></th>
+      <th class="is-right is-applied">MDL applied to the method</th>
+    </tr></thead>
+    <tbody>
+      <tr tal:repeat="row lv/spike_rows">
+        <td tal:content="row/kw">PFOA</td>
+        <td class="num" tal:repeat="cell row/cells">
+          <span tal:repeat="v cell" tal:attributes="class python:'pfas-muted' if v['excluded'] else None"
+                tal:content="python:v['text'] + (u' excluded' if v['excluded'] else u'')">80.5</span>
+          <tal:e condition="not:cell">&mdash;</tal:e></td>
+        <td class="num" tal:content="row/mean">80</td>
+        <td class="num" tal:content="row/sd">1.2</td>
+        <td class="num" tal:content="row/mdl_s">3.8</td>
+        <td class="num" tal:content="row/mdl_b">none</td>
+        <td class="num is-applied"><strong tal:content="row/applied">3.84</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4 class="bench-h">Method blanks by run</h4>
+  <table class="pfas-table" data-col-resize="method-study-macros-4" tal:condition="lv/blank_runs">
+    <thead><tr>
+      <th>Analyte</th>
+      <th class="is-right" tal:repeat="run lv/blank_runs"><span tal:content="run/batch">WS-346</span>
+        <span class="pfas-hint" tal:content="run/when"></span></th>
+      <th class="is-right">Highest blank</th>
+    </tr></thead>
+    <tbody>
+      <tr tal:repeat="row lv/blank_rows">
+        <td tal:content="row/kw">PFOA</td>
+        <td class="num" tal:repeat="cell row/cells">
+          <span tal:repeat="v cell" tal:attributes="class python:'pfas-muted' if v['excluded'] else None"
+                tal:content="python:v['text'] + (u' excluded' if v['excluded'] else u'')">ND</span>
+          <tal:e condition="not:cell">&mdash;</tal:e></td>
+        <td class="num" tal:content="row/highest">ND</td>
+      </tr>
+    </tbody>
+  </table>
+  <p tal:condition="not:lv/blank_runs">No blanks.</p>
+  <p tal:condition="lv/mdl_b_line" tal:content="lv/mdl_b_line"></p>
+  </tal:lv>
+</metal:m>

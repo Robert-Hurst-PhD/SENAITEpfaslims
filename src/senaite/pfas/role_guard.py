@@ -203,4 +203,19 @@ def send_reset(portal, target_id):
         "store": "person_account", "key": target.getId(), "who": config_history.actor(),
         "label": u"Account of {0}".format(target.getId()),
         "action": u"reset e-mail sent", "changes": []})
+    _log_reset(target.getId(), config_history.actor())
     return None
+
+
+def _log_reset(userid, by):
+    """A reset mailed opens a reset for review and tells the person
+    (password_events.reset_mailed), once its transaction commits."""
+    import logging
+    try:
+        from senaite.pfas import after_commit, password_events
+        from senaite.pfas.esig import signing
+        after_commit.run_once("reset-sent:%s" % userid, password_events.reset_mailed,
+                              userid, signing.stamp(), by)
+    except Exception:                                       # noqa: BLE001
+        logging.getLogger("senaite.pfas.role_guard").warning(
+            "reset e-mail of %s not kept with the signing events", userid, exc_info=True)

@@ -8,6 +8,9 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Projects</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <button type="button" class="btn-sm btn-primary" data-modal-open="pj-modal" data-new="data-new" tal:condition="view/can_manage">+ New Project</button>
+  </tal:r>
 
   <div metal:fill-slot="content">
   <div class="page-body">
@@ -18,7 +21,7 @@
     <!-- ─── Filters, and the one create action on the right ──────────── -->
     <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${view/portal_url}/@@pfas-projects">
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="pj-f-client">Client</label>
         <select id="pj-f-client" name="client" class="pfas-select">
           <option value="">All clients</option>
@@ -27,7 +30,7 @@
                   tal:content="c/title"></option>
         </select>
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="pj-f-status">Status</label>
         <select id="pj-f-status" name="status" class="pfas-select">
           <option value="">All statuses</option>
@@ -39,7 +42,6 @@
       <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
       <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-projects">Clear</a>
       <span class="pfas-filterbar-spacer"></span>
-      <button type="button" class="btn btn-primary" data-modal-open="pj-modal" data-new="data-new" tal:condition="view/can_manage">+ New Project</button>
     </form>
 
     <!-- ─── Create / edit dialog, manager only ─────────────────────────── -->
@@ -58,18 +60,18 @@
           <input type="hidden" name="uid"
                  tal:attributes="value python:editing['uid'] if editing else ''"/>
 
-          <div class="field-grid">
-            <div class="field-row">
+          <div class="pfas-form-row">
+            <div class="pfas-form-field">
               <label for="pj-title">Project name</label>
               <input type="text" id="pj-title" name="title" required="required"
                      tal:attributes="value python:editing['title'] if editing else ''"/>
             </div>
-            <div class="field-row">
+            <div class="pfas-form-field">
               <label for="pj-code">Project code</label>
               <input type="text" id="pj-code" name="project_code" required="required"
                      tal:attributes="value python:editing['project_code'] if editing else ''"/>
             </div>
-            <div class="field-row">
+            <div class="pfas-form-field">
               <label for="pj-client">Client</label>
               <select id="pj-client" class="pfas-select" name="client_uid" required="required">
                 <option value="">Choose a client</option>
@@ -83,7 +85,7 @@
                 No SENAITE clients yet: create one under Clients first.
               </div>
             </div>
-            <div class="field-row">
+            <div class="pfas-form-field">
               <label for="pj-qapp">QAPP document <tal:h define="hid string:project-qapp"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
               <select id="pj-qapp" class="pfas-select" name="qapp_document_id">
                 <option value="">None (internal quality system)</option>
@@ -94,17 +96,26 @@
                 </tal:opts>
               </select>
             </div>
-            <div class="field-row">
+            <div class="pfas-form-field">
+              <label for="pj-standing">Standing</label>
+              <label class="pfas-switch">
+                <input type="checkbox" id="pj-standing" name="standing" value="on"
+                       tal:attributes="checked python:'checked' if editing and editing['standing'] else None"/>
+                <span class="pfas-switch-track"></span>
+                <span>Used by this client's batches that name no project</span>
+              </label>
+            </div>
+            <div class="pfas-form-field">
               <label for="pj-start">Start date</label>
               <input type="date" id="pj-start" name="start_date"
                      tal:attributes="value python:editing['start_date'] if editing else ''"/>
             </div>
-            <div class="field-row">
+            <div class="pfas-form-field">
               <label for="pj-end">End date</label>
               <input type="date" id="pj-end" name="end_date"
                      tal:attributes="value python:editing['end_date'] if editing else ''"/>
             </div>
-            <div class="field-row">
+            <div class="pfas-form-field">
               <label for="pj-status">Status</label>
               <select id="pj-status" class="pfas-select" name="status">
                 <tal:opts tal:repeat="pair view/all_statuses">
@@ -114,7 +125,7 @@
                 </tal:opts>
               </select>
             </div>
-            <div class="field-row field-row-wide">
+            <div class="pfas-form-field is-full">
               <label for="pj-notes">Notes</label>
               <textarea id="pj-notes" name="notes" rows="3"
                         tal:content="python:editing['notes'] if editing else ''"></textarea>
@@ -134,7 +145,7 @@
 
     <!-- ─── Project list ────────────────────────────────────────────────── -->
     <div class="table-wrap">
-      <table class="pfas-table" data-col-resize="projects-1">
+      <table class="pfas-table" data-col-resize="projects-1" tal:define="rm context/@@pfas-row-menu">
         <thead>
           <tr>
             <th>Project Code</th>
@@ -145,13 +156,15 @@
             <th>Start</th>
             <th>End</th>
             <th>Notes</th>
-            <th tal:condition="view/can_manage">Actions</th>
           </tr>
         </thead>
         <tbody>
           <tal:rows tal:repeat="pj view/projects">
-          <tr>
-            <td class="pfas-mono pfas-text-accent" tal:content="python:pj.get('project_code','')"></td>
+          <tr tal:attributes="data-row-open python:(u'%s/@@pfas-projects?edit_uid=%s' % (view.portal_url(), pj['uid'])) if view.can_manage() else None;
+                              data-row-actions python:rm.actions((u'Specs', 'href', u'%s/@@pfas-project-specs?uid=%s' % (view.portal_url(), pj['uid'])),
+                                                                 (u'Delete', 'form', u'pj-delete-%s' % pj['uid'], {'danger': True})) if view.can_manage() else None">
+            <td class="pfas-mono pfas-text-accent"><tal:c tal:content="python:pj.get('project_code','')"></tal:c>
+              <span class="badge badge-opened" tal:condition="python:pj.get('standing')">Standing</span></td>
             <td tal:content="python:pj.get('title','')"></td>
             <td tal:content="python:pj.get('client_name','') or '—'"></td>
             <td>
@@ -167,32 +180,24 @@
             <td tal:content="python:pj.get('start_date','') or '—'"></td>
             <td tal:content="python:pj.get('end_date','') or '—'"></td>
             <td class="pfas-muted pfas-col-notes" tal:content="python:pj.get('notes','')"></td>
-            <td class="row-actions-cell" tal:condition="view/can_manage">
-              <a class="btn-sm btn-secondary"
-                 tal:attributes="href string:${view/portal_url}/@@pfas-projects?edit_uid=${pj/uid}">
-                Edit
-              </a>
-              <a class="btn-sm btn-secondary"
-                 tal:attributes="href string:${view/portal_url}/@@pfas-project-specs?uid=${pj/uid}">
-                Specs
-              </a>
-              <form method="post" class="pfas-inline-form"
-                    tal:attributes="action string:${view/portal_url}/@@pfas-projects"
-                    onsubmit="return confirm('Delete this project? This cannot be undone.')">
-                <input type="hidden" name="action" value="delete"/>
-                <input type="hidden" name="uid" tal:attributes="value pj/uid"/>
-                <button type="submit" class="btn-sm btn-danger">Delete</button>
-              </form>
-            </td>
           </tr>
           </tal:rows>
           <tr tal:condition="not:view/projects">
-            <td colspan="9" class="pfas-muted pfas-center">
+            <td colspan="8" class="pfas-muted pfas-center">
               No projects yet.
             </td>
           </tr>
         </tbody>
       </table>
+      <tal:dl tal:condition="view/can_manage" tal:repeat="pj view/projects">
+        <form method="post" class="pfas-inline-form" hidden="hidden"
+              tal:attributes="action string:${view/portal_url}/@@pfas-projects; id string:pj-delete-${pj/uid}"
+              onsubmit="return confirm('Delete this project? This cannot be undone.')">
+          <input type="hidden" name="action" value="delete"/>
+          <input type="hidden" name="uid" tal:attributes="value pj/uid"/>
+          <button type="submit" class="btn-sm btn-danger">Delete</button>
+        </form>
+      </tal:dl>
     </div>
 
   </div>

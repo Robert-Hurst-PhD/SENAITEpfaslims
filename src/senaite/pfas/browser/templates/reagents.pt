@@ -4,11 +4,15 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Reagent Inventory</title>
+  <title metal:fill-slot="title" tal:content="view/page_title">Reagent Inventory</title>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Reagent Inventory</tal:t>
+  <tal:t metal:fill-slot="header-title" tal:content="view/page_title">Reagent Inventory</tal:t>
   <tal:r metal:fill-slot="header-right">
+    <button type="button" class="btn-sm btn-primary" onclick="openAddForm()"
+            tal:condition="python:view.view_mode() == 'lots'">+ New Reagent</button>
+    <button type="button" class="btn-sm btn-primary" onclick="openAddForm('reference')"
+            tal:condition="python:view.view_mode() == 'reference'">+ New reference sample</button>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -23,7 +27,7 @@
         <span class="badge badge-quarantine">Test mode</span>
         <span>Audit log disabled. Deletions are permanent and autofill is inactive.</span>
         <span class="pfas-banner-end">
-          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/bika_setup/auditlog">Enable Audit Log &#8599;</a>
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/bika_setup/auditlog">Enable Audit Log <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('external', hidden=True)" /></a>
         </span>
       </div>
       <div tal:condition="python:prod and tc > 0" class="pfas-banner">
@@ -40,6 +44,7 @@
     </tal:mode>
 
     <!-- ─── Global expiry defaults (inherited when no expiry stated) ──── -->
+    <tal:m condition="not:view/materials">
     <details
              tal:condition="view/can_configure"
              tal:define="ed view/expiry_defaults">
@@ -49,17 +54,17 @@
       </summary>
       <form method="post">
         <input type="hidden" name="action" value="save_expiry_defaults"/>
-        <div class="field-grid page-body-narrow">
-          <label>Reagent (from receipt, days)
+        <div class="pfas-form-row page-body-narrow">
+          <label class="pfas-form-field">Reagent (from receipt, days)
             <input type="number" name="reagent_default_days" min="1" step="1"
                    tal:attributes="value ed/reagent_default_days"/></label>
-          <label>Mobile phase (from opening, days)
+          <label class="pfas-form-field">Mobile phase (from opening, days)
             <input type="number" name="mobile_phase_open_days" min="1" step="1"
                    tal:attributes="value ed/mobile_phase_open_days"/></label>
-          <label>Other opened (days)
+          <label class="pfas-form-field">Other opened (days)
             <input type="number" name="opened_default_days" min="1" step="1"
                    tal:attributes="value ed/opened_default_days"/></label>
-          <label>Prepared standard (from prep, days)
+          <label class="pfas-form-field">Prepared standard (from prep, days)
             <input type="number" name="prepared_std_default_days" min="1" step="1"
                    tal:attributes="value ed/prepared_std_default_days"/></label>
         </div>
@@ -67,18 +72,19 @@
           <tal:h define="hid string:expiry-defaults"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></div>
       </form>
     </details>
+    </tal:m>
 
     <!-- ─── Summary cards ──────────────────────────────────── -->
     <div class="pfas-tiles">
-      <div class="pfas-tile is-static">
+      <div class="pfas-tile is-static is-left">
         <span class="pfas-tile-stat" tal:content="view/total_count">0</span>
         <span class="pfas-tile-desc">Total reagents</span>
       </div>
-      <div class="pfas-tile is-static">
+      <div class="pfas-tile is-static is-left">
         <span class="pfas-tile-stat" tal:content="view/active_count">0</span>
         <span class="pfas-tile-desc">Active</span>
       </div>
-      <div class="pfas-tile is-static">
+      <div class="pfas-tile is-static is-left">
         <span tal:attributes="class python:'pfas-tile-stat is-flag' if view.expiring_soon_count() else 'pfas-tile-stat'"
               tal:content="view/expiring_soon_count">0</span>
         <span class="pfas-tile-desc">Expiring &#8804; 30 days</span>
@@ -97,13 +103,13 @@
     <form method="get" class="pfas-filterbar" id="rg-filters" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
       <tal:f condition="python:view.view_mode() == 'lots'">
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="rg-q">Search</label>
         <input type="text" id="rg-q" name="q" class="pfas-input pfas-input-wide"
                placeholder="Name, cat#, lot#, supplier..."
                tal:attributes="value view/q" />
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="rg-status">Status</label>
         <select id="rg-status" name="status" class="pfas-select">
           <option value="all" tal:attributes="selected python:'selected' if not view.status_filter() else None">All statuses</option>
@@ -128,17 +134,15 @@
       <button type="button" class="btn btn-secondary" onclick="openScanModal('barcode')"
               title="Scan a barcode or switch to OCR inside the scanner">Scan Label</button>
       <tal:l condition="python:view.view_mode() == 'lots'">
-      <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards?new=1&amp;log=250">+ New prep</a>
-      <button type="button" class="btn btn-primary" onclick="openAddForm()">+ Add Reagent</button>
+      <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?kind=reagent">Recipes</a>
       </tal:l>
-      <button type="button" class="btn btn-primary" onclick="openAddForm('reference')"
-              tal:condition="python:view.view_mode() == 'reference'">+ Add reference sample</button>
     </form>
 
     <tal:lots condition="python:view.view_mode() == 'lots'">
     <!-- ─── Reagent table ───────────────────────────────────── -->
+    <tal:rg define="rgs view/reagents">
     <div class="table-wrap">
-    <table class="pfas-table pfas-table-fixed" data-col-resize="reagents-1">
+    <table class="pfas-table pfas-table-fixed" data-col-resize="reagents-1" tal:define="rm context/@@pfas-row-menu">
       <thead>
         <tr>
           <th class="pfas-col-name">Name</th>
@@ -149,12 +153,35 @@
           <th class="pfas-col-date">Expiry</th>
           <th class="pfas-col-qty">Qty</th>
           <th class="pfas-col-status">Status</th>
-          <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
         </tr>
       </thead>
       <tbody>
-        <tal:rows tal:repeat="rg view/reagents">
-        <tr tal:attributes="class python:'is-archived' if rg.get('is_archived') else None">
+        <tal:rows tal:repeat="rg rgs"><tal:an define="archived_note python:u'Archived %s' % view.lab_at(rg.get('archived_at'), (rg.get('archived_at') or '')[:10], u'%Y-%m-%d') if rg.get('archived_at') else None">
+        <!-- every action in the row's menu; Archive last. Edit and the CoA
+             dialog are filled from the row's own data by the page script -->
+        <tr tal:define="rg_uid python:rg.get('uid','');
+                        coa python:view.coa_meta(rg_uid);
+                        can_open python:rg.get('status') not in ('opened','exhausted','expired')"
+            tal:attributes="class python:'is-archived' if rg.get('is_archived') else None;
+                            data-rg python:__import__('json').dumps(rg);
+                            data-uid rg_uid;
+                            data-name python:rg.get('name','');
+                            data-cat python:rg.get('cat_number','');
+                            data-lot python:rg.get('lot_number','');
+                            data-row-actions python:rm.actions(
+                                (u'Edit', 'event', 'rg-edit'),
+                                (u'Upload CoA', 'event', 'coa-find') if not coa else None,
+                                (u'Certificate values', 'href', u'%s/@@pfas-reagents?certificate=%s' % (view.portal_url(), rg_uid)) if 'Standard' in (rg.get('category') or '') else None,
+                                (u'Usage', 'href', u'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg_uid)),
+                                (u'View CoA', 'href', u'%s/@@pfas-reagents?action=coa&amp;uid=%s' % (view.portal_url(), rg_uid), {'blank': True}) if coa else None,
+                                (u'Print label', 'href', view.label_url(rg), {'blank': True}),
+                                (u'Request extension', 'href', u'%s/@@pfas-lot-extensions?lot=%s' % (view.portal_url(), rg_uid)) if not rg.get('no_expiry') else None,
+                                (u'Assigned levels', 'href', u'%s/@@pfas-assigned-levels?uid=%s' % (view.portal_url(), rg_uid)) if rg.get('category') == 'Standard / Reference Material' else None,
+                                (u'Mark opened', 'form', u'rg-open-%s' % rg_uid, {'off': None if can_open else u'Already %s' % (rg.get('status') or 'opened')}),
+                                (u'Replace CoA', 'event', 'coa-upload') if coa else None,
+                                (u'Archive', 'form', u'rg-archive-%s' % rg_uid, {'danger': True, 'confirm': u'Archive this reagent? It can be restored later.'}) if view.is_production_mode() and not rg.get('is_archived') else None,
+                                (u'Restore', 'form', u'rg-restore-%s' % rg_uid, {'note': archived_note}) if view.is_production_mode() and rg.get('is_archived') else None,
+                                (u'Delete', 'form', u'rg-delete-%s' % rg_uid, {'danger': True, 'confirm': u'Delete this reagent record?'}) if not view.is_production_mode() else None)">
           <td>
             <div class="pfas-cell-name" tal:content="python:rg.get('name','')"></div>
             <div class="cf-hint" tal:content="python:rg.get('category','')"></div>
@@ -175,118 +202,63 @@
           <td tal:content="python:rg.get('supplier','')"></td>
           <td class="cell-nowrap" tal:content="python:rg.get('received_date','')"></td>
           <td tal:attributes="class python:'cell-nowrap exp-cell ' + view.expiry_class(rg)"
-              tal:content="python:view.effective_expiry(rg)"></td>
+              tal:content="python:view.shown_expiry(rg)"></td>
           <td class="cell-nowrap" tal:content="python:(rg.get('quantity') or '') + ' ' + (rg.get('unit') or '')"></td>
+          <!-- the next step each reason asks for (Upload CoA, Request
+               extension) is in the row's menu -->
           <td tal:define="attn_label python:view.status_label(rg);
                           attn_cls python:'badge ' + view.status_badge_class(rg);
                           attn_reasons python:view.attention(rg)">
             <metal:a use-macro="context/@@pfas-macros/macros/status-attention" />
           </td>
-          <!-- every action in the row's "+" menu; Archive last -->
-          <td class="row-plus-cell"
-              tal:define="rg_uid python:rg.get('uid','');
-                          coa python:view.coa_meta(rg_uid);
-                          can_open python:rg.get('status') not in ('opened','exhausted','expired')">
-            <details class="row-more">
-              <summary class="row-plus" aria-label="Actions for this lot" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <button type="button" class="btn-sm btn-secondary rg-edit-btn" title="Edit this lot's details"
-                        tal:attributes="data-rg python:__import__('json').dumps(rg)">Edit</button>
-                <button tal:condition="not:coa" type="button" class="btn-sm btn-secondary open-coa-modal"
-                        title="Attach the supplier's certificate of analysis"
-                        tal:attributes="data-uid rg_uid; data-name python:rg.get('name','');
-                                        data-cat python:rg.get('cat_number','');
-                                        data-lot python:rg.get('lot_number','');
-                                        data-tab string:find">Upload CoA</button>
-                <a class="btn-sm btn-secondary" title="The analytes as the certificate states them"
-                   tal:condition="python:'Standard' in (rg.get('category') or '')"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?certificate=${rg_uid}">Certificate values</a>
-                <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
-                   tal:attributes="href python:'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg_uid)">Usage</a>
-                <a tal:condition="coa" class="btn-sm btn-secondary" target="_blank" title="Open the certificate of analysis"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${rg_uid}">View CoA</a>
-                <a class="btn-sm btn-secondary" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
-                   tal:attributes="href python:view.label_url(rg)">Print label</a>
-                <a class="btn-sm btn-secondary" title="The levels a matrix blank made from this lot is shown against"
-                   tal:condition="python:rg.get('category') == 'Standard / Reference Material'"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-assigned-levels?uid=${rg_uid}">Assigned levels</a>
-                <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                  <input type="hidden" name="action" value="open" />
-                  <input type="hidden" name="uid" tal:attributes="value rg_uid" />
-                  <input type="hidden" name="opened_date"
-                         tal:attributes="value view/lab_today" />
-                  <button class="btn-sm btn-secondary" type="submit"
-                          tal:attributes="disabled python:None if can_open else 'disabled';
-                                          title python:'Record today as the day this container was opened (starts its opened shelf life)' if can_open else 'Already %s' % (rg.get('status') or 'opened')">Mark opened</button>
-                </form>
-                <button tal:condition="coa" type="button" class="btn-sm btn-secondary open-coa-modal"
-                        title="Replace the certificate of analysis on file"
-                        tal:attributes="data-uid rg_uid; data-name python:rg.get('name','');
-                                        data-cat python:rg.get('cat_number','');
-                                        data-lot python:rg.get('lot_number','');
-                                        data-tab string:upload">Replace CoA</button>
-                <tal:prod tal:condition="view/is_production_mode">
-                  <form method="post" tal:condition="not:python:rg.get('is_archived')"
-                        tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                    <input type="hidden" name="action" value="delete" />
-                    <input type="hidden" name="uid" tal:attributes="value rg_uid" />
-                    <button class="btn-sm btn-danger" type="submit"
-                            title="Hide this lot from the inventory; it can be restored"
-                            onclick="return confirm('Archive this reagent? It can be restored later.')">Archive</button>
-                  </form>
-                  <form method="post" tal:condition="python:rg.get('is_archived')"
-                        tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                    <input type="hidden" name="action" value="restore" />
-                    <input type="hidden" name="uid" tal:attributes="value rg_uid" />
-                    <button class="btn-sm btn-success" type="submit"
-                            tal:attributes="title python:'Archived %s; put it back in the inventory' % view.lab_at(rg.get('archived_at'), (rg.get('archived_at') or '')[:10], u'%Y-%m-%d')">Restore</button>
-                  </form>
-                </tal:prod>
-                <form method="post" tal:condition="not:view/is_production_mode"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                  <input type="hidden" name="action" value="delete" />
-                  <input type="hidden" name="uid" tal:attributes="value rg_uid" />
-                  <button class="btn-sm btn-danger" type="submit"
-                          title="Test mode: delete this record permanently"
-                          onclick="return confirm('Delete this reagent record?')">Delete</button>
-                </form>
-              </div>
-            </details>
-          </td>
         </tr>
-        </tal:rows>
-        <tr tal:condition="not:view/reagents">
-          <td colspan="9" class="pfas-cell-empty">
-            No reagents found. Use "Add Reagent" or scan a barcode to get started.
+        </tal:an></tal:rows>
+        <tr tal:condition="not:rgs">
+          <td colspan="8" class="pfas-cell-empty">
+            No reagents found. Use "New Reagent" or scan a barcode to get started.
           </td>
         </tr>
       </tbody>
     </table>
     </div>
 
-    <!-- in-house solvents, buffers and mobile phases: Prepared Standard lots
-         of type Solvent / Reagent, made through FM-ENV-001 -->
-    <section class="section-gap" tal:define="inhouse view/prepared_in_house" tal:condition="inhouse">
-      <div class="pfas-between">
-        <h3 class="pfas-card-head">Prepared in house</h3>
-        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards?tab=FM-ENV-001">FM-ENV-001</a>
-      </div>
-      <div class="table-wrap">
-        <table class="pfas-table" data-col-resize="reagents-2">
-          <thead><tr><th>Name</th><th>Lot</th><th>Prepared</th><th>Expiry</th><th>Storage conditions</th><th>Status</th></tr></thead>
-          <tbody>
-            <tr tal:repeat="r inhouse">
-              <td tal:content="r/title">Mobile phase A</td>
-              <td class="pfas-mono" tal:content="r/lot_number">MPA-1</td>
-              <td tal:content="r/prepared_date">2026-10-14</td>
-              <td tal:content="python:r.get('effective_expiry') or r.get('expiry_date')">2026-10-21</td>
-              <td tal:content="r/storage_conditions">room temperature</td>
-              <td tal:content="python:view.lot_status_label(r.get('status'))">Pending verification</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <!-- the row menu's Mark opened, Archive, Restore and Delete send these -->
+    <tal:rf repeat="rg rgs">
+    <tal:f define="rg_uid python:rg.get('uid','');
+                   can_open python:rg.get('status') not in ('opened','exhausted','expired')">
+    <form method="post" hidden="hidden"
+          tal:attributes="action string:${view/portal_url}/@@pfas-reagents; id string:rg-open-${rg_uid}">
+      <input type="hidden" name="action" value="open" />
+      <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+      <input type="hidden" name="opened_date"
+             tal:attributes="value view/lab_today" />
+      <button class="btn-sm btn-secondary" type="submit"
+              tal:attributes="disabled python:None if can_open else 'disabled'">Mark opened</button>
+    </form>
+    <tal:prod tal:condition="view/is_production_mode">
+      <form method="post" hidden="hidden" tal:condition="not:python:rg.get('is_archived')"
+            tal:attributes="action string:${view/portal_url}/@@pfas-reagents; id string:rg-archive-${rg_uid}">
+        <input type="hidden" name="action" value="delete" />
+        <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+        <button class="btn-sm btn-danger" type="submit">Archive</button>
+      </form>
+      <form method="post" hidden="hidden" tal:condition="python:rg.get('is_archived')"
+            tal:attributes="action string:${view/portal_url}/@@pfas-reagents; id string:rg-restore-${rg_uid}">
+        <input type="hidden" name="action" value="restore" />
+        <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+        <button class="btn-sm btn-success" type="submit">Restore</button>
+      </form>
+    </tal:prod>
+    <form method="post" hidden="hidden" tal:condition="not:view/is_production_mode"
+          tal:attributes="action string:${view/portal_url}/@@pfas-reagents; id string:rg-delete-${rg_uid}">
+      <input type="hidden" name="action" value="delete" />
+      <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+      <button class="btn-sm btn-danger" type="submit">Delete</button>
+    </form>
+    </tal:f>
+    </tal:rf>
+    </tal:rg>
+
     </tal:lots>
 
     <!-- ─── Reference samples: receipt and CoA (Method Studies picks them) ── -->
@@ -295,48 +267,53 @@
         <h3 class="pfas-card-head">Receipt and CoA</h3>
         <div class="pfas-muted" tal:condition="not:rss">No usable reference-sample lot.</div>
         <span id="rg-ref-cat" hidden="hidden" tal:content="view/reference_category">Standard / Reference Material</span>
-        <table class="pfas-table" data-col-resize="reagents-3" tal:condition="rss">
+        <table class="pfas-table" data-col-resize="reagents-3" tal:condition="rss" tal:define="rm context/@@pfas-row-menu">
           <thead><tr><th>Lot</th><th>Received</th><th>Receipt</th><th>CoA</th></tr></thead>
-          <tbody tal:repeat="l rss">
-            <tr tal:attributes="id string:rm-${l/uid}">
+          <tbody>
+            <!-- a row opens its receipt dialog; View CoA is in its menu -->
+            <tr tal:repeat="l rss"
+                tal:attributes="id string:rm-${l/uid};
+                                data-row-dialog string:rm-receipt-${l/uid};
+                                data-row-actions python:rm.actions(
+                                    (u'Update the receipt' if l['receipt'] else u'Record the receipt', 'modal', u'rm-receipt-%s' % l['uid']),
+                                    (u'View CoA', 'href', u'%s/@@pfas-reagents?action=coa&amp;uid=%s' % (view.portal_url(), l['uid']), {'blank': True}) if l['coa'] else None)">
               <td tal:content="string:${l/name} ${l/lot_number}">DEMO RM L-1</td>
               <td tal:content="python:l.get('received') or u'—'">date</td>
               <td tal:define="r l/receipt">
                 <tal:r condition="r"><span tal:replace="python:u'%s; %s (recorded by %s, %s)' % (r.get('received_by'), r.get('condition'), r.get('recorded_by'), view.lab_at(r.get('recorded_at'), r.get('recorded_at')))">AN1; intact</span></tal:r>
                 <tal:n condition="not:r">not recorded</tal:n></td>
-              <td><a class="btn-sm btn-secondary" target="_blank" tal:condition="l/coa"
-                     tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${l/uid}">View CoA</a>
+              <td><tal:y condition="l/coa">on file</tal:y>
                   <tal:n condition="not:l/coa">none on file</tal:n></td>
             </tr>
-            <!-- the receipt form opens under its lot, across the table -->
-            <tr class="row-detail"><td colspan="4">
-              <details class="row-form">
-                <summary class="btn-sm btn-secondary"
-                         tal:content="python:'Update the receipt' if l['receipt'] else 'Record the receipt'">Record the receipt</summary>
-                <form method="post" enctype="multipart/form-data"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                  <input type="hidden" name="uid" tal:attributes="value l/uid" />
-                  <div class="field-grid page-body-narrow" tal:define="r python:l['receipt'] or {}">
-                    <label>Received <input type="date" name="received_at" required="required"
-                                           tal:attributes="value l/received" /></label>
-                    <label>Received by <input type="text" name="received_by" required="required"
-                                              tal:attributes="value r/received_by|nothing" /></label>
-                    <label>Condition on arrival <input type="text" name="condition" required="required"
-                                                       tal:attributes="value r/condition|nothing" /></label>
-                    <label>Provider's sample or certificate no. <input type="text" name="provider_ref"
-                                                                      tal:attributes="value r/provider_ref|nothing" /></label>
-                    <label>Stored at <input type="text" name="storage" tal:attributes="value r/storage|nothing" /></label>
-                    <label>Note <input type="text" name="note" tal:attributes="value r/note|nothing" /></label>
-                    <label>CoA (PDF) <input type="file" name="coa_file" accept="application/pdf" /></label>
-                  </div>
-                  <div class="form-actions">
-                    <button class="btn-sm btn-primary" type="submit" name="action" value="receipt">Record receipt</button>
-                  </div>
-                </form>
-              </details>
-            </td></tr>
           </tbody>
         </table>
+        <!-- each lot's receipt form, in its dialog -->
+        <div class="pfas-modal" tal:repeat="l rss" tal:attributes="id string:rm-receipt-${l/uid}">
+          <div class="pfas-modal-box is-narrow">
+            <h2 tal:content="python:u'%s · %s %s' % (u'Update the receipt' if l['receipt'] else u'Record the receipt', l['name'], l['lot_number'])">Record the receipt</h2>
+            <form method="post" enctype="multipart/form-data"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+              <input type="hidden" name="uid" tal:attributes="value l/uid" />
+              <div class="pfas-form-row" tal:define="r python:l['receipt'] or {}">
+                <label class="pfas-form-field">Received <input type="date" name="received_at" required="required"
+                                       tal:attributes="value l/received" /></label>
+                <label class="pfas-form-field">Received by <input type="text" name="received_by" required="required"
+                                          tal:attributes="value r/received_by|nothing" /></label>
+                <label class="pfas-form-field">Condition on arrival <input type="text" name="condition" required="required"
+                                                   tal:attributes="value r/condition|nothing" /></label>
+                <label class="pfas-form-field">Provider's sample or certificate no. <input type="text" name="provider_ref"
+                                                                  tal:attributes="value r/provider_ref|nothing" /></label>
+                <label class="pfas-form-field">Stored at <input type="text" name="storage" tal:attributes="value r/storage|nothing" /></label>
+                <label class="pfas-form-field">Note <input type="text" name="note" tal:attributes="value r/note|nothing" /></label>
+                <label class="pfas-form-field">CoA (PDF) <input type="file" name="coa_file" accept="application/pdf" /></label>
+              </div>
+              <div class="form-actions is-end">
+                <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                <button class="btn btn-primary" type="submit" name="action" value="receipt">Record receipt</button>
+              </div>
+            </form>
+          </div>
+        </div>
       </section>
     </tal:ref>
 
@@ -372,19 +349,19 @@
           <div class="pfas-link-grid">
             <a class="btn btn-secondary" target="_blank" rel="noopener"
                href="https://www.sigmaaldrich.com/US/en/documents-search?tab=coa">
-              Sigma-Aldrich / MilliporeSigma &#8599;
+              Sigma-Aldrich / MilliporeSigma <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('external', hidden=True)" />
             </a>
             <a class="btn btn-secondary" target="_blank" rel="noopener"
                href="https://www.fishersci.com/search/documents?type=certificates">
-              Thermo Fisher / Fisher Scientific &#8599;
+              Thermo Fisher / Fisher Scientific <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('external', hidden=True)" />
             </a>
             <a class="btn btn-secondary" target="_blank" rel="noopener"
                href="https://us.vwr.com/store/productDocuments">
-              VWR / Avantor &#8599;
+              VWR / Avantor <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('external', hidden=True)" />
             </a>
           </div>
           <div class="pfas-note">
-            <strong>Batch downloads:</strong> use the <code>scripts/fetch_coa.py</code>
+            <strong>Bulk downloads:</strong> use the <code>scripts/fetch_coa.py</code>
             workstation script to automate CoA retrieval with a real browser, which
             the suppliers' bot detection lets through. Run it from your workstation,
             not the server.
@@ -462,7 +439,7 @@
           </div>
           <button type="button" class="btn-sm btn-secondary" id="cert-add">+ Add analyte</button>
           <tal:corr condition="cv/on_file">
-            <label class="field-wide">Reason for the correction
+            <label class="is-full">Reason for the correction
               <input type="text" name="reason" placeholder="Why a value on file changes" /></label>
             <p class="pfas-hint" tal:condition="cv/made_from"
                tal:content="python:u'Made from this lot: %s. Saving a correction flags each of them, and every run that used them, for review.' % u', '.join(cv['made_from'])"></p>
@@ -505,7 +482,7 @@
          ════════════════════════════════════════════════════ -->
     <div class="pfas-modal" id="rg-modal">
       <div class="pfas-modal-box">
-        <h2 id="modal-title">Add Reagent</h2>
+        <h2 id="modal-title">New Reagent</h2>
         <form method="post"
               tal:attributes="action string:${view/portal_url}/@@pfas-reagents"
               id="rg-form">
@@ -569,14 +546,15 @@
               <label>Received date</label>
               <input type="date" name="received_date" id="f-received" />
             </div>
-            <div class="pfas-form-field">
+            <!-- a material or container has no expiry: its form asks none -->
+            <div class="pfas-form-field" tal:attributes="hidden python:'hidden' if view.materials else None">
               <label>Manufacturer expiry (from label)</label>
               <input type="date" name="manufacturer_expiry" id="f-mfr-expiry" />
               <p class="pfas-hint">Leave blank to auto-calculate from open date</p>
             </div>
           </div>
 
-          <div class="pfas-form-row">
+          <div class="pfas-form-row" tal:attributes="hidden python:'hidden' if view.materials else None">
             <div class="pfas-form-field">
               <label>Opened date</label>
               <input type="date" name="opened_date" id="f-opened"
@@ -745,7 +723,7 @@
         <!-- Phase 2: reagent found in inventory, log the scan -->
         <div id="scan-match-panel" hidden="hidden">
           <div class="pfas-scan-match">
-            <div class="pfas-scan-match-label">&#10003; Reagent Found</div>
+            <div class="pfas-scan-match-label"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', hidden=True)" /> Reagent Found</div>
             <div class="pfas-scan-match-name" id="scan-match-name"></div>
             <div class="pfas-scan-match-row">
               <div class="pfas-scan-match-item">
@@ -768,7 +746,7 @@
           </div>
           <div class="pfas-scan-label">Notes (optional)</div>
           <textarea class="pfas-scan-notes" id="scan-notes" rows="2"
-                    placeholder="e.g. opened for extraction batch EB-2026-041"></textarea>
+                    placeholder="e.g. opened for worksheet WS-041"></textarea>
           <div class="pfas-scan-actions">
             <button type="button" class="btn btn-primary" onclick="logAndClose()">Log &#38; Close</button>
             <button type="button" class="btn btn-secondary" onclick="logAndContinue()">Log &#38; Scan Next</button>
@@ -893,7 +871,7 @@
   /* the top bar's "+" menu lands here with ?new=1 */
   window.pfasOpenNew = function () { openAddForm(); };
   function openAddForm(kind) {
-    document.getElementById('modal-title').textContent = kind === 'reference' ? 'Add reference sample' : 'Add Reagent';
+    document.getElementById('modal-title').textContent = kind === 'reference' ? 'New reference sample' : 'New Reagent';
     document.getElementById('form-action').value = 'add';
     clearForm();
     if (kind === 'reference') {
@@ -1480,28 +1458,23 @@
     });
   });
 
-  /* ── Wire Edit buttons (data-rg carries JSON; avoids quote-in-attribute issue) ── */
+  /* ── A lot row's menu: Edit and the CoA dialog, filled from the row
+     (data-rg carries the lot as JSON; data-uid/-name/-cat/-lot the CoA's) ── */
+  document.addEventListener('pfas:row-action', function(e) {
+    var tr = e.detail && e.detail.row, name = e.detail && e.detail.name;
+    if (!tr) return;
+    if (name === 'rg-edit') {
+      try { openEditForm(JSON.parse(tr.getAttribute('data-rg'))); }
+      catch(err) { console.error('Edit parse error', err); }
+    } else if (name === 'coa-find' || name === 'coa-upload') {
+      openCoaModal(tr.getAttribute('data-uid') || '', tr.getAttribute('data-name') || '',
+                   tr.getAttribute('data-cat') || '', tr.getAttribute('data-lot') || '',
+                   name === 'coa-upload' ? 'upload' : 'find');
+    }
+  });
   document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.rg-edit-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        try { openEditForm(JSON.parse(btn.getAttribute('data-rg'))); }
-        catch(e) { console.error('Edit parse error', e); }
-      });
-    });
     /* Pre-fill edit if edit_uid was set via URL */
     if (EDIT_DATA) { openEditForm(EDIT_DATA); }
-
-    /* ── CoA modal ─────────────────────────────────── */
-    document.querySelectorAll('.open-coa-modal').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var uid  = this.getAttribute('data-uid')  || '';
-        var name = this.getAttribute('data-name') || '';
-        var cat  = this.getAttribute('data-cat')  || '';
-        var lot  = this.getAttribute('data-lot')  || '';
-        var tab  = this.getAttribute('data-tab')  || 'find';
-        openCoaModal(uid, name, cat, lot, tab);
-      });
-    });
   });
 
   function openCoaModal(uid, name, cat, lot, tab) {

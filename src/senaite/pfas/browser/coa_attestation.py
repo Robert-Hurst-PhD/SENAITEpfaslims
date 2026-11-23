@@ -60,8 +60,33 @@ class PFASCoAAttestationView(BrowserView):
         self.collection = collection or []
         self.report_view = report_view
         self.signatories = self.resolve_signatories(self.collection)
+        from senaite.pfas.browser.coa_sections import certificate_mono
+        if certificate_mono(self.collection):
+            self._ink_signatures(self.signatories)
         self.meta = self.controlled_doc_meta(self.collection)
         return self.attestation()
+
+    def _ink_signatures(self, signatories):
+        """A black-and-white certificate prints each signature image in ink
+        (document_templates.ink_image), drawn for the print; the image on
+        the Lab Contact is never changed. One that cannot be read keeps its
+        link."""
+        from senaite.pfas import document_templates as dt
+        from senaite.pfas.browser import staff
+        people = list(signatories.get("prepared") or []) + list(signatories.get("verified") or [])
+        people.append(signatories.get("authorized") or {})
+        for info in people:
+            if not info.get("signature_url"):
+                continue
+            uri = staff.signature_uri(staff.contact_for(info.get("userid")))
+            if uri:
+                info["signature_url"] = dt.ink_image(uri)
+
+    def variant(self, collection=None):
+        """The black-and-white class when the client asks for it
+        (coa_sections.variant_class)."""
+        from senaite.pfas.browser.coa_sections import variant_class
+        return variant_class(collection if collection is not None else getattr(self, "collection", []))
 
     def style(self):
         """'compact' (default) or 'full', from Print Settings > Certificate."""
@@ -149,49 +174,60 @@ class PFASCoAAttestationView(BrowserView):
         justified and recorded, and the certificate is where the client's half
         of that record lives.
 
-        Grouped by code so the statement appears once, with the analytes it
-        applies to — a blanket caveat on every result devalues the warning.
+        Read from the rows the certificate prints (PFASCoASectionsView
+        ._sample, coa_format.qualifications): a code listed here is on its
+        result's row, and a code on a row is listed here. One line per
+        code, with the results it applies to; a blanket caveat on every
+        result devalues the warning.
         """
         collection = collection if collection is not None else getattr(
             self, "collection", [])
         if not collection:
             return []
-        try:
-            from senaite.pfas.browser.qc_review_report import _worksheet_for
-            sample = api.get_object(collection[0])
-            worksheet = _worksheet_for(sample)
-            if worksheet is None:
-                return []
-            review = worksheet.restrictedTraverse(str("@@pfas-data-review"))
-            summary = review._get_qc_summary(worksheet) or {}
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("could not resolve QC qualifications: %s", exc)
-            return []
+        from senaite.pfas.browser.coa_sections import PFASCoASectionsView
+        sections = PFASCoASectionsView(api.get_portal(), self.request)
+        sections.collection = list(collection)
+        out, seen = [], {}
+        for model in collection:
+            try:
+                found = sections._sample(api.get_object(model))["qualifications"]
+            except Exception as exc:                        # noqa: BLE001
+                # the sample block names a sample that cannot be assembled
+                logger.warning("could not resolve QC qualifications: %s", exc)
+                continue
+            for q in found:
+                key = (q["code"], q["statement"])
+                if key in seen:
+                    # two samples on one certificate share the line
+                    row = seen[key]
+                    names = [n for n in q["analytes"].split(u", ")
+                             if n not in row["analytes"].split(u", ")]
+                    row["analytes"] = u", ".join([row["analytes"]] + names)
+                    continue
+                seen[key] = dict(q)
+                out.append(seen[key])
+        return sorted(out, key=lambda q: (q["code"], q["statement"]))
 
-        from senaite.pfas.qc_qualification import HIGH_BIAS_CODE
-        grouped = {}
-        for entry in (summary.get("qualifiers") or []):
-            code = entry.get("code") or u"?"
-            statement = entry.get("statement") or u""
-            # entries sharing a code but not a statement (the high-bias note
-            # names its QC type) stay separate; every other code groups by code
-            key = (code, statement if code == HIGH_BIAS_CODE else u"")
-            row = grouped.setdefault(key, {
-                "code": code,
-                "statement": statement,
-                "analytes": set(),
-            })
-            if entry.get("analyte"):
-                row["analytes"].add(entry["analyte"])
-        out = []
-        for key in sorted(grouped):
-            row = grouped[key]
-            out.append({
-                "code": row["code"],
-                "statement": row["statement"],
-                "analytes": u", ".join(sorted(row["analytes"])),
-            })
-        return out
+    def qc_not_run(self, collection=None):
+        """[{"qc_type", "dev_id"}]: the QC types the method requires every
+        run that the runs of the certificate's samples did not hold, each
+        with the closed missing-data deviation that released it, read from
+        the certificate's own assembly (PFASCoASectionsView._sample)."""
+        collection = collection if collection is not None else getattr(
+            self, "collection", [])
+        if not collection:
+            return []
+        from senaite.pfas.browser.coa_sections import PFASCoASectionsView
+        sections = PFASCoASectionsView(api.get_portal(), self.request)
+        sections.collection = list(collection)
+        from senaite.pfas.qc_deviation import merge_not_run
+        found = []
+        for model in collection:
+            try:
+                found.append(sections._sample(api.get_object(model)).get("qc_not_run") or [])
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("could not resolve the QC types not run: %s", exc)
+        return merge_not_run(found)
 
     def render_stamp(self, context=None):
         """The controlled-document stamp, as markup.
@@ -252,8 +288,27 @@ class PFASCoAAttestationView(BrowserView):
         return {
             "prepared": list(prepared.values()),
             "verified": list(verified.values()),
-            "authorized": self._current_actor_info(),
+            "authorized": self._as_signed(self._current_actor_info(), collection),
         }
+
+    def _as_signed(self, info, collection):
+        """The authoriser as the page prints them: the person who signed on
+        Data Review, with the signing time, once the sample holds a signature;
+        before it nothing (no name, role, image or date). has_contact stays
+        the publisher's own, which the publish gate reads."""
+        from senaite.pfas.browser.controlled_publications import pending_signature
+        pending = None
+        for model in collection:
+            try:
+                pending = pending_signature(api.get_object(model))
+            except Exception:                               # noqa: BLE001
+                pending = None
+            if pending:
+                break
+        if pending and pending.get("userid"):
+            return dict(info, fullname=pending.get("fullname") or u"", jobtitle=u"",
+                        signature_url=None, date=self._fmt(pending.get("at")))
+        return dict(info, fullname=u"", jobtitle=u"", signature_url=None, role=u"", date=u"")
 
     def _collect(self, obj, prepared, verified):
         """Fold an object's submit/verify actors into the dedup maps."""
@@ -318,8 +373,8 @@ class PFASCoAAttestationView(BrowserView):
     def _current_actor_info(self):
         """The publisher = the authorizing person (publish happens now): the
         name and role on their People & Roles record, never the account id.
-        Without one the name is a placeholder ("has_contact" False): a
-        preview says so and the designed certificate refuses to publish
+        Without one the name is empty ("has_contact" False): the designed
+        certificate refuses to publish
         (coa_document.data); publishing itself needs a Lab Contact
         (EntryRightsGuard)."""
         from senaite.pfas import coa_document
@@ -333,7 +388,7 @@ class PFASCoAAttestationView(BrowserView):
         name = (contact.getFullname() or u"") if contact is not None else u""
         info["has_contact"] = bool(name)
         if not name:
-            info.update(fullname=coa_document.AUTHORIZING_PLACEHOLDER, jobtitle=u"",
+            info.update(fullname=u"", jobtitle=u"",
                         signature_url=None, role=u"")
             return info
         info["fullname"] = name

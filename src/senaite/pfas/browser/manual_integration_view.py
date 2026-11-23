@@ -56,15 +56,17 @@ REASON_GATES = {"save_reasons": TIER_CONFIG}
 
 
 def staff_sign_info(who):
-    """{"name", "sign_as"}: the person as People & Roles records them, for the
-    sign right a signature needs (SIGN_RIGHT). ValueError when the record
+    """{"name", "sign_as", "signature"}: the person as People & Roles records
+    them, for the sign right a signature needs (SIGN_RIGHT) and whether a
+    signature is on file. ValueError when the record
     cannot be read: nothing is signed on a record not read."""
     from senaite.pfas.browser import staff
     try:
         info = staff.staff_info(who)
     except Exception as exc:                                # noqa: BLE001
         raise ValueError(u"the People & Roles record of %s could not be read: %s" % (who, exc))
-    return {"name": info.get("fullname") or who, "sign_as": list(info.get("sign_as") or ())}
+    return {"name": info.get("fullname") or who, "sign_as": list(info.get("sign_as") or ()),
+            "signature": bool(info.get("signature"))}
 
 
 def _now():
@@ -194,10 +196,37 @@ def detected(ws):
     return mi.vendor_detections(rows)
 
 
+# a worksheet past release: what it read when released stands
+RELEASED_STATES = ("verified", "published")
+
+
+def last_import(ws):
+    """When the worksheet's run was last imported (run_imports, UTC), u""
+    when none is recorded or the store cannot be read."""
+    import sqlite3
+    from senaite.pfas.qc.store import DEFAULT_DB_PATH
+    if not os.path.exists(DEFAULT_DB_PATH):
+        return u""
+    try:
+        con = sqlite3.connect(DEFAULT_DB_PATH)
+        try:
+            row = con.execute("SELECT MAX(updated_at) FROM run_imports WHERE batch_id=? "
+                              "AND status='imported'", (ws.getId(),)).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return u""
+    return (row[0] if row else u"") or u""
+
+
 def current_state(ws, who=u"system"):
     """(state, report path, report fp, captured): the stored records with the
-    export's detections and a changed report applied -- a copy, unsaved."""
+    export's detections and a changed report applied -- a copy, unsaved. A
+    captured mark older than the run's latest import is dropped from the
+    copy, so a save writes the drop; a released worksheet keeps it."""
     state = copy.deepcopy(load_state(ws))
+    mi.clear_stale_capture(state, last_import(ws), who, _now(),
+                           released=api.get_review_status(ws) in RELEASED_STATES)
     path = resolve_report(ws, state)
     fp = file_fp(path)
     mi.rebind_report(state, fp, who, _now())

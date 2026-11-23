@@ -26,8 +26,9 @@ def _derive_initials(fullname):
 
 
 def staff_record(contact):
+    from senaite.pfas.doc_fields import utext
     full = contact.getFullname() if hasattr(contact, "getFullname") \
-        else contact.Title()
+        else utext(contact.Title())
     if not full:
         return None
     initials = u""

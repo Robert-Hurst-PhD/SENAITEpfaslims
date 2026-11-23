@@ -4,17 +4,17 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Facility QC — Daily Checklist</title>
+  <title metal:fill-slot="title">Equipment checks</title>
 </head>
 <body>
-<tal:t metal:fill-slot="header-title">Facility QC — Daily Checklist</tal:t>
+<tal:t metal:fill-slot="header-title">Equipment checks</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     summary  view/summary;
     purl     view/portal_url;
   ">
   <p class="pfas-lead">
-    Daily instrument and environmental verifications.
+    Daily equipment and facility checks.
     <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
       >Equipment</a>
   </p>
@@ -38,7 +38,7 @@
           <tal:each tal:repeat="unit temp_units">
             <div class="pfas-tile is-static is-left">
               <div class="pfas-tile-head">
-                <span class="pfas-tile-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <span class="pfas-tile-icon"><svg class="pfas-ico" aria-hidden="true"><use tal:attributes="href python:'#' + view.unit_icon(unit['unit_type'])"/></svg></span>
                 <div>
                   <div class="pfas-tile-title" tal:content="unit/name">Unit</div>
                   <div class="pfas-sub" tal:content="python:unit.get('location','')"></div>
@@ -67,8 +67,9 @@
                   <div class="pfas-tile-stat is-quiet">No data yet</div>
                 </tal:no-reading>
               </tal:reading>
-              <span tal:attributes="class python:'badge '+view.status_class(unit['status']).replace('fqc-','badge-')"
-                    tal:content="python:view.status_label(unit['status'])"></span>
+              <span class="pfas-unit-state" tal:define="mk python:view.status_icon(unit['status'])" tal:condition="mk"><tal:m
+                    tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg(mk, hidden=True, size='md')" /><span
+                    tal:content="python:view.status_label(unit['status'])">Due</span></span>
               <div class="pfas-tile-foot">
                 <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}">View chart / temperature study</a>
               </div>
@@ -87,7 +88,7 @@
           <tal:each tal:repeat="unit bal_units">
             <div class="pfas-tile is-static is-left">
               <div class="pfas-tile-head">
-                <span class="pfas-tile-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <span class="pfas-tile-icon"><svg class="pfas-ico" aria-hidden="true"><use tal:attributes="href python:'#' + view.unit_icon(unit['unit_type'])"/></svg></span>
                 <div>
                   <div class="pfas-tile-title" tal:content="unit/name">Balance</div>
                   <div class="pfas-sub" tal:content="python:unit.get('location','')"></div>
@@ -96,18 +97,19 @@
               <tal:bv tal:define="bv python:unit.get('last_balance')">
                 <tal:has tal:condition="bv">
                   <div class="pfas-tile-meta">
-                    Verified by <tal:op tal:replace="python:bv['operator']"/> at
+                    Checked by <tal:op tal:replace="python:bv['operator']"/> at
                     <tal:d tal:replace="python:bv['verified_date']"/>
                   </div>
                 </tal:has>
                 <tal:none tal:condition="python:not bv">
-                  <div class="pfas-tile-meta">Not verified today</div>
+                  <div class="pfas-tile-meta">Not checked today</div>
                 </tal:none>
               </tal:bv>
-              <span tal:attributes="class python:'badge '+view.status_class(unit['status']).replace('fqc-','badge-')"
-                    tal:content="python:view.status_label(unit['status'])"></span>
+              <span class="pfas-unit-state" tal:define="mk python:view.status_icon(unit['status'])" tal:condition="mk"><tal:m
+                    tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg(mk, hidden=True, size='md')" /><span
+                    tal:content="python:view.status_label(unit['status'])">Due</span></span>
               <div class="pfas-tile-foot">
-                <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-balance-log?unit_id=${unit/id}">Enter verification</a>
+                <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-balance-log?unit_id=${unit/id}">Enter check</a>
               </div>
             </div>
           </tal:each>
@@ -124,7 +126,7 @@
           <tal:each tal:repeat="unit ew_units">
             <div class="pfas-tile is-static is-left">
               <div class="pfas-tile-head">
-                <span class="pfas-tile-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <span class="pfas-tile-icon"><svg class="pfas-ico" aria-hidden="true"><use tal:attributes="href python:'#' + view.unit_icon(unit['unit_type'])"/></svg></span>
                 <div>
                   <div class="pfas-tile-title" tal:content="unit/name">Unit</div>
                   <div class="pfas-sub" tal:content="python:unit.get('location','')"></div>
@@ -134,8 +136,9 @@
                 <tal:has tal:condition="ew">Last checked <tal:d tal:replace="ew/log_date"/></tal:has>
                 <tal:none tal:condition="not:ew">Not checked yet</tal:none>
               </div>
-              <span tal:attributes="class python:'badge '+view.status_class(unit['status']).replace('fqc-','badge-')"
-                    tal:content="python:view.status_label(unit['status'])"></span>
+              <span class="pfas-unit-state" tal:define="mk python:view.status_icon(unit['status'])" tal:condition="mk"><tal:m
+                    tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg(mk, hidden=True, size='md')" /><span
+                    tal:content="python:view.status_label(unit['status'])">Due</span></span>
               <div class="pfas-tile-foot">
                 <button type="button" class="btn-sm btn-secondary"
                         tal:attributes="data-modal-open string:ew-modal-${unit/id}">Enter check</button>
@@ -149,16 +152,18 @@
                   <input type="hidden" name="unit_id" tal:attributes="value unit/id" />
                   <input type="hidden" name="return_to" value="checklist" />
                   <input type="hidden" name="log_date" tal:attributes="value view/today" />
-                  <div class="field-row"><span class="pfas-label">Operator</span>
-                    <span tal:content="view/signed_in">Operator</span></div>
-                  <div class="field-row"><span class="pfas-label">Working order</span>
-                    <div class="pfas-radios">
-                      <label class="pfas-check"><input type="radio" name="working" value="yes" checked="checked" /> &#10003; Operational</label>
-                      <label class="pfas-check"><input type="radio" name="working" value="no" /> &#10007; Fault noted</label>
-                    </div></div>
-                  <label class="field-row">Flush water temp (&deg;C)
-                    <input type="number" step="0.1" name="temperature" class="is-short" required="required" /></label>
-                  <label class="field-row">Notes <input type="text" name="notes" /></label>
+                  <div class="pfas-form-row">
+                    <div class="pfas-form-field"><span class="pfas-label">Operator</span>
+                      <span tal:content="view/signed_in">Operator</span></div>
+                    <div class="pfas-form-field"><span class="pfas-label">Working order</span>
+                      <div class="pfas-radios">
+                        <label class="pfas-check"><input type="radio" name="working" value="yes" checked="checked" /> <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', hidden=True)" />Operational</label>
+                        <label class="pfas-check"><input type="radio" name="working" value="no" /> <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('fail', hidden=True)" />Fault noted</label>
+                      </div></div>
+                    <label class="pfas-form-field">Flush water temp (&deg;C)
+                      <input type="number" step="0.1" name="temperature" class="is-short" required="required" /></label>
+                    <label class="pfas-form-field">Notes <input type="text" name="notes" /></label>
+                  </div>
                   <div class="form-actions">
                     <button class="btn btn-primary" type="submit">Save check</button>
                     <button class="btn btn-secondary" type="button" data-modal-close="data-modal-close">Cancel</button>
@@ -180,14 +185,15 @@
           <tal:each tal:repeat="unit other_units">
             <div class="pfas-tile is-static is-left">
               <div class="pfas-tile-head">
-                <span class="pfas-tile-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <span class="pfas-tile-icon"><svg class="pfas-ico" aria-hidden="true"><use tal:attributes="href python:'#' + view.unit_icon(unit['unit_type'])"/></svg></span>
                 <div>
                   <div class="pfas-tile-title" tal:content="unit/name">Unit</div>
                   <div class="pfas-sub" tal:content="python:unit.get('location','')"></div>
                 </div>
               </div>
-              <span tal:attributes="class python:'badge '+view.status_class(unit['status']).replace('fqc-','badge-')"
-                    tal:content="python:view.status_label(unit['status'])"></span>
+              <span class="pfas-unit-state" tal:define="mk python:view.status_icon(unit['status'])" tal:condition="mk"><tal:m
+                    tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg(mk, hidden=True, size='md')" /><span
+                    tal:content="python:view.status_label(unit['status'])">Due</span></span>
               <div class="pfas-tile-foot">
                 <a class="btn-sm btn-secondary" tal:condition="python:unit['unit_type']=='water_system'"
                    tal:attributes="href string:${purl}/@@pfas-water-log">Enter reading</a>
@@ -197,7 +203,7 @@
           <!-- Waste log shortcut -->
           <div class="pfas-tile is-static is-left">
             <div class="pfas-tile-head">
-              <span class="pfas-tile-icon"><i class="fas fa-trash-alt"></i></span>
+              <span class="pfas-tile-icon"><svg class="pfas-ico" aria-hidden="true"><use href="#ico-waste"/></svg></span>
               <div>
                 <div class="pfas-tile-title">Waste Containers (SAA)</div>
               </div>

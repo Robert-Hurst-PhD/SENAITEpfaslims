@@ -30,9 +30,9 @@ ADDRESS_FIELDS = (
 
 # the values print layouts take from the identity, as issued with a revision;
 # the logo picture is named by its fingerprint
+# what an issued revision freezes and this page compares with it; the name
+# and address print from this record whatever revision is issued
 PRINT_LABELS = (
-    ("lab_name", "Laboratory name"),
-    ("lab_address", "Address"),
     ("lab_phone", "Phone"),
     ("lab_email", "E-mail"),
     ("logo_url", "Logo"),

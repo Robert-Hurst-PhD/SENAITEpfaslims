@@ -21,7 +21,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import matrix_blank as mxb
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
-from senaite.pfas.browser.view_helpers import LabTime
+from senaite.pfas.browser.view_helpers import LabTime, MethodNames
 
 logger = logging.getLogger("senaite.pfas.browser.assigned_levels")
 
@@ -50,12 +50,13 @@ def lot_record(portal, uid):
 
 
 def lot_label(obj):
+    from senaite.pfas.doc_fields import utext
     if obj is None:
         return u""
-    return u"%s %s" % (obj.Title() or u"", getattr(obj, "lot_number", u"") or u"")
+    return u"%s %s" % (utext(obj.Title()), utext(getattr(obj, "lot_number", u"")))
 
 
-class PFASAssignedLevelsView(BrowserView, GateMixin, LabTime):
+class PFASAssignedLevelsView(BrowserView, GateMixin, LabTime, MethodNames):
 
     template = ViewPageTemplateFile("templates/assigned_levels.pt")
 
@@ -95,6 +96,21 @@ class PFASAssignedLevelsView(BrowserView, GateMixin, LabTime):
 
     def records(self):
         return list(reversed(history(self.lot())))
+
+    def reference_lots(self):
+        """With no lot asked for: the reference material lots a matrix blank
+        can be made from (the lots Reagent Inventory offers Assigned levels
+        on), each with how many levels are in force."""
+        from senaite.pfas.browser.reagents import _list_reagents
+        from senaite.pfas.content.reagent import CATEGORY_REFERENCE
+        portal = self.portal()
+        out = []
+        for r in _list_reagents(portal, category_filter=CATEGORY_REFERENCE):
+            cur = lot_record(portal, r.get("uid"))
+            out.append({"name": r.get("name") or u"", "lot_number": r.get("lot_number") or u"",
+                        "levels": len((cur or {}).get("levels") or {}),
+                        "url": u"%s/@@pfas-assigned-levels?uid=%s" % (self.portal_url(), r.get("uid"))})
+        return out
 
     def current(self):
         return mxb.current(history(self.lot()))

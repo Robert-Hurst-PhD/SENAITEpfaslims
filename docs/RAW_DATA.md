@@ -37,24 +37,42 @@ ProteoWizard's Docker image
   `native` takes the mzML a Windows PC converted, in place of the reader for
   every folder (section 6).
 
-## 2. Share the instrument's data folder (IT)
+## 2. Share each instrument's data folder (IT)
 
-- Share the acquisition PC's data folder **read-only**. Nothing is installed
+- Share each acquisition PC's data folder **read-only**. Nothing is installed
   on, or changed on, the acquisition PC.
-- Mount it on the server and into the worker container (for example at
-  `/mnt/lcms/data`): a `volumes:` line on the `pfas-worker` service in
-  `docker-compose.yml`, `- /mnt/lcms/data:/mnt/lcms/data:ro`, and the same
-  path on System, in the Raw data share card.
+- Mount each folder on the server and into the worker container, one folder per
+  instrument (for example `/mnt/lcms/data/instrument-1`). Adding a mount is a
+  `volumes:` line on the `pfas-worker` service in `docker-compose.yml`, for
+  example `- /mnt/lcms/instrument-2:/mnt/lcms/instrument-2:ro`, then
+  `docker compose up -d pfas-worker`. The path an instrument holds must be a
+  path inside one of those mounts, as the worker sees it. A run whose folder
+  the worker cannot see waits, and says so on the Instrument Report.
 - The copied runs are kept in the `pfas-raw-runs` volume (`RAW_RUN_DIR`,
   `/data/raw_runs`): each run's raw folders, any mzML files and checksums. The
   worker hands each run over in the instrument upload folder, which it mounts
   writable.
 
-## 3. System (a site administrator)
+## 3. Equipment and System
 
-System > Raw data share:
+Equipment > the instrument's settings (a manager), for each analytical
+instrument (a core Instrument whose Instrument Type is of the kind Analytical
+instrument):
 
-- **Instrument data share**: the mount's absolute path.
+- **Raw data folder**: the absolute path of that instrument's folder in the
+  worker. A run is pulled from the folder of its worksheet's instrument. A run
+  whose worksheet has no instrument, or whose instrument has no folder, waits
+  and names what is missing.
+
+System > Raw data folders (a site administrator):
+
+- The list shows each instrument with its folder, its status (Watching,
+  Default folder, No folder) and its last pull. It is read only.
+- **Folder for an instrument without its own**: the single path the laboratory
+  had before instruments held folders. It is kept, not discarded: an
+  instrument with no folder of its own, and a run with no instrument, are
+  pulled from it, so nothing waits after the change. Leave it blank once every
+  instrument has its folder.
 - **Unchanged before it is pulled, minutes**: how long every file of a run's
   raw folders must be unchanged before the run is pulled (a folder still
   being written is never copied).
@@ -75,7 +93,7 @@ method with any of it unset is refused, naming what is missing.
     5 or more; Adaptive, 3 or more; Adaptive runs it as the half-width
     m = (n - 1) / 2), or `auto` under Adaptive: the half-width is then learnt
     for each compound from its median-concentration calibrator whose
-    quantifier has not overflowed, and each peak names that calibrator. Saving
+    quantifier holds a peak, and each peak names that calibrator. Saving
     the method checks the number against the engine.
   - **Edge points** (6 when blank; Classic only, shown only for it, beside
     the smoothing; a compound's column overrides it): each automatic
@@ -150,12 +168,12 @@ method with any of it unset is refused, naming what is missing.
   confirmed (N.C. below it) is judged against the method's confirmation
   S/N alone.
 - **Qualifier on a summed row.** On a summed row (a br cluster, FOSA) the
-  quantifier area is the whole cluster, but the qualifier is the one peak
-  at the tallest member's apex. The row's ion ratio is that qualifier peak
-  over the summed quantifier, and its qualifier S/N is that peak's. The
-  calibrators are measured the same way, so a ratio judged against the
-  calibrators' mean holds; a typed expected ion ratio must be entered on
-  the same basis.
+  qualifier is integrated as the quantifier is: summed over the same group
+  or window, beside the same partner peak. The row's ion ratio is the
+  summed qualifier over the summed quantifier. The analyst splits either
+  by an edit where the baseline varies or a peak co-elutes. A typed
+  expected ion ratio must be entered on the same basis: one entered on a
+  single member's peak no longer matches.
 - **Calibrators off the curve.** A calibrator with no quantifier peak, or
   none of its isotope standard, has no response: it is left off the curve,
   which names it with the reason "not detected" or "isotope standard not
@@ -234,8 +252,7 @@ time. The change log records who chose it, and when.
   ("anchor not found", "baseline dip", "summed N peaks") and, with a
   concentration, the curve it was quantified against with a button to the
   Calibration tab. The calibration lots are not on the card; they stay on the
-  Calibration tab and in the traceability tree. A quantifier whose apex
-  the reader could not restore (see Ceiling below) reads Overflow. A fitted
+  Calibration tab and in the traceability tree. A fitted
   area refused for the trapezoid reads "Fit refused" with the reason; a pair
   fit that failed while the area kept its own fit reads "Pair fit failed";
   either marks the card for review. Previous and Next in the dialog's head
@@ -324,9 +341,18 @@ time. The change log records who chose it, and when.
   The card previews the new peak with the same arithmetic as the worker. An
   edge can go only as far as the stored full-resolution region; to go
   further, widen the method's window and process the run again. An edit
-  needs no reason when it is made. "Set expected retention time from this
-  peak" is not offered: only the method editor writes a compound's retention
-  time, and a role decision would be needed to let an analyst's card do it.
+  needs no reason when it is made.
+- **The expected retention time.** The quantifier chart draws the compound's
+  expected retention time on the method as a dashed line. The analyst drags
+  it to the peak and releases: the time (the nearest stored sample, inside
+  every trace of the compound in that injection) is posted as `rt` to
+  `@@pfas-set-expected-rt`, which writes it straight to the method profile
+  with no new method issue, records the times before and after in the change
+  history and the worksheet's log, and answers in JSON, so the card stays
+  open, says what was set and moves the focus to Next. The menu entry "Set as
+  expected retention time" posts no time and takes the quantifier's found
+  apex. The method's Integration check refuses a time that makes a partner's
+  window overlap.
 - **What the method refuses.** The review refuses an edit before anything is
   written, in the worker's own words, and the dialog gives the same texts.
   In the order they are judged for a re-integration:
@@ -370,8 +396,11 @@ time. The change log records who chose it, and when.
     detected, is kept but has no effect: its card reads "No effect: the
     quantifier has no peak in <injection>", and it does not hold submit.
   - A deleted peak of an isotope standard asks for a confirmation that names
-    the natives in that injection. They lose their concentration, and a
-    native left without one raises a QC issue that holds the release. The
+    the natives in that injection. They lose their concentration and read
+    N.Q., not quantified, never N.D.: the certificate prints N.Q. with its
+    own code and the EDD carries it through the client's qualifier map. A
+    native left without one raises a QC issue that holds the release; an
+    isomer sum with such a member reads N.Q. too. The
     injection's calibrators come off the curve with the reason "isotope
     standard peak deleted". A deleted calibrator peak comes off with "peak
     deleted".
@@ -474,14 +503,12 @@ transition: `_functns.inf` (the transitions and their scan counts),
   right after a word at exponent 7 or higher takes whichever exponent gives
   the value nearer the one before it. The DEMO set's 43 apexes above the
   ceiling read back whole this way, continuing the calibrators' doubling.
-  An apex the reading still leaves as a trough is reported as overflowed:
-  the peak's record says so and its area is not the peak's. A calibrator overflowed this way is left off the curve and is
-  not judged as a calibrator; the run's range then ends at the highest
-  calibrator still on the curve. An overflowed quantifier with a peak keeps
-  its number and reads ALoQ ("Overflow at the apex: the stored value is above
-  the file's number range"), as a result above that calibrator does, so the dilution is
-  reported where there is one; with no detectable peak it reads Overflow (stored as
-  the qualifier token Saturated), never N.D.
+  No separate saturation or overflow check is made: the lab sets the
+  highest calibrator during validation, and a result above it is above the
+  calibration range (ALoQ, the dilution reported where there is one).
+  Results stored before the check was removed keep what they were stored
+  with: a qualifier token "Saturated", a peak record's "saturated" key and
+  its overflow note.
 - **A folder that is not MassLynx** goes to the converter when one is set
   (`PFAS_CONVERTER=service`, section 1). With none set, the run fails naming
   `PFAS_CONVERTER`. A MassLynx folder that is damaged is never passed to a

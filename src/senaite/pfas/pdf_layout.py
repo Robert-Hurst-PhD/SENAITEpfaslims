@@ -514,6 +514,52 @@ def _cell_height(raw, width, style):
     return max(h, 0)
 
 
+# what a column taking room from another leaves it, at the least, of its
+# designed width
+KEEP_SHARE = 0.6
+
+
+def unbroken_widths(schema, body, columns):
+    """A table's headWidthPercentages with each column index in `columns`
+    as wide as its longest value needs to print on one line, the width it
+    gains taken from the other columns, the widest first, each keeping
+    KEEP_SHARE of its width; None when every value fits already, or when the
+    room cannot be found or the values measured (the table prints as
+    designed)."""
+    pcts = list(schema.get("headWidthPercentages") or [])
+    width = float(schema.get("width") or 0)
+    if not pcts or not width or not columns or (schema.get("columnStyles") or {}).get("cellWidth"):
+        return None
+    style = _cell_style(schema, "body")
+    pad, bw = _box(style["padding"]), _box(style["borderWidth"])
+    edges = pad["left"] + pad["right"] + bw["left"] + bw["right"]
+    fnt = font(style["fontName"])
+    need = {}
+    try:
+        for i in columns:
+            values = [_text(r[i]) for r in body or [] if isinstance(r, (list, tuple)) and len(r) > i]
+            longest = max([0] + [width_of_text(v, fnt, style["fontSize"], style["characterSpacing"] or 0)
+                                 for v in values if v])
+            wanted = pt2mm(longest + SAFETY_MARGIN) + edges
+            if wanted > width * pcts[i] / 100.0 + EPSILON:
+                need[i] = wanted
+    except (Unmeasurable, KeyError):
+        return None
+    if not need:
+        return None
+    gain = sum(need[i] - width * pcts[i] / 100.0 for i in need)
+    out = list(pcts)
+    for i, w in need.items():
+        out[i] = w * 100.0 / width
+    for j in sorted((j for j in range(len(pcts)) if j not in columns), key=lambda j: -pcts[j]):
+        if gain <= EPSILON:
+            break
+        give = min(gain * 100.0 / width, pcts[j] * (1 - KEEP_SHARE))
+        out[j] = pcts[j] - give
+        gain -= give * width / 100.0
+    return out if gain <= EPSILON else None
+
+
 def table_rows(schema, body):
     """(head row heights, body row heights) of a table as pdfme sizes it."""
     head = schema.get("head") or []
@@ -675,10 +721,32 @@ def _place(item, start, page_h, pad_top):
     return end
 
 
-def flow(page, base, inputs, where_it_starts=False):
+# a short text item this close above a table (mm) is that table's heading
+HEADING_HEIGHT = 10.0
+HEADING_GAP = 8.0
+
+
+def _is_heading(text, table):
+    """True when `text` is the heading of `table`: a short, fixed text item
+    that ends just above the table's top and over its columns."""
+    if text.schema.get("type") != "text" or text.schema.get("overflow") == "expand":
+        return False
+    if table.schema.get("type") != "table" or text.height > HEADING_HEIGHT:
+        return False
+    gap = table.base_y - (text.base_y + text.height)
+    if not -EPSILON * 100 <= gap <= HEADING_GAP:
+        return False
+    tx, ts = text.schema["position"]["x"], text.schema.get("width") or 0
+    bx, bs = table.schema["position"]["x"], table.schema.get("width") or 0
+    return tx < bx + bs - EPSILON and bx < tx + ts - EPSILON
+
+
+def flow(page, base, inputs, where_it_starts=False, keep_headings=False):
     """The items of one designed page as pdfme lays them out. pdfme sizes a
     repeating-heading table from its designed position; where_it_starts sizes
-    it from where the flow really starts it."""
+    it from where the flow really starts it. keep_headings starts a table's
+    heading on the page its table starts on, where the flow would leave the
+    heading at the foot of the page before."""
     pad_top = base["padding"][0]
     page_h = base["height"] - pad_top - base["padding"][2]
     items = _items(page, pad_top)
@@ -694,14 +762,40 @@ def flow(page, base, inputs, where_it_starts=False):
         else:
             it.heights = text_heights(s, _value(s, inputs))[0] if s.get("type") == "text" else [s["height"]]
     offset = 0
+    prev = None
     for it in items:
         it.start = it.base_y + offset
         if where_it_starts and it.schema.get("type") == "table":
             it.heights = table_heights(it.schema, _value(it.schema, inputs), base,
                                        it.start + pad_top) or [0]
         it.end = _place(it, it.start, page_h, pad_top)
+        if (keep_headings and prev is not None and prev.chunks and it.chunks
+                and it.chunks[0][0] > prev.chunks[-1][0] and _is_heading(prev, it)):
+            # the heading moves to the top of the page its table starts on,
+            # the table keeping its distance below it
+            prev.chunks = []
+            prev.start = it.chunks[0][0] * page_h
+            prev.end = _place(prev, prev.start, page_h, pad_top)
+            it.chunks = []
+            it.start = prev.start + (it.base_y - prev.base_y)
+            if where_it_starts and it.schema.get("type") == "table":
+                it.heights = table_heights(it.schema, _value(it.schema, inputs), base,
+                                           it.start + pad_top) or [0]
+            it.end = _place(it, it.start, page_h, pad_top)
         offset = it.end - (it.base_y + it.height)
+        prev = it
     return items
+
+
+def orphaned_headings(items):
+    """[(page, heading name, table name)]: each heading left on a page
+    with its table starting on a later one."""
+    out = []
+    for prev, it in zip(items, items[1:]):
+        if (prev.chunks and it.chunks and it.chunks[0][0] > prev.chunks[-1][0] and _is_heading(prev, it)
+                and not (it.schema.get("name") or "").startswith(SPACER)):
+            out.append((prev.chunks[-1][0], prev.schema.get("name"), it.schema.get("name")))
+    return out
 
 
 def _spacer(n, x, y, height):
@@ -738,11 +832,15 @@ def settle_page(page, base, inputs):
         logger.warning("page flow of %s not checked, left to pdfme: cannot measure %s", names, exc)
         return page
     over = overprints(as_designed, base, inputs)
-    if not over:
+    orphans = orphaned_headings(as_designed)
+    if not over and not orphans:
         return page
-    why = "%s prints %.3f mm over %s on page %d" % (over[0][1], over[0][3], over[0][2], over[0][0] + 1)
+    if over:
+        why = "%s prints %.3f mm over %s on page %d" % (over[0][1], over[0][3], over[0][2], over[0][0] + 1)
+    else:
+        why = "%s is left at the foot of page %d" % (orphans[0][1], orphans[0][0] + 1)
     try:
-        true = flow(page, base, inputs, where_it_starts=True)
+        true = flow(page, base, inputs, where_it_starts=True, keep_headings=True)
     except Unmeasurable as exc:                             # pragma: no cover (as_designed measured it)
         logger.warning("%s; not settled: cannot measure %s", why, exc)
         return page
@@ -770,6 +868,56 @@ def settle_page(page, base, inputs):
     if _chunks(check) != _chunks(true) or overprints(check, base, inputs, designed):
         logger.warning("%s; not settled: pdfme would not lay the settled page out as computed", why)
         return page
+    return out
+
+
+def grow_text(page, inputs, wanted):
+    """The page with each short text field that `wanted(name)` names made
+    as tall as its value needs at the field's own width, and everything
+    that starts at or below the bottom of its row moved down by what the row
+    grew: a long value wraps inside its box and never prints over the row
+    under it. A row is the grown fields whose designed boxes overlap in
+    height; what starts inside a row (its labels, the field beside it) stays
+    where it is. Fields that already grow (overflow "expand") or shrink
+    their text to fit (dynamicFontSize), fixed text and fields that cannot
+    be measured are left as designed. Returns the page itself when nothing
+    grows."""
+    grown = []
+    for i, s in enumerate(page):
+        if (s.get("type") != "text" or s.get("readOnly") or not wanted(s.get("name") or "")
+                or s.get("overflow") == "expand" or s.get("dynamicFontSize")):
+            continue
+        try:
+            heights, _split = text_heights(dict(s, overflow="expand"), inputs.get(s.get("name")) or "")
+        except (Unmeasurable, KeyError, TypeError, ValueError) as exc:
+            logger.warning("%s not grown to its text: cannot measure %s", s.get("name"), exc)
+            continue
+        need = sum(heights)
+        if need > s["height"] + EPSILON:
+            grown.append((s["position"]["y"], i, need))
+    if not grown:
+        return page
+    grown.sort()
+    rows = []                           # [designed bottom, new bottom, {index: height}]
+    for y, i, need in grown:
+        bottom = y + page[i]["height"]
+        if rows and y < rows[-1][0] - EPSILON:
+            rows[-1][0] = max(rows[-1][0], bottom)
+            rows[-1][1] = max(rows[-1][1], y + need)
+            rows[-1][2][i] = need
+        else:
+            rows.append([bottom, y + need, {i: need}])
+    out = []
+    for i, s in enumerate(page):
+        s = copy.deepcopy(s)
+        y = s["position"]["y"]
+        moved = sum(max(0.0, new - old) for old, new, _f in rows if y >= old - EPSILON)
+        for _old, _new, fields in rows:
+            if i in fields:
+                s["height"] = fields[i]
+        if moved:
+            s["position"] = dict(s["position"], y=y + moved)
+        out.append(s)
     return out
 
 

@@ -17,10 +17,16 @@ half to even in 3).
 
     round_sig(value, n, rule) -> "6.30", "0.0391", "12300", "10.0"
     round_places(value, places, rule) -> "98", "130", "2.5"
-    judged_pct(value, rule)   -> 130.0  a QC percentage as it is JUDGED and
-                                printed: a whole percent
+    judged_pct(value, rule, places) -> 130.0  a QC percentage as it is
+                                JUDGED and printed: a whole percent, or a
+                                recovery at the method's decimal places for
+                                recoveries (69.6 stays 69.6 at one place)
+    judged_places("epa;3;pct1") -> 1  the places a run judged recoveries at
     judged_conc(value, n, rule) -> 2.0  a measured concentration as it is
                                 judged: the reported significant figures
+    recovery_text(value, places, rule) -> "97.6"  a recovery as a page or
+                                printout shows it, to the method's decimal
+                                places for recoveries
 
 Every result and QC check judges the ROUNDED value, the value the report
 states. Measured values are rounded;
@@ -95,7 +101,8 @@ def round_places(value, places=0, rule=DEFAULT_RULE):
     return "{0:f}".format(r)
 
 
-PCT_PLACES = 0                        # QC percentages: whole percent
+PCT_PLACES = 0                        # QC percentages: whole percent, unless
+                                      # a recovery's method sets its places
 
 
 NOISE_DIGITS = 12
@@ -111,11 +118,20 @@ def _denoised(value):
     return value
 
 
-def judged_pct(value, rule=DEFAULT_RULE):
+def judged_pct(value, rule=DEFAULT_RULE, places=PCT_PLACES):
     """A QC percentage (recovery, RPD, IS response, CCV recovery) as it is
-    judged and printed: a whole percent by `rule`; None if not a number."""
-    text = round_places(_denoised(value), PCT_PLACES, rule)
+    judged and printed: rounded to `places` by `rule` -- a whole percent,
+    or for a recovery the method's decimal places for recoveries
+    (method_engine.recovery_decimals); None if not a number."""
+    text = round_places(_denoised(value), places, rule)
     return None if text is None else float(text)
+
+
+def recovery_text(value, places=PCT_PLACES, rule=DEFAULT_RULE):
+    """A recovery as every page and printout shows it: rounded to `places`
+    (the method's decimal places for recoveries) by `rule`, a computed
+    float first freed of its binary noise; None if not a number."""
+    return round_places(_denoised(value), places, rule)
 
 
 def judged_conc(value, n=3, rule=DEFAULT_RULE):
@@ -125,10 +141,21 @@ def judged_conc(value, n=3, rule=DEFAULT_RULE):
     return None if text is None else float(text)
 
 
-def judged_rule(rule, n):
+def judged_rule(rule, n, places=PCT_PLACES):
     """What a run records it was judged with, and what a certificate checks
-    it against: "epa;3;pct0"."""
-    return "%s;%d;pct%d" % (rule, int(n), PCT_PLACES)
+    it against: "epa;3;pct0", the last part the decimal places recoveries
+    were judged at; a run judged at other places is reprocessed before its
+    certificate is issued."""
+    return "%s;%d;pct%d" % (rule, int(n), int(places or 0))
+
+
+def judged_places(recorded):
+    """The decimal places a run's recoveries were judged at, read from the
+    rule it recorded ("epa;3;pct1" -> 1); 0 for a run that records none."""
+    tail = ("%s" % (recorded or "")).rsplit(";", 1)[-1]
+    if tail.startswith("pct") and tail[3:].isdigit():
+        return int(tail[3:])
+    return PCT_PLACES
 
 
 def number(v):

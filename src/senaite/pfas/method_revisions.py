@@ -11,7 +11,11 @@ number increments and that method's settings report PDF is frozen:
 
 "Unissued changes" = the method's current settings fingerprint differs from
 the latest revision's. The fingerprint covers what the method report is made
-from: the profile (save stamps excluded) and the method's rule switches.
+from: the profile (save stamps and the compounds' expected retention times
+excluded: an analyst updates those from run to run, expected_rt) and the
+method's rule switches. A revision issued while the fingerprint still
+covered the expected times stays current while they are unchanged
+(`fingerprints`).
 
 Pure helpers + a thin storage shell. Python 2.7.
 """
@@ -26,9 +30,10 @@ KEY = "senaite.pfas.method_revisions"
 _STAMPS = ("updated_at", "updated_by")
 
 
-def _settings_fingerprint(profile, toggles):
+def _settings_fingerprint(profile, toggles, with_times=False):
+    from senaite.pfas import expected_rt
     from senaite.pfas import settings_report as sr
-    p = copy.deepcopy(profile or {})
+    p = copy.deepcopy(profile or {}) if with_times else expected_rt.exempt(profile)
     for k in _STAMPS:
         p.pop(k, None)
     return sr.fingerprint(p, toggles or {})
@@ -37,19 +42,29 @@ def _settings_fingerprint(profile, toggles):
 fingerprint = _settings_fingerprint
 
 
+def fingerprints(profile, toggles):
+    """(the fingerprint a revision is issued with, the one a revision issued
+    before the expected times were exempt holds): either is current."""
+    return (_settings_fingerprint(profile, toggles),
+            _settings_fingerprint(profile, toggles, with_times=True))
+
+
 def next_number(records):
     return max([r.get("rev", 0) for r in records] or [0]) + 1
 
 
 def status(records, current_fingerprint):
     """{"rev", "issued_at", "issued_by", "unissued"} for the list page; rev
-    None when never issued (unissued is then True)."""
+    None when never issued (unissued is then True). `current_fingerprint`
+    is one fingerprint or the pair `fingerprints` gives, either current."""
     if not records:
         return {"rev": None, "issued_at": u"", "issued_by": u"", "unissued": True}
     last = sorted(records, key=lambda r: r.get("rev", 0))[-1]
+    current = (current_fingerprint if isinstance(current_fingerprint, (tuple, list))
+               else (current_fingerprint,))
     return {"rev": last.get("rev"), "issued_at": last.get("issued_at", u""),
             "issued_by": last.get("issued_by", u""),
-            "unissued": last.get("fingerprint") != current_fingerprint}
+            "unissued": last.get("fingerprint") not in current}
 
 
 def file_name(rev):

@@ -4,10 +4,10 @@
         meta_type="Plone Actions Tool"
         purge="False">
 
-  <!-- Top navigation link: "Sample Tracker" -->
+  <!-- Top navigation link: "Client Tracker" -->
   <object name="portal_tabs" meta_type="CMF Action Category" purge="False">
     <object name="pfas_sample_tracker" meta_type="CMF Action" i18n:domain="senaite.pfas">
-      <property name="title" i18n:translate="">Sample Tracker</property>
+      <property name="title" i18n:translate="">Client Tracker</property>
       <property name="description" i18n:translate="">Track any sample through the laboratory stages</property>
       <property name="url_expr">string:${portal_url}/@@pfas-track</property>
       <property name="link_target"></property>
@@ -32,25 +32,16 @@
       <property name="permissions"><element value="View"/></property>
       <property name="visible">True</property>
     </object>
-    <object name="pfas_batch_logbooks" meta_type="CMF Action" i18n:domain="senaite.pfas">
-      <property name="title" i18n:translate="">Logbooks</property>
-      <property name="description" i18n:translate="">FM-ENV-001 to 004 per-batch logbooks</property>
-      <property name="url_expr">string:${object_url}/@@pfas-logbook-index</property>
-      <property name="link_target"></property>
-      <property name="icon_expr"></property>
-      <property name="available_expr">python:context.portal_type == 'Batch'</property>
-      <property name="permissions">
-        <element value="View"/>
-      </property>
-      <property name="visible">True</property>
-    </object>
+    <!-- the retired per-batch logbooks: a reimport removes the action -->
+    <object name="pfas_batch_logbooks" remove="True"/>
   </object>
 
-  <!-- A client's EDD settings: its delivery profile and the fields it gives -->
+  <!-- A client's reporting: its default report tier, its delivery profile
+       and the fields it gives -->
   <object name="object" meta_type="CMF Action Category" purge="False">
     <object name="pfas_client_edd" meta_type="CMF Action" i18n:domain="senaite.pfas">
-      <property name="title" i18n:translate="">EDD settings</property>
-      <property name="description" i18n:translate="">Electronic data deliverable: on or off, the profile and the client's fields</property>
+      <property name="title" i18n:translate="">Client reporting</property>
+      <property name="description" i18n:translate="">The default report tier, then the electronic data deliverable: on or off, the profile and the client's fields</property>
       <property name="url_expr">string:${object_url}/@@pfas-edd-client-config</property>
       <property name="link_target"></property>
       <property name="icon_expr"></property>

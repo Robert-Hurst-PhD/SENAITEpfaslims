@@ -7,7 +7,12 @@ generated in the client's profile and stored on the batch (none when it has
 a blocking error).
 
     batch annotation   edd_store.EXPORT_KEY       {csv, filename, generated,
-                                                   error_count, blocking_count}
+                                                   error_count, blocking_count,
+                                                   deliveries}
+
+`deliveries` is written by the report e-mail (browser/edd_email.py,
+record_delivery): each e-mail that attached the batch's EDD, append-only;
+storing the EDD again keeps it.
 
 Python 2.7 compatible.
 """
@@ -58,9 +63,17 @@ def _store_batch_edd(batch_obj, csv_str, filename, errors):
         }
         if encoding:
             record["encoding"] = encoding
-        ann[EXPORT_KEY] = json.dumps(record)
+        from senaite.pfas.edd_store import carry_deliveries
+        ann[EXPORT_KEY] = json.dumps(carry_deliveries(get_batch_edd(batch_obj), record))
     except Exception as exc:
         logger.error("Cannot store EDD on batch %s: %s", batch_obj.getId(), exc)
+
+
+def record_delivery(batch_obj, entry):
+    """Append one delivery (edd_store.delivery_entry) to the batch's EDD
+    record; the list only grows."""
+    from senaite.pfas.edd_store import with_delivery
+    IAnnotations(batch_obj)[EXPORT_KEY] = json.dumps(with_delivery(get_batch_edd(batch_obj), entry))
 
 
 # ── Event subscriber ───────────────────────────────────────────────────────────

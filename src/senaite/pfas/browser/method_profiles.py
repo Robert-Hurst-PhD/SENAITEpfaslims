@@ -77,6 +77,78 @@ def _stages_from_form(stages):
         out.append(st)
     return out
 
+def standard_lots(portal, named=()):
+    """Standard / Reference-Material lots from the reagent inventory: what a
+    salt factor's CoA lot is chosen from and named by, on the method's page
+    and on its Settings Report alike. Expired lots are flagged so they
+    aren't picked. A lot in `named` (ids a method row holds) that the list
+    leaves out, an archived lot or one of another category, is added under
+    its own name and lot number, so a row never shows an internal id."""
+    try:
+        from senaite.pfas.browser.reagents import _list_reagents
+        recs = _list_reagents(portal,
+                              category_filter=u"Standard / Reference Material")
+    except Exception as exc:
+        logger.warning("standard_lots: %s", exc)
+        return []
+    out = []
+    for d in recs:
+        lot = d.get("lot_number", "") or ""
+        name = d.get("name", "") or ""
+        expired = d.get("status") == "expired"
+        label = u"{0} \u2014 lot {1}".format(name, lot) if lot else name
+        if expired:
+            label += u" (EXPIRED)"
+        out.append({
+            "uid": d.get("uid", ""), "lot_number": lot,
+            "name": name, "label": label, "expired": expired,
+            "mw": _certificate_masses(portal, d.get("uid", "")),
+        })
+    listed = set(o["uid"] for o in out)
+    for uid in named:
+        if not uid or uid in listed:
+            continue
+        listed.add(uid)
+        try:
+            from senaite.pfas.browser.reagents import _get_reagent
+            d = _get_reagent(portal, uid)
+        except Exception as exc:
+            logger.warning("standard_lots %s: %s", uid, exc)
+            d = None
+        if not d:
+            continue
+        lot, name = d.get("lot_number", "") or "", d.get("name", "") or ""
+        label = u"{0} \u2014 lot {1}".format(name, lot) if lot else name
+        out.append({"uid": uid, "lot_number": lot, "name": name,
+                    "label": label + (u" (archived)" if d.get("is_archived") else u""),
+                    "expired": d.get("status") == "expired"})
+    return sorted(out, key=lambda x: x["label"].lower())
+
+
+def _certificate_masses(portal, uid):
+    """{analyte: [molar mass of the acid, of the salt]} the lot's
+    certificate values state, for the salt factor calculator; {} when the
+    lot has no certificate values or states none."""
+    from senaite.pfas import certificate_values as cv
+    try:
+        from senaite.pfas.annotation_store import read_json
+        from senaite.pfas.browser.reagents import _get_reagents_folder
+        obj = _get_reagents_folder(portal).get(uid) if uid else None
+        cert = read_json(obj, cv.KEY, {}) if obj is not None else {}
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("certificate masses %s: %s", uid, exc)
+        cert = {}
+    return dict((a.get("analyte"), [a.get("mw_acid"), a.get("mw_salt")])
+                for a in cert.get("analytes") or []
+                if a.get("analyte") and a.get("mw_acid") and a.get("mw_salt"))
+
+
+def lots_named_by(profiles):
+    """The lot ids the salt rows of these method profiles hold."""
+    return [r.get("lot_uid") or r.get("source") for p in profiles
+            for r in (p or {}).get("salt_adjustment_factors") or [] if isinstance(r, dict)]
+
+
 class PFASMethodProfilesView(ViewHelpers, BrowserView):
     """List all PFAS method profiles."""
 
@@ -137,7 +209,7 @@ class PFASMethodProfilesView(ViewHelpers, BrowserView):
                 "linked_services": 0,
                 "linked_sampletypes": 0,
                 # issued revisions
-                "revision": _shown_revision(mr.status(mr.records(portal, mid), mr.fingerprint(
+                "revision": _shown_revision(mr.status(mr.records(portal, mid), mr.fingerprints(
                     raw_profile(portal, mid) or {},
                     method_toggles(raw_profile(portal, mid) or {}, mid)))),
             }
@@ -167,6 +239,10 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
 
         if self.request.form.get("_preview") == "rt":
             return self._preview_recovery_grid()
+        if self.request.form.get("_copy_from") and self.request.method == "GET":
+            return self._copy_values()
+        if self.request.form.get("_copy_tiers") and self.request.method == "GET":
+            return self._tier_differences()
         if self.request.method == "POST":
             if self.request.form.get("action") == "delete_method":
                 return self._delete_method()
@@ -294,28 +370,8 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
 
     def standard_lot_options(self):
         """Standard / Reference-Material lots from the reagent inventory, for
-        the CoA-lot dropdown. Expired lots are flagged so they aren't picked."""
-        try:
-            from senaite.pfas.browser.reagents import _list_reagents
-            portal = _portal(self.context)
-            recs = _list_reagents(portal,
-                                  category_filter=u"Standard / Reference Material")
-        except Exception as exc:
-            logger.warning("standard_lot_options: %s", exc)
-            return []
-        out = []
-        for d in recs:
-            lot = d.get("lot_number", "") or ""
-            name = d.get("name", "") or ""
-            expired = d.get("status") == "expired"
-            label = u"{0} — lot {1}".format(name, lot) if lot else name
-            if expired:
-                label += u" (EXPIRED)"
-            out.append({
-                "uid": d.get("uid", ""), "lot_number": lot,
-                "name": name, "label": label, "expired": expired,
-            })
-        return sorted(out, key=lambda x: x["label"].lower())
+        the CoA-lot dropdown (standard_lots)."""
+        return standard_lots(_portal(self.context), lots_named_by([self.profile()]))
 
     def extraction_stages_json(self):
         stages = self.profile().get("extraction_stages", [])
@@ -323,32 +379,261 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
 
     # ── Analytes tab ─────────────────────────────────────────────────────────
 
+    # ── Copy tiers from method: the tier lists of another method ─────────
+
+    def _tier_plan(self, portal, other):
+        """tier_copy.plan of `other`'s tiers onto this method, or None when
+        `other` is no other method."""
+        from senaite.pfas import tier_copy
+        from senaite.pfas.method_profile_store import list_method_ids, raw_profile
+        mid = self.method_id()
+        if not other or other == mid or other not in list_method_ids(portal):
+            return None
+        return tier_copy.plan(raw_profile(portal, mid) or {}, raw_profile(portal, other) or {})
+
+    def _tier_differences(self):
+        """GET ?_copy_tiers=<method>: what replacing this method's tiers by
+        that method's would change, as JSON. Reads only; Replace posts
+        action=copy_tiers."""
+        from senaite.pfas.method_profile_store import raw_profile
+        portal = _portal(self.context)
+        other = self.request.form.get("_copy_tiers", "").strip()
+        self.request.response.setHeader("Content-Type", "application/json; charset=utf-8")
+        found = self._tier_plan(portal, other)
+        if found is None:
+            self.request.response.setStatus(404)
+            return json.dumps({"error": u"No such method."})
+        return json.dumps({"method": (raw_profile(portal, other) or {}).get("display_name") or other,
+                           "types": found["types"], "skipped": found["skipped"], "errors": found["errors"]})
+
+    def copy_tier_methods(self):
+        """The other methods, as JSON [[id, name]], for Copy tiers from
+        method; "" when there is none."""
+        others = self._other_methods()
+        return json.dumps([[m, n] for m, n in others]) if others else u""
+
+    def tier_stamps(self):
+        """[(input name, stamp)] of every tier section, for Replace."""
+        from senaite.pfas import profile_grids
+        return [("section_stamp__" + sid, self.section_stamp(sid)) for _qc, sid in profile_grids.TIER_SECTIONS]
+
+    def _copy_tiers(self, portal, mid):
+        """Replace this method's tiers of each QC type both methods run by
+        the other method's (tier_copy.plan): refused when a tier section
+        changed since the page was drawn, or when the copy would be refused
+        as an edit would. The change history names the source method."""
+        from senaite.pfas import config_forms, profile_grids
+        from senaite.pfas.method_profile_sections import PROFILE_CHECKS, SECTIONS
+        from senaite.pfas.method_profile_store import raw_profile
+        form = self.request.form
+        pane = "pane-qc"
+        stored = raw_profile(portal, mid)
+        if not stored:
+            return self._redirect_error(mid, u"No profile for %s" % mid, pane)
+        env = self.section_env()
+        for _qc, sid in profile_grids.TIER_SECTIONS:
+            if (form.get("section_stamp__" + sid) or "").strip() != config_forms.stamp(SECTIONS[sid], stored, env):
+                return self._redirect_error(mid, (
+                    u"Not copied: {0} changed after you opened it. Reload to see the "
+                    u"change, then try again.").format(SECTIONS[sid].title), pane)
+        other = (form.get("source") or "").strip()
+        found = self._tier_plan(portal, other)
+        if found is None:
+            return self._redirect_error(mid, u"Not copied: choose another method.", pane)
+        if found["errors"]:
+            return self._redirect_error(mid, u"Not copied: " + u" ".join(found["errors"]), pane)
+        if not found["types"]:
+            return self._redirect_error(mid, u"Not copied: the two methods run no QC type in common.", pane)
+        profile = get_profile(portal, mid)
+        for t in found["types"]:
+            profile.setdefault("qc_acceptance", {})[t["qc"]] = found["profile"]["qc_acceptance"][t["qc"]]
+        for watched, check in PROFILE_CHECKS:
+            if set(watched) & set(sid for _qc, sid in profile_grids.TIER_SECTIONS):
+                problems = check(profile)
+                if problems:
+                    return self._redirect_error(mid, u"Not copied: " + u" ".join(problems), pane)
+        profile.pop("_seeded", None)
+        name = (raw_profile(portal, other) or {}).get("display_name") or other
+        done = u"Recovery tiers copied from {0}".format(name)
+        save_profile(portal, mid, profile, label=done)
+        return self._redirect_saved(mid, pane, note=done)
+
+    # ── Copy from method: another method's values for one grid ──────────────
+
+    def _other_methods(self):
+        """[(method id, name)]: every other method with a profile."""
+        from senaite.pfas.method_profile_store import list_method_ids, raw_profile
+        portal, mine = _portal(self.context), self.method_id()
+        out = []
+        for mid in sorted(list_method_ids(portal)):
+            if mid != mine:
+                out.append((mid, (raw_profile(portal, mid) or {}).get("display_name") or mid))
+        return out
+
+    def _copyable(self, sheet, tab):
+        sheet.copy_from = (tab, self._other_methods())
+        return sheet
+
+    def _copy_values(self):
+        """GET ?_copy_from=<method>&_tab=<tab>: that method's values for the
+        grid on `tab`, by posted name, as JSON. Reads only; the page shows
+        them against this method's and writes none until the person applies
+        them, and the tab's own Save stores them."""
+        from senaite.pfas import profile_grids
+        from senaite.pfas.method_profile_store import list_method_ids, raw_profile
+        portal = _portal(self.context)
+        other, tab = self.request.form.get("_copy_from", "").strip(), self.request.form.get("_tab", "").strip()
+        self.request.response.setHeader("Content-Type", "application/json; charset=utf-8")
+        if other not in list_method_ids(portal) or other == self.method_id() or tab not in profile_grids.COPY_TABS:
+            self.request.response.setStatus(404)
+            return json.dumps({"error": u"No such method or grid."})
+        profile = raw_profile(portal, other) or {}
+        return json.dumps({"method": profile.get("display_name") or other,
+                           "values": profile_grids.copy_values(profile, self.section_env(), tab)})
+
     def analytes_sheet(self):
         """The Analytes tab's grid, drawn from the stored profile and the
         page's section env: the same value the section stamps and the save
-        read, so what is drawn is what a stale-save check compares."""
+        read, so what is drawn is what a stale-save check compares; built
+        once per request, as the list beside it reads the same rows."""
+        if getattr(self, "_analytes_sheet", None) is None:
+            from senaite.pfas import profile_grids
+            from senaite.pfas.method_profile_store import raw_profile
+            self._analytes_sheet = self._copyable(
+                profile_grids.analytes_sheet(raw_profile(_portal(self.context), self.method_id()),
+                                             self.section_env()), "analytes")
+        return self._analytes_sheet
+
+    def analytes_list_html(self):
+        """The Analytes tab's List view: Regulated analytes, Other analytes
+        and Method settings, each row beside its card; of an analyte it
+        posts nothing (the grid does), and its Method settings card holds
+        Surrogate recovery in a diluted sample with its posted input."""
         from senaite.pfas import profile_grids
-        from senaite.pfas.method_profile_store import raw_profile
-        return profile_grids.analytes_sheet(raw_profile(_portal(self.context), self.method_id()),
-                                            self.section_env())
+        return profile_grids.render_analytes_list(self._raw(), self.section_env(), self.analytes_sheet(),
+                                                  self.dilution_recovery_html(), self.analyte_set_confirmed())
 
     # ── Labelled standards tab ───────────────────────────────────────────────
 
     def standards_sheet(self):
         """The Labelled standards tab's grid, drawn from the stored profile
-        and the page's section env, as the stamps and the save read them."""
+        and the page's section env, as the stamps and the save read them;
+        built once per request, as the list beside it reads the same rows."""
+        if getattr(self, "_standards_sheet", None) is None:
+            from senaite.pfas import profile_grids
+            self._standards_sheet = self._copyable(profile_grids.standards_sheet(self._raw(), self.section_env()),
+                                                   "standards")
+        return self._standards_sheet
+
+    def standards_rules_sheet(self):
+        """The rules the Isotope standards tab holds (IS Response, IS vs
+        CCV, Surrogate Recovery), their states posting to its form; drawn
+        once per request, as the list's group cards write the same inputs."""
+        if getattr(self, "_standards_rules", None) is None:
+            from senaite.pfas import profile_grids
+            self._standards_rules = profile_grids.standards_rules_table(self._raw(), self.section_env())
+        return self._standards_rules
+
+    def standards_link_warning(self):
+        """The Isotope standards tab's warning: each surrogate with no Linked
+        to, which the tab's Save refuses (LINK_CHECKS); "" with none."""
         from senaite.pfas import profile_grids
-        from senaite.pfas.method_profile_store import raw_profile
-        return profile_grids.standards_sheet(raw_profile(_portal(self.context), self.method_id()),
-                                             self.section_env())
+        return profile_grids.standards_link_warning(self._raw())
+
+    def analytes_link_warning(self):
+        """The Analytes tab's warning: each analyte reported in a matrix with
+        no Quantified by, which the tab's Save refuses; "" with none."""
+        from senaite.pfas import profile_grids
+        return profile_grids.analytes_link_warning(self._raw())
+
+    def dilution_recovery_html(self):
+        """The Analytes tab's Surrogate recovery in a dilution, its posted
+        input with it (profile_grids.render_dilution_recovery)."""
+        from senaite.pfas import profile_grids
+        return profile_grids.render_dilution_recovery(self._raw(), self.section_env())
+
+    def analytes_table_settings_html(self):
+        """The Analytes tab's Method settings under the sheet: the dilution
+        setting's tile, writing the one input the List's card holds."""
+        from senaite.pfas import profile_grids
+        return profile_grids.analytes_table_settings(self._raw(), self.section_env())
+
+    def standards_list_html(self):
+        """The Isotope standards tab's List view: the grid's rows grouped SUR
+        and IS, each group opening on its rules and the tab's other settings
+        of the group, each standard beside its card; it posts nothing (the
+        grid, the rules block and the sections under it post)."""
+        from senaite.pfas import profile_grids
+        return profile_grids.render_standards_list(self._raw(), self.section_env(), self.standards_sheet(),
+                                                   self.standards_rules_sheet(), self.section_groups)
 
     # ── Matrices tab ─────────────────────────────────────────────────────────
 
     def matrices_sheet(self):
         """The Matrices tab's grid, drawn from the stored profile and the
-        page's section env, as the stamps and the save read them."""
+        page's section env, as the stamps and the save read them; built once
+        per request, as the list beside it reads the same rows."""
+        if getattr(self, "_matrices_sheet", None) is None:
+            from senaite.pfas import profile_grids
+            self._matrices_sheet = self._copyable(profile_grids.matrices_sheet(self._raw(), self.section_env()),
+                                                  "matrices")
+        return self._matrices_sheet
+
+    def storage_conflicts(self):
+        """Each fridge or freezer holding this method's matrices whose storage
+        ranges do not overlap ("Freezer B: ... ranges"): a setting to fix,
+        said where the ranges are set (matrix_temperature.method_conflicts)."""
+        from senaite.pfas import facility_qc as db
+        from senaite.pfas import matrix_temperature as mt
+        from senaite.pfas.method_profile_store import raw_profile
+        portal = _portal(self.context)
+        try:
+            units = db.list_units()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("storage conflicts: %s", exc)
+            return []
+        return mt.method_conflicts(self.method_id(), units, lambda mid: raw_profile(portal, mid),
+                                   self.section_env().get("homogenised"))
+
+    def matrices_list_html(self):
+        """The Matrices tab's List view: All matrices, then each matrix
+        beside its card, then the Correction group; it posts nothing (the
+        grid and Sample correction post)."""
         from senaite.pfas import profile_grids
-        return profile_grids.matrices_sheet(self._raw(), self.section_env())
+        return profile_grids.render_matrices_list(self._raw(), self.section_env(), self.matrices_sheet(),
+                                                  self.section_groups)
+
+    def run_list_html(self):
+        """Run & reporting's List view: Run, Extraction, Channels and
+        Reporting, each row beside its card; it posts nothing (the folds of
+        the Table view post)."""
+        from senaite.pfas import profile_cards
+        # the site's address, for Action levels' Open Regulatory Limits
+        env = dict(self.section_env(), portal_url=_portal(self.context).absolute_url())
+        return profile_cards.render_run_list(self._raw(), env, self.run_template_editor(),
+                                             self.section_groups)
+
+    def engine_list_html(self):
+        """Engine's List view: Names, Matrices, Results and Studies, each
+        group's node beside its card; it posts nothing (the folds of the
+        Table view post)."""
+        from senaite.pfas import profile_cards
+        return profile_cards.render_engine_list(self._raw(), self.section_env(), self.section_groups,
+                                                (self.display_name(), self.description()))
+
+    def report_format_list_html(self):
+        """Certificate format's List view: All matrices, then each matrix
+        with what it sets; it posts nothing (the table posts)."""
+        from senaite.pfas import profile_grids
+        return profile_grids.render_report_format_list(self._raw(), self.section_env(), self.section_groups("rf"))
+
+    def integration_list_html(self):
+        """Integration's List view: the method defaults, then each compound
+        that sets its own, and every compound's transitions and windows; it
+        posts nothing (the form and the table post)."""
+        from senaite.pfas import profile_grids
+        return profile_grids.render_integration_list(self._raw(), self.section_env(), self.section_groups("intg"),
+                                                     self.section_groups("intg_an"))
 
     def _engine(self):
         from senaite.pfas import method_engine
@@ -414,9 +699,6 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
                                            self.method_id())
         return dict(entry, at=config_history.shown_at(entry["at"])) if entry else entry
 
-    def _utc_note(self):
-        return u"" if self.zone_active() else u" UTC"
-
     def integration_log(self):
         """The Integration section's change log: this method's history kept to
         where results come from, the method defaults and each compound's
@@ -443,16 +725,49 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
             self._raw_profile = raw_profile(_portal(self.context), self.method_id())
         return self._raw_profile
 
+    def run_limit_states(self):
+        """[(input name, state)]: the limit boxes Run & reporting posts
+        (limit_states.RUN_BOXES), each the state it reads."""
+        from senaite.pfas import limit_placard, limit_states
+        return limit_placard.hidden_values(self._raw(), list(limit_states.RUN_BOXES))
+
     def rules_table(self):
         """The rule table, drawn from the stored profile and the page's
-        section env, as the stamps and the save read them."""
+        section env, as the stamps and the save read them; built once per
+        request, as the list beside it reads the same rows."""
+        if getattr(self, "_rules_sheet", None) is None:
+            from senaite.pfas import profile_grids
+            self._rules_sheet = profile_grids.rules_table(self._raw(), self.section_env())
+        return self._rules_sheet
+
+    def flag_choices_json(self):
+        """The codes and places every Flag tile's window offers (once per page)."""
         from senaite.pfas import profile_grids
-        return profile_grids.rules_table(self._raw(), self.section_env())
+        url = "%s/%s" % (_portal(self.context).absolute_url(), profile_grids.QUALIFIERS_PAGE)
+        return profile_grids.flag_choices_json(self.section_env(), url)
+
+    def rules_list_html(self):
+        """The Rules section's List view: the rule table's rows grouped,
+        each group beside its card; it posts nothing (the Table view posts).
+        A card's tiles read the sections as the Table view draws them."""
+        from senaite.pfas import profile_grids
+        # the site's address, for a card's row that goes to another page
+        env = dict(self.section_env(), portal_url=_portal(self.context).absolute_url())
+        return profile_grids.render_rules_list(self._raw(), env, self.rules_table(),
+                                               self.section_groups, self.copy_tier_methods())
 
     def windows_sheet(self):
         """The applied windows (LFSM, ordinary spike) the tab opens on."""
         from senaite.pfas import profile_grids
-        return profile_grids.windows_sheet(self._raw(), self.section_env())
+        return profile_grids.windows_sheet(self._raw(), self.section_env(), kept=True)
+
+    def windows_box(self):
+        """The grid's region as the tab opens on it: the sheet in its box,
+        greyed while the QC type shown is Off."""
+        from senaite.pfas import profile_grids
+        raw = self._raw()
+        return profile_grids.windows_box(raw, self.section_env(), "LFSM",
+                                         profile_grids.render_sheet(self, self.windows_sheet()))
 
     def windows_controls(self):
         from senaite.pfas import profile_grids
@@ -472,7 +787,11 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
     def _preview_recovery_grid(self):
         """The applied-window grid for the QC criteria form AS EDITED, not
         saved (profile_grids.preview_windows: the same parse and apply a save
-        runs, the same resolver the page draws with). Nothing is written."""
+        runs, the same resolver the page draws with), then the tiers of the
+        same edits as the Rules list draws them under each QC type
+        (profile_grids.preview_tree, <div id="qc-tree">). Nothing is
+        written. A form that does not parse returns the grid's refusal
+        alone: the list stays as drawn."""
         from senaite.pfas import profile_grids
         html, errors = profile_grids.preview_windows(self._raw(), self.request.form, self.section_env())
         if errors:
@@ -480,18 +799,21 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
             return u'<div id="qc-windows"><p class="alert alert-error">%s</p></div>' % (
                 escape(u" ".join(errors)))
         self.request.response.setHeader("Content-Type", "text/html; charset=utf-8")
-        return u'<div id="qc-windows">%s</div>' % html
+        tree = profile_grids.preview_tree(self._raw(), self.request.form, self.section_env())
+        box = profile_grids.windows_box(self._raw(), self.section_env(),
+                                        self.request.form.get("qc_type") or "LFSM", html)
+        return box + tree
 
     # ── one home per setting ─────────────────────────────────────
-    def required_rows(self, group):
-        """A Required toggle per numeric criterion of `group` (calibration,
-        is_response, confirmation): what Engine listed as code names."""
-        from senaite.pfas import profile_grids
-        return profile_grids.required_rows(self._raw(), group)
-
     def run_template_editor(self):
         """The method's run template as the editor draws it (the Run Builder
-        builds every run from it)."""
+        builds every run from it); read once per request, as the Table view's
+        table and the List view's card both draw it."""
+        if "_run_template" not in self.__dict__:
+            self._run_template = self._run_template_editor()
+        return self._run_template
+
+    def _run_template_editor(self):
         try:
             from zope.component import getMultiAdapter
             rb = getMultiAdapter((self.context, self.request), name="pfas-run-builder")
@@ -550,22 +872,40 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
                                  # a field governed by a rule switch reads N/A while it is off
                                  "rules": self._rule_state(), "rule_labels": self._rule_labels(),
                                  # Storage and holding: the matrices homogenised by default
-                                 "homogenised": self._homogenised_matrices()}
+                                 "homogenised": self._homogenised_matrices(),
+                                 # the units that name each matrix among what they hold
+                                 "held_by": self._held_by(),
+                                 # each rule's Flag: the QC Qualifiers entries its Code offers
+                                 "qualifiers": self._qualifier_library()}
         return self._section_env
+
+    def _qualifier_library(self):
+        """The QC Qualifiers library (its seeds when it cannot be read)."""
+        from senaite.pfas import qc_qualification
+        try:
+            return qc_qualification.get_library(_portal(self.context))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("qualifier library: %s", exc)
+            return qc_qualification.library_from({})
 
     def _homogenised_matrices(self):
         """The Sample Types whose default homogenisation is a method (not
         blank, not "Not homogenised"); a processed-sample clock elsewhere
-        reads "not homogenised"."""
-        from bika.lims import api
+        reads "not homogenised", and the matrix draws no processed range."""
         from senaite.pfas import homogenisation as hg
+        return hg.homogenised_titles()
+
+    def _held_by(self):
+        """{matrix: [unit names]}: the units whose list of matrices held
+        names the matrix for this method (matrix_temperature.units_holding),
+        named on the matrix's Remove."""
+        from senaite.pfas import facility_qc as db
+        from senaite.pfas import matrix_temperature as mt
         try:
-            brains = api.search({"portal_type": "SampleType"}, "senaite_catalog_setup")
-            return sorted(api.get_title(b) for b in brains
-                          if hg.type_default(api.get_object(b)) not in (u"", hg.NONE_ID))
+            return mt.units_holding(self.method_id(), db.list_units())
         except Exception as exc:                            # noqa: BLE001
-            logger.warning("homogenised matrices: %s", exc)
-            return None
+            logger.warning("units holding matrices: %s", exc)
+            return {}
 
     def _rule_state(self):
         from senaite.pfas.method_profile_store import raw_profile
@@ -597,9 +937,11 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
             from senaite.pfas import config_forms
             from senaite.pfas.method_profile_sections import SECTIONS
             from senaite.pfas.method_profile_store import raw_profile
-            cache[section_id] = config_forms.render(SECTIONS[section_id],
-                                                    raw_profile(_portal(self.context), self.method_id()),
-                                                    self.section_env())
+            from senaite.pfas import profile_grids
+            profile = raw_profile(_portal(self.context), self.method_id())
+            # as the tab's fold shows it: a field the tab's grid holds is the grid's
+            cache[section_id] = profile_grids.fold_groups(
+                section_id, config_forms.render(SECTIONS[section_id], profile, self.section_env()), profile)
         return cache[section_id]
 
     def section_summary(self, sid):
@@ -654,10 +996,10 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
             if sent != config_forms.stamp(section, stored, env):
                 last = config_history.last_change(portal, "method_profile", mid) or {}
                 return self._redirect_error(mid, (
-                    u"Not saved: {0} was changed by {1} at {2}{3} after you opened "
+                    u"Not saved: {0} was changed by {1} at {2} after you opened "
                     u"it. Reload to see their change, then re-apply yours.").format(
                         section.title, last.get("who", "someone"),
-                        config_history.shown_at(last.get("at", "?")), self._utc_note()), pane)
+                        config_history.shown_at(last.get("at", "?"))), pane)
         # parsed with the panel as posted: an RL typed for a cell reported in
         # this save is read, a matrix left out lists no RL row
         from senaite.pfas.profile_form import posted_panel
@@ -670,6 +1012,9 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
         if errors:
             return self._redirect_error(mid, u"Not saved: " + u" ".join(errors), pane)
         profile = get_profile(portal, mid)
+        # a tier renamed in this save carries what is posted under its stored name
+        from senaite.pfas.profile_form import carry_renamed_tiers
+        profile = carry_renamed_tiers(profile, form, parsed, env)
         for section, updates in parsed:
             profile = config_forms.apply(section, profile, updates, env)
         # the switches, names and grids this tab's form carries besides its
@@ -680,8 +1025,11 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
         stages = profile.pop("extraction_stages_json_raw", None)
         if stages is not None:
             profile["extraction_stages"] = _stages_from_form(stages)
-        from senaite.pfas.method_profile_sections import PROFILE_CHECKS
-        for watched, check in PROFILE_CHECKS:
+        from senaite.pfas.method_profile_sections import LINK_CHECKS, LINKED_RATIO, PROFILE_CHECKS, migrate_linked_ratio
+        if LINKED_RATIO.id in ids:
+            migrate_linked_ratio(profile)
+        # a tab's Save also refuses while a link it holds is missing
+        for watched, check in PROFILE_CHECKS + LINK_CHECKS:
             if set(watched) & set(ids):
                 problems = check(profile)
                 if problems:
@@ -741,6 +1089,10 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
                     u", ".join(unknown), u"is" if len(unknown) == 1 else u"are"), pane)
             blocked = [(k, labelled_standards.removal_blocked_by(profile, k)) for k in kws]
             blocked = [u"{0}: it quantifies {1}".format(k, u", ".join(n)) for k, n in blocked if n]
+            # a member of a composite stays while the composite averages it
+            blocked += [u"{0}: it is a member of {1}".format(k, u", ".join(held)) for k, held in
+                        [(k, labelled_standards.composites_holding(profile, k)) for k in kws]
+                        if held and not labelled_standards.removal_blocked_by(profile, k)]
             if blocked:
                 return self._redirect_error(mid, u"Cannot remove " + u"; ".join(blocked), pane)
             held = []
@@ -814,6 +1166,11 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
         profile.pop("_seeded", None)
         done = u"Removed {0}".format(u", ".join(gone))
         save_profile(portal, mid, profile, label=done)
+        # taken off the units that name it among what they hold, each in the history
+        from senaite.pfas.browser.equipment import release_matrices
+        released = release_matrices(mid, gone)
+        if released:
+            done += u"; taken off {0}".format(u", ".join(released))
         return self._redirect_saved(mid, pane, note=done)
 
     def _handle_post(self):
@@ -827,6 +1184,8 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
             return self._standards_action(portal, mid, action)
         if action == "remove_matrix":
             return self._remove_matrix(portal, mid)
+        if action == "copy_tiers":
+            return self._copy_tiers(portal, mid)
         section_id = (self.request.form.get("_section") or "").strip()
         if section_id:
             return self._save_section(portal, mid, section_id)
@@ -840,10 +1199,10 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
                 candidates = [e for e in (config_history.last_change(portal, "method_profile", mid),) if e]
                 last = max(candidates, key=lambda e: e.get("at", "")) if candidates else {}
                 return self._redirect_error(mid, (
-                    "Not saved: this profile was changed by {0} at {1}{2} after "
+                    "Not saved: this profile was changed by {0} at {1} after "
                     "you opened it. Reload to see their change, then re-apply "
                     "yours.").format(last.get("who", "someone"),
-                                     config_history.shown_at(last.get("at", "?")), self._utc_note()))
+                                     config_history.shown_at(last.get("at", "?"))))
         profile = get_profile(portal, mid)   # start from existing to preserve unknown keys
 
         try:

@@ -184,10 +184,10 @@ class AnalysisServiceExtender(object):
             required=False,
             default=False,
             widget=BooleanWidget(
-                label="Key analyte by default",
+                label="Regulated analyte by default",
                 description=(
-                    "A NATIVE marked here starts as a key analyte when a method "
-                    "is set up; each method's Key analytes list decides."
+                    "A NATIVE marked here starts as a regulated analyte when a method "
+                    "is set up; each method's Regulated analytes list decides."
                 ),
             ),
         ),

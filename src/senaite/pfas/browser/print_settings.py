@@ -103,6 +103,13 @@ class PFASPrintSettingsView(ViewHelpers, BrowserView):
             entry["qualifies"] = entry["disposition"] == QUALIFY
             # a reporting rule: its code and disposition are fixed
             entry["rule"] = key in REPORTING_RULES
+            entry["kind"] = False
+            rows.append(entry)
+        # the kinds of exceedance: a code and a wording, no disposition
+        from senaite.pfas.qc_qualification import KIND_KEYS
+        for key in KIND_KEYS:
+            entry = dict(library[key])
+            entry["qualifies"], entry["rule"], entry["kind"] = True, False, True
             rows.append(entry)
         return rows
 
@@ -123,6 +130,10 @@ class PFASPrintSettingsView(ViewHelpers, BrowserView):
                 "code": (f.get("qual_code.%s" % key) or "").strip(),
                 "statement": (f.get("qual_text.%s" % key) or "").strip(),
             }
+        from senaite.pfas.qc_qualification import KIND_KEYS
+        for key in KIND_KEYS:
+            data[key] = {"code": (f.get("qual_code.%s" % key) or "").strip(),
+                         "statement": (f.get("qual_text.%s" % key) or "").strip()}
         save_library(self._portal(), data)
         return self.request.response.redirect(
             "%s/@@pfas-qc-qualifiers?saved=1" % self.portal_url())

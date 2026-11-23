@@ -33,7 +33,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.qc_lists import StoreListsMixin
 from senaite.pfas.browser.perms import refuse
-from senaite.pfas.browser.view_helpers import LabTime
+from senaite.pfas.browser.view_helpers import LabTime, MethodNames
 from senaite.pfas.document_templates import script_json
 from plone.memoize.instance import memoize
 
@@ -79,6 +79,12 @@ QC_TYPE_UNITS = {
 # list is the one Blank History's rules keep (blanks mode, 2026-10-11).
 from senaite.pfas.blank_history import BLANK_TYPES   # noqa: E402
 RECOVERY_TYPES = ("CCV", "ICV")
+# the QC type list's entry for peak asymmetry: every analyte's factor at
+# each raw run's mid-level calibrator (asymmetry_track), with the control
+# limits every chart draws from its plotted points; tracked, never held
+ASYMMETRY = "ASYM"
+ASYMMETRY_LABEL = u"Peak asymmetry"
+QC_TYPE_UNITS[ASYMMETRY] = "Asymmetry factor"
 # the Removed panel lists this many, then counts the rest
 REMOVED_SHOWN = 50
 
@@ -122,7 +128,7 @@ def chart_value(qc_type, row):
     return fv, False
 
 
-class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
+class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
     """
     Browser view serving the PFAS QC control chart.
 
@@ -175,7 +181,7 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
             have = self.analytes(self.selected_qc_type()) if self.db_available else []
             picked = [a for a in have if f.get(u"an.%s" % a)]
             if not picked and self.request.get("analyte", ""):
-                picked = [self.request.get("analyte", "")]
+                picked = [self._chart_name(self.request.get("analyte", ""))]
             if not picked and have:
                 picked = [have[0]]
             self._sel_analytes = picked
@@ -188,6 +194,80 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
     def is_stacked(self):
         return len(self.selected_analytes()) > 1
 
+    # ── Peak asymmetry: each raw run's mid-level calibrator ──
+    def asymmetry_mode(self):
+        return self.selected_qc_type() == ASYMMETRY
+
+    def asymmetry_label(self):
+        return ASYMMETRY_LABEL
+
+    def _asymmetry_points(self):
+        """Every measured factor under the page's filters, oldest run first
+        (asymmetry_track.trend); the worksheets of studies not opted into
+        the charts left out."""
+        if not hasattr(self, "_asym_points"):
+            import sqlite3
+            from senaite.pfas import asymmetry_track as at
+            self._asym_points = []
+            if self.db_available:
+                try:
+                    conn = sqlite3.connect(self.db_path)          # read only
+                    try:
+                        rows = at.load_rows(conn, method=self.selected_method() or None,
+                                            instrument=self.selected_instrument(),
+                                            analyst=self.selected_analyst(),
+                                            date_from=self.selected_date_from() or None,
+                                            date_to=self.selected_date_to() or None)
+                    finally:
+                        conn.close()
+                    hidden = self._study_hidden()
+                    self._asym_points = at.trend([r for r in rows if r["batch_id"] not in hidden])
+                except Exception as e:                          # noqa: BLE001
+                    logger.error("peak asymmetry: %s", e)
+        return self._asym_points
+
+    def _asymmetry_series(self, analyte):
+        """The newest `limit` factors of one analyte, oldest first."""
+        names = set(self._analyte_groups(ASYMMETRY).get(analyte) or [analyte])
+        pts = [p for p in self._asymmetry_points() if p["analyte"] in names]
+        return pts[-self.selected_limit():]
+
+    def _asymmetry_chart_dict(self):
+        """One analyte's factors as a control chart: the mean and the +/- 2 SD
+        warning and +/- 3 SD control limits from the plotted runs, standing
+        on BASELINE_N in-control results as on every chart (control_chart).
+        A point beyond a limit is marked; nothing is reviewed or held."""
+        from senaite.pfas import control_chart as cc, idc
+        analyte, limit, history = self.selected_analyte(), self.selected_limit(), self.show_history()
+        units = QC_TYPE_UNITS[ASYMMETRY]
+        pts = self._asymmetry_series(analyte) if analyte else []
+        if not pts:
+            return self._empty_chart(analyte, ASYMMETRY, u"", units, limit, history)
+        # judged as shown, to the places the card and the IDC show
+        points = [{"id": u"%s/%s" % (p["batch_id"], p["injection"]), "value": round(p["factor"], idc.SHOWN_PLACES),
+                   "date": p["run_date"][:10]} for p in pts]
+        lim = cc.limits([p["value"] for p in points])
+        if not cc.ready(lim):
+            lim = None
+        flags = cc.lj_warnings(points, lim)
+        severity, rule_lines = cc.point_marks(points, flags, lim)
+        labels = [u"%s %s" % (p["run_date"][:10], p["batch_id"]) for p in pts]
+        return dict(self._empty_chart(analyte, ASYMMETRY, u"", units, limit, history), **{
+            "qc_type_label": ASYMMETRY_LABEL, "method": self.selected_method() or u"",
+            "labels": labels, "values": [p["value"] for p in points],
+            "batch_ids": [p["batch_id"] for p in pts], "flags": [u"" for _p in pts],
+            "analysts": [p["analyst"] for p in pts], "instruments": [p["instrument_id"] for p in pts],
+            "dates": [p["date"] for p in points], "injections": [p["injection"] for p in pts],
+            "point_severity": severity, "point_rules": rule_lines,
+            "point_status": [u"active" for _p in pts], "point_nd": [False for _p in pts],
+            "prov_keys": [u"" for _p in pts], "overlay": self.overlay_series(labels),
+            "overlays": self.overlays_series(labels), "show": self.show(),
+            "chart_type": "levey_jennings", "limits": lim, "window": None,
+            "too_few_points": lim is None, "baseline_n": cc.BASELINE_N,
+            "insight": cc.insight_title(points, flags, noun=u"run", lim=lim),
+            "has_rejects": u"reject" in severity, "has_warnings": any(severity),
+            "n_points": len(pts), "demo_points": 0})
+
     def stack_json(self):
         """Several analytes on one chart (points only): {labels: ["date
         batch"], series: [{analyte, values}], units}. No limits: each
@@ -196,10 +276,17 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
             return "null"
         qc_type = self.selected_qc_type()
         cells, nds, keys = {}, set(), set()
-        for a in self.selected_analytes():
+        if self.asymmetry_mode():
+            from senaite.pfas import idc
+            for a in self.selected_analytes():
+                for p in self._asymmetry_series(a):
+                    k = (p["run_date"][:10], p["batch_id"])
+                    keys.add(k)
+                    cells[(a, k)] = round(p["factor"], idc.SHOWN_PLACES)
+        for a in ([] if self.asymmetry_mode() else self.selected_analytes()):
             try:
                 rows = self._store().get_chart_data(
-                    a, qc_type, qc_level=self.selected_level() or None,
+                    self._spellings(a), qc_type, qc_level=self.selected_level() or None,
                     method=self.selected_method() or None, analyst=self.selected_analyst(),
                     instrument_id=self.selected_instrument(), limit=self.selected_limit(),
                     include_superseded=self.show_history(),
@@ -331,6 +418,8 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
     def qc_type_label(self, code):
         """Editable display name for a qc_type code (falls back to the raw
         code when no Reference Definition is tagged for it)."""
+        if code == ASYMMETRY:
+            return ASYMMETRY_LABEL
         from senaite.pfas.qc_labels import qc_label
         return qc_label(None, code, label_map=self._qc_ref_label_map())
 
@@ -357,25 +446,65 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
             logger.error("qc_types: %s", e)
             return []
 
+    def _chart_name(self, name):
+        """The name an analyte's series goes by: its keyword
+        (compound_library.listed_namer), so a result stored under the
+        export's name and one stored under the keyword are one series; an
+        isomer peak keeps its own name; the name as stored when the library
+        cannot be read."""
+        if not hasattr(self, "_namer"):
+            try:
+                from senaite.pfas import compound_library, compound_library_store
+                self._namer = compound_library.listed_namer(compound_library_store.library(), ())
+            except Exception as e:                          # noqa: BLE001
+                logger.warning("chart analyte names not resolved: %s", e)
+                self._namer = lambda name: name
+        return self._namer(name) or name
+
+    def _analyte_groups(self, qc_type=None):
+        """{series name: [the names its results are stored under]}."""
+        cache = self.__dict__.setdefault("_groups", {})
+        if qc_type == ASYMMETRY and qc_type not in cache:
+            groups = {}
+            for p in self._asymmetry_points():
+                names = groups.setdefault(self._chart_name(p["analyte"]), [])
+                if p["analyte"] not in names:
+                    names.append(p["analyte"])
+            cache[qc_type] = groups
+        if qc_type not in cache:
+            groups = {}
+            if self.db_available:
+                try:
+                    method = self.selected_method() or None
+                    stored = self._store().get_analytes(qc_type=qc_type, method=method)
+                except Exception as e:
+                    logger.error("analytes: %s", e)
+                    stored = []
+                # a row with no analyte (a run-level finding: CCV frequency)
+                # is not a series
+                for name in stored:
+                    if name:
+                        groups.setdefault(self._chart_name(name), []).append(name)
+            cache[qc_type] = groups
+        return cache[qc_type]
+
+    def _spellings(self, analyte):
+        """Every name the selected QC type's results of `analyte` are stored
+        under, for the store's chart queries."""
+        return self._analyte_groups(self.selected_qc_type()).get(analyte) or [analyte]
+
     def analytes(self, qc_type=None):
-        if not self.db_available:
-            return []
-        try:
-            method = self.selected_method() or None
-            # a row with no analyte (a run-level finding: CCV frequency) is
-            # not a series
-            return [a for a in self._store().get_analytes(qc_type=qc_type, method=method) if a]
-        except Exception as e:
-            logger.error("analytes: %s", e)
-            return []
+        return sorted(self._analyte_groups(qc_type))
 
     def qc_levels(self, qc_type=None, analyte=None):
         """[(value, label)]: one option per level, never one per injection."""
-        if not self.db_available:
+        if not self.db_available or qc_type == ASYMMETRY:
             return []
         try:
             return self._store().get_level_options(
-                qc_type=qc_type, analyte=analyte, method=self.selected_method() or None)
+                qc_type=qc_type, analyte=(self._analyte_groups(qc_type).get(analyte) or analyte)
+                if analyte else analyte,
+                method=self.selected_method() or None)
         except Exception as e:
             logger.error("qc_levels: %s", e)
             return []
@@ -616,7 +745,7 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
         store = self._store()
         extra = 0
         for _round in range(10):
-            rows = store.get_chart_data(analyte, qc_type, limit=limit + extra, **filters)
+            rows = store.get_chart_data(self._spellings(analyte), qc_type, limit=limit + extra, **filters)
             if len(rows) < limit + extra:
                 return rows                      # the store holds no more
             try:
@@ -637,7 +766,8 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
         the chart can draw, the removed ones left out; None when it cannot
         say."""
         try:
-            return self._store().count_chart_data(analyte, qc_type, drawn=drawn_kind(qc_type), **filters)
+            return self._store().count_chart_data(self._spellings(analyte), qc_type,
+                                                  drawn=drawn_kind(qc_type), **filters)
         except Exception as e:                              # noqa: BLE001
             logger.warning("chart count %s %s: %s", analyte, qc_type, e)
             return None
@@ -656,6 +786,8 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime):
         return self._hidden
 
     def _build_chart_dict(self):
+        if self.asymmetry_mode():
+            return self._asymmetry_chart_dict()
         qc_type     = self.selected_qc_type()
         analyte     = self.selected_analyte()
         method      = self.selected_method() or None

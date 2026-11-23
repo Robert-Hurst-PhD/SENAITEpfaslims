@@ -49,7 +49,7 @@
           <button class="btn-sm btn-primary" type="submit">Issue revision</button>
         </tal:issue>
       </form>
-      <p class="bench-sub">Issuing freezes Print Settings, every method&#8217;s Reporting tab and the layout; certificates use it until the next revision. <tal:h define="hid string:reporting-template"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+      <p class="bench-sub">Issuing freezes Print Settings, the Reporting tabs and the layout until the next revision; the laboratory&#8217;s name and address print from Laboratory. <tal:h define="hid string:reporting-template"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
     </section>
 
     <section class="bench-block" tal:define="samples view/preview_samples; one view/preview_sample">

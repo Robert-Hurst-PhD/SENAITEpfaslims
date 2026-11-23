@@ -71,7 +71,8 @@
   font-size: var(--fs-base);
   z-index: 9000;
 }
-.pfas-topbar .dropdown-item { display: flex; align-items: center; gap: var(--sp-2); }
+.pfas-topbar .dropdown-item { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); text-decoration: none; }
+.pfas-topbar a.dropdown-item:hover, .pfas-topbar a.dropdown-item:focus { text-decoration: none; }
 .pfas-topbar .dropdown-item i.fas { color: var(--s-secondary); width: 14px; }
 .pfas-topbar .dropdown-item.active { font-weight: 600; }
 .pfas-topbar .pfas-topbar-logout,
@@ -150,6 +151,7 @@ a.pfas-search-all {
   background: var(--s-primary-dk); color: var(--on-accent);
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em;
 }
+.pfas-avatar > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; image-rendering: pixelated; }
 .pfas-topbar .dropdown-header { font-size: var(--fs-xs); color: var(--s-secondary); }
 
 /* the core page's H1 now lives in the bar (pfas-topbar.js) */
@@ -171,6 +173,52 @@ a.pfas-search-all {
 .pfas-subbar .pfas-crumb { margin: 0; flex: 1 1 auto; }
 .pfas-subbar-actions { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
 .pfas-subbar-actions:empty { display: none; }
+
+/* ── Breadcrumb: a chevron trail of joined arrow-shaped segments ─────────
+   One style for the PFAS pages' .pfas-crumb-list and the core pages'
+   ol.breadcrumb (both load this file): the section and the rows above the
+   page are quiet segments, a page that has a link is a mint-tinted one, the
+   current page is filled. The segments overlap by the arrow's notch so they
+   join with a hairline gap. The fill is the brand text colour under
+   --on-accent, as the plain mint --accent does not give white text enough
+   contrast. A clipped segment cannot draw an outline, so the focus is a
+   stronger fill and an inset ring. */
+.pfas-crumb-list, ol.breadcrumb { --crumb-h: 30px; --crumb-tip: 12px; gap: 0; }
+.pfas-crumb-list > .pfas-crumb-item,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item { gap: 0; padding: 0; }
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item + .breadcrumb-item::before { content: none; }
+.pfas-crumb-list > .pfas-crumb-item > *,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item > a {
+  display: inline-flex; align-items: center; height: var(--crumb-h);
+  padding: 0 calc(var(--crumb-tip) + 6px) 0 calc(var(--crumb-tip) + 10px); margin: 0 0 0 calc(0px - var(--crumb-tip) / 2);
+  border: 0; border-radius: 0; box-shadow: none; font-size: var(--fs-sm); font-weight: var(--fw-strong);
+  background: var(--surface-2); color: var(--text-muted); text-decoration: none;
+  clip-path: polygon(0 0, calc(100% - var(--crumb-tip)) 0, 100% 50%, calc(100% - var(--crumb-tip)) 100%, 0 100%, var(--crumb-tip) 50%);
+}
+.pfas-crumb-list > .pfas-crumb-item:first-child > *,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item:first-child > a {
+  margin-left: 0; padding-left: var(--sp-3); border-radius: var(--radius) 0 0 var(--radius);
+  clip-path: polygon(0 0, calc(100% - var(--crumb-tip)) 0, 100% 50%, calc(100% - var(--crumb-tip)) 100%, 0 100%);
+}
+.pfas-crumb-list > .pfas-crumb-item > a,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item > a {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent-text);
+}
+.pfas-crumb-list > .pfas-crumb-item > a:hover,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item > a:hover {
+  background: color-mix(in srgb, var(--accent) 26%, var(--surface));
+}
+.pfas-crumb-list > .pfas-crumb-item > a:focus-visible,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item > a:focus-visible {
+  outline: none; background: color-mix(in srgb, var(--accent) 34%, var(--surface));
+  box-shadow: inset 0 0 0 2px var(--accent-text);
+}
+.pfas-crumb-list > .pfas-crumb-item > .pfas-crumb-here,
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item.active > a {
+  background: var(--accent-text); color: var(--on-accent);
+}
+/* core marks the link .text-secondary, which the overlay forces with !important: the current step wins it back */
+body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item.active > a.text-secondary { color: var(--on-accent) !important; }
 
 @media (max-width: 1024px) {
   /* narrow: the search box folds to its icon and opens full width, so the
@@ -207,14 +255,8 @@ a.pfas-search-all {
   .pfas-topbar, .pfas-subbar { display: none !important; }
 }
 
-/* Help: a circled "?" drawn here -- the icon font
-   subset core ships has no question glyph */
+/* Help: the ? in a rounded square (icons.py), never a circle */
 .pfas-topbar .pfas-topbar-help, .pfas-topbar .pfas-topbar-help:hover { text-decoration: none; }
-.pfas-topbar .pfas-topbar-help span {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%;
-  font-size: var(--fs-sm); font-weight: 700; line-height: 1;
-}
 
 /* Notifications bell (bell.py): a coral count of what is open; the list
    is fetched after the page loads */
@@ -252,3 +294,15 @@ a.pfas-search-all {
 .pfas-topbar .dropdown-item { color: var(--text); }
 .pfas-topbar .dropdown-item:hover { background: var(--surface-2); color: var(--text); }
 .pfas-topbar .dropdown-header { color: var(--text-muted); }
+
+/* the slow-page line (pfas-topbar.js): under the top bar, stepped on by
+   transform when the next page has not painted 300 ms after the click */
+.pfas-progress { position: fixed; top: var(--pfas-header-h, 52px); left: 0; right: 0; z-index: 1060; height: 2px;
+  background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); opacity: 0; pointer-events: none;
+  transition: transform var(--t-reveal) var(--ease); }
+.pfas-progress.is-on { opacity: 1; }
+@media print { .pfas-progress { display: none; } }
+/* the bar's icons (icons.py) on the frame: its own colour, a 20 px picture */
+.pfas-topbar .nav-link svg.pfas-icon { color: inherit; display: block; }
+.pfas-topbar .dropdown-item svg.pfas-icon { color: var(--s-secondary); margin-right: var(--sp-1); }
+.pfas-topbar .pfas-topbar-logout svg.pfas-icon { color: var(--s-danger-dk); }

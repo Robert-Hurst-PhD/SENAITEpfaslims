@@ -47,6 +47,13 @@ def _py(v):
         return None
 
 
+def _title(value):
+    """A title as unicode: core gives titles as UTF-8 bytes."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return value
+
+
 def _field(obj, name):
     f = obj.getField(name)
     return f.get(obj) if f is not None else None
@@ -75,6 +82,22 @@ def _library():
     return compound_library_store.library()
 
 
+def quantified_by(portal, method_id, library):
+    """{native keyword: the standard quantifying it, in words} on the
+    method's surrogate map: the standard's name in the compound library, or
+    a composite's built from its members' (composite_standards)."""
+    from senaite.pfas import composite_standards, compound_library
+    from senaite.pfas.method_profile_store import get_profile
+    if not method_id:
+        return {}
+    try:
+        profile = get_profile(portal, method_id) or {}
+    except Exception:                                   # noqa: BLE001
+        return {}
+    comps = compound_library.compounds(library or {})
+    return composite_standards.quantified_by(profile, lambda kw: (comps.get(kw) or {}).get("name") or kw)
+
+
 def field_sample(builder, ar, batch_profile_id, library):
     """{sample facts, "results": [...]} of one batch sample, or None (a
     dilution is the same extract, folded into its parent)."""
@@ -85,7 +108,7 @@ def field_sample(builder, ar, batch_profile_id, library):
         return None
     portal = builder.portal
     st = ar.getSampleType()
-    matrix = st.Title() if st else u""
+    matrix = _title(st.Title()) if st else u""
     sp = ar.getSamplePoint() if hasattr(ar, "getSamplePoint") else None
     qc_type = _our_qc_type(ar)
     field_qc = _field(ar, "FieldQCType") or u""
@@ -95,12 +118,13 @@ def field_sample(builder, ar, batch_profile_id, library):
          "date_prepared": None,
          "matrix": matrix, "qc_type": qc_type,
          "origin": u"lab" if qc_type in LAB_QC else u"field",
-         "sample_point": sp.Title() if sp else u"", "coc_number": _field(ar, "CoCNumber") or u"",
+         "sample_point": _title(sp.Title()) if sp else u"", "coc_number": _field(ar, "CoCNumber") or u"",
          "duplicate_of": (_field(ar, "FieldQCOf") or u"") if field_qc == u"Field duplicate" else u"",
          "results": []}
     method_id = batch_profile_id or u""          # the batch's method governs
     cas = compound_library.cas_by_keyword(library, dashed=True)
     roles = dict((kw, c.get("role")) for kw, c in compound_library.compounds(library).items())
+    qby = quantified_by(portal, method_id, library)
     cert, reported = builder._certificate_rows(ar)
     for analysis in ar.getAnalyses(full_objects=True):
         if analysis.isRetested():
@@ -128,7 +152,7 @@ def field_sample(builder, ar, batch_profile_id, library):
         precision = analysis.getPrecision()
         s["results"].append({
             "keyword": kw, "cas": cas.get(kw) or u"", "role": _ROLE.get(roles.get(kw), u"target"),
-            "method": method_id, "test_kind": test_kind,
+            "quantified_by": qby.get(kw) or u"", "method": method_id, "test_kind": test_kind,
             "acquired_at": _py(builder._acquired(analysis)), "run_date": None, "judged_at": None,
             "worksheet": ws.getId() if ws is not None else u"",
             "value": row["result"] if row["detected"] else u"",
@@ -184,6 +208,20 @@ def judged_kind(level, injection):
     return None
 
 
+def own_lab_qc(members, member_by_id, field):
+    """The lab QC members an export may carry: a run's own QC (a blank, a
+    control spike) and the QC made from one of the export's samples (a
+    matrix spike, a duplicate). QC made from another client's sample, or
+    from a sample that cannot be found, is left out with that sample."""
+    ids = set(s["id"] for s in field or [])
+    out = []
+    for m in members or []:
+        pm = (member_by_id or {}).get(m.get("parent")) or {} if m.get("parent") else None
+        if pm is None or pm.get("sample_id") in ids:
+            out.append(m)
+    return out
+
+
 def lab_qc_samples(builder, worksheets, field, library):
     """The lab QC samples of the worksheets, with the worker's judged QC
     results: [{sample facts, "results": [...]}]."""
@@ -198,6 +236,12 @@ def lab_qc_samples(builder, worksheets, field, library):
     for s in field:
         for r in s["results"]:
             per_kw.setdefault(r["keyword"], r)
+    qby_seen = {}
+
+    def qby_of(method_id):
+        if method_id not in qby_seen:
+            qby_seen[method_id] = quantified_by(builder.portal, method_id, library)
+        return qby_seen[method_id]
     out = []
     try:
         conn = _qc_db()
@@ -209,7 +253,7 @@ def lab_qc_samples(builder, worksheets, field, library):
             ws_id = ws.getId()
             everyone = extraction_batch.load(ws)
             member_by_id = dict((m.get("id"), m) for m in everyone)
-            members = [m for m in everyone if m.get("role") in LAB_QC]
+            members = own_lab_qc([m for m in everyone if m.get("role") in LAB_QC], member_by_id, field)
             try:
                 judged = [dict(r) for r in conn.execute(
                     "SELECT qc_type, qc_level, analyte, value, passed, limit_low, limit_high, applies_to, "
@@ -275,7 +319,8 @@ def lab_qc_samples(builder, worksheets, field, library):
                             judged_at = _judged_at(j["created_at"])
                             break
                     s["results"].append({
-                        "keyword": kw, "cas": cas.get(kw) or u"", "role": u"target", "method": ref["method"],
+                        "keyword": kw, "cas": cas.get(kw) or u"", "role": u"target",
+                        "quantified_by": qby_of(ref["method"]).get(kw) or u"", "method": ref["method"],
                         "test_kind": u"initial", "acquired_at": None, "run_date": run_date,
                         "judged_at": judged_at, "worksheet": ws_id,
                         "value": qc["measured"] if detected else u"",
@@ -295,14 +340,8 @@ def collect(builder, batch_obj, client_obj, client_cfg):
     from bika.lims import api
     prof = builder._edd_profile or {}
     batch_id = batch_obj.getId()
-    try:
-        ars = batch_obj.getAnalysisRequests()
-    except AttributeError:
-        ars = []
-    if not ars:
-        from Products.CMFCore.utils import getToolByName
-        cat = getToolByName(builder.portal, "senaite_catalog_sample")
-        ars = [b.getObject() for b in cat(portal_type="AnalysisRequest", getBatchUID=batch_obj.UID())]
+    # only the client's samples (edd_builder.client_samples)
+    ars = builder.batch_samples(batch_obj, client_obj)
     library = _library()
     batch_pid = builder._batch_method_profile(batch_obj)
     field = [s for s in (field_sample(builder, ar, batch_pid, library) for ar in ars) if s is not None]
@@ -316,7 +355,7 @@ def collect(builder, batch_obj, client_obj, client_cfg):
     qc = lab_qc_samples(builder, worksheets, field, library)
     fields = dict((client_cfg or {}).get("fields") or {})
     return {"batch": {"id": batch_id, "sdg": builder._build_sdg(batch_id),
-                      "title": batch_obj.Title() if hasattr(batch_obj, "Title") else batch_id},
+                      "title": _title(batch_obj.Title()) if hasattr(batch_obj, "Title") else batch_id},
             "client": fields, "samples": field + qc}
 
 

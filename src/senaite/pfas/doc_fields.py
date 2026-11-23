@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """The designer's field categories, once for every document.
 
-Every designable document (certificate, extraction log, QC Review, settings
-report, labels, batch logbooks) lists its fields under the CATEGORIES
+Every designable document (certificate, batch record, preparation record,
+QC Review, settings report, labels) lists its fields under the CATEGORIES
 titles, in that order; tests/test_doc_fields.py checks each field is in
 exactly one.
 
@@ -19,7 +19,6 @@ ANALYSIS = "Analysis information"
 QC = "Quality control"
 BATCH = "Batch & worksheet"
 TRACE = "Traceability"
-ENTRIES = "Logbook entries"
 DEVIATIONS = "Deviations & corrections"
 LAB = "Laboratory information"
 PREPARER = "Preparer"
@@ -27,7 +26,7 @@ REVIEWER = "Reviewer"
 DIRECTOR = "Director"
 DOCUMENT = "Document control"
 
-CATEGORIES = (SAMPLE, ANALYSIS, QC, BATCH, TRACE, ENTRIES, DEVIATIONS, LAB,
+CATEGORIES = (SAMPLE, ANALYSIS, QC, BATCH, TRACE, DEVIATIONS, LAB,
               PREPARER, REVIEWER, DIRECTOR, DOCUMENT)
 
 # the laboratory's identity: Print Settings (the certificate's own keys)
@@ -85,13 +84,23 @@ def grouped(fields, assign):
 
 # ── the pdfme fields every document builder places ──────────────────────────
 
-def as_text(v):
-    """A value as a document field's text: "" for None, Yes / No for a flag."""
+def utext(v):
+    """A value as unicode text, "" for None. A byte string (core gives
+    titles and names as UTF-8 bytes) is decoded as UTF-8; a byte that is not
+    UTF-8 reads as the replacement mark rather than stop what prints it."""
     if v is None:
         return ""
+    if isinstance(v, bytes):
+        return v.decode("utf-8", "replace")
+    return "%s" % (v,)
+
+
+def as_text(v):
+    """A value as a document field's text: "" for None, Yes / No for a flag,
+    anything else as utext gives it."""
     if isinstance(v, bool):
         return "Yes" if v else "No"
-    return "%s" % v
+    return utext(v)
 
 
 def text_field(name, x, y, w, h, size=8, align="left", **kw):

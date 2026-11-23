@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Worksheet samples</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Worksheet samples</tal:t>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="context/getId">WS-1</span></tal:c>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href view/extraction_url">Extraction worksheet</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href view/results_url">Results entry</a>
+  </tal:r>
+
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; mid view/method; mx view/matrix; locked view/locked;
+                          is_open view/is_open; lists view/lists; tickable python:lists[0]; apart python:lists[1];
+                          mname python:view.method_name(mid)">
+    <div class="pfas-banner" tal:condition="python:msg[0]" tal:content="python:msg[0]">DW-0895: 25 of 25 added</div>
+    <div class="pfas-banner is-warn" tal:condition="python:msg[1]" tal:content="python:msg[1]">Not added</div>
+
+    <!-- one method and one matrix per worksheet: chosen while it holds no
+         analyses, then shown and kept -->
+    <section class="bench-block">
+      <h2 class="bench-h">Method and matrix</h2>
+      <div class="pfas-filterbar" tal:condition="locked">
+        <div class="pfas-form-field"><span>Method</span>
+          <span class="pfas-chip" tal:content="python:mname or u'Not identified'">EPA 537.1</span></div>
+        <div class="pfas-form-field"><span>Matrix</span>
+          <span class="pfas-chip" tal:content="python:mx or u'Not identified'">Drinking Water</span></div>
+      </div>
+      <div class="pfas-filterbar" tal:condition="not:locked">
+        <div class="pfas-form-field" tal:define="mc_choices python:[{'value': c['id'], 'label': c['label'], 'url': c['url']} for c in view.method_choices()];
+                                                 mc_value mid; mc_label string:Method"><span>Method</span>
+          <metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></div>
+        <div class="pfas-form-field" tal:condition="mid"><span>Matrix</span>
+          <nav class="pfas-seg" aria-label="Matrix">
+            <a class="pfas-seg-item" tal:repeat="c view/matrix_choices"
+               tal:attributes="href c/url; data-value c/id; aria-selected python:'true' if c['on'] else 'false'"
+               tal:content="c/label">Drinking Water</a>
+          </nav></div>
+      </div>
+    </section>
+
+    <form method="post" tal:condition="python:mid and mx" tal:attributes="action view/page_url">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="method" tal:attributes="value mid" />
+      <input type="hidden" name="matrix" tal:attributes="value mx" />
+      <section class="bench-block">
+        <h2 class="bench-h">Waiting samples</h2>
+        <div class="pfas-banner is-warn" tal:condition="python:tickable and not is_open">This worksheet is closed: no sample can be added.</div>
+        <table class="pfas-table" data-col-resize="worksheet-samples-1">
+          <thead><tr><th><span class="sr-only">Add</span></th><th>Sample</th><th>Client sample ID</th><th>CoC</th>
+            <th>Matrix</th><th>Received</th><th>Tests</th></tr></thead>
+          <tbody><tr tal:condition="not:tickable">
+            <td colspan="7" tal:content="string:No received ${mname} ${mx} sample is waiting for a worksheet.">None waiting</td>
+          </tr><tr tal:repeat="r tickable">
+            <td><input type="checkbox" name="samples:list"
+                       tal:attributes="value r/uid; aria-label string:Add ${r/id}; disabled python:None if is_open else 'disabled'" /></td>
+            <td tal:content="r/id">DW-0895</td>
+            <td tal:content="r/client_sid">C-1</td>
+            <td tal:content="python:r['coc'] or u'&#8212;'">COC-2026-0001</td>
+            <td tal:content="r/matrix">Drinking Water</td>
+            <td tal:content="r/received">2026-11-11 09:57</td>
+            <td tal:content="r/tests">25</td>
+          </tr></tbody>
+        </table>
+      </section>
+      <div class="pfas-action-bar" tal:condition="python:tickable and is_open">
+        <button class="btn btn-primary" type="submit">Add ticked samples</button>
+      </div>
+    </form>
+
+    <section class="bench-block" tal:condition="apart">
+      <h2 class="bench-h">Method not identified</h2>
+      <table class="pfas-table" data-col-resize="worksheet-samples-2">
+        <thead><tr><th>Sample</th><th>Client sample ID</th><th>CoC</th><th>Received</th><th>Why</th></tr></thead>
+        <tbody><tr tal:repeat="r apart">
+          <td tal:content="r/id">DW-0901</td>
+          <td tal:content="r/client_sid">C-9</td>
+          <td tal:content="python:r['coc'] or u'&#8212;'">COC-2026-0002</td>
+          <td tal:content="r/received">2026-11-11 10:02</td>
+          <td tal:content="r/reason">Method not identified</td>
+        </tr></tbody>
+      </table>
+    </section>
+
+    <section class="bench-block" tal:define="held view/on_worksheet" tal:condition="held">
+      <h2 class="bench-h">On this worksheet</h2>
+      <table class="pfas-table" data-col-resize="worksheet-samples-3">
+        <thead><tr><th>Sample</th><th>Client sample ID</th><th>Matrix</th><th>Tests</th></tr></thead>
+        <tbody><tr tal:repeat="r held">
+          <td tal:content="r/id">DW-0895</td>
+          <td tal:content="r/client_sid">C-1</td>
+          <td tal:content="r/matrix">Drinking Water</td>
+          <td tal:content="r/tests">25</td>
+        </tr></tbody>
+      </table>
+    </section>
+  </metal:fill>
+</body>
+</html>

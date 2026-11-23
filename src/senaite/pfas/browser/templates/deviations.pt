@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Deviations &amp; CARs</title>
+  <title metal:fill-slot="title">Deviations / CARs</title>
   <metal:extra metal:fill-slot="head-extra">
   <style>
     /* ── Layout ─────────────────────────────────────────────── */
@@ -121,7 +121,12 @@
 </head>
 <body>
 
-<tal:t metal:fill-slot="header-title">Deviations &amp; CARs</tal:t>
+<tal:t metal:fill-slot="header-title">Deviations / CARs</tal:t>
+
+<!-- the root-cause tab's Save, pinned at the foot of the window -->
+<tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="dev python:view.current_deviation() if view.is_detail_view() else None"
+    tal:condition="python:dev and view.active_tab() == 'rootcause' and dev.get('status') != 'closed' and view.can_edit()"><tal:f
+    tal:define="sb_form string:rootcause-form"><div metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:f></tal:sb></tal:ab>
 
 <tal:hr metal:fill-slot="header-right">
   <tal:mgr tal:condition="view/can_edit">
@@ -150,7 +155,7 @@
     <tal:found tal:condition="dev">
       <!-- Breadcrumb -->
       <nav class="pfas-crumb is-inline" aria-label="Record">
-        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-deviations">Deviations &amp; CARs</a>
+        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-deviations">Deviations / CARs</a>
         <span class="pfas-crumb-sep">&#8250;</span>
         <span class="pfas-crumb-here" tal:content="dev/dev_id">DEV-001</span>
       </nav>
@@ -166,9 +171,10 @@
               tal:attributes="class python:'badge badge-' + dstatus">
           <tal:v tal:replace="python:dstatus.replace('_', ' ').title()"/>
         </span>
-        <span tal:define="rscore dev/risk_score"
-              tal:attributes="class python:'badge risk-' + dev['risk_colour']">
-          Risk: <tal:v tal:replace="rscore"/> — <tal:v tal:replace="dev/risk_label"/>
+        <span tal:define="rscore dev/risk_score; ic context/@@pfas-icons;
+                          rk python:{'yellow': 'warn', 'orange': 'warn', 'red': 'fail'}.get(dev['risk_colour'])"
+              tal:attributes="class python:'badge risk-' + dev['risk_colour'] + ' pfas-risk'">
+          <tal:m tal:condition="rk" tal:replace="structure python:ic.svg(rk, hidden=True)" />Risk: <tal:v tal:replace="rscore"/> — <tal:v tal:replace="dev/risk_label"/>
         </span>
         <span class="dev-filed-meta">
           Filed by <strong tal:content="dev/filed_by"/> on <tal:v tal:replace="dev/filed_at"/>
@@ -218,6 +224,17 @@
 
             <div class="dev-section-label">Description</div>
             <div class="dev-section-value" tal:content="dev/description"/>
+
+            <!-- the worksheets the record holds at Data Review, each with its way there -->
+            <div class="dev-section-label">Worksheets</div>
+            <div class="dev-section-value">
+              <em class="pfas-muted" tal:condition="not:dev/affected_worksheets|nothing">None recorded</em>
+              <div class="pfas-row-actions" tal:condition="dev/affected_worksheets|nothing">
+                <a class="btn-sm btn-secondary" tal:repeat="ws dev/affected_worksheets"
+                   tal:attributes="href string:${view/portal_url}/worksheets/${ws}/@@pfas-data-review"
+                   tal:content="ws">WS-1</a>
+              </div>
+            </div>
           </div>
 
           <!-- Risk matrix display -->
@@ -264,7 +281,7 @@
       <!-- ── Tab: Scale & Root Cause ────────────────────────── -->
       <tal:tab_rc tal:condition="python:view.active_tab() == 'rootcause'">
         <tal:editable tal:condition="python:dev.get('status') != 'closed' and view.can_edit()">
-          <form method="post"
+          <form method="post" id="rootcause-form"
                 tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
             <input type="hidden" name="action" value="update_scale_rootcause"/>
             <input type="hidden" name="dev_id"
@@ -328,13 +345,8 @@
               <div class="dev-ws-row">
                 <div class="dev-ws-cell">
                   <div class="dev-mini-label">Method</div>
-                  <select id="ws_lookup_method">
-                    <option value="">&#8212; select method &#8212;</option>
-                    <tal:m tal:repeat="m view/available_methods">
-                      <option tal:attributes="value m/id"
-                              tal:content="m/title"/>
-                    </tal:m>
-                  </select>
+                  <tal:mc tal:define="mc_choices python:[{'value': m['id'], 'label': m['title']} for m in view.available_methods()];
+                                      mc_value string:; mc_label string:Method; mc_id string:ws_lookup_method"><metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></tal:mc>
                 </div>
                 <button type="button" id="ws_find_btn" onclick="findWorksheets()"
                         class="btn-sm btn-secondary">
@@ -346,7 +358,7 @@
               <!-- Actual saved field — auto-populated from checklist or manual -->
               <textarea name="affected_worksheets" id="ws_textarea" rows="2"
                         placeholder="IDs appear here automatically, or enter manually..."
-                        tal:attributes="value python:', '.join(dev.get('affected_worksheets',[]))"/>
+                        tal:content="python:', '.join(dev.get('affected_worksheets',[]))"></textarea>
             </div>
             <div class="dev-form-group">
               <label>Scale description
@@ -360,7 +372,6 @@
               <textarea name="root_cause" rows="5"
                         tal:content="dev/root_cause"/>
             </div>
-            <button type="submit" class="btn btn-primary">Save</button>
           </form>
         </tal:editable>
 
@@ -395,7 +406,7 @@
       <!-- ── Tab: Corrective Actions ────────────────────────── -->
       <tal:tab_ca tal:condition="python:view.active_tab() == 'actions'">
         <tal:no_cas tal:condition="python:not dev.get('corrective_actions')">
-          <div class="dev-empty">No corrective actions recorded yet.</div>
+          <div class="dev-empty">None recorded.</div>
         </tal:no_cas>
 
         <tal:ca_list tal:repeat="ca dev/corrective_actions">
@@ -444,7 +455,7 @@
                        tal:define="acks python:ca.get('acknowledgments',{});
                                     is_acked python:uid in acks">
                     <span tal:attributes="class python:'ca-ack-check' if is_acked else 'ca-ack-pend'">
-                      <tal:y tal:condition="is_acked">&#10003;</tal:y>
+                      <tal:y tal:condition="is_acked"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', u'Acknowledged')" /></tal:y>
                       <tal:n tal:condition="python:not is_acked">&#9675;</tal:n>
                     </span>
                     <span tal:content="uid"/>
@@ -460,7 +471,7 @@
               <tal:ack_btn tal:define="uid view/current_user_id;
                                        req python:ca.get('required_users',[]);
                                        acks python:ca.get('acknowledgments',{});
-                                       can_ack python:uid in req and uid not in acks and ca.get('status') != 'complete'">
+                                       can_ack python:uid in req and uid not in acks and ca.get('status') != 'complete' and dev.get('status') != 'closed'">
                 <tal:show_ack tal:condition="can_ack">
                   <form method="post"
                         tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
@@ -623,6 +634,38 @@
             </form>
           </div>
         </tal:add_ca_section>
+
+        <!-- the instrument files this CAR uses: kept whatever else allows
+             their deletion (instrument_files) -->
+        <tal:files tal:condition="python:dev.get('type') == 'car'">
+          <div class="ca-add-section" id="claimed-files" tal:define="claimed python:dev.get('claimed_files') or []">
+            <div class="ca-add-title">Instrument files used</div>
+            <table class="pfas-table" data-col-resize="deviations-files" tal:condition="claimed">
+              <thead><tr><th>File</th><th>Worksheet</th><th>Claimed by</th><th>When</th></tr></thead>
+              <tbody><tr tal:repeat="c claimed">
+                <td class="pfas-mono" tal:content="c/file">DEMO-run.csv</td>
+                <td tal:content="c/worksheet">WS-0001</td>
+                <td tal:content="c/by">DEMO</td>
+                <td tal:content="python:view.lab_at(c.get('at'), (c.get('at') or '')[:10], u'%Y-%m-%d')">2026-11-12</td>
+              </tr></tbody>
+            </table>
+            <form method="post" tal:define="files python:view.claimable_files(dev)"
+                  tal:condition="python:files and view.can_manage() and dev.get('status') != 'closed'"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+              <input type="hidden" name="action" value="claim_file"/>
+              <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+              <div class="dev-form-group">
+                <label for="claim_file">File</label>
+                <select name="claim_file" id="claim_file" required="required">
+                  <option value="">Choose</option>
+                  <option tal:repeat="f files" tal:attributes="value python:'%s|%s' % (f[0], f[1])"
+                          tal:content="python:'%s · %s' % (f[1], f[0])">DEMO-run.csv · WS-0001</option>
+                </select>
+              </div>
+              <button type="submit" class="btn-sm btn-primary">Claim file</button>
+            </form>
+          </div>
+        </tal:files>
       </tal:tab_ca>
 
       <!-- ── Tab: Closure ───────────────────────────────────── -->
@@ -637,7 +680,25 @@
             <div class="dev-section-label">Closure Notes</div>
             <div class="dev-section-value" tal:content="dev/closure_notes"/>
           </tal:notes>
+          <form method="post" tal:condition="view/can_manage"
+                tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+            <input type="hidden" name="action" value="reopen_deviation"/>
+            <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+            <div class="pfas-form-row">
+              <div class="pfas-form-field is-full">
+                <label for="dev-reopen-reason">Reason for reopening</label>
+                <textarea id="dev-reopen-reason" name="reopen_reason" rows="2" class="pfas-textarea" required="required"></textarea>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-secondary">Reopen</button>
+          </form>
         </tal:already_closed>
+        <tal:reopened tal:define="opens python:[h for h in dev.get('history') or [] if h.get('action') == 'reopened']"
+                      tal:condition="opens">
+          <div class="dev-section-label">Reopened</div>
+          <div class="dev-section-value" tal:repeat="h opens"
+             tal:content="python:u'%s by %s: %s' % (view.lab_at(h.get('at'), (h.get('at') or u'')[:10], u'%Y-%m-%d'), h.get('by') or u'', h.get('reason') or u'')"></div>
+        </tal:reopened>
 
         <tal:not_closed tal:condition="python:dev.get('status') != 'closed'">
           <!-- CA completion checklist -->
@@ -645,15 +706,15 @@
             <div class="closure-title">Corrective Action Status</div>
             <tal:no_cas tal:condition="python:not dev.get('corrective_actions')">
               <div class="closure-check">
-                <span class="icon-nok">&#10007;</span>
+                <span class="icon-nok"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('sig-wait', u'Not complete', colour='warn')" /></span>
                 No corrective actions defined
               </div>
             </tal:no_cas>
             <tal:cas tal:repeat="ca dev/corrective_actions">
               <div class="closure-check">
                 <span tal:attributes="class python:'icon-ok' if ca.get('status') == 'complete' else 'icon-nok'">
-                  <tal:y tal:condition="python:ca.get('status') == 'complete'">&#10003;</tal:y>
-                  <tal:n tal:condition="python:ca.get('status') != 'complete'">&#10007;</tal:n>
+                  <tal:y tal:condition="python:ca.get('status') == 'complete'"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', u'Complete')" /></tal:y>
+                  <tal:n tal:condition="python:ca.get('status') != 'complete'"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('sig-wait', u'Not complete', colour='warn')" /></tal:n>
                 </span>
                 <span tal:content="python:ca.get('type','').replace('_',' ').title()"/>:
                 <span class="pfas-muted" tal:content="ca/description"/>
@@ -670,7 +731,8 @@
               <div class="dev-form-group">
                 <label>Closure notes / QAO sign-off</label>
                 <textarea name="closure_notes" rows="4"
-                          placeholder="Confirm all corrective actions are effective and the non-conformance is resolved..."></textarea>
+                          tal:attributes="required python:'required' if view.closure_needs_notes(dev) else None"
+                          placeholder="Confirm all corrective actions are effective and the deviation is resolved..."></textarea>
               </div>
               <button type="submit" class="btn btn-danger"
                       tal:attributes="disabled python:'' if dev.get('all_cas_complete') else 'disabled'">
@@ -697,32 +759,39 @@
   <!-- ══ LIST VIEW ════════════════════════════════════════════════════════ -->
   <tal:listview tal:condition="python:not view.is_detail_view()">
 
-    <!-- Filters: status and type as segmented links -->
-    <div class="pfas-filterbar">
-      <div class="pfas-field">
+    <!-- Filters: status and type as segmented links, a search, one page at a time -->
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+          tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+      <input type="hidden" name="filter_status" tal:attributes="value view/filter_status" />
+      <input type="hidden" name="filter_type" tal:attributes="value view/filter_type" />
+      <div class="pfas-form-field">
         <span>Status</span>
         <nav class="pfas-seg" aria-label="Status">
-          <a class="pfas-seg-item" tal:repeat="o python:(('', u'All'), ('open', u'Open'), ('in_progress', u'In Progress'), ('closed', u'Closed'))"
+          <a class="pfas-seg-item" tal:repeat="o view/STATUSES"
              tal:attributes="aria-selected python:'true' if view.filter_status() == o[0] else 'false';
                              href python:view.filter_url(status=o[0])"
-             tal:content="python:o[1]">All</a>
+             tal:content="python:o[1]">Not closed</a>
         </nav>
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <span>Type</span>
         <nav class="pfas-seg" aria-label="Type">
-          <a class="pfas-seg-item" tal:repeat="o python:(('', u'All'), ('deviation', u'Deviations'), ('car', u'CARs'))"
+          <a class="pfas-seg-item" tal:repeat="o view/TYPES"
              tal:attributes="aria-selected python:'true' if view.filter_type() == o[0] else 'false';
                              href python:view.filter_url(type_=o[0])"
              tal:content="python:o[1]">All</a>
         </nav>
       </div>
-    </div>
+      <div class="pfas-form-field"><label for="dev-q">Search</label>
+        <input type="search" name="q" id="dev-q" class="pfas-input pfas-input-wide"
+               placeholder="ID, worksheet or criterion" tal:attributes="value view/filter_q" /></div>
+      <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
+    </form>
 
     <!-- List table -->
-    <tal:devs tal:define="devs view/list_deviations">
+    <tal:devs tal:define="pg view/paging; devs view/shown_deviations">
       <tal:empty tal:condition="python:not devs">
-        <div class="dev-empty">No records found.</div>
+        <div class="dev-empty" tal:content="python:'No deviation or CAR matches these filters.' if view.filter_q() or view.filter_type() or view.filter_status() else 'No open deviation or CAR.'">None.</div>
       </tal:empty>
 
       <tal:notempty tal:condition="devs">
@@ -734,16 +803,16 @@
               <th>Type</th>
               <th>Filed</th>
               <th>Event</th>
+              <th>Criterion</th>
+              <th>Worksheets</th>
               <th>Risk</th>
               <th>Status</th>
-              <th class="row-go"><span class="pfas-sr-hide">Open</span></th>
             </tr>
           </thead>
           <tbody>
             <tal:row tal:repeat="dev devs">
-              <!-- the whole row opens the record (Enter from the keyboard) -->
-              <tr tal:attributes="data-href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
-                <td class="pfas-cell-name" tal:content="dev/dev_id">DEV-001</td>
+              <tr tal:attributes="data-row-open string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
+                <td><strong tal:content="dev/dev_id">DEV-001</strong></td>
                 <td>
                   <span tal:define="dtype dev/type"
                         tal:attributes="class python:'badge badge-' + dtype">
@@ -754,23 +823,35 @@
                     tal:content="dev/filed_at"/>
                 <td tal:content="dev/event_label"/>
                 <td>
-                  <span tal:define="rscore dev/risk_score"
-                        tal:attributes="class python:'badge risk-' + dev['risk_colour']">
-                    <tal:v tal:replace="rscore"/>
+                  <tal:c tal:condition="dev/criterion"><span tal:replace="dev/criterion">MDL</span>
+                    <div class="cf-hint" tal:condition="dev/criterion_method" tal:content="dev/criterion_method">EPA 537.1</div></tal:c>
+                  <span class="pfas-muted" tal:condition="not:dev/criterion">&#8212;</span>
+                </td>
+                <td>
+                  <span tal:replace="python:', '.join(dev['worksheets_shown']) or u'\u2014'">WS-1</span>
+                  <div class="cf-hint" tal:condition="dev/worksheets_more"
+                       tal:content="string:and ${dev/worksheets_more} more">and 3 more</div>
+                </td>
+                <td>
+                  <span tal:define="rscore dev/risk_score; ic context/@@pfas-icons;
+                                    rk python:{'yellow': 'warn', 'orange': 'warn', 'red': 'fail'}.get(dev['risk_colour'])"
+                        tal:attributes="class python:'badge risk-' + dev['risk_colour'] + ' pfas-risk'">
+                    <tal:m tal:condition="rk" tal:replace="structure python:ic.svg(rk, hidden=True)" /><tal:v tal:replace="rscore"/>
+                    <tal:v tal:replace="dev/risk_label"/>
                   </span>
                 </td>
                 <td>
                   <span tal:define="dstatus dev/status"
                         tal:attributes="class python:'badge badge-' + dstatus">
-                    <tal:v tal:replace="python:dstatus.replace('_',' ').title()"/>
+                    <tal:v tal:replace="python:dstatus.replace('_',' ').capitalize()"/>
                   </span>
                 </td>
-                <td class="row-go" aria-hidden="true">&#8250;</td>
               </tr>
             </tal:row>
           </tbody>
         </table>
         </div>
+        <metal:p use-macro="context/@@pfas-macros/macros/paging" />
       </tal:notempty>
     </tal:devs>
   </tal:listview>
@@ -787,6 +868,9 @@
           tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
       <input type="hidden" name="action" value="file_deviation"/>
       <input type="hidden" name="type" id="new-dev-type" value="deviation"/>
+      <!-- a CAR raised from a rejected run names its worksheet -->
+      <input type="hidden" name="affected_worksheets"
+             tal:condition="request/form/ws|nothing" tal:attributes="value request/form/ws"/>
 
       <div class="dev-form-group">
         <label>Event type</label>
@@ -807,7 +891,7 @@
       <div class="dev-form-group">
         <label>Description</label>
         <textarea name="description" rows="4" required="required"
-                  placeholder="Describe the non-conformance or event..."></textarea>
+                  placeholder="Describe the deviation or event..."></textarea>
       </div>
 
       <!-- Interactive risk matrix -->
@@ -1060,12 +1144,21 @@
     res.innerHTML = html;
   }
 
+  // the worksheets found are ticked in or out; those the search did not
+  // list stay on the record
   function syncWorksheets() {
     var textarea = document.getElementById('ws_textarea');
     if (!textarea) return;
+    var shown = {}, ids = [];
+    document.querySelectorAll('.ws-check').forEach(function(c) { shown[c.value] = true; });
+    (textarea.value || '').split(',').forEach(function(s) {
+      s = s.trim();
+      if (s && !shown[s] && ids.indexOf(s) < 0) { ids.push(s); }
+    });
     var checks = document.querySelectorAll('.ws-check:checked');
-    var ids = [];
-    for (var i = 0; i < checks.length; i++) { ids.push(checks[i].value); }
+    for (var i = 0; i < checks.length; i++) {
+      if (ids.indexOf(checks[i].value) < 0) { ids.push(checks[i].value); }
+    }
     textarea.value = ids.join(', ');
   }
   window.findWorksheets   = findWorksheets;

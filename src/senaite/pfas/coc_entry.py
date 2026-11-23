@@ -21,7 +21,9 @@ from senaite.pfas import lab_time
 ROW_KEYS = ("client_sid", "sampletype", "subtype", "sampling_point", "sampled", "container",
             "preservation", "method", "homogenisation", "composite", "units",
             "description", "field_qc", "field_qc_of", "compliance", "sample_uid")
-HEADER_KEYS = ("project", "project_number", "sampler", "carrier", "tracking", "seals")
+# Custody seals are not asked: a CoC that recorded them keeps the answer,
+# which its page shows as stored and a save never touches.
+HEADER_KEYS = ("project", "project_number", "sampler", "carrier", "tracking")
 
 
 def rows_from_form(form):
@@ -44,6 +46,42 @@ def rows_from_form(form):
             continue                     # an empty row added and left blank
         out.append(r)
     return out
+
+
+# What a row's detail dialog holds besides the composite and compliance:
+# each posts under its own name and is read back in words by detail_summary
+# and by coc_row_detail.js, which write the same words.
+DETAIL_CHOICES = (("subtype", u"Sub-type"), ("sampling_point", u"Sampling point"),
+                  ("container", u"Container"), ("preservation", u"Preservative"),
+                  ("homogenisation", u"Homogenisation"))
+DETAIL_NONE = u"No composite, container or preservative set"
+
+
+def composite_words(row):
+    """A composite in words: "" when the row is not one, else the units
+    combined and what was combined."""
+    row = row or {}
+    if not row.get("composite"):
+        return u""
+    units = (u"%s" % (row.get("units") or u"")).strip()
+    what = (u"%s" % (row.get("description") or u"")).strip()
+    head = u"Composite of %s units" % units if units else u"Composite"
+    return u"%s: %s" % (head, what) if what else head
+
+
+def detail_summary(row, names):
+    """What a row's detail dialog holds, in words: only what is set.
+    `names`: {key: {stored value: text}} for the choices; a value without a
+    text is shown as stored."""
+    row = row or {}
+    out = [composite_words(row)]
+    for key, label in DETAIL_CHOICES:
+        v = (u"%s" % (row.get(key) or u"")).strip()
+        if v:
+            out.append(u"%s %s" % (label, (names or {}).get(key, {}).get(v, v)))
+    if row.get("compliance"):
+        out.append(u"Compliance sample")
+    return u" \u00b7 ".join(x for x in out if x) or DETAIL_NONE
 
 
 def header_from_form(form):

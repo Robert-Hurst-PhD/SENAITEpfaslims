@@ -57,12 +57,21 @@
 .raw-edges { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .raw-edges input[type="number"] { width:7em; }
 .raw-edges label[hidden] { display:none; }
+/* the start and end times sit in the readout and are edited there: a pencil on the label, a dashed edge on the box */
+.raw-readout .raw-edit-cell dt { display:flex; align-items:center; gap:var(--sp-1); }
+.raw-pencil { width:12px; height:12px; color:var(--accent-text); }
+.raw-readout .raw-edit-cell input[type="number"] { width:6.5em; padding:2px var(--sp-2); font:inherit; font-size:var(--fs-sm);
+  color:var(--text); background:var(--accent-soft); border:1px dashed var(--accent-text); border-radius:var(--radius); }
+.raw-readout .raw-edit-cell input[type="number"]:focus { border-style:solid; }
+.raw-unit { color:var(--text-muted); font-size:var(--fs-xs); }
 .raw-preview { margin:0; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
 .raw-refusal { margin:0; font-size:var(--fs-sm); color:var(--s-danger-dk); }
 .raw-refusal:empty { display:none; }
 .raw-warning { margin:0; font-size:var(--fs-sm); color:var(--s-warn-text); }
-/* the readout strip: a small uppercase label over each value, one wrapping row */
-.raw-readout { display:flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-5); margin:0; font-variant-numeric:tabular-nums; }
+/* the readout strip: a small uppercase label over each value, one wrapping row
+   centred under the chromatogram */
+.raw-readout { display:flex; flex-wrap:wrap; justify-content:center; gap:var(--sp-2) var(--sp-5); margin:0;
+  font-variant-numeric:tabular-nums; }
 .raw-readout > div { display:flex; flex-direction:column; min-width:0; }
 .raw-readout dt { font-size:var(--fs-xs); font-weight:var(--fw-strong); text-transform:uppercase; letter-spacing:.04em;
   color:var(--text-muted); }
@@ -73,12 +82,19 @@
 .raw-flags:empty { display:none; }
 .raw-flags .badge { white-space:normal; text-align:left; }
 .raw-details { padding-top:var(--sp-2); border-top:1px solid var(--s-border); }
+/* the Details drop-down centred in its box, as the values under it */
 .raw-details > summary { list-style:none; }
+.raw-details > summary.btn-help { display:flex; width:max-content; margin:0 auto; }
 .raw-details > summary::-webkit-details-marker { display:none; }
-.raw-details-list { display:grid; grid-template-columns:max-content minmax(0, 1fr); gap:2px var(--sp-3); margin:var(--sp-2) 0 0;
-  font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
-.raw-details-list dt { color:var(--s-secondary); }
-.raw-details-list dd { margin:0; }
+/* the details fill the box: a label over its value in as many columns as fit,
+   at the card's text size, each centred in its column so the box keeps even
+   margins left and right */
+.raw-details { padding:var(--sp-3) 0 var(--sp-2); }
+.raw-details-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(11rem, 1fr)); gap:var(--sp-4) var(--sp-5);
+  margin:var(--sp-3) 0 0; padding:var(--sp-3) var(--sp-4) var(--sp-2); font-size:var(--fs-base); font-variant-numeric:tabular-nums; }
+.raw-details-list > div { display:flex; flex-direction:column; align-items:center; gap:var(--sp-1); min-width:0; text-align:center; }
+.raw-details-list dt { color:var(--s-secondary); font-size:var(--fs-sm); }
+.raw-details-list dd { margin:0; overflow-wrap:anywhere; }
 .raw-note { margin:6px 0 0; color:var(--s-secondary); font-size:var(--fs-sm); }
 .raw-note:empty { display:none; }
 .raw-curve { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin:var(--sp-2) 0 0; font-size:var(--fs-sm); }

@@ -20,14 +20,16 @@ from senaite.pfas.config_forms import _enc, _text
 SAMPLES_TOKEN = u"SAMPLES"          # the Run Builder's field-samples block
 
 # The Calibration & CCV criteria groups, keyed by the group's first field:
-# the Engine group its Required toggles write and the flag-note table under
-# it. Which rules a group's limits belong to is the rule library's `editor`.
+# the flag notes a group carries (each rule's flag note is on its card's
+# Flag tile). No group carries Required toggles: each limit box has its own
+# state (limit_states). Which rules a group's limits belong to is the rule
+# library's `editor`.
 CAL_GROUP_PARTS = {
-    u"f__calibration__r2_min": {"required": u"calibration", "notes": None},
-    u"f__confirmation__ion_ratio_tol_pct": {"required": u"confirmation", "notes": u"engine_notes_conf"},
-    u"f__confirmation__single_transition_analytes": {"required": None, "notes": None},
-    u"f__ccv__recovery_min": {"required": None, "notes": None},
-    u"f__is_response__vs_ical_avg_min": {"required": u"is_response", "notes": u"engine_notes_is"},
+    u"f__calibration__r2_min": {"notes": None},
+    u"f__confirmation__ion_ratio_tol_pct": {"notes": None},
+    u"f__confirmation__single_transition_analytes": {"notes": None},
+    u"f__ccv__recovery_min": {"notes": None},
+    u"f__is_response__vs_ical_avg_min": {"notes": None},
 }
 
 
@@ -146,18 +148,11 @@ def apply_loose(profile, form, rule_keys, current=None):
     if changed:
         profile["rule_toggles"] = toggles
         profile["rule_states"] = states
-    # a ✓ Required toggle on a criterion: Engine's required list for its group
-    for group in sorted(set(k.split(".", 1)[1] for k in form if k.startswith("required_present."))):
-        prefix = "required.%s." % group
-        keys = sorted(k[len(prefix):] for k in form if k.startswith(prefix) and form.get(k))
-        req = dict((profile.get("engine") or {}).get("required_keys") or {})
-        if set(keys) == set(req.get(group) or []):
-            continue                    # the same list, in its stored order
-        if keys:
-            req[group] = keys
-        else:
-            req.pop(group, None)
-        profile.setdefault("engine", {})["required_keys"] = req
+    # each limit box's state (limitstate.<box>, one input per box), stored
+    # where it differs from what the box reads; Required is no longer
+    # posted: an Enforced box with no limit refuses the run
+    from senaite.pfas import limit_states
+    limit_states.apply_posted(profile, form)
     # the QC criteria tab's QC-type and blank rows: only the form that drew them names them
     offered = [k for k in (form.get("qc_offered") or "").split(",") if k]
     if offered:
@@ -197,3 +192,23 @@ def apply_loose(profile, form, rule_keys, current=None):
         else:
             profile.pop("per_analyte", None)
     return profile
+
+
+# the tables whose rows are keyed by a tier's name (its flag)
+TIER_KEYED_SECTIONS = ("flags_qc",)
+
+
+def carry_renamed_tiers(profile, form, parsed, env=None):
+    """What a tab posts under a tier's stored name, applied before its
+    sections: a tier renamed in the same save then carries the state and
+    flag set for it (each is posted under the name the page drew; applied
+    after the rename, it would find no tier). `parsed`: [(section,
+    updates)] as the save parsed them. Returns the profile."""
+    from senaite.pfas import config_forms as cf
+    from senaite.pfas import limit_states
+    limit_states.apply_posted(profile, form or {}, tiers_only=True)
+    for section, updates in parsed or []:
+        if section.id in TIER_KEYED_SECTIONS:
+            profile = cf.apply(section, profile, updates, env)
+    return profile
+

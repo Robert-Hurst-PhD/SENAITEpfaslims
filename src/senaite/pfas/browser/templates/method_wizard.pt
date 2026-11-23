@@ -19,7 +19,7 @@
     <!-- ============================================================ -->
     <tal:landing tal:condition="not:view/wid">
 
-      <p class="pfas-lead is-narrow">Set up a new method step by step: record, analytes, sample types, QC criteria and instruments. <tal:h define="hid string:method-profile"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+      <p class="pfas-lead is-narrow">Set up a new method step by step: record, analytes, matrices, QC criteria and instruments. <tal:h define="hid string:method-profile"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
       <!-- Start new wizard -->
       <form method="post"
@@ -73,7 +73,7 @@
       <!-- Complete state -->
       <tal:complete tal:condition="python:view.current_step() == view.num_steps() and view.success_msg()">
         <div class="pfas-complete">
-          <div class="pfas-complete-glyph">&#10003;</div>
+          <div class="pfas-complete-glyph"><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', hidden=True, size='xl')" /></div>
           <h2>Method setup complete!</h2>
           <p>
             All <span tal:replace="view/num_steps">10</span> steps finished for
@@ -153,22 +153,24 @@
                   <input type="hidden" name="wid" tal:attributes="value wid" />
                   <input type="hidden" name="step" value="1" />
                   <input type="hidden" name="existing_method_uid" value="" />
-                  <div class="pfas-form-field is-spaced">
-                    <label for="new_method_title">Method title</label>
-                    <input id="new_method_title" name="new_method_title" type="text"
-                           placeholder="e.g. EPA 8327"
-                           tal:attributes="value python:view.step1_data().get('title', '')" />
-                  </div>
-                  <div class="pfas-form-field is-spaced">
-                    <label for="new_method_id">Method ID (keyword, no spaces)</label>
-                    <input id="new_method_id" name="new_method_id" type="text"
-                           placeholder="e.g. EPA_8327"
-                           tal:attributes="value python:view.step1_data().get('method_id', '')" />
-                  </div>
-                  <div class="pfas-form-field is-spaced">
-                    <label for="new_method_description">Description (optional)</label>
-                    <textarea id="new_method_description" name="new_method_description"
-                              tal:content="python:view.step1_data().get('description', '')"></textarea>
+                  <div class="pfas-form-row">
+                    <div class="pfas-form-field is-spaced">
+                      <label for="new_method_title">Method title</label>
+                      <input id="new_method_title" name="new_method_title" type="text"
+                             placeholder="e.g. EPA 8327"
+                             tal:attributes="value python:view.step1_data().get('title', '')" />
+                    </div>
+                    <div class="pfas-form-field is-spaced">
+                      <label for="new_method_id">Method ID (keyword, no spaces)</label>
+                      <input id="new_method_id" name="new_method_id" type="text"
+                             placeholder="e.g. EPA_8327"
+                             tal:attributes="value python:view.step1_data().get('method_id', '')" />
+                    </div>
+                    <div class="pfas-form-field is-spaced is-full">
+                      <label for="new_method_description">Description (optional)</label>
+                      <textarea id="new_method_description" name="new_method_description"
+                                tal:content="python:view.step1_data().get('description', '')"></textarea>
+                    </div>
                   </div>
                   <div class="form-actions is-bar">
                     <button class="btn-primary" type="submit">Create Method &#8594;</button>
@@ -288,7 +290,7 @@
                 <input type="hidden" name="step" value="4" />
 
                 <div class="pfas-check-section">
-                  <h4>Select sample types this method analyzes</h4>
+                  <h4>Select the matrices this method analyses</h4>
                   <div class="pfas-check-grid">
                     <tal:sts tal:repeat="st view/sample_types">
                       <label class="pfas-switch pfas-check is-boxed"
@@ -303,7 +305,7 @@
                     </tal:sts>
                   </div>
                   <p tal:condition="not:view/sample_types" class="pfas-hint is-bad">
-                    No sample types found. Create them in
+                    No matrices found. Create them in
                     <a class="btn-sm btn-secondary" tal:attributes="href string:${base}/setup/sampletypes">Sample Types</a>
                   </p>
                 </div>
@@ -540,7 +542,7 @@
 
                 <div class="form-actions is-bar">
                   <button class="btn-success" type="submit">
-                    Link Instruments &amp; Complete Wizard &#10003;
+                    Link Instruments &amp; Complete Wizard
                   </button>
                   <a class="btn-secondary"
                      tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=9">

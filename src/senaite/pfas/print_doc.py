@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Controlled documents on paper: the pieces every print path shares.
 
-A printed record carries a control block (document or form number, revision,
+A printed record carries a control block (document number, revision,
 effective or issue date) under the lab header, and a footer saying what it is,
 who printed it and when, and that a printed copy is uncontrolled, with
 "Page x of y" beside it. The look is pfas-print.css; WeasyPrint 0.42 has no
@@ -43,6 +43,8 @@ FACES = (("Nunito", 400, "Nunito-Regular.ttf"),
          ("Nunito Sans", 600, "NunitoSans-SemiBold.ttf"),
          ("Nunito Sans", 700, "NunitoSans-Bold.ttf"))
 UNCONTROLLED = "uncontrolled when printed"
+# what the document line says of a record printed from no issued design
+BUILT_IN_LAYOUT = "Built-in layout"
 
 
 def _u(value):
@@ -116,11 +118,15 @@ def printed_line(printed_at=None, printed_by=None):
     return " · ".join(parts)
 
 
-def footer_text(doc_id, revision=None, printed_at=None, printed_by=None):
+def footer_text(doc_id, revision=None, printed_at=None, printed_by=None, layout=None):
     """The document line at the foot of every page: the document with its
-    revision, and under it who printed it, when, and that a printed copy is
-    uncontrolled. "Page x of y" and "Issued: <date>" sit beside it."""
-    return "\n".join(l for l in (doc_line(doc_id, revision), printed_line(printed_at, printed_by)) if l)
+    revision (and `layout`, when it prints from no issued design), and under
+    it who printed it, when, and that a printed copy is uncontrolled. "Page x
+    of y" and "Issued: <date>" sit beside it."""
+    line = doc_line(doc_id, revision)
+    if _u(layout).strip():
+        line = "%s \u00b7 %s" % (line, _u(layout).strip())
+    return "\n".join(l for l in (line, printed_line(printed_at, printed_by)) if l)
 
 
 MINUTE = "%Y-%m-%d %H:%M"
@@ -172,7 +178,7 @@ def times_line(*shown):
 
 
 def document_css(doc_id, revision=None, printed_by=None, printed_at=None,
-                 size=None, margin=None, fonts=True, base=True, issued=None):
+                 size=None, margin=None, fonts=True, base=True, issued=None, layout=None):
     """The whole <style> text for one controlled document.
 
     size   a CSS page size ("letter", "A4 landscape"); leave None in a browser,
@@ -185,6 +191,8 @@ def document_css(doc_id, revision=None, printed_by=None, printed_at=None,
            in every page and never applies on screen.
     issued the date this revision was issued, shown as "Issued: <date>" at the
            right; none shown without one.
+    layout "Built-in layout" for a record printed from no issued design: the
+           document line then says so.
     """
     out = []
     if base:
@@ -197,11 +205,17 @@ def document_css(doc_id, revision=None, printed_by=None, printed_at=None,
     if margin:
         page.append("margin: %s;" % margin)
     page.append('@bottom-left { content: "%s"; }' % "\\A ".join(
-        css_string(l) for l in footer_text(doc_id, revision, printed_at or now_label(), printed_by).split("\n")))
+        css_string(l) for l in footer_text(doc_id, revision, printed_at or now_label(), printed_by, layout).split("\n")))
     if _u(issued).strip():
         page.append('@bottom-right { content: "%s"; }' % css_string("Issued: %s" % _u(issued).strip()))
     out.append("@page { %s }" % " ".join(page))
     return "\n".join(out)
+
+
+# The certificate's page number is in the centre of the foot of each page
+# (pfas-print.css @bottom-center): the one impress draws at the right is
+# taken off. Only the certificate's sections carry it (coa_sections).
+CERTIFICATE_PAGE_CSS = "@page { @bottom-right { content: none; } }"
 
 
 def certificate_css(portal_url=None):
@@ -230,16 +244,46 @@ def lab_block(ps, logo=False, portal_url=u""):
             % (mark, esc(name), sub))
 
 
+# the width of one row of the control grid, in characters of its 13 px
+# value text: a cell that would run past it starts the next row
+CONTROL_ROW_CHARS = 78
+CONTROL_WHOLE_CHARS = 20
+
+
+def _tokens(value):
+    """A control value set so it never breaks inside a word: a short value
+    (an identifier, a date and time) stays whole on one line, a long one
+    breaks only at its spaces."""
+    value = _u(value).strip()
+    if len(value) <= CONTROL_WHOLE_CHARS:
+        return '<span class="pd-id">%s</span>' % esc(value)
+    return " ".join('<span class="pd-id">%s</span>' % esc(t) for t in _u(value).split())
+
+
 def control_block(cells):
     """The bordered control grid. cells = [(label, value), ...]; an empty
-    value is skipped (a cell that says nothing is not a control)."""
+    value is skipped (a cell that says nothing is not a control). A value
+    breaks only at its spaces, and a cell that would not fit the row starts
+    a new one, so no identifier is ever split across lines."""
     cells = [(l, v) for l, v in cells if _u(v).strip()]
     if not cells:
         return ""
-    row = "".join('<td><small>%s</small><b%s>%s</b></td>'
-                  % (esc(l), ' class="pd-docid"' if i == 0 else "", esc(v))
-                  for i, (l, v) in enumerate(cells))
-    return ('<table class="pd-ctl" aria-label="Document control"><tr>%s</tr></table>' % row)
+    rows, row, used = [], [], 0
+    for i, (l, v) in enumerate(cells):
+        # a cell is as wide as its widest word or its label, plus its padding
+        text = _u(v).strip()
+        words = [text] if len(text) <= CONTROL_WHOLE_CHARS else text.split()
+        width = max([len(_u(l)) * 0.8] + [len(t) for t in words]) + 3
+        if row and used + width > CONTROL_ROW_CHARS:
+            rows.append(row)
+            row, used = [], 0
+        row.append('<td><small>%s</small><b%s>%s</b></td>'
+                   % (esc(l), ' class="pd-docid"' if i == 0 else "", _tokens(v)))
+        used += width
+    rows.append(row)
+    tables = "".join('<table class="pd-ctl" aria-label="Document control"><tr>%s</tr></table>'
+                     % "".join(r) for r in rows)
+    return '<div class="pd-ctl-rows">%s</div>' % tables if len(rows) > 1 else tables
 
 
 def head_html(ps, title, cells, subtitle=None, logo=False, portal_url=u""):

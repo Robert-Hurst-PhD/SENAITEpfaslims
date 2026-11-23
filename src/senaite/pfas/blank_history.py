@@ -3,7 +3,7 @@
 
 A blank's results (qc_results) belong to a run; the run's lots are the ones
 its extraction batch recorded (inventory_ledger: reagents, standards and
-consumables, by stage) and its calibration prep (FM-ENV-002). Comparing a
+consumables, by stage) and its calibration series preparation. Comparing a
 blank with the previous blank of the same method, matrix and kind, the lots
 both used are folded away: what is left -- lots changed for the same role,
 lots new to this run, lots no longer used -- are the candidates for a change

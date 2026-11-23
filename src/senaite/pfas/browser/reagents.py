@@ -43,7 +43,7 @@ STATUS_OPENED     = "opened"
 STATUS_EXHAUSTED  = "exhausted"
 STATUS_EXPIRED    = "expired"
 STATUS_QUARANTINE = "quarantine"
-STATUS_PENDING    = "pending"       # a new lot until verified (lot_status)
+STATUS_PENDING    = "pending"       # a new lot until accepted (lot_status)
 
 ALL_STATUSES = [
     (STATUS_ACTIVE,     "Active"),
@@ -51,7 +51,7 @@ ALL_STATUSES = [
     (STATUS_EXHAUSTED,  "Exhausted"),
     (STATUS_EXPIRED,    "Expired"),
     (STATUS_QUARANTINE, "Quarantine"),
-    (STATUS_PENDING,    "Pending verification"),
+    (STATUS_PENDING,    "Pending acceptance"),
 ]
 
 # ── Lab settings / archive ────────────────────────────────────────────────────
@@ -130,8 +130,45 @@ def _auto_expiry_from_open(name, opened_date_str, defaults=None):
     return exp.strftime("%Y-%m-%d")
 
 
-def _effective_expiry(rec, defaults=None):
-    """Expiry date string in effect for a record.
+def _effective_expiry(rec, defaults=None, as_of=None):
+    """Expiry date string in effect for a record on `as_of` (a laboratory
+    day; None is now): the latest extension QA approved by then
+    (lot_extension.in_force, over the record's "extensions"), else
+    _base_expiry. A lot whose category has no expiry ("no_expiry", a lab
+    setting) never expires, whatever date it carries: "" (lot_expiry.NO_EXPIRY)."""
+    if rec.get("no_expiry"):
+        return u""
+    from senaite.pfas import lot_extension
+    return lot_extension.in_force(_base_expiry(rec, defaults), rec.get("extensions"), as_of)
+
+
+def no_expiry_categories():
+    """The reagent categories whose "No expiry" switch is on (the lab's
+    category list, vocab_store)."""
+    try:
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return vs.flagged(vs.get(api.get_portal()), "reagent_categories", "no_expiry")
+    except Exception:                                       # noqa: BLE001
+        logger.warning("no-expiry categories not readable", exc_info=True)
+        return set()
+
+
+def no_coa_categories():
+    """The reagent categories whose "No CoA" switch is on (the lab's
+    category list, vocab_store): a lot in one is not marked for a missing
+    CoA."""
+    try:
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return vs.flagged(vs.get(api.get_portal()), "reagent_categories", "no_coa")
+    except Exception:                                       # noqa: BLE001
+        logger.warning("no-CoA categories not readable", exc_info=True)
+        return set()
+
+
+def _base_expiry(rec, defaults=None):
+    """The lot's own expiry, before any extension.
 
     Inheritance chain: explicit expiry_date → manufacturer_expiry → GLOBAL
     default (received_date + reagent_default_days) so a manufactured reagent
@@ -151,6 +188,32 @@ def _effective_expiry(rec, defaults=None):
     return ""
 
 
+def migrate_expiry_source(portal):
+    """Record once, on every reagent lot that has none, where its
+    expiry_date came from (lot_expiry.migrated_source: assigned when its
+    note and value say the default period set it, else entered). A lot that
+    has a source is never touched again, so a second run changes nothing.
+    Returns the number of lots given a source."""
+    from senaite.pfas import lot_expiry as le
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return 0
+    n = 0
+    for obj in folder.objectValues():
+        if getattr(obj, "portal_type", "") != "Reagent":
+            continue
+        ann = IAnnotations(obj)
+        if le.SOURCE_KEY in ann:
+            continue
+        rec = {"expiry_date": _date_to_str(obj.expiry_date),
+               "manufacturer_expiry": _date_to_str(obj.manufacturer_expiry),
+               "received_date": _date_to_str(obj.received_date), "notes": obj.notes or u""}
+        ann[le.SOURCE_KEY] = le.migrated_source(rec)
+        n += 1
+    return n
+
+
 def _is_expired(rec, as_of=None):
     """Is this lot expired, as of `as_of` (default today)?
 
@@ -165,14 +228,9 @@ def _is_expired(rec, as_of=None):
     not silence, though: `_expiry_unknown` reports it separately and the
     traceability gate treats it as unresolved.
     """
-    exp = _effective_expiry(rec)
-    if not exp:
-        return False
-    ref = as_of or lab_time.today()
-    try:
-        return datetime.strptime(exp, "%Y-%m-%d").date() < ref
-    except (ValueError, TypeError):
-        return False
+    from senaite.pfas.lot_expiry import expired_on
+    day = as_of or lab_time.today()
+    return expired_on(_effective_expiry(rec, as_of=u"%s" % day), day)
 
 
 def _expiry_unknown(rec):
@@ -185,7 +243,7 @@ def _expiry_unknown(rec):
     than guessing, which is the same posture `tests/test_holding_time.py` pins
     for an unset holding time.
     """
-    return not _effective_expiry(rec)
+    return not rec.get("no_expiry") and not _effective_expiry(rec)
 
 
 # ── Content-object store helpers ──────────────────────────────────────────────
@@ -301,6 +359,20 @@ def _obj_to_dict(obj):
         "is_test":            False,  # overwritten by _list_reagents
     }
     ann = IAnnotations(obj)
+    # the extensions QA approved or was asked for (lot_extension.py)
+    from senaite.pfas import lot_extension
+    d["extensions"] = lot_extension.entries(ann.get(lot_extension.KEY))
+    # where its expiry_date came from: entered or assigned (lot_expiry)
+    from senaite.pfas import lot_expiry as le
+    d["expiry_source"] = ann.get(le.SOURCE_KEY) or u""
+    # a lot whose category has no expiry never expires (_effective_expiry):
+    # a status "expired" a save stored before its category had no expiry
+    # reads as active
+    d["no_expiry"] = d["category"] in no_expiry_categories()
+    # a lot whose category needs no CoA is not marked for a missing one
+    d["no_coa"] = d["category"] in no_coa_categories()
+    if d["no_expiry"] and d["status"] == STATUS_EXPIRED:
+        d["status"] = STATUS_ACTIVE
     arch_raw = ann.get(_ANN_ARCHIVED_KEY)
     if arch_raw:
         try:
@@ -339,6 +411,7 @@ def _populate_obj(obj, data):
     obj.notes = data.get("notes") or u""
     obj.scan_count = int(data.get("scan_count") or 0)
     obj.status = data.get("status") or STATUS_ACTIVE
+    old_expiry = _date_to_str(getattr(obj, "expiry_date", None))
 
     # Date fields: accept both ISO strings (from forms) and datetime.date objects
     for field_name in ("received_date", "expiry_date", "manufacturer_expiry", "opened_date"):
@@ -348,23 +421,35 @@ def _populate_obj(obj, data):
         else:
             setattr(obj, field_name, raw)
 
-    # Auto-compute expiry from opened_date when not supplied
+    # Auto-compute expiry from opened_date when not supplied; a lot whose
+    # category has no expiry never takes a default
     defaults = _defaults(data.get("_expiry_defaults"))
-    if not obj.expiry_date and not obj.manufacturer_expiry and obj.opened_date:
+    no_expiry = bool(data.get("_no_expiry"))
+    assigned = False
+    if not no_expiry and not obj.expiry_date and not obj.manufacturer_expiry and obj.opened_date:
         computed = _auto_expiry_from_open(obj.title, _date_to_str(obj.opened_date),
                                           defaults)
         obj.expiry_date = _str_to_date(computed)
+        assigned = bool(obj.expiry_date)
 
     # Global-default assignment: a manufactured reagent with NO stated expiry
     # (neither explicit nor manufacturer) is assigned received_date + the
     # preset global period, so every lot is governed by a real date.
-    if not obj.expiry_date and not obj.manufacturer_expiry and obj.received_date:
+    if not no_expiry and not obj.expiry_date and not obj.manufacturer_expiry and obj.received_date:
         rd = obj.received_date
         obj.expiry_date = rd + timedelta(
             days=int(defaults.get("reagent_default_days", 365)))
         note = u"Expiry assigned from global default ({0} days from receipt)".format(
             defaults.get("reagent_default_days", 365))
         obj.notes = (obj.notes + u"\n" + note).strip() if obj.notes else note
+        assigned = True
+
+    # where the expiry_date came from, kept on the lot: an assigned date is
+    # not a recorded one (lot_extension.edit_problems)
+    from senaite.pfas import lot_expiry as le
+    ann = IAnnotations(obj)
+    ann[le.SOURCE_KEY] = le.source_after_save(old_expiry, _date_to_str(obj.expiry_date),
+                                              ann.get(le.SOURCE_KEY) or u"", assigned)
 
     # Auto-update to expired
     if obj.status not in (STATUS_EXHAUSTED, STATUS_QUARANTINE):
@@ -384,11 +469,12 @@ def _save_reagent(portal, data):
         name = data.get("name") or u"Reagent"
         folder.invokeFactory("Reagent", id=uid, title=name)
         obj = folder[uid]
-        # a new lot is verified before use (lot_status)
+        # a new lot is accepted before use (lot_status)
         from senaite.pfas.lot_status import initial_status
         data["status"] = initial_status(True)
 
     data["_expiry_defaults"] = get_expiry_defaults(portal)
+    data["_no_expiry"] = (data.get("category") or u"") in no_expiry_categories()
     _populate_obj(obj, data)
     try:
         obj.reindexObject()
@@ -699,6 +785,10 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
     """PFAS Reagent Inventory — add, scan, OCR, track, expire."""
 
     template = ViewPageTemplateFile("templates/reagents.pt")
+    # Materials & Containers is this page over the lots whose category has
+    # no expiry (PFASMaterialsView); the inventory lists every other lot
+    materials = False
+    page_title = u"Reagent Inventory"
 
     def __call__(self):
         flatten_form(self.request)
@@ -851,7 +941,8 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
         return self._redirect(u"%s&ok=Receipt+recorded" % back)
 
     def _self_url(self):
-        return "{0}/@@pfas-reagents".format(self.context.absolute_url())
+        return "{0}/@@{1}".format(self.context.absolute_url(),
+                                  "pfas-materials" if self.materials else "pfas-reagents")
 
     def ok_msg(self):
         return self.request.form.get("ok", "").replace("+", " ")
@@ -910,24 +1001,34 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
         return cnt
 
     def reagents(self):
-        return _list_reagents(
+        # the same lot records on both pages, split by the category's
+        # "No expiry" switch
+        return [r for r in _list_reagents(
             self._portal(),
             q=self.q(),
             status_filter=self.status_filter(),
             show_archived=self.show_archived(),
-        )
+        ) if bool(r.get("no_expiry")) == self.materials]
 
     def all_statuses(self):
         return ALL_STATUSES
 
     def categories(self):
-        """[(key, label)]: the lab's reagent categories."""
+        """[(key, label)]: the lab's reagent categories, those with no
+        expiry on Materials & Containers, the others on the inventory."""
         from bika.lims import api
         from senaite.pfas import vocab_store as vs
-        return vs.options(vs.get(api.get_portal()), "reagent_categories")
+        stored = vs.get(api.get_portal())
+        none = vs.flagged(stored, "reagent_categories", "no_expiry")
+        return [(k, l) for k, l in vs.options(stored, "reagent_categories") if (k in none) == self.materials]
 
     def effective_expiry(self, rec):
         return _effective_expiry(rec)
+
+    def shown_expiry(self, rec):
+        """The expiry column: "No expiry" for a lot whose category has none."""
+        from senaite.pfas import lot_expiry as le
+        return le.shown_expiry(_effective_expiry(rec), rec.get("no_expiry"))
 
     # ── Certificate values ────────────────────────────────
 
@@ -1022,18 +1123,15 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
         """Print label: this lot's values on @@pfas-label."""
         from senaite.pfas.browser.label_print import label_href
         vol = u" ".join(x for x in (rec.get("quantity") or u"", rec.get("unit") or u"") if x)
+        from senaite.pfas import lot_expiry as le, lot_extension
         return label_href(self.portal_url(), back=self._self_url(), name=rec.get("name"),
-                          lot=rec.get("lot_number"), exp=self.effective_expiry(rec), vol=vol,
-                          storage=rec.get("storage_conditions") or rec.get("storage_location"))
+                          lot=rec.get("lot_number"),
+                          exp=le.shown_expiry(self.effective_expiry(rec), rec.get("no_expiry")), vol=vol,
+                          storage=rec.get("storage_conditions") or rec.get("storage_location"),
+                          **lot_extension.label_values(rec.get("extensions")))
 
     def expiry_class(self, rec):
         return _expiry_class(rec)
-
-    def prepared_in_house(self):
-        """In-house solvents, buffers and mobile phases: Prepared Standard
-        lots of type Solvent / Reagent (made through FM-ENV-001)."""
-        from senaite.pfas.browser.prepared_standards import _list
-        return _list(self._portal(), status_filter=STATUS_ACTIVE, type_filter=u"Solvent / Reagent")
 
     def lot_status_label(self, status):
         return dict(ALL_STATUSES).get(status, (status or u"").capitalize())
@@ -1046,9 +1144,10 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
         if rec.get("status", STATUS_ACTIVE) != STATUS_ACTIVE or rec.get("is_archived"):
             return []
         from senaite.pfas import lot_attention
+        # a lot whose category needs no CoA is not asked for one
+        coa = None if rec.get("no_coa") else bool(self.coa_meta(rec.get("uid", "")))
         return lot_attention.reasons(expiry=_effective_expiry(rec), quantity=rec.get("quantity"),
-                                     low_stock=rec.get("low_stock_level"),
-                                     coa=bool(self.coa_meta(rec.get("uid", ""))))
+                                     low_stock=rec.get("low_stock_level"), coa=coa)
 
     def status_label(self, rec):
         status = rec.get("status", STATUS_ACTIVE)
@@ -1108,6 +1207,20 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
         from senaite.pfas.browser.core_lists import lot_problems
         from six.moves.urllib.parse import quote_plus
         bad = lot_problems(data) + problems(data)
+        # a recorded expiry moves earlier only: a later date comes through an
+        # extension (lot_extension.edit_problems); the date the system
+        # assigned is not recorded, so a supplier's date may replace it
+        from senaite.pfas import lot_expiry as le, lot_extension
+        old = _get_reagent(self._portal(), data["uid"]) if data["uid"] else None
+        if old:
+            computed = ("expiry_date",) if old.get("expiry_source") == le.ASSIGNED else ()
+            bad += lot_extension.edit_problems(
+                (("expiry_date", u"The expiry"), ("manufacturer_expiry", u"The manufacturer's expiry")),
+                old, data, computed)
+            if computed and data["manufacturer_expiry"] and \
+                    data["expiry_date"][:10] == (old.get("expiry_date") or u"")[:10]:
+                # the supplier's date replaces the one the system assigned
+                data["expiry_date"] = u""
         if bad:
             return self._redirect("{0}?error={1}".format(self._self_url(), quote_plus(bad[0].encode("utf-8"))))
         _save_reagent(self._portal(), data)
@@ -1372,3 +1485,14 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
             })
         self.request.response.setHeader("Content-Type", "application/json")
         return json.dumps({"items": out})
+
+
+class PFASMaterialsView(PFASReagentsView):
+    """Materials & Containers: the reagent inventory over the lots whose
+    category has no expiry (tubes, tips, homogenisers). The same lot
+    records, so traceability and the stage pickers find them as before;
+    the form asks no expiry question."""
+
+    template = ViewPageTemplateFile("templates/reagents.pt")
+    materials = True
+    page_title = u"Materials & Containers"

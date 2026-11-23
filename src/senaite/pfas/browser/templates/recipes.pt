@@ -4,11 +4,19 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Logbooks: recipes</title>
+  <title metal:fill-slot="title">Recipes</title>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
-  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-flow" /></tal:tabs>
+  <tal:t metal:fill-slot="header-title">Recipes</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-primary"
+       tal:condition="python:view.can_edit() and not view.editing() and not view.card() and not view.is_print()"
+       tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}&amp;new=1">+ New recipe</a>
+  </tal:r>
+
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:condition="view/editing" tal:define="sb_form string:recipe-form; sb_label string:Save recipe"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"><tal:m metal:fill-slot="more"><a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">Cancel</a></tal:m></div></tal:sb></tal:ab>
 
   <div metal:fill-slot="content">
   <div class="page-body" tal:define="ed view/editing; cd python:None if ed else view.card()">
@@ -16,35 +24,45 @@
     <div class="alert alert-success" tal:condition="view/ok_msg" tal:content="view/ok_msg">saved</div>
     <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg">error</div>
 
-    <nav class="pfas-seg pfas-seg-strip is-spaced" aria-label="Methods">
-      <a class="pfas-seg-item" tal:repeat="m view/methods"
-         tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${m/id};
-                         aria-selected python:'true' if m['id'] == view.method_id() else 'false'"
-         tal:content="m/label">EPA 537.1</a>
-    </nav>
+    <div class="pfas-filterbar"
+         tal:define="mc_choices python:[{'value': m['id'], 'label': m['label'], 'url': u'%s/@@pfas-recipes?method=%s%s' % (view.portal_url(), m['id'], (u'&amp;kind=' + view.kind()) if view.kind() else u'')} for m in view.methods()];
+                     mc_value view/method_id; mc_label string:Method">
+      <div class="pfas-form-field"><span>Method</span>
+        <metal:m use-macro="context/@@pfas-macros/macros/method-choice" /></div>
+    </div>
 
     <!-- the list: each recipe of the method, what it is made from and what is made from it -->
     <tal:list condition="python:not ed and not cd and not view.is_print()">
       <p class="pane-intro" tal:content="view/method_label"></p>
+      <nav class="pfas-seg pfas-seg-sm is-fit is-spaced" aria-label="Kinds">
+        <a class="pfas-seg-item" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id};
+                                                 aria-selected python:'false' if view.kind() else 'true'">All kinds</a>
+        <tal:k repeat="k view/kinds"><a class="pfas-seg-item" tal:define="kid python:k[0]"
+           tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}&amp;kind=${kid};
+                           aria-selected python:'true' if kid == view.kind() else 'false'"
+           tal:content="python:k[1]">Reagent</a></tal:k>
+      </nav>
       <div class="table-wrap">
-      <table class="pfas-table" data-col-resize="recipes-1">
-        <thead><tr><th>Makes</th><th>Made from</th><th>Log</th><th>Used in</th><th class="row-action"></th></tr></thead>
+      <table class="pfas-table" data-col-resize="recipes-1" tal:define="rm context/@@pfas-row-menu">
+        <thead><tr><th>Makes</th><th>Made from</th><th>Kind</th><th>Code</th><th>Used in</th></tr></thead>
         <tbody>
-          <tr tal:repeat="r view/rows">
+          <tr tal:repeat="r view/rows"
+              tal:attributes="data-row-open r/url;
+                              data-row-actions python:rm.actions((u'Make a stock', 'href', r['make_url']),
+                                                                 (u'Edit', 'href', r['edit_url']) if view.can_edit() else None)">
             <td><strong tal:content="r/name">537 calibration stock</strong>
                 <div class="pfas-sub" tal:condition="r/makes" tal:content="r/makes">makes CAL-1 to CAL-7</div></td>
             <td tal:content="r/made_from">DEMO PFAS native mix CRM</td>
-            <td class="cell-nowrap" tal:content="r/log">FM-ENV-002</td>
+            <td tal:content="r/kind">Standard</td>
+            <td class="cell-nowrap" tal:content="r/code">PDS-A</td>
             <td tal:content="r/used_in">537_CAL series</td>
-            <td class="row-action"><a class="btn-sm btn-secondary" tal:attributes="href r/url">Open</a></td>
           </tr>
-          <tr tal:condition="not:view/rows"><td colspan="5" class="pfas-muted">No recipes yet for this method.</td></tr>
+          <tr tal:condition="not:view/rows"><td colspan="5" class="pfas-muted"
+              tal:content="python:u'No recipes of this kind yet for this method.' if view.kind() else u'No recipes yet for this method.'">No recipes yet for this method.</td></tr>
         </tbody>
       </table>
       </div>
       <div class="form-actions">
-        <a class="btn btn-primary" tal:condition="view/can_edit"
-           tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}&amp;new=1">+ New recipe</a>
         <a class="btn btn-secondary" tal:condition="view/rows"
            tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}&amp;print=1">Print recipes</a>
         <tal:h define="hid string:recipes"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
@@ -55,11 +73,12 @@
     <tal:cards repeat="c python:view.cards() if view.is_print() else ([cd] if cd else [])">
       <section class="pfas-card rc-card">
         <div class="pfas-between">
-          <h3 tal:content="python:u'%s · %s · revision %s' % (c['name'], c['log'], c['revision'])">537_CAL</h3>
+          <h3 tal:content="python:u'%s · %s · revision %s' % (c['name'], c['code'], c['revision'])">537_CAL</h3>
           <div class="pfas-actions" tal:condition="not:view/is_print">
+            <a class="btn-sm btn-secondary" tal:attributes="href c/make_url">Make</a>
             <a class="btn-sm btn-secondary" tal:condition="view/can_edit" tal:attributes="href c/edit_url">Edit recipe</a>
             <button type="button" class="btn-sm btn-secondary" onclick="window.print()">Print card</button>
-            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">All recipes</a>
+            <a class="btn-sm btn-secondary" tal:attributes="href python:u'%s/@@pfas-recipes?method=%s%s' % (view.portal_url(), view.method_id(), view.kind_qs())">All recipes</a>
           </div>
         </div>
         <dl class="rc-facts">
@@ -84,30 +103,87 @@
             <tr><td class="pfas-muted">Volume taken</td><td tal:repeat="v c/taken" tal:content="python:view.fmt(v)">10</td></tr>
             <tr><td class="pfas-muted">Final volume</td><td tal:repeat="v c/final" tal:content="python:view.fmt(v)">10</td></tr>
             <tr tal:repeat="a c/conc"><td tal:content="a/analyte">PFOA</td>
-              <td tal:repeat="v a/values" tal:content="python:view.fmt(v)">2.0</td></tr>
+              <td tal:repeat="v python:a['values']" tal:content="python:view.fmt(v)">2.0</td></tr>
             <tr tal:condition="not:c/conc"><td tal:attributes="colspan python:len(c['levels']) + 1" class="pfas-muted">Calculated once the purchased lot's certificate values are on file.</td></tr>
           </tbody>
         </table>
         </div>
+
+        <!-- its preparations: each a record of this recipe, reviewed by another person -->
+        <tal:preps condition="not:view/is_print">
+        <h4 class="rc-h">Preparations</h4>
+        <form method="GET" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+              tal:attributes="action string:${view/portal_url}/@@pfas-recipes">
+          <input type="hidden" name="method" tal:attributes="value view/method_id" />
+          <input type="hidden" name="recipe" tal:attributes="value c/id" />
+          <input type="hidden" name="kind" tal:condition="view/kind" tal:attributes="value view/kind" />
+          <div class="pfas-form-field"><label for="rc-since">From</label>
+            <input type="date" id="rc-since" name="since" class="pfas-input" tal:attributes="value python:view.date_range()[0]" /></div>
+          <div class="pfas-form-field"><label for="rc-until">To</label>
+            <input type="date" id="rc-until" name="until" class="pfas-input" tal:attributes="value python:view.date_range()[1]" /></div>
+          <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+        </form>
+        <tal:p define="preps python:view.preparations(c['id'])">
+        <p class="pfas-muted" tal:condition="not:preps">No preparations in this range.</p>
+        <div class="table-wrap" tal:condition="preps">
+        <table class="pfas-table" data-col-resize="recipes-7" tal:define="rm context/@@pfas-row-menu">
+          <thead><tr><th>Record</th><th>Prepared by</th><th>Date</th><th>Lots made</th><th>Reviewed</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="p preps"
+                tal:attributes="data-row-actions python:rm.actions(
+                    (u'Review', 'modal', u'esig-%s' % p['esig']['action']) if not p['reviewed_by'] else None,
+                    (u'Print', 'href', u'%s/@@pfas-preparation-pdf?entry=%s' % (view.portal_url(), p['id']), {'blank': True}))">
+              <td class="pfas-mono" tal:content="p/id">PDS-A-261105-01</td>
+              <td tal:content="p/prepared_by">AN1</td>
+              <td tal:content="p/prepared_date">2026-11-05</td>
+              <td tal:content="p/lot_numbers">537_CAL-1_261105</td>
+              <td>
+                <span tal:condition="p/reviewed_by" tal:content="python:u'%s %s' % (p['reviewed_by'], view.lab_at(p['reviewed_at'], p['reviewed_at'][:10], u'%Y-%m-%d'))">AN2 2026-11-05</span>
+                <span class="badge badge-pending" tal:condition="not:p/reviewed_by">Not reviewed</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <!-- Review, from a row's menu, opens the sign dialog; its Sign posts the review -->
+        <tal:rv repeat="p python:[x for x in preps if not x['reviewed_by']]">
+        <form method="POST"
+              tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards; id p/esig/form_id">
+          <input type="hidden" name="action" value="review_prep" />
+          <input type="hidden" name="back" value="recipes" />
+          <input type="hidden" name="method" tal:attributes="value view/method_id" />
+          <input type="hidden" name="recipe" tal:attributes="value c/id" />
+          <input type="hidden" name="entry_id" tal:attributes="value p/id" />
+        </form>
+        <div tal:define="esig p/esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div>
+        </tal:rv>
+        </tal:p>
+        </tal:preps>
       </section>
     </tal:cards>
     <script tal:condition="view/is_print">window.addEventListener('load', function () { window.print(); });</script>
 
     <!-- the editor: saving issues a new revision; preps already made keep theirs -->
     <tal:ed condition="ed">
-    <form method="post" class="pfas-card rc-edit"
+    <form method="post" class="pfas-card rc-edit" id="recipe-form"
           tal:define="r ed/rev"
           tal:attributes="action string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">
       <input type="hidden" name="recipe" tal:attributes="value ed/id" />
       <div class="pfas-settings-grid">
         <label>Makes <input type="text" name="name" required="required" tal:attributes="value r/name|nothing" /></label>
-        <label>Log <select name="log">
-          <option tal:repeat="l view/logs" tal:attributes="value python:l[0]; selected python:'selected' if l[0] == r.get('log') else None"
-                  tal:content="python:l[1]">FM-ENV-002</option></select></label>
+        <label>Code <input type="text" name="code" required="required" maxlength="16" pattern="[A-Za-z0-9][A-Za-z0-9-]{0,15}"
+               tal:attributes="value r/code|nothing" /></label>
+        <div class="is-full"><span>Kind</span>
+          <input type="hidden" name="kind" id="rc-kind" tal:attributes="value r/kind|nothing" />
+          <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Kind" data-field="data-field" data-quiet="data-quiet" data-input="rc-kind">
+            <button type="button" class="pfas-seg-item" tal:repeat="k view/kinds"
+                    tal:attributes="data-value python:k[0]; aria-pressed python:'true' if k[0] == r.get('kind') else 'false'"
+                    tal:content="python:k[1]">Reagent</button>
+          </div></div>
         <label>Concentration unit <select name="unit">
           <option tal:repeat="u python:(u'ng/mL', u'ug/mL')" tal:attributes="value u; selected python:'selected' if u == r.get('unit') else None"
                   tal:content="u">ng/mL</option></select></label>
-        <label>Shelf life (days) <input type="number" min="0" step="1" name="shelf_life_days" placeholder="the log's default"
+        <label>Shelf life in days <input type="number" min="1" step="1" name="shelf_life_days" required="required"
                tal:attributes="value r/shelf_life_days|nothing" /></label>
         <label>Storage location <input type="text" name="storage_location" tal:attributes="value python:(r.get('storage') or {}).get('location')" /></label>
         <label>Storage conditions <input type="text" name="storage_conditions" tal:attributes="value python:(r.get('storage') or {}).get('conditions')" /></label>
@@ -116,7 +192,7 @@
           <option tal:repeat="c view/channel_choices" tal:attributes="value c; selected python:'selected' if c == r.get('slot') else None"
                   tal:content="c">Mobile phase B</option></select></label>
       </div>
-      <fieldset class="field-wide"><legend>Methods that list it</legend>
+      <fieldset class="is-full"><legend>Methods that list it</legend>
         <div class="cf-chips">
           <label class="pfas-switch cf-chip" tal:repeat="m view/methods">
             <input type="checkbox" value="on" tal:attributes="name string:method.${m/id}; checked python:'checked' if m['id'] in (r.get('methods') or []) else None" /><span class="pfas-switch-track"></span>
@@ -173,11 +249,6 @@
           </tal:i></tr></tbody>
       </table>
       <button type="button" class="btn-sm btn-secondary rc-add" data-target="rc-steps">+ Add step</button>
-
-      <div class="form-actions is-bar">
-        <button class="btn-primary" type="submit">Save recipe</button>
-        <a class="btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes?method=${view/method_id}">Cancel</a>
-      </div>
     </form>
     </tal:ed>
     <script tal:condition="ed">

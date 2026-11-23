@@ -53,6 +53,14 @@ KIND_DUP         = "dup"
 KIND_OVER_RANGE  = "over_range"   # above the top calibration level (pipeline.over_range)
 # a raw run's native with no concentration: its isotope standard's peak deleted (raw_is_deleted)
 KIND_IS_DELETED  = "is_deleted"
+# a raw run's native whose linked response ratio could not be formed
+# (raw_run.linked_standard; ratio_held)
+KIND_RATIO_HELD = "linked_ratio_held"
+# a calibrator on the curve with no reading: why its point fails
+CAL_NOT_READ = "not read on the curve"
+CAL_NO_CONCENTRATION = "the instrument reported no concentration"
+# the instrument's word a standard's row loses (pipeline.standard_tokens)
+STANDARD_TOKENS = ("ALoQ", "BLoQ")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +78,16 @@ def raw_no_reading(row) -> Optional[str]:
         return None
     qualifier = getattr(row, "conc_qualifier", "") or ""
     return qualifier if qualifier in (QUALIFIER_BLOQ, QUALIFIER_ND) else None
+
+
+def check_no_reading(row) -> Optional[str]:
+    """A check standard's row (ICV, CCV) with no concentration, raw or
+    vendor: what it reads instead (BLoQ, N.D., N.Q., or "no concentration");
+    None for a row with a number. A check standard is judged against its
+    window, so one with no number fails it instead of being skipped."""
+    if row is None or getattr(row, "calculated_conc", None) is not None or reported_conc(row) is not None:
+        return None
+    return getattr(row, "conc_qualifier", "") or "no concentration"
 
 
 def _raw_record(row) -> dict:
@@ -105,6 +123,25 @@ def raw_is_deleted(rows) -> list[QCFlag]:
     return flags
 
 
+def ratio_held(rows) -> list[QCFlag]:
+    """A failing flag for each raw result held because the method reads it
+    on the linked response ratio and the ratio could not be formed (the
+    row's ratio_held names why: no Linked to, members linked to different
+    internal standards, the internal standard not detected). The QC store
+    files each as a failing QC result, so release waits for it whatever
+    rule switch is set."""
+    flags = []
+    for r in rows or []:
+        why = getattr(r, "ratio_held", "") or ""
+        if not why:
+            continue
+        flags.append(QCFlag(
+            source="Linked response ratio", check_kind=KIND_RATIO_HELD, analyte=r.compound_name,
+            injection_name=r.injection_name, value="",
+            issue="%s: held, %s" % (r.compound_name, why)))
+    return flags
+
+
 def no_reading_issue(tag, qualifier):
     return "({0}) no reading: {1}".format(tag, qualifier)
 
@@ -120,6 +157,24 @@ def _format_val(v: Optional[float]) -> str:
 #   ratio = response_ratio / mean(response_ratio of the calibration standards
 #           for that compound); "N.D." when there is no response
 # ─────────────────────────────────────────────────────────────────────────────
+
+# what a window records for a tier in the state Off
+TIER_OFF_BASIS = "not judged: its tier is Off"
+
+
+def _box_state(profile, key):
+    """A limit box's state on the method (MethodProfile.limit_state);
+    Enforced without a method."""
+    get = getattr(profile, "limit_state", None) if profile is not None else None
+    return get(key) if get is not None else "enforced"
+
+
+def _advisory_of(profile, boxes):
+    """A flag raised by failures judged in `boxes` is advisory only when
+    every one of them is in the state Evaluate."""
+    states = [_box_state(profile, b) for b in boxes]
+    return bool(states) and all(st == "evaluate" for st in states)
+
 
 def is_raw_check(
     rows: list[InstrumentRow],
@@ -226,28 +281,20 @@ def is_raw_check(
             return prof.judged_pct(pct, matrix)
         from .addon import load
         return load("rounding").judged_pct(pct)
+    # each window is its own box (limit_states): one that is Off reads
+    # None here; an empty one is filed once by the run queue (Enforced
+    # refuses, Evaluate advises), and its results are stored not evaluated
     lo = rule.vs_ical_avg_min if rule else None
     hi = rule.vs_ical_avg_max if rule else None
     configured = lo is not None and hi is not None
-    if method_id and not configured:
-        # the rule is on and the method sets no window: not judged, and the
-        # gap holds release until one is entered
-        from .method_profiles import UnconfiguredCriterion
-        raise UnconfiguredCriterion(
-            "{0} sets no IS response window against the ICAL average. Set it on the "
-            "method's QC criteria tab (IS Response), or switch the rule off.".format(method_id))
     ccv_lo = rule.vs_last_ccv_min if rule else None
     ccv_hi = rule.vs_last_ccv_max if rule else None
-    # the CCV comparison is its own rule switch (Rule Toggles & QC Run)
-    ical_evaluate = ccv_evaluate = False
-    if method_id:
-        from .run_queue import _load_rule_toggles, _rule_enabled, _rule_state
-        toggles = _load_rule_toggles(method_id)
-        ical_evaluate = _rule_state(toggles, "is_response") == "evaluate"
-        ccv_evaluate = _rule_state(toggles, "is_vs_ccv") == "evaluate"
-        if ccv_lo is not None or ccv_hi is not None:
-            if not _rule_enabled(_load_rule_toggles(method_id), "is_vs_ccv"):
-                ccv_lo = ccv_hi = None
+    ical_evaluate = _box_state(prof, "is_response") == "evaluate"
+    ccv_evaluate = _box_state(prof, "is_vs_ccv") == "evaluate"
+    # an unset window against the ICAL average holds release (stored not
+    # evaluated) only while its box is Enforced; Off, or Evaluate (its gap
+    # filed as an advisory), a result no window judged is not recorded
+    ical_owed = _box_state(prof, "is_response") == "enforced" if prof is not None else True
 
     results: list[ISRawResult] = []
     last_ccv_response = None
@@ -256,6 +303,7 @@ def is_raw_check(
         pct_from_cal = None
         judged = None
         flag = None
+        by_ccv = False                # judged against the bracket's CCV
         if value is not None:
             pct_from_cal = value / avg_response
             judged = judge(pct_from_cal * 100.0)
@@ -270,6 +318,7 @@ def is_raw_check(
             # 537.1's second condition. Only applied once a CCV has been seen,
             # and only when the method configures the window.
             if ccv_lo is not None and ccv_hi is not None and last_ccv_response:
+                by_ccv = True
                 pct_ccv = judge(value / last_ccv_response * 100.0)
                 if not (ccv_lo <= pct_ccv <= ccv_hi):
                     fails.append(
@@ -294,6 +343,8 @@ def is_raw_check(
                 )
         if value and classify_injection(r.injection_name) == "CCV":
             last_ccv_response = value
+        if not configured and not ical_owed and not by_ccv:
+            continue                  # judged by no window, and owed none
 
         results.append(ISRawResult(
             is_compound=is_compound,
@@ -303,7 +354,7 @@ def is_raw_check(
             pct_from_cal=pct_from_cal,
             average_response=avg_response,
             flag=flag,
-            window_min=lo, window_max=hi, configured=configured, judged_pct=judged,
+            window_min=lo, window_max=hi, configured=configured or not ical_owed, judged_pct=judged,
             ccv_min=ccv_lo, ccv_max=ccv_hi,
             std_role="injection_is" if is_injection_standard else "surrogate",
         ))
@@ -380,8 +431,8 @@ def expected_ratios(r, calibrators=None):
 
 
 def _off_the_curve(r):
-    """A raw run's calibrator the curve left out (its quantifier saturated):
-    not a calibrator of this run. A vendor export's "Used" column is not read
+    """A raw run's calibrator the curve left out (no reading, or a peak the
+    analyst deleted): not a calibrator of this run. A vendor export's "Used" column is not read
     here -- an export without one says False for every row."""
     return (getattr(r, "derived_from", "") or "").startswith("raw:") and not r.included_in_cal
 
@@ -511,6 +562,37 @@ def qualifiers_deleted(r):
     return list(_raw_record(r).get("qual_deleted") or [])
 
 
+# the remark token on a result whose quantifier peak was split from its
+# co-eluting partner (coelution_split): the QAO's "coelution" qualifier marks it
+COELUTION_FLAG = "COELUTION"
+# the worker's note on a pair whose fit failed (raw_run.PAIR_FIT_FAILED)
+PAIR_FIT_FAILED = "pair fit failed"
+# the lines a hand-drawn peak is split from its neighbour on
+SPLIT_LINES = ("drop", "skim")
+
+
+def _on_pair(rec) -> bool:
+    """The peak record was measured as a co-eluting pair: by the pair's fit,
+    or as a single peak where that fit failed."""
+    return rec.get("area_method") == "pair" or (rec.get("fit_note") or "").startswith(PAIR_FIT_FAILED)
+
+
+def coelution_split(r) -> bool:
+    """True when a raw run's row holds a detected peak split from its
+    co-eluting partner, so its value is an estimate: measured by the pair's
+    fit (raw_integrate.integrate_pair: two exponentially modified Gaussians
+    on one baseline), measured as a single peak where that fit failed, or
+    drawn by the analyst on a perpendicular drop or a tangent skim where the
+    automatic peak was the pair's. Any other line drawn by hand, or another
+    apex chosen as found, splits nothing from the neighbour."""
+    rec = _raw_record(r)
+    if rec.get("area") is None:
+        return False
+    if rec.get("manual"):
+        return _on_pair(rec.get("auto") or {}) and rec.get("baseline") in SPLIT_LINES
+    return _on_pair(rec)
+
+
 def qualifier_deleted_check(rows: list[InstrumentRow], analyte: str) -> list[QCFlag]:
     """N.C. for each raw run row of the analyte with a qualifier the analyst
     deleted (qualifiers_deleted): a deleted confirmation ion confirms
@@ -538,7 +620,9 @@ def signal_to_noise_check(rows: list[InstrumentRow], analyte: str,
     (the method's ConfirmationRule):
 
       * quantitation ion below `quan_min` -> the peak is there but the value
-        is an estimate, "(J)" (the `sn` failure type's code);
+        is an estimate, "(J)" (the `sn` failure type's code), filed only
+        for a row with a number: an estimate needs a value, and a row with
+        none (BLoQ, N.D.) carries no J;
       * qualifier ion below `confirm_min` -> the identification is not
         confirmed, "(N.C.)". It is never judged on the quantitation limit.
 
@@ -551,6 +635,8 @@ def signal_to_noise_check(rows: list[InstrumentRow], analyte: str,
         sn = r.signal_to_noise
         qual_sn = r.qual_sn
         if sn is not None and quan_min is not None and sn < quan_min:
+            if reported_conc(r) is None:
+                continue
             flags.append(QCFlag(
                 source="Signal-to-Noise",
                 check_kind=KIND_SN,
@@ -613,31 +699,35 @@ def recovery_check_profiled(
                 if conc is not None or rl is not None else profile.qc_rules(analyte, matrix, qc_type))
     if rule is None or rule.recovery_min is None:
         return None
+    # the tier's own state (limit_states): Off is not judged, Evaluate files
+    # its failure as advisory
+    state = getattr(rule, "state", "enforced")
     if window is not None:
         low = getattr(profile, "low_level_tier_applies", None)
         low_level = bool(not resolved and low is not None and low(analyte, matrix, qc_type, conc=conc, rl=rl))
         window.update(lo=rule.recovery_min, hi=rule.recovery_max,
-                      basis="{0} recovery {1:g}-{2:g} %{3}".format(
-                          qc_type, rule.recovery_min, rule.recovery_max,
-                          " (guidance only)" if rule.is_guidance_only else ""),
-                      low_level=low_level)
-    # judged as the report states it: a whole percent by the method's rule,
-    # computed from the full-precision recovery
-    judged = profile.judged_pct(recovery_pct, matrix)
+                      basis="{0} recovery {1:g}-{2:g} %".format(
+                          qc_type, rule.recovery_min, rule.recovery_max),
+                      low_level=low_level, state=state)
+    if state == "off":
+        if window is not None:
+            window.update(lo=None, hi=None, basis=TIER_OFF_BASIS)
+        return None
+    # judged as the report states it: at the method's decimal places for
+    # recoveries by its rule, computed from the full-precision recovery
+    judged = profile.judged_recovery(recovery_pct, matrix)
     if rule.recovery_min <= judged <= rule.recovery_max:
         return None
-    issue = f"(REC) {judged:.0f}% outside " \
+    shown = profile.recovery_text(judged)
+    issue = f"(REC) {shown}% outside " \
             f"{rule.recovery_min:g}–{rule.recovery_max:g}%"
-    if rule.is_guidance_only:
-        issue += " [guidance only]"
-    if rule.verify_against_method:
-        issue += " [VERIFY limits vs method tables]"
     return QCFlag(
         source=f"{profile.method_id} {qc_type}",
         analyte=analyte,
         injection_name=injection_name,
-        value=f"{judged:.0f}%",
+        value=f"{shown}%",
         issue=issue + (f" — {rule.notes}" if rule.notes else ""),
+        advisory=state == "evaluate",
     )
 
 
@@ -661,8 +751,13 @@ def rpd_check_profiled(
     limit = rule.rpd_max
     if limit is None:
         return None
+    state = getattr(rule, "state", "enforced")
     if window is not None:
-        window.update(lo=None, hi=limit, basis="{0} RPD at most {1:g} %".format(qc_type, limit))
+        window.update(lo=None, hi=limit, basis="{0} RPD \u2264 {1:g} %".format(qc_type, limit), state=state)
+    if state == "off":
+        if window is not None:
+            window.update(hi=None, basis=TIER_OFF_BASIS)
+        return None
     # the RPD comes from unrounded values; it is JUDGED as a whole percent
     judged = profile.judged_pct(rpd_pct, matrix)
     if judged <= limit:
@@ -673,6 +768,65 @@ def rpd_check_profiled(
         injection_name=injection_name,
         value=f"RPD={judged:.0f}%",
         issue=f"(RPD) exceeds {limit:g}% — {rule.notes}",
+        advisory=state == "evaluate",
+    )
+
+
+# Spikes of one QC type at one level, at least this many, are judged for
+# precision by the RSD of their recoveries, not by a pair's RPD: two values
+# give no standard deviation an RPD does not already state.
+RSD_MIN_SPIKES = 3
+
+
+def rsd_pct(values) -> Optional[float]:
+    """The sample relative standard deviation (n - 1) of `values`, as a
+    percent of their mean; None for fewer than two values or a mean of 0."""
+    values = [float(v) for v in values or []]
+    if len(values) < 2:
+        return None
+    mean = sum(values) / len(values)
+    if not mean:
+        return None
+    return statistics.stdev(values) / abs(mean) * 100.0
+
+
+def rsd_check_profiled(
+    profile: MethodProfile,
+    analyte: str,
+    matrix: str,
+    qc_type: str,
+    precision_type: str,
+    rsd: float,
+    injection_name: str = "",
+    conc: Optional[float] = None,
+    rl: Optional[float] = None,
+    window: Optional[dict] = None,
+) -> Optional[QCFlag]:
+    """The RSD of several `qc_type` spikes' recoveries against the method's
+    RPD limit of `precision_type` (an LFSM's: the LFSMD's): one limit, never a
+    separate setting. `window` receives the limit applied ({lo: None, hi,
+    basis}); untouched when no limit is set (nothing judged)."""
+    rule = (profile.qc_rules(analyte, matrix, precision_type, conc=conc, rl=rl)
+            if conc is not None or rl is not None else profile.qc_rules(analyte, matrix, precision_type))
+    if rule is None or rule.rpd_max is None:
+        return None
+    limit = rule.rpd_max
+    state = getattr(rule, "state", "enforced")
+    if state == "off":
+        return None                   # its tier is Off: not judged
+    if window is not None:
+        window.update(lo=None, hi=limit, basis="{0} RSD \u2264 {1:g} % (the {2} RPD limit)".format(
+            qc_type, limit, precision_type), state=state)
+    judged = profile.judged_pct(rsd, matrix)
+    if judged <= limit:
+        return None
+    return QCFlag(
+        source=f"{profile.method_id} {qc_type}",
+        analyte=analyte,
+        injection_name=injection_name,
+        value=f"RSD={judged:.0f}%",
+        issue=f"(RSD) exceeds {limit:g}%" + (f" — {rule.notes}" if rule.notes else ""),
+        advisory=state == "evaluate",
     )
 
 
@@ -699,33 +853,39 @@ def ccv_check_profiled(
                 if r.compound_name == analyte
                 and classify_injection(r.injection_name) == "CCV"]
     for r in ccv_rows:
-        missing = raw_no_reading(r) if r.expected_conc else None
+        missing = check_no_reading(r) if r.expected_conc else None
         if not r.expected_conc or (r.calculated_conc is None and missing is None):
             continue
-        # judged as a whole percent by the method's rule; a raw CCV with no
-        # reading at 0 %
-        rec = profile.judged_pct(0.0 if missing else r.calculated_conc / r.expected_conc * 100.0, matrix)
+        # judged at the method's decimal places for recoveries by its rule;
+        # a CCV with no reading, raw or vendor, at 0 %
+        if _low_level_off(profile, r, analyte, matrix):
+            continue                     # CCV Low-Level Off: not judged at all
+        rec = profile.judged_recovery(0.0 if missing else r.calculated_conc / r.expected_conc * 100.0, matrix)
         lo, hi = _ccv_window(profile, rule, r, analyte, matrix)
         ok = lo <= rec <= hi and not missing
         why = (no_reading_issue("CCV", missing) if missing
                else "(CCV) outside {0:g}-{1:g}%".format(lo, hi))
+        low = (lo, hi) != (rule.recovery_min, rule.recovery_max)
+        # filed by the box whose window judged it
+        advisory = _advisory_of(profile, ["ccv_low_level" if low else "ccv_recovery"])
         if verdicts is not None:
             verdicts.append({"analyte": analyte, "injection_name": r.injection_name,
                              "concat_id": getattr(r, "concat_id", "") or r.injection_name,
                              "calculated": r.calculated_conc, "expected": r.expected_conc,
                              "recovery": rec, "passed": ok, "lo": lo, "hi": hi,
                              "basis": "CCV recovery {0:g}-{1:g} %{2}".format(
-                                 lo, hi, " (lowest level)" if (lo, hi) != (rule.recovery_min, rule.recovery_max) else ""),
-                             "issue": "" if ok else why})
+                                 lo, hi, " (lowest level)" if low else ""),
+                             "issue": "" if ok else why, "advisory": advisory})
         if not ok:
             flags.append(QCFlag(
                 source=f"{profile.method_id} CCV",
                 check_kind=KIND_CCV,
                 analyte=analyte,
                 injection_name=r.injection_name,
-                value=f"{rec:.0f}%",
+                value=f"{profile.recovery_text(rec)}%",
                 issue=(no_reading_issue("CCV", missing) if missing else f"(CCV) outside {lo:g}–{hi:g}%")
                       + " — rerun curve and reinject samples since last passing CCV",
+                advisory=advisory,
             ))
     return flags
 
@@ -734,7 +894,12 @@ def _low_level(profile, r, analyte, matrix):
     """A check standard at or below the analyte's MRL (EPA 537.1 §10.3.3).
     Its own level when the run records one; else its expected concentration
     against the analyte's RL, in the same unit (the Run Builder records no
-    level on a CCC)."""
+    level on a CCC). A reviewer's identity correction fixes the level of
+    the injection it names, whatever its row says."""
+    from .importer import level_override
+    forced = level_override(r.injection_name)
+    if forced is not None:
+        return forced == "low"
     if r.level in ("1", "low", "MRL"):
         return True
     rl, _mdl, unit = profile.reporting_limits(analyte, matrix)
@@ -744,6 +909,14 @@ def _low_level(profile, r, analyte, matrix):
     if row_unit and unit and row_unit != unit.strip().lower():
         return False
     return r.expected_conc <= rl * (1 + 1e-9)
+
+
+def _low_level_off(profile, r, analyte, matrix):
+    """A check standard at the low level while CCV Low-Level is Off: the
+    box borrows the Recovery window only while it is empty and on; Off, a
+    low-level check standard is not judged at all (a method that runs no
+    low-level CCV sets the box Off)."""
+    return _box_state(profile, "ccv_low_level") == "off" and _low_level(profile, r, analyte, matrix)
 
 
 def _ccv_window(profile, rule, r, analyte, matrix):
@@ -764,30 +937,32 @@ def icv_check_profiled(
     calculated vs expected within the method's ICV deviation (Calibration &
     CCV, `icv.pct_dev_max`)."""
     from .importer import classify_injection
-    from .method_profiles import UnconfiguredCriterion
     same = profile.icv_same_as_ccv()
     limit = profile.icv_pct_dev_max()
     mine = [r for r in rows if r.compound_name == analyte
             and classify_injection(r.injection_name) == "ICV"]
     if not same and limit is None:
-        if mine:
-            # an ICV in the run and no criterion: not judged, and said so
-            #  -- it holds like any unset criterion
-            raise UnconfiguredCriterion(
-                "{0} / {1}: the run has an ICV but the method sets no ICV criterion "
-                "(the method's QC criteria tab, CCV Recovery).".format(profile.method_id, analyte))
+        # its box is Off, or empty, which the run queue files once
+        # (limit_states.empty_boxes): Enforced refuses, Evaluate advises
         return []
     flags: list[QCFlag] = []
     for r in mine:
-        missing = raw_no_reading(r) if r.expected_conc else None
+        missing = check_no_reading(r) if r.expected_conc else None
         if not r.expected_conc or (r.calculated_conc is None and missing is None):
             continue
-        # a raw ICV with no reading at 0 %
-        rec = profile.judged_pct(0.0 if missing else r.calculated_conc / r.expected_conc * 100.0, matrix)
+        # an ICV with no reading, raw or vendor, at 0 %; judged at the method's decimal
+        # places for recoveries
+        rec = profile.judged_recovery(0.0 if missing else r.calculated_conc / r.expected_conc * 100.0, matrix)
+        if same and _low_level_off(profile, r, analyte, matrix):
+            continue                     # judged with the CCV's windows: its low level Off, not judged
         if same:
-            lo, hi = _ccv_window(profile, profile.ccv_rule(), r, analyte, matrix)
+            ccv_rule = profile.ccv_rule()
+            lo, hi = _ccv_window(profile, ccv_rule, r, analyte, matrix)
+            box = "ccv_recovery" if (lo, hi) == (ccv_rule.recovery_min, ccv_rule.recovery_max) else "ccv_low_level"
         else:
             lo, hi = 100.0 - limit, 100.0 + limit
+            box = "icv"
+        advisory = _advisory_of(profile, [box])
         ok = lo <= rec <= hi and not missing
         why = (no_reading_issue("ICV", missing) if missing
                else "(ICV) outside {0:g}-{1:g}%".format(lo, hi))
@@ -798,16 +973,17 @@ def icv_check_profiled(
                              "recovery": rec, "passed": ok, "qc_type": "ICV", "lo": lo, "hi": hi,
                              "basis": ("ICV recovery {0:g}-{1:g} % (the CCV window)" if same
                                        else "ICV recovery {0:g}-{1:g} %").format(lo, hi),
-                             "issue": "" if ok else why})
+                             "issue": "" if ok else why, "advisory": advisory})
         if not ok:
             flags.append(QCFlag(
                 source=f"{profile.method_id} ICV",
                 check_kind=KIND_CCV,
                 analyte=analyte,
                 injection_name=r.injection_name,
-                value=f"{rec:.0f}%",
+                value=f"{profile.recovery_text(rec)}%",
                 issue=(no_reading_issue("ICV", missing) if missing else f"(ICV) outside {lo:g}–{hi:g}%")
                       + " — the calibration is not verified",
+                advisory=advisory,
             ))
     return flags
 
@@ -866,9 +1042,8 @@ def manual_cal_drops(rows, analyte):
     """[(injection, level)] of the calibrators the analyst dropped from the
     analyte's curve by deleting a peak, its own or its isotope standard's:
     the entries of the curve its raw rows name (quant.curve.excluded) with
-    those reasons (MANUAL_DROP_REASONS). A calibrator off the curve for
-    saturation, or for any other reason the run found itself, is not
-    counted. Each injection once, by level."""
+    those reasons (MANUAL_DROP_REASONS). A calibrator off the curve for any
+    other reason the run found itself is not counted. Each injection once, by level."""
     levels, dropped = {}, set()
     for r in rows:
         if r.compound_name != analyte:
@@ -943,28 +1118,57 @@ def calibration_check_profiled(
     holder = next((r for inj in dropped for r in every if r.injection_name == inj), None)
     if drops and holder is not None:
         sn_issues.setdefault(id(holder), []).append(drops)
+    # each issue is judged in a box (limit_states); the flag is advisory only
+    # when every box that failed is in the state Evaluate
+    calibration_boxes = [b for b in ("cal_r2", "cal_point", "cal_low_point")
+                         if _box_state(profile, b) != "off"] or ["cal_point"]
+
+    def _issue_box(text):
+        if text == drops:
+            return "cal_dropped"
+        if ": quantifier S/N " in text or text.endswith(": not detected"):
+            return "sn_min.quan"
+        return "sn_min.confirm"
     # a lowest level left off the curve is judged on its S/N alone, a
     # calibrator dropped by hand on the count of them
     on_curve = set(id(r) for r in cal_rows)
     off = [r for r in every if id(r) in sn_issues and id(r) not in on_curve]
     for r in cal_rows + off:
         issues = []
+        boxes = []
         limit, lowest = None, False
         fitted = id(r) in on_curve
         if fitted and r2_min is not None and r.r2 is not None and r.r2 < r2_min:
             issues.append(f"R²={r.r2:.4f}<{r2_min}")
-        if fitted and rule.point_pct_dev_max is not None and r.pct_deviation is not None:
+            boxes.append("cal_r2")
+        # a calibrator on the curve is always judged: one with no reading on
+        # it fails its point instead of being skipped
+        unread = fitted and r.expected_conc and r.pct_deviation is None
+        if unread and _raw_record(r):
+            issues.append(CAL_NOT_READ)
+            boxes += calibration_boxes
+        elif unread and r.calculated_conc is None:
+            issues.append(CAL_NO_CONCENTRATION)
+            boxes += calibration_boxes
+        # the lowest level by its own box where it has a limit, every other
+        # point (the lowest too, where its box has none) by the point box
+        low_point = bool(rule.low_point_pct_dev_max) and fitted and r.pct_deviation is not None and (
+            r.level in ("1", "low", "MRL")
+            or (lowest_expected is not None and r.expected_conc == lowest_expected)
+            or _low_level(profile, r, analyte, ""))
+        if low_point:
+            limit, lowest = rule.low_point_pct_dev_max, True
+        elif fitted and rule.point_pct_dev_max is not None and r.pct_deviation is not None:
             limit = rule.point_pct_dev_max
-            if rule.low_point_pct_dev_max and (
-                    r.level in ("1", "low", "MRL")
-                    or (lowest_expected is not None and r.expected_conc == lowest_expected)
-                    or _low_level(profile, r, analyte, "")):
-                limit, lowest = rule.low_point_pct_dev_max, True
+        if limit is not None:
             # instrument criteria are judged unrounded, but not on
             # floating-point noise: 30.000000004 % is a calibrator AT 30 %
             if round(abs(r.pct_deviation) * 100, 9) > limit:
                 issues.append(f"dev={r.pct_deviation*100:+.1f}%>{limit:.0f}%")
-        issues.extend(sn_issues.get(id(r), []))
+                boxes.append("cal_low_point" if lowest else "cal_point")
+        for text in sn_issues.get(id(r), []):
+            issues.append(text)
+            boxes.append(_issue_box(text))
         flag = None
         if issues:
             flag = QCFlag(
@@ -974,6 +1178,7 @@ def calibration_check_profiled(
                 injection_name=r.injection_name,
                 value=_format_val(r.pct_deviation),
                 issue="(CAL) " + "; ".join(issues),
+                advisory=_advisory_of(profile, boxes),
             )
         results.append(CalibrationResult(
             analyte=analyte, injection_name=r.injection_name,
@@ -997,11 +1202,13 @@ def rrt_check_profiled(
     """
     conf = profile.confirmation_rule()
     if conf.rrt_tol_pct is None and conf.rt_tol_abs_min is None:
-        from .method_profiles import UnconfiguredCriterion
-        raise UnconfiguredCriterion(
-            "{0} sets no retention-time tolerance (relative % or minutes). Set one on "
-            "the method's QC criteria tab (RT Deviation), or switch the rule off."
-            .format(profile.method_id))
+        # neither tolerance is judged: each box is Off, or empty, which the
+        # run queue files (limit_states.empty_boxes)
+        return []
+    # the tolerance used: Relative where it is set, else Absolute; a flag is
+    # advisory while its box is in the state Evaluate
+    box = "rrt_deviation.relative" if conf.rrt_tol_pct is not None else "rrt_deviation.absolute"
+    advisory = _advisory_of(profile, [box])
     std_rows = calibrator_rows(rows, analyte, lambda r: r.observed_rt)
     if not std_rows:
         return []
@@ -1023,6 +1230,7 @@ def rrt_check_profiled(
                         value=f"{rt:.3f}",
                         issue=f"(RT) RRT dev {pct_dev*100:+.2f}% "
                               f"> ±{conf.rrt_tol_pct}%",
+                        advisory=advisory,
                     )
             elif abs(rt - avg_rt) > conf.rt_tol_abs_min:
                 flag = QCFlag(
@@ -1032,6 +1240,7 @@ def rrt_check_profiled(
                     value=f"{rt:.3f}",
                     issue=f"(RT) dev {rt-avg_rt:+.3f} min "
                           f"> ±{conf.rt_tol_abs_min} min",
+                    advisory=advisory,
                 )
         results.append(RTResult(
             analyte=analyte, injection_name=r.injection_name,
@@ -1072,7 +1281,7 @@ def single_transition_confirm_needed(
         return (f"{analyte} positive detect: single MS/MS transition — "
                 f"confirm by an orthogonal technique "
                 f"({conf.confirm_technique})"
-                + (f"; %diff between techniques must be < {conf.confirm_pct_diff_max:g}%"
+                + (f"; %diff between techniques must be \u2264 {conf.confirm_pct_diff_max:g}%"
                    if conf.confirm_pct_diff_max is not None else
                    "; no %diff limit is set (the method's QC criteria tab, Qualifier ion check)"))
     return None
@@ -1115,6 +1324,10 @@ def _extracted_qc_roles():
 
 
 EXTRACTED_QC_ROLES = _extracted_qc_roles()
+# the run's calibration standards and the instrument's checks: the
+# calibrators, the initial and continuing calibration verifications and the
+# continuing calibration blank
+RUN_CHECK_ROLES = frozenset(("CAL", "ICV", "CCV", "CCB"))
 
 
 def ccv_frequency_check(sequence: list, n: int, opening_required: bool = False,

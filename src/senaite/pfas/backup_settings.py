@@ -4,7 +4,8 @@
 The backup tool (tools/backup/pfasbackup.py) runs on the server; the LIMS
 only records what a site administrator asks for. Each change -- the
 destination, the time the backups run, the days old backups are removed,
-the public keys they are encrypted to -- is saved with a reason and waits;
+the public keys they are encrypted to, where the system snapshots and the
+store backups are kept -- is saved with a reason and waits;
 at its next run the tool reads the waiting changes, applies each it can
 (a destination must be mounted and writable; at least two public keys, no
 private key) and reports back, applied or refused with its reason. One site
@@ -12,7 +13,8 @@ administrator and the change log, no second approver. A
 waiting change can be withdrawn; a newer change to the same setting
 replaces it.
 
-    state = {"current": {dest, run_at, prune {days, at}, recipients [{fpr, holder}]},
+    state = {"current": {dest, run_at, prune {days, at}, recipients [{fpr, holder}],
+                         snapshots, store_backups},
              "changes": [{id, at, by, setting, before, after, reason,
                           state waiting|applied|refused|withdrawn|replaced,
                           applied_at, why}]}
@@ -34,7 +36,11 @@ import re
 
 KEY = "senaite.pfas.backup_settings"
 SETTINGS = ((u"dest", u"Destination"), (u"run_at", u"Backup runs at"),
-            (u"prune", u"Old backups removed on"), (u"recipients", u"Encrypted to"))
+            (u"prune", u"Old backups removed on"), (u"recipients", u"Encrypted to"),
+            (u"snapshots", u"System snapshots kept in"), (u"store_backups", u"Store backups kept in"))
+# the settings that name a folder on the server: the tool applies one only
+# where it is mounted and writable
+PATHS = (u"dest", u"snapshots", u"store_backups")
 LABEL = dict(SETTINGS)
 DAYS = (u"Mon", u"Tue", u"Wed", u"Thu", u"Fri", u"Sat", u"Sun")
 MIN_KEYS = 2
@@ -45,6 +51,8 @@ _FPR = re.compile(r"^[0-9A-Fa-f]{40}$")
 def problem(setting, value):
     if setting == u"dest":
         return u"" if (value or u"").startswith(u"/") else u"The destination is a full path, from /."
+    if setting in PATHS:
+        return u"" if (value or u"").startswith(u"/") else u"The folder is a full path, from /."
     if setting == u"run_at":
         return u"" if _HHMM.match(value or u"") else u"Give the time as HH:MM."
     if setting == u"prune":
@@ -138,7 +146,7 @@ def from_status(state, status):
     if status.get("recipients") is not None:
         cur["recipients"] = [{"fpr": f, "holder": names.get((f or u"").upper()) or u"Key %s" % (f or u"")[-8:]}
                              for f in status["recipients"]]
-    for k in (u"run_at", u"prune"):
+    for k in (u"run_at", u"prune", u"snapshots", u"store_backups"):
         if status.get(k):
             cur[k] = status[k]
     return state

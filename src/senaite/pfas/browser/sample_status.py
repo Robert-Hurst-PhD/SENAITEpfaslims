@@ -2,8 +2,9 @@
 """
 PFAS Analyst Batch Status view (@@pfas-sample-status).
 
-Shows per-batch (per-Worksheet) progress through the five PFAS lab stages:
-  Received → Extraction → On Instrument → QC Review → Report Published
+Shows each worksheet's progress through the five PFAS lab stages, the one
+line of stage names Data Review and the Client Tracker show too:
+  Received → Extraction → Analysis → Verify → Certificate issued
 
 Stage is computed from SENAITE worksheet workflow state + the guided
 extraction of the worksheet's batch (DB1: the tablet
@@ -14,9 +15,9 @@ drift from the real workflow.
 Stage detection rules:
   Stage 1 Received:       ws open + no extraction started
   Stage 2 Extraction:     ws open + extraction started, not finalized
-  Stage 3 On Instrument:  ws open + extraction finalized
-  Stage 4 QC Review:      ws to_be_verified OR (ws verified + no AR published)
-  Stage 5 Report Pub.:    ws verified + at least one AR published
+  Stage 3 Analysis:       ws open + extraction finalized
+  Stage 4 Verify:         ws to_be_verified OR (ws verified + no AR published)
+  Stage 5 Certificate:    ws verified + at least one AR published
 
 Mixed analysis states — least-advanced wins.  The worksheet FSM enforces this
 naturally: ws cannot advance to to_be_verified until ALL analyses reach
@@ -31,7 +32,7 @@ import logging
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
-from senaite.pfas.browser.view_helpers import ViewHelpers
+from senaite.pfas.browser.view_helpers import ViewHelpers, core_method_name
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 
@@ -43,13 +44,23 @@ STAGE_ON_INSTRUMENT = 3
 STAGE_QC_REVIEW     = 4
 STAGE_PUBLISHED     = 5
 
+# The one line of stage names: this page, Data Review's line of stages and
+# the Client Tracker all read it. Each stage's picture (icons.py) is named
+# here beside it, so a stage is drawn the same wherever it is listed.
 STAGES = [
     (STAGE_RECEIVED,      "Received"),
     (STAGE_EXTRACTION,    "Extraction"),
-    (STAGE_ON_INSTRUMENT, "On Instrument"),
-    (STAGE_QC_REVIEW,     "QC Review"),
-    (STAGE_PUBLISHED,     "Report Published"),
+    (STAGE_ON_INSTRUMENT, "Analysis"),
+    (STAGE_QC_REVIEW,     "Verify"),
+    (STAGE_PUBLISHED,     "Certificate issued"),
 ]
+STAGE_ICONS = {
+    STAGE_RECEIVED:      "received",
+    STAGE_EXTRACTION:    "extraction",
+    STAGE_ON_INSTRUMENT: "analysis",
+    STAGE_QC_REVIEW:     "verify",
+    STAGE_PUBLISHED:     "issued",
+}
 
 # Worksheet states that should be excluded from the active list
 _SKIP_STATES = frozenset(("rejected",))
@@ -67,6 +78,16 @@ def _workflow_state(obj):
         return wf_tool.getInfoFor(obj, "review_state", "")
     except Exception:
         return ""
+
+
+def _state_title(ws, state):
+    """The worksheet's workflow state as core titles it, never its id."""
+    try:
+        title = getToolByName(ws, "portal_workflow").getTitleForStateOnType(state, "Worksheet")
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("state title of %s: %s", getattr(ws, "getId", lambda: "?")(), exc)
+        title = None
+    return (title or state or u"").strip()
 
 
 def _fullname(context, userid):
@@ -184,13 +205,16 @@ def _get_method_name(ws):
         for analysis in ws.getAnalyses():
             method = analysis.getMethod()
             if method:
-                return method.Title() or method.getId()
+                return core_method_name(method)
     except Exception:
         pass
     return ""
 
 
-def _compute_stage(ws):
+_NOT_READ = object()
+
+
+def _compute_stage(ws, log=_NOT_READ):
     """
     Return (stage_int, responsible_display_name) for a worksheet.
 
@@ -220,8 +244,10 @@ def _compute_stage(ws):
         submitter_id = _get_worksheet_actor(ws, "submit") or analyst_id
         return STAGE_QC_REVIEW, _fullname(ws, submitter_id)
 
-    # ws is "open" — differentiate Received / Extraction / On Instrument via log
-    log = _load_extraction_log(ws)
+    # ws is "open" — differentiate Received / Extraction / On Instrument via
+    # log (read here unless the caller already has it)
+    if log is _NOT_READ:
+        log = _load_extraction_log(ws)
 
     if log is None:
         return STAGE_RECEIVED, _fullname(ws, analyst_id)
@@ -242,7 +268,8 @@ def _build_stage_steps(current_stage):
             status = "current"
         else:
             status = "pending"
-        steps.append({"num": s_num, "label": s_label, "status": status})
+        steps.append({"num": s_num, "label": s_label, "status": status,
+                      "icon": STAGE_ICONS.get(s_num, "received")})
     return steps
 
 
@@ -257,26 +284,58 @@ def _fmt_iso(iso_str):
 
 # ── View ─────────────────────────────────────────────────────────────────────
 
+SHOW = ((u"", u"Not finished"), (u"published", u"Report published"), (u"all", u"All"))
+
+
+def keep(show, ws_state, published):
+    """Whether Batch Status lists a worksheet: "" (the default) what is
+    not finished (any worksheet but one whose report is published),
+    "published" those, "all" every one. `published` is asked only of a
+    verified worksheet, the one state where it can be true."""
+    if show == u"all":
+        return True
+    done = ws_state == "verified" and published()
+    return done if show == u"published" else not done
+
+
 class PFASSampleStatusView(ViewHelpers, BrowserView):
     """
-    @@pfas-sample-status — analyst/manager per-batch status view.
+    @@pfas-sample-status: where each worksheet stands, one page at a time.
 
-    Lists all SENAITE Worksheets (excluding rejected) sorted newest-first,
-    showing which of the five PFAS lab stages each batch is at, who is
-    responsible, and the extraction log status if available.
+    Lists the SENAITE Worksheets (rejected ones left out), newest first,
+    opening on those not finished: which of the five PFAS lab stages each
+    is at, who is responsible, and its guided extraction. Lab staff only
+    (perms.keep_clients_out): a client follows a sample on the Client
+    Tracker.
     """
 
     template = ViewPageTemplateFile("templates/sample_status.pt")
+    SHOW = SHOW
 
     def __call__(self):
         flatten_form(self.request)
         return self.template()
 
-    def batches(self):
-        """
-        Return list of batch-status dicts for all active worksheets.
-        Each dict is safe to use directly in the TAL template.
-        """
+    def show(self):
+        v = (self.request.form.get("show") or u"").strip()
+        return v if v in [k for k, _l in SHOW] else u""
+
+    def q(self):
+        return (self.request.form.get("q") or u"").strip()
+
+    def url(self, show=None, page=None):
+        from senaite.pfas.browser.list_paging import list_url
+        return list_url(u"%s/@@pfas-sample-status" % self.portal_url(),
+                        [("show", self.show() if show is None else show), ("q", self.q()),
+                         ("page", page if page and page > 1 else None)])
+
+    def shows(self):
+        return [{"label": l, "url": self.url(show=k), "on": k == self.show()} for k, l in SHOW]
+
+    def _brains(self):
+        """The worksheets the filters keep, newest first: the catalog's
+        order and metadata, a worksheet woken only to ask whether a verified
+        one's report is published."""
         portal = _portal(self.context)
         # SENAITE 2.6 routes Worksheets to senaite_catalog_worksheet, not
         # portal_catalog.  Fall back to portal_catalog if the dedicated
@@ -285,43 +344,84 @@ class PFASSampleStatusView(ViewHelpers, BrowserView):
         if catalog is None:
             catalog = getToolByName(portal, "portal_catalog")
         try:
-            brains = catalog(portal_type="Worksheet")
+            brains = catalog(portal_type="Worksheet", sort_on="created", sort_order=str("descending"))
         except Exception as exc:
             logger.warning("Could not query Worksheets: %s", exc)
             return []
-
-        result = []
+        show, q = self.show(), self.q().lower()
+        out = []
+        self._any = False
         for brain in brains:
             try:
                 ws_state = brain.review_state
                 if ws_state in _SKIP_STATES:
                     continue
-                ws = brain.getObject()
-                stage, responsible = _compute_stage(ws)
-                log = _load_extraction_log(ws)
-                sample_ids = _get_sample_ids(ws)
-                result.append({
-                    "batch_id":    ws.getId(),
-                    "title":       ws.Title() or ws.getId(),
-                    "ws_state":    ws_state,
-                    "stage":       stage,
-                    "stage_label": dict(STAGES).get(stage, ""),
-                    "responsible": responsible,
-                    "method":      _get_method_name(ws),
-                    "sample_ids":  sample_ids,
-                    "sample_count": len(sample_ids),
-                    "created":     self.lab_at(ws.created(), ws.created().strftime("%Y-%m-%d"), u"%Y-%m-%d"),
-                    "steps":       _build_stage_steps(stage),
-                    # Extraction log details (empty strings if no log)
-                    "extraction_started":
-                        _fmt_iso(log.get("started",   "")) if log else "",
-                    "extraction_completed":
-                        _fmt_iso(log.get("completed", "")) if log else "",
-                    "extraction_analyst":
-                        log.get("analyst", "") if log else "",
-                })
+                self._any = True
+                if q and q not in (u"%s %s" % (brain.getId, brain.Title or u"")).lower():
+                    continue
+                if keep(show, ws_state,
+                        lambda: _compute_stage(brain.getObject())[0] == STAGE_PUBLISHED):
+                    out.append(brain)
             except Exception as exc:
-                logger.warning("Error processing worksheet %s: %s",
-                               getattr(brain, "getId", lambda: "?")(), exc)
-        result.sort(key=lambda r: r["created"], reverse=True)
-        return result
+                logger.warning("Error filtering worksheet %s: %s", getattr(brain, "getId", "?"), exc)
+        return out
+
+    def paging(self):
+        if not hasattr(self, "_pg"):
+            from senaite.pfas.browser.list_paging import page_number, paging
+            self._kept = self._brains()
+            self._pg = paging(len(self._kept), page_number(self.request.form),
+                              lambda p: self.url(page=p))
+        return self._pg
+
+    def empty_text(self):
+        self.paging()
+        if not getattr(self, "_any", False):
+            return u"No worksheet yet. A worksheet is made from received samples."
+        if self.q():
+            return u"No worksheet matches this search."
+        return {u"": u"Every worksheet's report is published.",
+                u"published": u"No worksheet has its report published yet."}.get(
+                    self.show(), u"No worksheet yet. A worksheet is made from received samples.")
+
+    def batches(self):
+        """The page of worksheets shown, each a dict safe to use directly
+        in the TAL template."""
+        if not hasattr(self, "_rows"):
+            pg = self.paging()
+            self._rows = []
+            for brain in self._kept[pg["start"]:pg["end"]]:
+                try:
+                    self._rows.append(self._row(brain.getObject(), brain.review_state))
+                except Exception as exc:
+                    logger.warning("Error processing worksheet %s: %s",
+                                   getattr(brain, "getId", "?"), exc)
+        return self._rows
+
+    def _row(self, ws, ws_state):
+        log = _load_extraction_log(ws)
+        stage, responsible = _compute_stage(ws, log)
+        sample_ids = _get_sample_ids(ws)
+        return {
+            "batch_id":    ws.getId(),
+            "url":         ws.absolute_url(),
+            "title":       ws.Title() or ws.getId(),
+            "ws_state":    ws_state,
+            "ws_state_title": _state_title(ws, ws_state),
+            "stage":       stage,
+            "stage_label": dict(STAGES).get(stage, ""),
+            "stage_icon":  STAGE_ICONS.get(stage),
+            "responsible": responsible,
+            "method":      _get_method_name(ws),
+            "sample_ids":  sample_ids,
+            "sample_count": len(sample_ids),
+            "created":     self.lab_at(ws.created(), ws.created().strftime("%Y-%m-%d"), u"%Y-%m-%d"),
+            "steps":       _build_stage_steps(stage),
+            # Extraction log details (empty strings if no log)
+            "extraction_started":
+                _fmt_iso(log.get("started",   "")) if log else "",
+            "extraction_completed":
+                _fmt_iso(log.get("completed", "")) if log else "",
+            "extraction_analyst":
+                log.get("analyst", "") if log else "",
+        }

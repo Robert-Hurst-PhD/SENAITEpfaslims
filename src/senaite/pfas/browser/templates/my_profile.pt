@@ -25,7 +25,7 @@
         <span tal:replace="python: u', '.join(view.roles()) or u'none'">Analyst</span>.
         Job title, credentials and what you may sign are set by a manager on People &amp; Roles.</p>
       <p class="bench-sub">May sign documents as:
-        <strong tal:content="python: u', '.join(info['sign_as']) or u'nothing yet'">preparer</strong></p>
+        <strong tal:content="python: u', '.join(view.sign_titles(info['sign_as'])) or u'nothing yet'">Preparer</strong></p>
     </section>
 
     <section class="bench-block">
@@ -53,6 +53,50 @@
           <button class="btn-sm btn-secondary" type="submit">Remove signature</button>
         </form>
       </tal:has>
+    </section>
+
+    <section class="bench-block" id="signing" tal:define="sg view/signing">
+      <h2 class="bench-h">Signing</h2>
+      <p class="bench-sub" tal:content="sg/summary"></p>
+      <div class="form-actions">
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@change-password">Change password</a>
+      </div>
+      <form method="post" class="rt-form" tal:condition="sg/has_pin"
+            tal:attributes="action string:${view/portal_url}/@@pfas-my-profile">
+        <input type="hidden" name="_authenticator" tal:attributes="value token" />
+        <input type="hidden" name="action" value="sign_with" />
+        <label class="pfas-switch">
+          <input type="checkbox" name="sign_with_pin" value="on"
+                 tal:attributes="checked python:'checked' if sg['method'] == 'pin' else None" /><span class="pfas-switch-track"></span>
+          Sign with my PIN</label>
+        <button class="btn-sm btn-primary" type="submit">Save</button>
+      </form>
+      <form method="post" autocomplete="off" tal:attributes="action string:${view/portal_url}/@@pfas-my-profile">
+        <input type="hidden" name="_authenticator" tal:attributes="value token" />
+        <input type="hidden" name="action" value="set_my_pin" />
+        <div class="pfas-form-row">
+          <div class="pfas-form-field">
+            <label for="pin-password">Your password</label>
+            <input type="password" id="pin-password" name="current_password" required="required" autocomplete="current-password" />
+          </div>
+          <div class="pfas-form-field">
+            <label for="pin-new">New PIN</label>
+            <input type="password" id="pin-new" name="new_pin_password" required="required" inputmode="numeric" autocomplete="new-password" />
+          </div>
+          <div class="pfas-form-field">
+            <label for="pin-again">New PIN again</label>
+            <input type="password" id="pin-again" name="new_pin_password_again" required="required" inputmode="numeric" autocomplete="new-password" />
+          </div>
+        </div>
+        <p class="fld-help" tal:content="sg/pin_rule"></p>
+        <button class="btn-sm btn-primary" type="submit" tal:content="python:u'Change PIN' if sg['has_pin'] else u'Set PIN'">Set PIN</button>
+      </form>
+      <form method="post" class="rt-form" tal:condition="sg/has_pin"
+            tal:attributes="action string:${view/portal_url}/@@pfas-my-profile">
+        <input type="hidden" name="_authenticator" tal:attributes="value token" />
+        <input type="hidden" name="action" value="remove_my_pin" />
+        <button class="btn-sm btn-secondary" type="submit">Remove PIN</button>
+      </form>
     </section>
 
     <section class="bench-block">

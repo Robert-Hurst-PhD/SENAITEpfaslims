@@ -88,6 +88,39 @@
     var s = pyFixed(v, 0), sign = s.charAt(0) === "-" ? "-" : "";
     return sign + s.slice(sign.length).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
+  /* an axis number in scientific notation as a coefficient times 10 with a
+     superscript power (2.5 × 10⁵), never e notation; zero stays "0". A
+     count below 10,000 is written plainly, so one axis never mixes forms:
+     axisCounts(max) gives the label function of an axis ending at max. */
+  var SUPER = { "0": "\u2070", "1": "\u00b9", "2": "\u00b2", "3": "\u00b3", "4": "\u2074", "5": "\u2075",
+                "6": "\u2076", "7": "\u2077", "8": "\u2078", "9": "\u2079", "-": "\u207b" };
+  function sciCounts(v) {
+    if (v === 0) { return "0"; }
+    if (!isFinite(v)) { return String(v); }
+    var parts = Math.abs(v).toExponential(2).split("e");
+    var mant = parts[0].replace(/0+$/, "").replace(/\.$/, "");
+    var power = String(parseInt(parts[1], 10)).replace(/./g, function (c) { return SUPER[c]; });
+    return (v < 0 ? "-" : "") + mant + " \u00d7 10" + power;
+  }
+  /* the axis' tick values: a step of 1, 2 or 5 times a power of ten, as few
+     as keep each label clear of the next (about one per `room` pixels of the
+     axis), from the first step at or above min up to the last at or below
+     max, which need not be max itself. */
+  function niceTicks(min, max, height, room) {
+    var span = max - min;
+    if (!isFinite(span) || span <= 0) { return [min]; }
+    var want = Math.max(2, Math.floor((height > 0 ? height : 200) / (room || 36)));
+    var raw = span / want, pow = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10)), f = raw / pow;
+    var step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
+    var first = Math.ceil(min / step - 1e-9), out = [], k;
+    for (k = first; k * step <= max + step * 1e-9; k += 1) {
+      out.push(parseFloat((k * step).toPrecision(12)));
+    }
+    return out;
+  }
+  function axisCounts(max) {
+    return function (v) { return Math.abs(max) >= 10000 ? sciCounts(v) : counts(v); };
+  }
   /* "%g": six significant digits, trailing zeros dropped, an exponent below
      1e-4 or from 1e6 */
   function pyG(v) {
@@ -999,7 +1032,7 @@
   var CALIBRATOR = "CAL";
   /* what deleting the peak of trace `index` (0 the quantifier) does, said
      before it is made: a qualifier's result reads N.C.; the quantifier's
-     reads N.D., an isotope standard's natives lose their concentration, and
+     reads N.D., an isotope standard's natives lose their concentration (N.Q.), and
      a calibrator comes off the curve it was on */
   /* an analyte is keyed by its keyword (the traces' and edits'); it is
      shown by its label, the compound library's display name its rows carry */
@@ -1078,22 +1111,23 @@
     }
     if (a.fwhm_s != null) { rows.push(["FWHM", num(a.fwhm_s, 1) + " s"]); }
     if (a.tailing != null) { rows.push(["Tailing", num(a.tailing, 2)]); }
+    /* the asymmetry factor at 10 % of the height, or why it was not read */
+    if (a.asymmetry != null) { rows.push(["Asymmetry", num(a.asymmetry, 2)]); }
+    else if (a.asymmetry_note) { rows.push(["Asymmetry", "Not measured: " + a.asymmetry_note]); }
     if (a.plates != null) { rows.push(["Plates", num(a.plates, 0)]); }
     if (a.qual_sn != null) { rows.push(["Qualifier S/N", num(a.qual_sn, 1)]); }
     if (a.file_transition) { rows.push(["File transition", a.file_transition]); }
     rows.push(["Isotope standard", a.is ? shown(a.is) : "—"]);
     return rows;
   }
-  var OVERFLOW_TEXT = "Overflow at the apex: the stored value is above the file's number range.";
   /* the fit's state by its short name: "Fit refused", "Pair fit failed" */
   function fitName(text) { return String(text || "").split(":")[0]; }
   /* the flags under the readout as chips, {cls: a badge class, text}: the
      result's flags (a failure on a row that failed, else a warning: the
-     row carries no kind of its own), the overflow, the fit by a short name,
+     row carries no kind of its own), the fit by a short name,
      and what the method notes of a manual peak drawn (notes: a warning) */
   function flagChips(a, notes) {
     var out = (a.flags || []).map(function (f) { return { cls: a.state === "fail" ? "badge-fail" : "badge-warn", text: f }; });
-    if (a.overflowed) { out.push({ cls: "badge-fail", text: "Overflow" }); }
     if (a.fit_text) { out.push({ cls: "badge-warn", text: fitName(a.fit_text) }); }
     (notes || []).forEach(function (n) { out.push({ cls: "badge-warn", text: n }); });
     return out;
@@ -1104,7 +1138,6 @@
   /* the long texts behind the chips and the peak's note, for Details */
   function longNotes(a) {
     var out = [];
-    if (a.overflowed) { out.push(OVERFLOW_TEXT); }
     if (a.fit_text && a.fit_text !== fitName(a.fit_text)) { out.push(a.fit_text); }
     if (a.note) { out.push(a.note); }
     return out;
@@ -1112,12 +1145,22 @@
 
   /* the readout strip and the flags (the notes on a manual peak drawn
      join them), under the charts; a line for what the card says it did */
-  function cardHead(a) {
+  /* an editable cell of the readout: the integration's start or end time as a box,
+     marked by a pencil and a dashed edge; the edit is the card's own (pending until Re-integrate) */
+  var PENCIL = '<svg class="raw-pencil" viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" ' +
+               'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+               '<path d="M2 14l1-4 8-8 3 3-8 8z"/><path d="M9.5 3.5l3 3"/></svg>';
+  function edgeCell(edge, label) {
+    return '<div class="raw-edit-cell"><dt>' + label + PENCIL + '</dt><dd><input type="number" step="any" data-edge="' +
+           edge + '" aria-label="' + label + ', min" title="Edit, then Re-integrate" /> <span class="raw-unit">min</span></dd></div>';
+  }
+  function cardHead(a, editable) {
     var h = '<dl class="raw-readout">';
     readout(a).forEach(function (c) {
       h += "<div><dt>" + esc(c[0]) + "</dt><dd>" + esc(c[1]) +
            (c[2] ? '<span class="raw-under">' + esc(c[2]) + "</span>" : "") + "</dd></div>";
     });
+    if (editable) { h += edgeCell("start", "Start") + edgeCell("end", "End"); }
     h += "</dl>";
     h += '<ul class="raw-flags" data-role="flags">' + chipItems(flagChips(a)) + "</ul>";
     return h + '<p class="raw-note" data-role="said" aria-live="polite"></p>';
@@ -1126,7 +1169,7 @@
      curve the concentration was read on, a button to the Calibration tab */
   function cardDetail(a) {
     var h = '<details class="raw-details"><summary class="btn-help is-term">Details</summary><dl class="raw-details-list">';
-    details(a).forEach(function (kv) { h += "<dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd>"; });
+    details(a).forEach(function (kv) { h += "<div><dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd></div>"; });
     h += "</dl>";
     longNotes(a).forEach(function (n) { h += '<p class="raw-note">' + esc(n) + "</p>"; });
     if (a.conc != null) {
@@ -1169,13 +1212,11 @@
          '<canvas data-role="traces" tabindex="0" role="application" aria-label="The trace, its peak and baseline. ' +
          'Menu key for its actions."></canvas></div>';
     h += "</div>";
-    h += cardHead(a);
+    h += cardHead(a, editable);
     if (editable) {
       h += '<div class="raw-edit" data-role="edit">' +
            '<div class="raw-pane" data-pane="integrate">' +
              '<div class="raw-edges">' +
-               '<label>Start, min <input type="number" step="any" data-edge="start" /></label>' +
-               '<label>End, min <input type="number" step="any" data-edge="end" /></label>' +
                '<label hidden="hidden">Start level, counts <input type="number" step="any" data-level="start" /></label>' +
                '<label hidden="hidden">End level, counts <input type="number" step="any" data-level="end" /></label>' +
              "</div>" +
@@ -1514,11 +1555,69 @@
     entry("restore", "Restore automatic", "", s.edited || s.changed ? null : "The trace is automatic.",
           { discard: !!s.changed });
     out.push({ sep: true });
+    /* the compound's expected time on the method, from the quantifier's
+       found apex as the run stored it; only where the card offers it */
+    var rt = s.setRt;
+    if (rt) {
+      entry("set-rt", "Set as expected retention time", "",
+            !rt.quant ? "The expected time is set from the quantifier peak." :
+            rt.rt == null ? "No detected peak to take the time from." :
+            rt.pending ? "An edit of this peak waits for the run to be processed." :
+            rt.expected != null && Math.round(rt.expected * 1e4) === Math.round(rt.rt * 1e4) ?
+              "The expected retention time is already " + pyFixed(rt.rt, 3) + " min." : null);
+      out.push({ sep: true });
+    }
     entry("zoom-peak", "Zoom to peak", "Z", edges || s.peak ? null : "No peak to zoom to.");
     entry("zoom-window", "Zoom to window", "W");
     entry("copy", "Copy values", "");
     return out;
   }
+
+  /* ── the expected retention time, a line on the chart ─────────────────── */
+  /* the times every trace of the compound holds, [lo, hi]: the latest first
+     time to the earliest last time, where the expected time may be set
+     (expected_rt.span); null when no trace holds a time */
+  function rtSpan(traces) {
+    var lo = -Infinity, hi = Infinity, any = false;
+    (traces || []).forEach(function (o) {
+      var t = (o && o.t) || [];
+      if (t.length) { any = true; lo = Math.max(lo, t[0]); hi = Math.min(hi, t[t.length - 1]); }
+    });
+    return any && lo <= hi ? [lo, hi] : null;
+  }
+  /* the time the line dragged to x is set at: the stored sample of t nearest
+     x inside span, kept to the ten-thousandth of a minute as the method
+     keeps it and never past span's ends; null when span holds no sample */
+  function rtDragTime(t, x, span) {
+    if (!span || x == null || !isFinite(x)) { return null; }
+    var i = snapIndex(t, Math.max(span[0], Math.min(span[1], x)), span);
+    if (i < 0) { return null; }
+    var v = Math.round(t[i] * 1e4) / 1e4;
+    if (v < span[0]) { v = Math.ceil(span[0] * 1e4) / 1e4; }
+    if (v > span[1]) { v = Math.floor(span[1] * 1e4) / 1e4; }
+    return v;
+  }
+  /* a press at px takes the line drawn at linePx, within tol pixels */
+  function rtHit(px, linePx, tol) {
+    return linePx != null && isFinite(linePx) && Math.abs(px - linePx) <= tol;
+  }
+  /* the fields posted to set the time: the card's, and the time where the
+     line was dragged (none: the server takes the quantifier's found apex) */
+  function rtPayload(a, mode, time) {
+    var out = { injection: a.injection, analyte: a.analyte, mode: mode || "injection" };
+    if (time != null) { out.rt = String(time); }
+    return out;
+  }
+  /* what is said once the method holds the new time, or why it does not */
+  function rtSetText(name, was, now) {
+    return name + ": expected retention time set to " + pyFixed(now, 3) + " min" +
+           (was == null ? "." : ", was " + pyFixed(was, 3) + " min.");
+  }
+  function rtRefusedText(name, error) {
+    return name + ": expected retention time not set. " + (error || "The server could not be reached.");
+  }
+  /* the line's label */
+  function rtLabel(v) { return "Expected " + pyFixed(v, 3) + " min"; }
 
   /* the dialog's keys: e {key, shiftKey, ctrlKey, metaKey, altKey, tag
      (the focused element's), editable (a contenteditable), onChart (the
@@ -1651,7 +1750,8 @@
     var f = form();
     var editable = !!(a.can_edit && data.can_edit !== false && f);
     var ui = { a: a, data: data, traces: traces, index: 0, chart: null, armed: false, pending: null,
-               at: null, handle: "start", view: null, line: null, drawn: null, chartFocus: false };
+               at: null, handle: "start", view: null, line: null, drawn: null, chartFocus: false,
+               rt: a.expected_rt == null ? null : Number(a.expected_rt), rtDrag: null, rtBusy: false };
     current = ui;
     /* the quantifier is posted with no transition of its own */
     if (last && !last.transition) { last.transition = a.quant.transition; }
@@ -1690,6 +1790,10 @@
     var st = null;
     function tr() { return traces[ui.index]; }
     function rules() { return a.rules || {}; }
+    /* the expected-time line: on the quantifier, where the card offers the
+       route and the method holds a time; where it is being dragged to */
+    function rtOn() { return !!a.set_rt_url && ui.index === 0 && (ui.rt != null || ui.rtDrag != null); }
+    function rtShown() { return ui.rtDrag != null ? ui.rtDrag : ui.rt; }
     function line() { return st.baseline || a.method_baseline; }
     /* a change drawn and not posted: Previous and Next ask before leaving it */
     ui.dirty = function () { return !!(editable && st && st.mode === "integrate" && st.touched); };
@@ -1800,7 +1904,9 @@
                apex: st.kind === "apex" ? st.apex : null, minSn: lim.min_manual_sn, amp: rules().search_amp_sn, slope: rules().search_slope,
                add: addAt(a, t, ui.at), split: splitAt(a, t, ui.at), deleted: !!t.deleted && t.edit !== "pending",
                edited: !!t.edit && t.edit !== "auto", changed: !!st.touched || st.mode !== "integrate",
-               confirm: confirmsDelete(a, ui.index, false), peak: !!(t.peak && t.peak.start != null) };
+               confirm: confirmsDelete(a, ui.index, false), peak: !!(t.peak && t.peak.start != null),
+               setRt: a.set_rt_url ? { quant: ui.index === 0, rt: a.quant && a.quant.deleted ? null : a.rt,
+                                       expected: a.expected_rt, pending: tr().edit === "pending" } : null };
     }
     var VIEW_ONLY = ["zoom-peak", "zoom-window", "copy"];
     function entries() {
@@ -1860,7 +1966,38 @@
         zoomTo(null);
       } else if (id === "copy") {
         copyValues();
+      } else if (id === "set-rt") {
+        setExpected(null);
       }
+    }
+    /* a time onto the method, posted to the analyst's own route with no
+       reload: the dragged line's time, or none for the quantifier's found
+       apex, which the server reads from the run. The line then stays where
+       the method holds it, what was set is said and Next takes the focus,
+       so the next compound is one key away; a refusal puts the line back
+       and says why. */
+    function setExpected(time) {
+      if (ui.rtBusy) { return; }
+      ui.rtBusy = true;
+      var name = shown(a), fd = new window.FormData(), p = rtPayload(a, data.mode, time);
+      for (var k in p) { if (p.hasOwnProperty(k)) { fd.append(k, p[k]); } }
+      if (f && f.elements._authenticator) { fd.append("_authenticator", f.elements._authenticator.value); }
+      function done(j) {
+        ui.rtBusy = false;
+        ui.rtDrag = null;
+        if (j && j.ok) {
+          ui.rt = a.expected_rt = j["new"];
+          announce(rtSetText(name, j.old, j["new"]), false);
+          if (current === ui) { focusNext(); }
+        } else {
+          announce(rtRefusedText(name, j && j.error), true);
+        }
+        if (current === ui) { paint(lastRes); }
+      }
+      window.fetch(a.set_rt_url, { method: "POST", body: fd, credentials: "same-origin",
+                                   headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(done, function () { done(null); });
     }
     function openMenu(opts) {
       if (!C.menu) { return; }
@@ -1946,7 +2083,11 @@
         options: { animation: false, maintainAspectRatio: false,
                    plugins: { legend: { display: false }, annotation: { annotations: {} } },
                    scales: { x: { title: { display: true, text: "min" }, min: x[0], max: x[1] },
-                             y: { min: y[0], max: y[1] } } }
+                             y: { min: y[0], max: y[1],
+                                  afterBuildTicks: function (axis) {
+                                    axis.ticks = niceTicks(axis.min, axis.max, axis.height).map(function (v) { return { value: v }; });
+                                  },
+                                  ticks: { callback: function (v) { return axisCounts(this.max)(v); } } } } }
       });
       if (wrap) { gestures(wrap); }
     }
@@ -2009,6 +2150,13 @@
                                 borderWidth: 2, click: function () { if (!ui.justDragged) { choose(c); } } };
         });
       }
+      if (rtOn()) {
+        var rv = rtShown();
+        marks.expected = { type: "line", xMin: rv, xMax: rv, borderWidth: 2, borderDash: [6, 4],
+                           borderColor: token(ui.rtDrag != null ? "--s-warning" : "--s-info"),
+                           label: { display: true, content: rtLabel(rv), position: "start",
+                                    backgroundColor: token("--s-info-lt"), color: token("--s-info-text") } };
+      }
       ui.chart.options.plugins.annotation.annotations = marks;
       ui.chart.update("none");
     }
@@ -2029,19 +2177,26 @@
         var ar = ui.chart.chartArea;
         return q.px >= ar.left && q.px <= ar.right && q.py >= ar.top && q.py <= ar.bottom;
       }
-      /* what a press at q takes: a handle (within 9 px), the line (6 px), the axis, or nothing */
+      /* what a press at q takes: a handle (within 9 px), the expected-time
+         line (5 px), the baseline (6 px), the axis, or nothing */
       function target(q) {
         var ar = ui.chart.chartArea;
         if (q.py > ar.bottom && q.px >= ar.left && q.px <= ar.right) { return "axis"; }
-        var ln = ui.line;
-        if (!ln || !editable || st.mode !== "integrate") { return null; }
+        var ln = ui.line, working = !!ln && editable && st.mode === "integrate";
         var xs = ui.chart.scales.x, ys = ui.chart.scales.y, best = null, bestD = 9;
-        ["start", "end"].forEach(function (h, k) {
-          var d = Math.sqrt(Math.pow(q.px - xs.getPixelForValue(ln[2 * k]), 2) +
-                            Math.pow(q.py - ys.getPixelForValue(ln[2 * k + 1]), 2));
-          if (d <= bestD) { best = h; bestD = d; }
-        });
-        if (best) { return best; }
+        if (working) {
+          ["start", "end"].forEach(function (h, k) {
+            var d = Math.sqrt(Math.pow(q.px - xs.getPixelForValue(ln[2 * k]), 2) +
+                              Math.pow(q.py - ys.getPixelForValue(ln[2 * k + 1]), 2));
+            if (d <= bestD) { best = h; bestD = d; }
+          });
+          if (best) { return best; }
+        }
+        if (rtOn() && !ui.rtBusy && q.py >= ar.top && q.py <= ar.bottom &&
+            rtHit(q.px, xs.getPixelForValue(rtShown()), 5)) {
+          return "rt";
+        }
+        if (!working) { return null; }
         var x = timeAt(q.px);
         if (x > ln[0] && x < ln[2] && Math.abs(q.py - ys.getPixelForValue(interp(x, ln[0], ln[2], ln[1], ln[3]))) <= 6) {
           return "line";
@@ -2061,7 +2216,7 @@
         held = target(q);
         if (!held) { return; }
         press = q;
-        axis = held === "line" || held === "axis" ? "x" : null;
+        axis = held === "line" || held === "axis" || held === "rt" ? "x" : null;
         moved = false;
         from = held === "axis" ? { view: [ui.chart.scales.x.min, ui.chart.scales.x.max] }
                                : { start: st.start, end: st.end, x: timeAt(q.px) };
@@ -2077,7 +2232,7 @@
           if (inArea(q)) { ui.at = timeAt(q.px); }
           var over = target(q);
           wrap.classList.toggle("is-edge", over === "start" || over === "end");
-          wrap.classList.toggle("is-line", over === "line" || over === "axis");
+          wrap.classList.toggle("is-line", over === "line" || over === "axis" || over === "rt");
           return;
         }
         if (held === "region") {
@@ -2100,6 +2255,11 @@
           zoomTo(panView(from.view, -(q.px - press.px) / (ar.right - ar.left) * w, limits()));
           return;
         }
+        if (held === "rt") {            /* the expected time, on a sample every trace holds */
+          var to = rtDragTime(traces[0].t, timeAt(q.px), rtSpan(traces));
+          if (to != null && to !== ui.rtDrag) { ui.rtDrag = to; paint(lastRes); }
+          return;
+        }
         var d = handleDrag(handleState(held, from), { x: timeAt(q.px), y: countAt(q.py), axis: axis, shift: e.shiftKey });
         if (d.start !== st.start || d.end !== st.end || d.levels[0] !== (st.handles || ui.drawn || [])[0] ||
             d.levels[1] !== (st.handles || ui.drawn || [])[1] || d.manual[0] !== st.manual[0] || d.manual[1] !== st.manual[1]) {
@@ -2117,6 +2277,22 @@
           if (box) { zoomTo(box.x, box.y); } else { ui.chart.update("none"); }
           ui.justDragged = true;       /* the click that ends the box is not a candidate's */
           window.setTimeout(function () { ui.justDragged = false; }, 0);
+          return;
+        }
+        if (held === "rt") {
+          held = null;
+          wrap.classList.remove("is-dragging");
+          try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* released already */ }
+          ui.justDragged = true;
+          window.setTimeout(function () { ui.justDragged = false; }, 0);
+          /* released where it was dragged to: the method takes the time;
+             a cancelled drag puts the line back */
+          if (e.type === "pointerup" && moved && ui.rtDrag != null && ui.rtDrag !== ui.rt) {
+            setExpected(ui.rtDrag);
+          } else {
+            ui.rtDrag = null;
+            paint(lastRes);
+          }
           return;
         }
         held = null;
@@ -2357,6 +2533,26 @@
       });
     }
     showTrace();
+    /* the last expected time set stays in view as the walk goes on */
+    var said = body.querySelector('[data-role="said"]');
+    if (said && rtLast && a.set_rt_url) { said.textContent = rtLast; }
+  }
+
+  /* the last expected retention time set, said on each card opened after it */
+  var rtLast = null;
+  /* what the expected-time line did, said on the open card */
+  function announce(text, isError) {
+    var C = components(), box = C && C.drawer && C.drawer.el ? C.drawer.el.querySelector('[data-role="said"]') : null;
+    if (!isError) { rtLast = text; }
+    if (box) {
+      box.className = isError ? "raw-refusal" : "raw-note";
+      box.textContent = text;
+    }
+  }
+  /* the focus on Next, where there is a next chromatogram */
+  function focusNext() {
+    var C = components(), b = C && C.drawer && C.drawer.el ? C.drawer.el.querySelector('button[data-step="1"]') : null;
+    if (b && !b.disabled) { b.focus(); }
   }
 
   /* the card the dialog shows or is fetching, {data, injection, analyte}:
@@ -2498,10 +2694,17 @@
 
   /* one entry of the list down the left: a button to its page, its type
      and how many of its rows are flagged */
+  /* the failure diamond before a count of flagged rows (icons.py); without
+     the page's drawings, the word */
+  function flagMark() {
+    var w = typeof window !== "undefined" ? window : null;
+    var I = w && w.PFAS && w.PFAS.components && w.PFAS.components.icon;
+    return (I && I.svg("fail", { label: "Flagged" })) || "flagged ";
+  }
   function listItem(mode, i, selected) {
     return '<a class="btn-sm btn-secondary" href="' + listHref(mode, i.name) + '"' +
            (i.name === selected ? ' aria-current="true"' : "") + ">" + esc(i.label || i.name) +
-           '<span class="raw-type">' + esc(i.type || "") + (i.flagged ? " · ✗ " + esc(i.flagged) : "") + "</span></a>";
+           '<span class="raw-type">' + esc(i.type || "") + (i.flagged ? " · " + flagMark() + esc(i.flagged) : "") + "</span></a>";
   }
 
   function thumbButton(data, th, pendingKeys) {
@@ -2609,10 +2812,12 @@
               typedEdge: typedEdge, edgeStep: edgeStep, injectionType: injectionType, deleteWarning: deleteWarning, confirmsDelete: confirmsDelete,
               knownState: knownState, listItem: listItem, apexTolerance: apexTolerance, nearestApex: nearestApex,
               matchCandidate: matchCandidate, shown: shown, labelIn: labelIn, BASELINES: BASELINES, peakNotes: peakNotes, shareOf: shareOf, outward: outward,
-              walkReach: walkReach, readMargin: readMargin, readReach: readReach, halfWidths: halfWidths, counts: counts,
+              walkReach: walkReach, readMargin: readMargin, readReach: readReach, halfWidths: halfWidths, counts: counts, sciCounts: sciCounts, axisCounts: axisCounts, niceTicks: niceTicks,
               levelsOutside: levelsOutside, edgeNotes: edgeNotes, HALF_WIDTH_SIGMA: HALF_WIDTH_SIGMA,
               DEFAULT_SEARCH_AMP_SN: DEFAULT_SEARCH_AMP_SN, DEFAULT_SEARCH_SLOPE: DEFAULT_SEARCH_SLOPE,
               DEFAULT_SEARCH_SMOOTH_PCT: DEFAULT_SEARCH_SMOOTH_PCT, autoWidthPoints: autoWidthPoints, handleDrag: handleDrag, postedLevels: postedLevels,
+              rtSpan: rtSpan, rtDragTime: rtDragTime, rtHit: rtHit, rtPayload: rtPayload, rtSetText: rtSetText,
+              rtRefusedText: rtRefusedText, rtLabel: rtLabel,
               menuEntries: menuEntries, keyMap: keyMap, chipItems: chipItems, addAt: addAt, splitAt: splitAt, geometryOf: geometryOf,
               zoomView: zoomView, panView: panView, spanY: spanY, regionView: regionView, peakView: peakView, valuesText: valuesText, countRange: countRange };
   if (typeof window !== "undefined") { window.PFAS = window.PFAS || {}; window.PFAS.rawData = api; }

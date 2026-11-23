@@ -16,7 +16,7 @@ and EDD export.
 
 Each method owns its analyte set, its method × matrix reportable panel,
 labelled standards, QC criteria and rule switches, calibration levels,
-correction factors and logbook sequence. A criterion that is not configured is
+correction factors and extraction stages. A criterion that is not configured is
 never replaced by a default: the worker reports what to set and where. Values
 shipped as VERIFY or PLACEHOLDER must be confirmed by the laboratory against
 the published method before production use.
@@ -99,8 +99,8 @@ Run Builder ─ .rawexpect.json ──────────▶ raw-data pull,
 ```
 
 QC results, facility monitoring and the inventory ledger are SQLite databases
-under `/data/qc/`; logbooks, extraction sessions and release checklists are
-ZODB annotations; instrument reports and certificates are files under
+under `/data/qc/`; recipes, preparation records, extraction sessions (each
+worksheet's batch record) and release checklists are ZODB annotations; instrument reports and certificates are files under
 `/data/`; a raw run's folders, any mzML files and checksums are in the
 `pfas-raw-runs` volume (`/data/raw_runs` in the worker).
 

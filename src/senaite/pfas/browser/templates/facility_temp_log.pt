@@ -8,6 +8,9 @@
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Facility Monitoring</tal:t>
+<tal:r metal:fill-slot="header-right">
+  <a class="btn-sm btn-primary" tal:condition="not:view/unit" tal:attributes="href view/add_sensor_url">+ New sensor</a>
+</tal:r>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     unit       view/unit;
@@ -30,25 +33,23 @@
   <!-- Monitoring: no unit chosen, one card per unit of a kind -->
   <tal:no-unit tal:condition="python:not unit" tal:define="links view/monitor_links; cards view/monitor_cards">
     <div class="pfas-filterbar">
-      <div class="pfas-field"><label>Kind</label>
+      <div class="pfas-form-field"><label>Kind</label>
         <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Kind">
           <a class="pfas-seg-item" tal:repeat="k links/kinds"
              tal:attributes="href k/url; aria-selected python:'true' if k['on'] else 'false'" tal:content="k/label">Refrigerators</a>
         </nav></div>
-      <div class="pfas-field"><label>Period</label>
+      <div class="pfas-form-field"><label>Period</label>
         <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Period">
           <a class="pfas-seg-item" tal:repeat="d links/days"
              tal:attributes="href d/url; aria-selected python:'true' if d['on'] else 'false'" tal:content="d/label">7d</a>
         </nav></div>
       <span class="pfas-filterbar-spacer"></span>
-      <a class="btn btn-primary" tal:attributes="href view/add_sensor_url">+ Add sensor</a>
     </div>
     <div class="pfas-mon-grid">
       <div class="pfas-card pfas-mon-card" tal:repeat="c cards"
            tal:attributes="data-readings c/readings_json; data-lo c/lo; data-hi c/hi">
         <div class="pfas-between">
-          <strong tal:content="c/name">Fridge 1</strong>
-          <a class="btn-sm btn-secondary" tal:attributes="href c/url">Open</a>
+          <a class="btn-sm btn-secondary" tal:attributes="href c/url" tal:content="c/name">Fridge 1</a>
         </div>
         <div class="pfas-hint" tal:content="python:u'Sensor %s' % c['sensor'] if c['sensor'] else u'No sensor ID'">Sensor PI-1</div>
         <div class="pfas-mon-now">
@@ -61,6 +62,7 @@
         <div class="alert alert-warning" tal:condition="c/conflict" tal:content="c/conflict">ranges do not overlap</div>
         <div class="pfas-hint" tal:condition="not:c/conflict">
           <tal:r tal:content="python:u'Range %s to %s \u00b0C' % ('%g' % c['lo'] if c['lo'] is not None else u'?', '%g' % c['hi'] if c['hi'] is not None else u'?')">Range 2 to 6 °C</tal:r>
+          <tal:w tal:condition="c/why" tal:content="string: · ${c/why}">Narrowest of Tissue, Solid</tal:w>
           <tal:t tal:condition="c/last_ts" tal:content="string: · last ${c/last_ts}">last</tal:t>
         </div>
         <div class="cf-chips" tal:condition="c/profiles">
@@ -115,17 +117,17 @@
     <div class="alert alert-danger" tal:condition="view/error|nothing" tal:content="view/error">error</div>
     <!-- Temperature studies -->
     <div class="pfas-card">
-      <h3>Quarterly Temperature Studies (NIST Verification)</h3>
+      <h3>Quarterly Temperature Studies (NIST Check)</h3>
       <p class="pfas-note-sm">Four paired readings over two days beside the NIST reference; the correction applies until the next study. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
-      <!-- Studies: a row opens its readings -->
+      <!-- Studies: the date opens its readings -->
       <table class="pfas-table" data-col-resize="facility-temp-log-1" tal:condition="view/studies">
         <thead><tr><th>Date</th><th>At (&deg;C)</th><th>Operator</th><th>Reference thermometer</th><th>Tolerance (&deg;C)</th>
           <th>Correction (&deg;C)</th><th>Status</th></tr></thead>
         <tbody>
           <tr tal:repeat="s view/studies"
-              tal:attributes="data-href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}">
-            <td class="pfas-mono" tal:content="s/study_date">2026-10-01</td>
+              tal:attributes="data-row-open string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}">
+            <td tal:content="s/study_date">2026-10-01</td>
             <td class="pfas-mono" tal:content="python:u'%g' % s['study_temp'] if s.get('study_temp') is not None else u'\u2014'">4</td>
             <td tal:content="s/operator">AN1</td>
             <td tal:content="s/nist_serial">SN</td>
@@ -135,7 +137,7 @@
               <span tal:attributes="class python:'badge badge-'+{'pass': 'ok', 'fail': 'fail'}.get(s['status'], 'pending')"
                     tal:content="python:s['status'].capitalize()">Pass</span>
               <span tal:condition="python:s.get('reference') and not s['reference']['ok']" class="sur-tag sur-nocore"
-                    tal:content="python:u'reference %s: %s' % (s['reference']['name'], s['reference']['why'])">reference not verified</span>
+                    tal:content="python:u'reference %s: %s' % (s['reference']['name'], s['reference']['why'])">reference not checked</span>
             </td>
           </tr>
         </tbody>

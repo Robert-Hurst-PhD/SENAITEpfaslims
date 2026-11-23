@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Certificate tiers</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Certificate tiers</tal:t>
+
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="sb_form string:report-tiers-form; sb_name string:action; sb_value string:save"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/saved">Certificate tiers saved.</div>
+    <div class="alert alert-danger" tal:condition="view/problems">
+      <div tal:repeat="p view/problems" tal:content="p">problem</div>
+    </div>
+
+    <p class="pfas-lead is-narrow">A certificate tier is a named list of report parts.</p>
+
+    <section class="pfas-form-narrow" tal:define="clients view/client_defaults">
+      <h2 class="pfas-section-title">Client defaults</h2>
+      <p class="form-note" tal:condition="not:clients">No client yet.</p>
+      <table class="pfas-table" data-col-resize="report-tiers-clients" tal:condition="clients">
+        <thead><tr><th>Client</th><th>Default tier</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="c clients" tal:attributes="data-row-open c/url">
+            <td tal:content="c/client">DEMO Client</td>
+            <td><span tal:replace="python:c['tier'] or c['tier_id']">T1 Results</span>
+              <div class="cf-hint" tal:condition="not:c/set">T1 until set</div>
+              <div class="cf-hint" tal:condition="python:c['set'] and not c['tier']">Not offered</div></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <form method="post" class="pfas-form-narrow" id="report-tiers-form"
+          tal:attributes="action string:${view/portal_url}/@@pfas-report-tiers">
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+
+      <div class="pfas-card is-spaced" tal:repeat="t view/tiers">
+        <tal:n define="n repeat/t/index">
+        <div class="pfas-form-row">
+          <div class="pfas-form-field is-spaced"><label>Tier id</label>
+            <input type="text" tal:attributes="name string:tier_id.${n}; value t/id" /></div>
+          <div class="pfas-form-field is-spaced"><label>Name</label>
+            <input type="text" tal:attributes="name string:tier_name.${n}; value t/name" /></div>
+          <div class="pfas-form-field is-spaced"><label>Description</label>
+            <input type="text" tal:attributes="name string:tier_desc.${n}; value t/description" /></div>
+        </div>
+
+        <div class="pfas-check is-spaced" tal:repeat="p view/parts">
+          <label class="pfas-switch"><input type="checkbox" value="on"
+                 tal:attributes="name string:part_${p/key}.${n}; id string:part_${p/key}_${n}; checked python:p['key'] in t['keys']"/><span class="pfas-switch-track"></span></label>
+          <label tal:attributes="for string:part_${p/key}_${n}" tal:content="p/label">Part</label>
+        </div>
+
+        <div class="pfas-form-field is-spaced"><span class="pfas-label">Chromatograms cover</span>
+          <input type="hidden" tal:attributes="name string:chrom_scope.${n}; id string:chrom_scope_${n}; value t/scope" />
+          <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Chromatogram scope" data-field="data-field" data-quiet="data-quiet"
+               tal:attributes="data-input string:chrom_scope_${n}">
+            <button type="button" class="pfas-seg-item" tal:repeat="s view/scopes"
+                    tal:attributes="data-value s/key; aria-pressed python:'true' if s['key'] == t['scope'] else 'false'"
+                    tal:content="s/label">Scope</button>
+          </div></div>
+
+        <button class="btn btn-secondary" type="submit" name="remove"
+                tal:attributes="value n">Remove</button>
+        </tal:n>
+      </div>
+
+      <button class="btn btn-secondary pfas-mt" type="submit" name="action" value="add">Add a tier</button>
+    </form>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

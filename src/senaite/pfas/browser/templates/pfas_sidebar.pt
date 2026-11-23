@@ -11,9 +11,9 @@
 <!-- The rail and the section panel, drawn from the map (page_groups.nav_model):
      who sees a section, what it holds, its label and its icon all come from
      there, and this template decides none of them. The rail is Home and the
-     person's sections; the panel holds one tree per rail button, the current
-     section's shown. A row is the navigation tree's (pfas-components.css):
-     the treeitem is the row link; a row with children owns its group. -->
+     person's sections; the panel holds one set of tiles per rail button, the
+     current section's shown: each group a heading over a list of links, one
+     icon tile a page (pfas-sidebar.css). -->
 
 <!-- SVG icon sprite (Lucide, MIT) -->
 <svg xmlns="http://www.w3.org/2000/svg" class="pfas-sprite" aria-hidden="true">
@@ -256,18 +256,58 @@
     <rect x="3" y="14" width="7" height="7" rx="1"/>
   </symbol>
 
-  <!-- Deviations / CARs — warning triangle with exclamation -->
-  <symbol id="ico-warning" viewBox="0 0 24 24">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-          fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-    <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  </symbol>
+  <!-- Each page its own drawing (R17 iconography): 1.5 line, no outline a circle -->
+  <symbol id="ico-guide" viewBox="0 0 24 24"><path d="M10 6h11"/><path d="M10 12h11"/><path d="M10 18h11"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></symbol>
+  <symbol id="ico-batch-record" viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h6"/><path d="M13 2v5h6"/><path d="M19 7v3"/><path d="M8 9h3"/><path d="M8 13h4"/><path d="M17.5 12.5 21 16.5l-1.8 4.5h-3.4L14 16.5Z"/><path d="M17.5 16.5V21"/></symbol>
+  <symbol id="ico-certificate" viewBox="0 0 24 24"><path d="M6 3h8.5L18 6.5V21H6Z"/><path d="M14.5 3v3.5H18"/><rect x="9.25" y="9.25" width="5.5" height="5.5" rx="2.75"/><path d="M10.4 14.4 9.8 19l2.2-1.3 2.2 1.3-.6-4.6"/></symbol>
+  <symbol id="ico-homogenise" viewBox="0 0 24 24"><path d="M7 3h10l-1.5 10h-7Z"/><path d="M6 13h12v5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2Z"/><path d="M10 8h4"/><path d="M12 16.5h.01"/></symbol>
+  <symbol id="ico-technique" viewBox="0 0 24 24"><path d="M5 3h9l-1.3 9H6.3Z"/><path d="M4 12h11v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M18 7h3"/><path d="M18 11h3"/><path d="M18 15h3"/></symbol>
+  <symbol id="ico-flask" viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/></symbol>
+  <symbol id="ico-backup" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h4"/><path d="M7 17.5h4"/></symbol>
+  <symbol id="ico-shelf" viewBox="0 0 24 24"><path d="M4 3v18"/><path d="M20 3v18"/><path d="M4 9h16"/><path d="M4 15h16"/><path d="M7 6h3v3"/><path d="M13 12h4v3"/></symbol>
+  <symbol id="ico-calendar-plus" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M12 13v5"/><path d="M9.5 15.5h5"/></symbol>
+  <symbol id="ico-history" viewBox="0 0 24 24"><path d="M10 6h11"/><path d="M10 12h11"/><path d="M10 18h11"/><path d="M6 9 3 12l3 3"/></symbol>
+  <symbol id="ico-limit" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 21v-6"/><path d="M11 21V9"/><path d="M16 21v-9"/><path d="M3 6h18" stroke-dasharray="2 2"/></symbol>
+  <symbol id="ico-landmark" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21v-9"/><path d="M9.5 21v-9"/><path d="M14.5 21v-9"/><path d="M19 21v-9"/><path d="M2.5 9 12 3l9.5 6Z"/></symbol>
+  <symbol id="ico-analyser" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><rect x="6" y="7" width="7" height="5" rx="1"/><path d="M16 8h2"/><path d="M16 11h2"/><path d="M7 16v4"/><path d="M17 16v4"/><path d="M5 20h14"/></symbol>
+  <symbol id="ico-types" viewBox="0 0 24 24"><path d="M3 11.5V4a1 1 0 0 1 1-1h7.5l9.5 9.5-8.5 8.5Z"/><path d="M7.5 7.5h.01"/></symbol>
+  <symbol id="ico-console" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M12 15h5"/></symbol>
+  <symbol id="ico-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/></symbol>
+  <symbol id="ico-signature" viewBox="0 0 24 24"><path d="M12 3 17.25 9.25 14 18h-4L6.75 9.25Z"/><path d="M12 12.5V18"/><path d="M5 21h14"/></symbol>
+  <symbol id="ico-toggles" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="3.5"/><rect x="3" y="13" width="18" height="7" rx="3.5"/><path d="M15 7.5h2"/><path d="M7 16.5h2"/></symbol>
+  <symbol id="ico-people" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><rect x="5" y="3" width="8" height="8" rx="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="ico-published" viewBox="0 0 24 24"><path d="M9 2v17.5A2.5 2.5 0 0 1 6.5 22 2.5 2.5 0 0 1 4 19.5V2"/><path d="M3 2h7"/><path d="M4 9h5"/><path d="m13 14 3 3 5-6"/></symbol>
+  <symbol id="ico-batch" viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1.5 3h21v5h-21Z"/><path d="M10 12h4"/></symbol>
+  <symbol id="ico-sequence" viewBox="0 0 24 24"><path d="M10 6h11"/><path d="M10 12h11"/><path d="M10 18h11"/><path d="m3 4 3 2-3 2"/><path d="m3 10 3 2-3 2"/><path d="m3 16 3 2-3 2"/></symbol>
+  <symbol id="ico-chain" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><path d="M8 12h8"/></symbol>
+  <symbol id="ico-pipette" viewBox="0 0 24 24"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></symbol>
+  <symbol id="ico-template" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><rect x="8" y="11" width="8" height="3" rx=".5"/><path d="M8 17h5"/></symbol>
+  <symbol id="ico-ref-thermometer" viewBox="0 0 24 24"><path d="M11 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><path d="m14 7 2 2 4.5-4.5"/></symbol>
+  <symbol id="ico-tiers" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 15.5h12"/><path d="M8 11h8"/><path d="M10 6.5h4"/></symbol>
+  <symbol id="ico-map" viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></symbol>
+  <symbol id="ico-deviation" viewBox="0 0 24 24"><path d="M6 21V3"/><path d="M6 13a6 6 0 0 0 6-6h6"/><path d="m15 4 3 3-3 3"/></symbol>
+  <symbol id="ico-config" viewBox="0 0 24 24"><path d="M6 4v16"/><path d="M12 4v16"/><path d="M18 4v16"/><rect x="4" y="13" width="4" height="3" rx="1"/><rect x="10" y="6" width="4" height="3" rx="1"/><rect x="16" y="10" width="4" height="3" rx="1"/></symbol>
 
   <!-- Pin (sidebar pins) -->
   <symbol id="ico-pin" viewBox="0 0 24 24">
     <path d="M9 3h6l-1 6 4 4H6l4-4z"/>
     <line x1="12" y1="13" x2="12" y2="21"/>
+  </symbol>
+
+  <!-- Settings pages without an icon of their own -->
+  <symbol id="ico-clock" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="18" height="18" rx="6"/>
+    <path d="M12 7v5l3.5 2"/>
+  </symbol>
+
+  <symbol id="ico-monitor" viewBox="0 0 24 24">
+    <rect width="20" height="14" x="2" y="3" rx="2"/>
+    <path d="M8 21h8"/><path d="M12 17v4"/>
+  </symbol>
+
+  <symbol id="ico-page" viewBox="0 0 24 24">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
   </symbol>
 
   <!-- Collapse arrow -->
@@ -297,48 +337,31 @@
                              hidden python:None if sec['shown'] else 'hidden'">
       <h2 class="pfas-panel-title" tal:content="sec/label"
           tal:attributes="id string:pfas-panel-${sec/id}-title">Section</h2>
-      <ul role="tree" class="pfas-tree pfas-nav-tree" tal:attributes="aria-label sec/label">
-        <li role="none" tal:repeat="it sec/tree">
-          <a class="pfas-nav-row" role="treeitem"
-             tal:attributes="href string:${purl}/${it/url_path}; data-path it/url_path;
-                             data-pinned python:'true' if it['pinned'] else 'false';
-                             aria-expanded python:('true' if it['open'] else 'false') if it['children'] else None;
-                             aria-owns it/group_id;
-                             aria-current python:'page' if it['current'] else None"><span class="pfas-nav-label" tal:content="it/label">Page</span></a>
-          <button type="button" class="pfas-nav-twist" tabindex="-1" aria-hidden="true" tal:condition="it/children"></button>
-          <button type="button" class="pfas-nav-more" tal:condition="it/pinnable" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-label="Row menu"></button>
-          <ul role="group" tal:condition="it/children" tal:attributes="id it/group_id">
-            <li role="none" tal:repeat="ch it/children">
-              <a class="pfas-nav-row" role="treeitem"
-                 tal:attributes="href string:${purl}/${ch/url_path}; data-path ch/url_path;
-                                 data-pinned python:'true' if ch['pinned'] else 'false';
-                                 aria-expanded python:('true' if ch['open'] else 'false') if ch['children'] else None;
-                                 aria-owns ch/group_id;
-                                 aria-current python:'page' if ch['current'] else None"><span class="pfas-nav-label" tal:content="ch/label">Page</span></a>
-              <button type="button" class="pfas-nav-twist" tabindex="-1" aria-hidden="true" tal:condition="ch/children"></button>
-              <button type="button" class="pfas-nav-more" tal:condition="ch/pinnable" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-label="Row menu"></button>
-              <ul role="group" tal:condition="ch/children" tal:attributes="id ch/group_id">
-                <li role="none" tal:repeat="ck ch/children">
-                  <a class="pfas-nav-row" role="treeitem"
-                     tal:attributes="href string:${purl}/${ck/url_path}; data-path ck/url_path;
-                                     data-pinned python:'true' if ck['pinned'] else 'false';
-                                     aria-current python:'page' if ck['current'] else None"><span class="pfas-nav-label" tal:content="ck/label">Page</span></a>
-                  <button type="button" class="pfas-nav-more" tal:condition="ck/pinnable" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-label="Row menu"></button>
-                </li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
+      <div class="pfas-navtile-group" tal:repeat="grp sec/groups">
+        <h3 class="pfas-navtile-heading" tal:condition="grp/label" tal:content="grp/label"
+            tal:attributes="id string:${grp/id}-title">Group</h3>
+        <ul class="pfas-nav-tiles" role="list"
+            tal:attributes="data-cols grp/cols;
+                            aria-labelledby python:(grp['id'] + '-title') if grp['label'] else None;
+                            aria-label python:None if grp['label'] else sec['label']">
+          <li role="listitem" tal:repeat="it python:grp['items']">
+            <a class="pfas-navtile"
+               tal:attributes="href string:${purl}/${it/url_path}; data-path it/url_path;
+                               data-pinned python:'true' if it['pinned'] else 'false';
+                               aria-current python:'page' if it['current'] else None"><svg aria-hidden="true"><use tal:attributes="href string:#${it/icon}"/></svg><span class="pfas-navtile-label" tal:content="it/label">Page</span></a>
+            <button type="button" class="pfas-nav-more" tal:condition="it/pinnable" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-label="Row menu"></button>
+          </li>
+        </ul>
+      </div>
       <!-- Home: the person's pins, each a page of the map by its label, and
            its place where another pin has the same label; pfas-sidebar.js
            draws the list again from the pins view's reply -->
-      <ul role="tree" class="pfas-tree pfas-nav-tree" id="pfas-nav-pins"
+      <ul class="pfas-nav-tiles" id="pfas-nav-pins" role="list"
           tal:condition="python:sec['pins'] is not None"
-          tal:attributes="aria-label sec/pins_label; hidden python:None if sec['pins'] else 'hidden'">
-        <li role="none" tal:repeat="pin sec/pins">
-          <a class="pfas-nav-row" role="treeitem" data-pinned="true"
-             tal:attributes="href string:${purl}/${pin/url_path}; data-path pin/path"><span class="pfas-nav-label" tal:content="pin/label">Page</span><span class="pfas-nav-place" tal:condition="pin/ambiguous" tal:content="pin/place">Place</span></a>
+          tal:attributes="aria-label sec/pins_label; data-cols sec/pins_cols; hidden python:None if sec['pins'] else 'hidden'">
+        <li role="listitem" tal:repeat="pin sec/pins">
+          <a class="pfas-navtile" data-pinned="true"
+             tal:attributes="href string:${purl}/${pin/url_path}; data-path pin/path"><svg aria-hidden="true"><use tal:attributes="href string:#${pin/icon}"/></svg><span class="pfas-navtile-label" tal:content="pin/label">Page</span><span class="pfas-navtile-place" tal:condition="pin/ambiguous" tal:content="pin/place">Place</span></a>
           <button type="button" class="pfas-nav-more" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-label="Row menu"></button>
         </li>
       </ul>

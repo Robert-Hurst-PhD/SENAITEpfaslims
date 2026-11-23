@@ -35,7 +35,7 @@
         <!-- Search box: shown in the full view; drawn hidden in a section's view,
              since core's setup script binds to it on every page -->
         <div class="pfas-filterbar" tal:attributes="hidden python:'hidden' if sect else None">
-          <div class="pfas-field">
+          <div class="pfas-form-field">
             <input id="searchbox"
                    autofocus
                    type="text"

@@ -8,7 +8,7 @@
   <metal:fill fill-slot="header-title">Homogenisation</metal:fill>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:condition="view/can_configure"
-       tal:attributes="href string:${view/portal_url}/@@pfas-homogenisation-setup">Methods</a>
+       tal:attributes="href string:${view/portal_url}/@@pfas-homogenisation-setup">Techniques</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -20,7 +20,7 @@
       <tal:e repeat="e view/errors"><div tal:content="e">error</div></tal:e></div>
 
     <div class="pfas-filterbar">
-      <div class="pfas-field"><label>Status</label>
+      <div class="pfas-form-field"><label>Status</label>
         <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Status">
           <a class="pfas-seg-item" tal:repeat="w view/status_links"
              tal:attributes="href w/url; aria-selected python:'true' if w['on'] else 'false'"
@@ -31,11 +31,11 @@
     </div>
 
     <table class="pfas-table" data-col-resize="homogenisation-bench-1" tal:define="rows view/rows">
-      <thead><tr><th>Sample</th><th>Matrix</th><th>Requested</th><th>Items composited</th><th>Method</th>
+      <thead><tr><th>Sample</th><th>Matrix</th><th>Requested</th><th>Items composited</th><th>Technique</th>
                  <th>Homogeniser</th><th>By</th><th>Date</th><th>Status</th></tr></thead>
       <tbody>
-        <tr tal:repeat="r rows" tal:attributes="data-href python:view.row_url(r)">
-          <td class="pfas-mono" tal:content="r/id">DEMO-0107</td>
+        <tr tal:repeat="r rows" tal:attributes="data-row-open python:view.row_url(r)">
+          <td><strong tal:content="r/id">DEMO-0107</strong></td>
           <td tal:content="r/matrix">Eggs</td>
           <td tal:content="r/method_title">Blender</td>
           <td tal:content="python:r['last'].get('units_combined') or (r['units'] if r['composite'] else u'')">12</td>
@@ -66,14 +66,14 @@
           <input type="hidden" name="open" tal:attributes="value row/uid" />
           <input type="hidden" value="on" tal:attributes="name string:sel__${row/uid}" />
           <div class="pfas-cols-2">
-            <label class="field-row">Method used
+            <label class="pfas-form-field">Technique used
               <select name="method" tal:define="mv python:view.method_value(row)">
                 <option value="">Choose</option>
                 <option tal:repeat="c view/method_choices"
                         tal:attributes="value python:c[0]; selected python:'selected' if c[0] == mv else None"
                         tal:content="python:c[1]">Blender</option>
               </select></label>
-            <label class="field-row">Homogeniser
+            <label class="pfas-form-field">Homogeniser
               <select name="unit_serial" tal:define="units view/units">
                 <option value="" tal:content="python:'Choose' if units else 'None registered under Equipment'">Choose</option>
                 <option tal:repeat="u units"
@@ -81,12 +81,12 @@
                                         selected python:'selected' if u['serial'] == view.form_value('unit_serial') else None"
                         tal:content="python:u'%s \u00b7 S/N %s' % (u['name'], u['serial'])">Mill 1</option>
               </select></label>
-            <label class="field-row" tal:condition="row/composite">Items composited
+            <label class="pfas-form-field" tal:condition="row/composite">Items composited
               <tal:h define="hid string:homogenisation"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
               <input type="number" min="1" step="1"
                      tal:attributes="name string:units__${row/uid};
                                      value python:view.form_value('units__' + row['uid']) or row['units'] or ''" /></label>
-            <div class="field-row" tal:define="others python:view.together_choices(row)">
+            <div class="pfas-form-field" tal:define="others python:view.together_choices(row)">
               <span class="pfas-label">Homogenised together with</span>
               <div class="pfas-multi" data-more="awaiting homogenisation" tal:condition="others">
               <div class="cf-chips">
@@ -100,7 +100,7 @@
               <span class="pfas-muted" tal:condition="not:others">No other sample is waiting.</span>
             </div>
           </div>
-          <label class="field-row">Note
+          <label class="pfas-form-field">Note
             <textarea name="note" rows="2" tal:content="python:view.form_value('note')"></textarea></label>
           <label class="pfas-switch">
             <input type="checkbox" name="cleaned" value="on"

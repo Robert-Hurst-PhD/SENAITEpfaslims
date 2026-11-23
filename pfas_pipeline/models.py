@@ -79,6 +79,15 @@ class InstrumentRow:
     raw_reporting_limit:          Optional[float] = None
     salt_factor:                  Optional[float] = None
     matrix_factor:                Optional[float] = None
+    # what a native was quantified on ({"standard", "role"}) and, for one on
+    # a surrogate, the method's linked response ratio ("on" or "off"); a
+    # raw row whose linked ratio could not be formed is held, saying why
+    quantified_on:                Optional[dict] = None
+    linked_ratio:                 str = ""
+    ratio_held:                   str = ""
+    # above the calibration range (ALoQ): the top of the range on the
+    # sample basis, the bound the certificate prints the result above
+    range_top:                    Optional[float] = None
 
 
 def reported_conc(row) -> "float | None":
@@ -304,6 +313,14 @@ class SummaryResult:
     # of which reach the client certificate. A finding such as a surrogate
     # mismatch is for the reviewer: the QC Review Report carries it.
     is_mismatch:      str               = ""
+    # ALoQ: the top of the calibration range on the sample basis, the bound
+    # the certificate prints the result above ("> 20.0" with E); the
+    # extrapolated reading, where there is one, stays in result_ppt
+    range_top:        Optional[float]   = None
+    # the instrument wrote BLoQ and gave no number for this result or one of
+    # its peaks: never reported not detected silently, it holds release
+    # until the reviewer records a reason (qc_store, Data Review)
+    no_number:        bool              = False
 
     def display(self) -> str:
         """The displayed value with its qualifiers, e.g. `8.39 (BLoQ)`.
@@ -352,6 +369,10 @@ class Batch:
     lcs_results:        list = field(default_factory=list)
     lfsm_results:       list[LFSMResult]     = field(default_factory=list)
     lfsmd_results:      list[LFSMDResult]    = field(default_factory=list)
+    # the RSD of three or more LFSMs at one level, their LFSMDs' recoveries
+    # with theirs ({analyte, level,
+    # injections, parents, rsd_pct, flag, window}); written to qc_results
+    lfsm_rsd_results:   list                 = field(default_factory=list)
     mdl_results:        list[MDLResult]      = field(default_factory=list)
     summary:            list[SummaryResult]  = field(default_factory=list)
     # Linked extraction log + reagents (from barcode scan)
@@ -360,6 +381,10 @@ class Batch:
     # Dilution map from FM-ENV-003: {dilution_injection: {parent, factor}}.
     # Empty for a batch that recorded none.
     dilutions:          dict                 = field(default_factory=dict)
+    # the analytes whose calibration standards the run states as the acid
+    # (the run record's acid_basis_analytes): no salt factor on their
+    # results, nor on their default reporting limit
+    acid_basis:         list                 = field(default_factory=list)
     # Matrix-spike pedigree from the extraction log:
     # {injection: {parent, spike_ppt, level}}. Identifies an LFSM by what the
     # bench recorded rather than by a substring in its name.

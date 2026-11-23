@@ -4,29 +4,61 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">EDD Settings</title>
+  <title metal:fill-slot="title">Client reporting</title>
 </head>
 <body>
-<tal:t metal:fill-slot="header-title">EDD Settings</tal:t>
+<tal:t metal:fill-slot="header-title">Client reporting</tal:t>
 <tal:r metal:fill-slot="header-right">
-  <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-edd-config">EDD Export</a>
+  <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-edd-config">EDD settings</a>
 </tal:r>
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="sb_form string:edd-client-form"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
 <div metal:fill-slot="content" tal:define="cfg view/settings">
-  <!-- a client's EDD settings: on/off, its profile, and the fields that
-       profile asks for (edd_store) -->
+  <!-- a client's reporting: its default report tier, whether its
+       certificates print in black and white and whether it takes an
+       interim certificate at Submit, then its EDD
+       settings: on/off, its profile, and the fields that profile asks for
+       (edd_store) -->
   <ul class="bench-alerts" tal:condition="view/saved"><li class="bench-ok">Saved.</li></ul>
+  <ul class="bench-alerts" tal:define="msgs view/status_messages" tal:condition="msgs"><li tal:repeat="m msgs" tal:attributes="class m/cls" tal:content="m/text">message</li></ul>
   <!-- the fields of any profile can be given (a profile chosen at export
        reads them), whichever profile the client exports with -->
   <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit">
-    <div class="pfas-field"><label for="fields-of">Fields of the profile</label>
+    <div class="pfas-form-field"><label for="fields-of">Fields of the EDD profile</label>
       <select name="fields_of" id="fields-of" class="pfas-select">
         <option tal:repeat="p view/profile_options" tal:content="p/name"
                 tal:attributes="value p/id; selected python:'selected' if p['id'] == view.shown_profile_id() else None">profile</option>
       </select></div>
   </form>
-  <form method="post" class="bench-block">
+  <form method="post" class="bench-block" id="edd-client-form">
     <input type="hidden" name="fields_of" tal:attributes="value view/shown_profile_id" />
-    <div class="field-grid">
+    <!-- the client's certificates: their own section, apart from the EDD profile's fields -->
+    <section class="pfas-card" id="client-certificates">
+    <h2 class="bench-h">Certificates</h2>
+    <div class="pfas-form-row">
+      <label class="pfas-form-field">Certificate tier
+        <select name="report_tier" class="pfas-select">
+          <option tal:repeat="t view/tier_choices" tal:content="python:t[1]"
+                  tal:attributes="value python:t[0]; selected python:'selected' if t[0] == cfg.get('report_tier') else None">tier</option>
+        </select>
+      </label>
+      <label class="pfas-switch pfas-check">
+        <input type="checkbox" name="certificate_mono" value="1"
+               tal:attributes="checked python:'checked' if cfg.get('certificate_mono') else None" /><span class="pfas-switch-track"></span>
+        <span>Black-and-white certificates</span>
+      </label>
+      <label class="pfas-switch pfas-check">
+        <input type="checkbox" name="interim_certificates" value="1"
+               tal:attributes="checked python:'checked' if cfg.get('interim_certificates') else None" /><span class="pfas-switch-track"></span>
+        <span>Interim certificates</span>
+      </label>
+    </div>
+    </section>
+    <section class="pfas-card" id="client-edd">
+    <h2 class="bench-h">EDD</h2>
+    <div class="pfas-form-row">
       <label class="pfas-switch pfas-check">
         <input type="checkbox" name="edd_enabled" value="1"
                tal:attributes="checked python:'checked' if cfg.get('edd_enabled') else None" /><span class="pfas-switch-track"></span>
@@ -37,7 +69,7 @@
                tal:attributes="checked python:'checked' if cfg.get('per_report_override_default', True) else None" /><span class="pfas-switch-track"></span>
         <span>Generate it by default when publishing</span>
       </label>
-      <label>Profile
+      <label class="pfas-form-field">Profile
         <select name="edd_profile" class="pfas-select">
           <option tal:repeat="p view/profile_options" tal:content="p/name"
                   tal:attributes="value p/id; selected python:'selected' if p['id'] == cfg.get('edd_profile') else None">profile</option>
@@ -45,8 +77,8 @@
       </label>
     </div>
     <h2 class="bench-h" tal:condition="view/client_fields" tal:content="python:view.profile().get('name', u'')">Profile</h2>
-    <div class="field-grid">
-      <label tal:repeat="f view/client_fields">
+    <div class="pfas-form-row">
+      <label class="pfas-form-field" tal:repeat="f view/client_fields">
         <span tal:replace="f/label">Label</span>
         <select tal:condition="f/options" tal:attributes="name f/name">
           <option value="">&#8212;</option>
@@ -54,10 +86,10 @@
                   tal:attributes="value o; selected python:'selected' if o == f['value'] else None">o</option>
         </select>
         <input type="text" tal:condition="not:f/options" tal:attributes="name f/name; value f/value" />
-        <span class="field-hint" tal:condition="f/hint" tal:content="f/hint">hint</span>
+        <span class="pfas-hint" tal:condition="f/hint" tal:content="f/hint">hint</span>
       </label>
     </div>
-    <button type="submit" class="btn-sm btn-primary">Save</button>
+    </section>
   </form>
 </div>
 </body>

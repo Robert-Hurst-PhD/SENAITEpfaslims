@@ -5,3 +5,6 @@ requests>=2.31
 reportlab>=4.0
 pypdf>=4.0
 tzdata>=2024.1
+# the records seal (pfas_pipeline/esig_seal.py): PAdES and CMS signing
+pyHanko==0.38.1
+cryptography>=48

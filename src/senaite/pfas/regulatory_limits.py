@@ -7,7 +7,8 @@ A LIMIT is one record:
     matrix_uids [the core Sample Types' UIDs], subtype_ids / subtypes [the
     sample sub-types it is narrowed to, if any], value, unit, kind (MCL |
     Interim standard | Action level | Advisory), citation, effective,
-    status_note, url, verified, retired {by, at, why}
+    status_note, url, verified, retired {by, at, why}, test_data (True on
+    a test server's DEMO limit)
 
 A limit's matrices are chosen from the core Sample Types and matched by UID
 (titles are kept for display and older records); a limit with none is
@@ -115,6 +116,36 @@ def convert(value, from_unit, to_unit):
     return value * a[1] / b[1]
 
 
+# A limit held as test data (a test server's DEMO limit,
+# tools/synth/demo_reg_limits.py) carries the stored flag TEST_DATA_KEY, or
+# opens its label, its status note or its confirmation with the word DEMO.
+# A regulatory value never prints as real when it is test data: what prints
+# it says TEST_DATA_MARK instead of the programme and kind.
+TEST_DATA_KEY = "test_data"
+TEST_DATA_WORD = "DEMO"
+TEST_DATA_MARK = "DEMO test data"
+TEST_DATA_MARKED = ("label", "status_note", "verified_by")
+_TEST_DATA_RE = re.compile(r"^\s*%s\b" % TEST_DATA_WORD)
+
+
+def worded_as_test_data(limit):
+    """True when one of the limit's marks opens with the word DEMO; read
+    from the record, never from its id."""
+    for key in TEST_DATA_MARKED:
+        value = (limit or {}).get(key)
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", "replace")
+        if value and _TEST_DATA_RE.match(value):
+            return True
+    return False
+
+
+def is_test_data(limit):
+    """True when the limit is DEMO test data: its stored flag says so, or
+    its wording does."""
+    return bool((limit or {}).get(TEST_DATA_KEY)) or worded_as_test_data(limit)
+
+
 def is_active(limit):
     return not (limit or {}).get("retired")
 
@@ -144,8 +175,31 @@ def applicable(limits, programs, matrix, matrix_uid=None, subtype=None):
             if l.get("subtype_ids") or (l.get("program"), tuple(sorted(l.get("analytes") or []))) not in narrow]
 
 
+def covers(limits, program, matrix, matrix_uid=None):
+    """The program covers this matrix: an active limit of its own names it,
+    confirmed or not (confirming checks a value, not what the program
+    regulates). Test data is no program's limit, so it never extends one to
+    a matrix. A program's note prints only on a certificate of a matrix it
+    covers."""
+    return any(l.get("program") == program and is_active(l) and not is_test_data(l)
+               and names_matrix(l, matrix, matrix_uid) for l in limits or [])
+
+
 def no_matrix(limit):
     return not (limit.get("matrix_uids") or limit.get("matrices"))
+
+
+def compared_value(row):
+    """The value a certificate row brings to the comparison: its reported
+    (rounded) value when it is detected, a J value at its value as the
+    release counts it; None for a non-detect, which is compared by its RL.
+    A row whose text is not a number brings None."""
+    if not (row or {}).get("detected"):
+        return None
+    try:
+        return float(row.get("result"))
+    except (TypeError, ValueError):
+        return None
 
 
 def evaluate(limit, results, result_unit):
@@ -271,6 +325,9 @@ def parse_limits_form(form, old_limits, who, now, sample_types=None, subtypes=No
         prev = old.get(rid) or {}
         if prev.get("retired"):
             rec["retired"] = prev["retired"]
+        # the test-data flag is not on the form: a saved limit keeps it
+        if prev.get(TEST_DATA_KEY):
+            rec[TEST_DATA_KEY] = True
         same = all(prev.get(k) == rec[k] for k in ("value", "unit", "analytes", "matrices")) \
             and prev.get("subtype_ids") == rec.get("subtype_ids")
         if rec["verified"] and prev.get("verified") and same:

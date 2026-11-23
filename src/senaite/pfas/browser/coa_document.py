@@ -10,7 +10,13 @@ flattened by senaite.pfas.coa_document and compiled per document by
 document_templates.compile_document, then rendered by the pfas-render
 container. Every failure raises (ValueError for the data, RenderError for the
 renderer): a controlled certificate is refused, never printed in another
-layout. Python 2.7.
+layout. The authoriser prints from the signature given on Data Review when
+the certificate is generated, from its ledger row on a reprint of an issued
+revision, and as "Not yet signed" when nobody signed; an interim revision
+prints INTERIM on every page and is refused from a design without the mark
+(_authoriser). A client who takes black-and-white certificates gets the same
+compiled layout with every colour ink or paper (document_templates.monochrome).
+Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -51,6 +57,12 @@ def _remarks(sample):
 PREVIEW_MARK = u"PREVIEW, not a certificate"
 
 
+def preview_mark(issue_mark):
+    """The issue mark a preview prints: PREVIEW_MARK, before INTERIM when
+    the revision previewed is interim."""
+    return u" \u00b7 ".join(m for m in (PREVIEW_MARK, issue_mark or u"") if m)
+
+
 SITE_LOGO = u"@@site-logo"
 
 
@@ -89,7 +101,8 @@ def _signatories(signatories, preview):
     each with title, credentials and signature from their Lab Contact
     (browser/staff.py). Outside a preview, the preparer and reviewer must
     hold the right to sign as that role (designed documents only); the
-    Director is whoever the Laboratory page names. When the reviewer is the
+    Director is whoever the Laboratory page names, and must have a signature
+    image on file (it prints on every certificate). When the reviewer is the
     Director, "reviewer_is_director" makes one "Reviewed and authorized by"
     block (coa_document.signers)."""
     from senaite.pfas.browser import staff
@@ -117,6 +130,10 @@ def _signatories(signatories, preview):
         out["director"] = cd.signatory({"fullname": name, "jobtitle": info["jobtitle"],
                                         "credentials": info["credentials"]}, info["signature"])
         out["reviewer_is_director"] = bool(first_reviewer) and first_reviewer == director
+        if not info["signature"]:
+            # the director's image prints on every certificate: none on file
+            # refuses the issue as a designed record refuses it (doc_people)
+            problems.append(u"%s has no signature on file" % name)
     else:
         problems.append(u"no Laboratory Director is set: name one on Laboratory")
     if problems and not preview:
@@ -124,12 +141,58 @@ def _signatories(signatories, preview):
     return out
 
 
+def _authoriser(sample, report_id, preview):
+    """(the authorizing person, the Signatures table's rows, interim) for
+    the revision printed, report_id on the primary sample's register. An
+    issued revision (a reprint) prints its ledger row as signed
+    (esig.print_rows.certificate), whatever the signer's right or image is
+    now. A certificate generated before issue prints the signature given on
+    Data Review (the sample's pending signature): the signer as at signing,
+    the image kept then and the signing time. Nobody signed: "Not yet
+    signed", never a refusal. A preview reads no register entry. Interim
+    or final: the register entry once issued, else the pending signature,
+    the one Generate records on the stored certificate."""
+    from senaite.pfas.browser import staff
+    from senaite.pfas.browser.controlled_publications import get_publication_log, pending_signature
+    from senaite.pfas.esig import print_rows
+    entry = None
+    if not preview:
+        entry = next((e for e in get_publication_log(sample) if e.get("report_id") == report_id), None)
+    pending = pending_signature(sample)
+    interim = cd.is_interim(entry, pending)
+    if entry is not None:
+        # an issued revision never takes a signature given after it
+        signed = print_rows.certificate(entry) or print_rows.unsigned_certificate(interim)
+    elif pending and pending.get("userid"):
+        signed = print_rows.pending_certificate(pending)
+    else:
+        signed = print_rows.unsigned_certificate(interim)
+    info = dict(signed["authorized"])
+    if info.get("userid"):
+        # the role beside the name is the one People & Roles gives today
+        now = staff.staff_info(info["userid"])
+        info["jobtitle"] = now.get("jobtitle") or u""
+        info["role"] = cd.authorizing_role(info["jobtitle"], info["userid"] == staff.director_userid(),
+                                           now.get("sign_as"))
+    return info, signed["signatures"], interim
+
+
+def _places_issue_mark(layout):
+    """True when the layout places the issue_mark field marked "on every
+    page": an interim certificate says INTERIM on each of its pages."""
+    base = (layout or {}).get("basePdf")
+    fields = [f for page in (layout or {}).get("schemas") or [] for f in page or []]
+    fields += list(base.get("staticSchema") or []) if isinstance(base, dict) else []
+    return any(dt.base_key(f.get("name")) == "issue_mark" and f.get(dt.EVERY_PAGE)
+               for f in fields)
+
+
 def _interpretation(sample):
     ris = []
     try:
         for ri in sample.getResultsInterpretationDepts() or []:
             dept = api.get_object(ri.get("uid"), default=None) if ri.get("uid") else None
-            ris.append({"title": api.get_title(dept) if dept is not None else u"",
+            ris.append({"title": api.safe_unicode(api.get_title(dept)) if dept is not None else u"",
                         "richtext": ri.get("richtext") or u""})
     except Exception:                                       # noqa: BLE001
         logger.warning("results interpretation of %s unreadable", api.get_id(sample), exc_info=True)
@@ -162,10 +225,18 @@ def documents(collection, layout, snapshot=None, rev=None, request=None, preview
     lab, meta = sections.lab(), sections.doc_meta()
     settings = sections.settings()
     signatories = att.resolve_signatories(collection)
-    quals = att.qc_qualifications(collection)
     accred = att.accreditation_disclosure(collection)
     out = []
     samples = [api.get_object(m) for m in collection]
+    # the authoriser and the interim mark of the revision printed, read on
+    # the primary sample (the one its register entry and pending signature
+    # are kept on)
+    authorized, rows, interim = _authoriser(samples[0], meta.get("report_id"), preview)
+    if interim and not preview and not _places_issue_mark(layout):
+        # an interim certificate never goes out without INTERIM on each page
+        raise ValueError(cd.NO_ISSUE_MARK)
+    signatories = dict(signatories, authorized=authorized, interim=interim,
+                       issue_mark=cd.issue_mark(interim))
     missing = cd.unsupported(signatories, [a for s in samples for a in _report_attachments(s)])
     if missing:
         raise ValueError(u"the standard certificate would print %s, which the designed layout "
@@ -181,13 +252,23 @@ def documents(collection, layout, snapshot=None, rev=None, request=None, preview
     extra = {"lab_address": settings.get("lab_address"), "lab_phone": settings.get("lab_phone"),
              "lab_email": settings.get("lab_email"), "lab_logo": _logo_uri(settings)}
     extra.update(_signatories(signatories, preview))
+    extra["signatures"] = rows
+    # the client of the primary sample may take its certificates in black
+    # and white: the same layout, recoloured once compiled
+    from senaite.pfas.browser.coa_sections import certificate_mono
+    mono = certificate_mono(collection)
     for sample in samples:
         smp = sections._sample(sample)
-        data = cd.data(lab, meta, smp, signatories, quals, accred, _remarks(sample),
+        data = cd.data(lab, meta, smp, signatories, accred, _remarks(sample),
                        _interpretation(sample), extra, preview=preview)
         if preview:
+            # a preview says so on every page: above the title, where an
+            # interim certificate says INTERIM, and in a stamp a layout
+            # issued earlier places
             data["stamp"] = u"%s \u00b7 %s" % (PREVIEW_MARK, data["stamp"])
-        out.append(dt.compile_document("coa", layout, data))
+            data["issue_mark"] = preview_mark(data.get("issue_mark"))
+        template, inputs = dt.compile_document("coa", layout, data)
+        out.append(dt.monochrome_document("coa", template, inputs) if mono else (template, inputs))
     return out
 
 

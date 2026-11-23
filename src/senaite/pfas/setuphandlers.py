@@ -216,8 +216,6 @@ def setup_handler(context):
     # fails is logged and the install goes on, an import that fails raises.
     from senaite.pfas.method_profile_store import seed_default_profiles
     from senaite.pfas.edd_store import seed_defaults as seed_edd_defaults
-    from senaite.pfas.logbook_store import seed_defaults as seed_logbook_defaults
-    from senaite.pfas.logbook_store import normalise_form_codes
     try:
         seed_default_profiles(portal)
     except Exception as e:
@@ -229,13 +227,8 @@ def setup_handler(context):
     except Exception as e:
         logger.warning("EDD export settings not seeded: %s", e)
 
-    # ── Logbook definitions ───────────────────────────────────────────────
-    try:
-        seed_logbook_defaults(portal)
-        # one number per form, the pool in number order
-        normalise_form_codes(portal)
-    except Exception as e:
-        logger.warning("Logbook defaults not seeded: %s", e)
+    # ── Reagent lots: where each expiry came from, recorded once ─────────
+    _migrate_expiry_source(portal)
 
     # ── Reference Definitions ────────────────────────────────────────────
     # Build one ReferenceDefinition per QC type from QC rules.
@@ -360,7 +353,6 @@ SETUP_TYPES = (
     ("Reagent", "pfas_reagents", "PFAS Reagents"),
     ("PFASProject", "pfas_projects", "PFAS Projects"),
     ("MethodProfile", "pfas_method_profiles", "PFAS Method Profiles"),
-    ("PrepLogbookDef", "pfas_prep_logbooks", "PFAS Preparation Logbooks"),
     ("PreparedStandard", "pfas_prepared_standards", "PFAS Prepared Standards"),
 )
 
@@ -413,6 +405,40 @@ def setup_automation_group(portal):
         roles=[],
     )
     return True
+
+
+def setup_worker_role(portal):
+    """The pipeline worker's role, its permission and its group
+    (browser/perms.WORKER_*): the role defined at the portal, the worker
+    permission granted there to Manager, Site Administrator and the role, and
+    the group holding the role and the core roles the worker's pushes need.
+    Idempotent; makes no account (tools/worker_account.py does).
+    Returns the changes made, as words."""
+    from Products.CMFCore.utils import getToolByName
+    from senaite.pfas.browser import perms
+    done = []
+    if perms.WORKER_ROLE not in portal.validRoles():
+        portal._addRole(perms.WORKER_ROLE)
+        done.append("role")
+    held = set(r["name"] for r in portal.rolesOfPermission(perms.WORKER_PERMISSION) if r["selected"])
+    if not set(perms.WORKER_PERMISSION_ROLES) <= held:
+        portal.manage_permission(perms.WORKER_PERMISSION,
+                                 roles=sorted(held | set(perms.WORKER_PERMISSION_ROLES)), acquire=0)
+        done.append("permission")
+    gtool = getToolByName(portal, "portal_groups")
+    if perms.WORKER_GROUP not in gtool.getGroupIds():
+        gtool.addGroup(perms.WORKER_GROUP, roles=list(perms.WORKER_GROUP_ROLES),
+                       title="PFAS Worker (the pipeline's account)",
+                       description="The pipeline worker's account only: its role and the core "
+                                   "roles its pushes need. Never a person.")
+        done.append("group")
+    else:
+        group = gtool.getGroupById(perms.WORKER_GROUP)
+        roles = set(group.getRoles()) - set(("Authenticated",))
+        if set(perms.WORKER_GROUP_ROLES) - roles:
+            gtool.editGroup(perms.WORKER_GROUP, roles=sorted(roles | set(perms.WORKER_GROUP_ROLES)))
+            done.append("group roles")
+    return done
 
 
 # The lab never adds or removes analytes on a sample: the panel comes from
@@ -476,6 +502,62 @@ def setup_lab_identity(portal):
         logger.error("Failed to limit the Laboratory edit: %s", exc)
 
 
+# the extraction log's design is the batch record's: same tables and fields,
+# and more; an install that issued one keeps printing it
+OLD_DESIGN_ID, NEW_DESIGN_ID, NEW_DESIGN_KIND = "extraction-log", "batch-record", "batch_record"
+
+
+def carry_over(store):
+    """The Document Templates store with the extraction log's design moved
+    to the batch record's id and kind, its revisions, draft and the rest
+    kept. A store that already holds a batch record design, or no
+    extraction log design, comes back as it was. The input is not changed."""
+    import copy
+    out = copy.deepcopy(store or {})
+    if OLD_DESIGN_ID not in out or NEW_DESIGN_ID in out:
+        return out
+    entry = out.pop(OLD_DESIGN_ID)
+    entry["id"], entry["kind"] = NEW_DESIGN_ID, NEW_DESIGN_KIND
+    out[NEW_DESIGN_ID] = entry
+    return out
+
+
+def carry_over_extraction_design(portal):
+    """Install step: the issued extraction log design prints as the batch record,
+    and a saved report-tier catalogue names the batch record where it named
+    the extraction log. Idempotent: an install with nothing to carry writes
+    nothing."""
+    from senaite.pfas import document_templates as dt
+    from senaite.pfas import report_tiers
+    store = dt.load(portal)
+    out = carry_over(store)
+    if out != store:
+        dt.save(portal, out)
+        logger.info("the extraction log design is now the batch record design")
+    saved = report_tiers.saved_catalogue(portal)
+    if saved is not None:
+        catalogue, changed = report_tiers.carry_over_parts(saved)
+        if changed:
+            problems = report_tiers.save_catalogue(portal, catalogue)
+            if problems:
+                logger.error("report tiers not carried over: %s", "; ".join(problems))
+            else:
+                logger.info("report tiers name the batch record where they named the extraction log")
+
+
+def _migrate_expiry_source(portal):
+    """Each reagent lot saved before its expiry's source was kept is given
+    one (reagents.migrate_expiry_source); a lot that has one is left, so
+    running it again changes nothing."""
+    try:
+        from senaite.pfas.browser.reagents import migrate_expiry_source
+        n = migrate_expiry_source(portal)
+        if n:
+            logger.info("Reagent lots given their expiry's source: %d", n)
+    except Exception as exc:                                # noqa: BLE001
+        logger.error("Reagent expiry sources not recorded: %s", exc)
+
+
 def post_install(context):
     # installer and seeder writes are attributed to "installer" in history
     from senaite.pfas.config_history import set_actor
@@ -502,7 +584,6 @@ def post_install(context):
     # fails is logged and the install goes on, an import that fails raises.
     from senaite.pfas.method_profile_store import (
         refresh_analyte_sets, seed_default_profiles)
-    from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
 
     # ── Automation service-account group ──────────────────────────────────
     try:
@@ -511,6 +592,12 @@ def post_install(context):
                     "created" if created else "already present")
     except Exception as exc:
         logger.error("Failed to set up the automation group: %s", exc)
+
+    # ── The pipeline worker's role, permission and group ───────────────────
+    try:
+        logger.info("Worker role: %s", ", ".join(setup_worker_role(portal)) or "already present")
+    except Exception as exc:
+        logger.error("Failed to set up the worker role: %s", exc)
 
     # ── Lab identity moves into the Laboratory; Lab Clerk loses its edit ──
     setup_lab_identity(portal)
@@ -541,12 +628,26 @@ def post_install(context):
     except Exception as exc:
         logger.error("Failed to refresh the analyte panels: %s", exc)
 
-    # ── Seed built-in logbook definitions (250/251/252/253) ───────────────
+    # ── Each method names its curve fit: linear where none is set ────────
     try:
-        seed_builtin_logbook_defs(portal)
-        logger.info("Built-in logbook defs seeded (250/251/252/253)")
+        from senaite.pfas.migrations import calibration_fit_default
+        named = calibration_fit_default.run(portal)
+        if named:
+            logger.info("Curve fit named on: %s", ", ".join(named))
     except Exception as exc:
-        logger.error("Failed to seed built-in logbook defs: %s", exc)
+        logger.error("Curve fit not named: %s", exc)
+
+    # ── Reagent lots: where each expiry came from, recorded once ─────────
+    _migrate_expiry_source(portal)
+
+    # ── Configuration History moves into the results database ────────────
+    move_config_history(portal)
+
+    # ── The extraction log's design carries over to the batch record ─────
+    try:
+        carry_over_extraction_design(portal)
+    except Exception as exc:
+        logger.error("Extraction log design not carried over: %s", exc)
 
     # ── The sample's Manage Analyses tab: the site manager only ──────────
     try:
@@ -564,6 +665,28 @@ def post_install(context):
         _ensure_dir("/data/coa/certs")
     except Exception as exc:
         logger.error("Failed to create /data/coa directories: %s", exc)
+
+
+def move_config_history(portal):
+    """Copy the history entries kept on the portal into the results
+    database and verify the copy (config_history.move_from_annotation). The
+    portal's entries are kept; a copy that does not verify is logged and
+    tried again at the next install."""
+    try:
+        from senaite.pfas import config_history
+        r = config_history.move_from_annotation(portal)
+    except Exception as exc:                                # noqa: BLE001
+        logger.error("Configuration History not moved: %s", exc)
+        return None
+    if r["ok"]:
+        logger.info("Configuration History in the results database: %d entries, sha256 %s; "
+                    "%d copied now", r["count_table"], r["sum_table"], r["copied"])
+    else:
+        logger.error("Configuration History copy does not verify: %d of %d entries, sha256 %s "
+                     "against %s; missing %s, different %s. The entries stay on the portal.",
+                     r["count_table"], r["count_source"], r["sum_table"], r["sum_source"],
+                     r["missing"][:5], r["different"][:5])
+    return r
 
 
 def _ensure_dir(path):

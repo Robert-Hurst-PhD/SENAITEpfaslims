@@ -1,9 +1,9 @@
 /* New Prepared Standard: a sitting made from its recipe.
  *
- * The dialog opens on a prep log (FM-ENV-001 | FM-ENV-002) and a method; the
- * standard is one of the method's recipes on that log; its name, lot #,
- * volume, storage and expiry fill from the recipe, and each "made from" lists
- * the lots it may use, newest first. The server calculates the concentrations
+ * The dialog opens on a method and one of its recipes -- the ones the address
+ * names (?method=&recipe=, the Recipes page's Make), else the first; its
+ * name, lot #, volume, storage, expiry and default standard type fill from
+ * the recipe, and each "made from" lists the lots it may use, newest first. The server calculates the concentrations
  * and the expiry again when it saves (prep_sitting.py); what is shown here is
  * the same rule, for the analyst to see before saving.
  *
@@ -32,6 +32,18 @@
     return cap && cap.localeCompare(own) === -1 ? cap : own;
   }
 
+  /* A lot is out of date on `day` when its expiry is before it (one expiring
+     that day is in date); the server judges it again (lot_expiry.py). */
+  function expiredOn(expiry, day) {
+    return !!(expiry && day) && expiry.localeCompare(day) === -1;
+  }
+
+  /* The text of a lot's option on the prep date: its label, marked when the
+     lot is out of date that day. */
+  function lotText(label, expiry, day) {
+    return expiredOn(expiry, day) ? label + " \u00b7 expired" : label;
+  }
+
   function fmt(v) {
     return v === null || v === undefined || isNaN(v) ? "" : String(Number(Number(v).toPrecision(6)));
   }
@@ -44,8 +56,10 @@
     return fmt(t * f / rf);
   }
 
-  function recipesOn(method, log) {
-    return ((method || {}).recipes || []).filter(function (r) { return r.log === log; });
+  /* The item whose id is `want`, else the first, else null. */
+  function choose(list, want) {
+    var found = (list || []).filter(function (x) { return x.id === want; })[0];
+    return found || (list || [])[0] || null;
   }
 
   /* A new sitting's prep date: the laboratory's day when the page gives it,
@@ -55,7 +69,16 @@
     return (C && C.labToday && C.labToday()) || new Date().toISOString().slice(0, 10);
   }
 
-  var api = { lotNumber: lotNumber, expiry: expiry, scaled: scaled, recipesOn: recipesOn, newDay: newDay };
+  /* One value of a query string ("?a=1&b=2"); "" when absent or when its
+     escape is malformed -- a bad address must not stop the dialog. */
+  function fromQuery(search, name) {
+    var m = new RegExp("[?&]" + name + "=([^&#]*)").exec(search || "");
+    if (!m) { return ""; }
+    try { return decodeURIComponent(m[1].replace(/\+/g, " ")); } catch (e) { return ""; }
+  }
+
+  var api = { lotNumber: lotNumber, expiry: expiry, scaled: scaled, choose: choose, fromQuery: fromQuery,
+              newDay: newDay, expiredOn: expiredOn, lotText: lotText };
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
   if (typeof document === "undefined") { return; }
 
@@ -68,24 +91,20 @@
     return o;
   }
 
+  function param(name) { return fromQuery(location.search, name); }
+
   function init() {
     var holder = el("psNewData"), form = el("psNewForm");
     if (!holder || !form) { return; }
     var NS = JSON.parse(holder.getAttribute("data-new") || "{}");
-    var state = { log: ((NS.logs || [])[0] || {}).slug || "", recipe: null };
+    var state = { recipe: null };
     var methodSel = el("psNewMethod"), recipeSel = el("psNewRecipe");
+    var first = choose(NS.methods, param("method"));
 
-    (NS.methods || []).forEach(function (m, i) { methodSel.appendChild(option(m.id, m.label, i === 0)); });
+    (NS.methods || []).forEach(function (m) { methodSel.appendChild(option(m.id, m.label, m === first)); });
 
     function method() {
       return (NS.methods || []).filter(function (m) { return m.id === methodSel.value; })[0] || { recipes: [] };
-    }
-
-    function markLog() {
-      Array.prototype.forEach.call(el("psNewLog").querySelectorAll("[data-log]"), function (b) {
-        b.setAttribute("aria-selected", b.getAttribute("data-log") === state.log ? "true" : "false");
-      });
-      if (root.PFAS && PFAS.components) { PFAS.components.placePill(el("psNewLog")); }
     }
 
     function parentExpiries() {
@@ -95,10 +114,29 @@
       });
     }
 
+    /* a parent out of date on the prep date is marked, and the reason for
+       using it is asked for: required while one is picked, else not posted */
+    function refreshExpired() {
+      var day = el("psNewDate").value, used = [];
+      Array.prototype.forEach.call(el("psNewParents").querySelectorAll("select"), function (s) {
+        Array.prototype.forEach.call(s.options, function (o) {
+          if (o.value) { o.textContent = lotText(o.getAttribute("data-label"), o.getAttribute("data-expiry"), day); }
+        });
+        var o = s.options[s.selectedIndex];
+        if (o && o.value && expiredOn(o.getAttribute("data-expiry"), day)) { used.push(o.getAttribute("data-label")); }
+      });
+      var field = el("psNewExpiredField"), reason = el("psNewExpiredReason");
+      field.hidden = !used.length;
+      reason.disabled = !used.length;
+      reason.required = !!used.length;
+      el("psNewExpiredLots").textContent = used.join("; ");
+    }
+
     function refreshDates() {
       var r = state.recipe, day = el("psNewDate").value;
       el("psNewLot").value = r ? lotNumber(r.titles[0], day) : "";
       el("psNewExpiry").value = r ? expiry(day, r.shelf_days, parentExpiries()) : "";
+      refreshExpired();
     }
 
     function scaleAmounts() {
@@ -120,9 +158,12 @@
         sel.name = "pl_lot." + i;
         sel.setAttribute("aria-label", "Lot of " + (mf.label || ""));
         sel.appendChild(option("", mf.lots.length ? "Choose a lot" : "No usable lot"));
-        mf.lots.forEach(function (l, j) {
-          var o = option(l.key, l.label, j === 0);
+        /* the first lot in date on the prep date is preselected, never one out of date */
+        var day = el("psNewDate").value, pick = mf.lots.filter(function (l) { return !expiredOn(l.expiry, day); })[0];
+        mf.lots.forEach(function (l) {
+          var o = option(l.key, l.label, l === pick);
           o.setAttribute("data-expiry", l.expiry || "");
+          o.setAttribute("data-label", l.label);
           sel.appendChild(o);
         });
         sel.addEventListener("change", refreshDates);
@@ -154,6 +195,9 @@
       var loc = (r.storage || {}).location || "", locSel = el("psNewStorage");
       locSel.value = Array.prototype.some.call(locSel.options, function (o) { return o.value === loc; }) ? loc : "";
       el("psNewCond").value = (r.storage || {}).conditions || "";
+      /* the recipe's kind gives the type (blank when the lab's list lacks
+         it); the select still overrides it */
+      el("psNewType").value = r.standard_type || "";
       el("psNewRecipeCard").href = el("psNewRecipeCard").getAttribute("data-base") + "?method=" +
         encodeURIComponent(methodSel.value) + "&recipe=" + encodeURIComponent(r.id);
       buildParents(r);
@@ -161,37 +205,45 @@
       refreshDates();
     }
 
-    function refresh() {
-      var list = recipesOn(method(), state.log), keep = recipeSel.value;
+    function refresh(want) {
+      var list = method().recipes || [], pick = choose(list, want || recipeSel.value);
       recipeSel.innerHTML = "";
-      list.forEach(function (r) { recipeSel.appendChild(option(r.id, r.name, r.id === keep)); });
-      state.recipe = list.filter(function (r) { return r.id === recipeSel.value; })[0] || null;
-      markLog();
+      list.forEach(function (r) { recipeSel.appendChild(option(r.id, r.name, r === pick)); });
+      state.recipe = pick;
       fill();
     }
 
-    el("psNewLog").addEventListener("click", function (e) {
-      var b = e.target.closest("[data-log]");
-      if (!b) { return; }
-      state.log = b.getAttribute("data-log");
-      refresh();
-    });
-    methodSel.addEventListener("change", refresh);
-    recipeSel.addEventListener("change", refresh);
+    methodSel.addEventListener("change", function () { refresh(); });
+    recipeSel.addEventListener("change", function () { refresh(); });
     el("psNewDate").addEventListener("change", refreshDates);
+    /* Save opens the sign dialog, whose Sign is this form's default button:
+       Enter in a field must not post the record past the dialog unseen */
+    el("psNewForm").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && e.target.tagName !== "TEXTAREA" && e.target.tagName !== "BUTTON") { e.preventDefault(); }
+    });
+    /* the form is checked before the sign dialog opens: a field left empty
+       is shown here, on its own tab, not behind the dialog where Sign would
+       do nothing */
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("#psNewSave"), form = el("psNewForm");
+      if (!b || form.checkValidity()) { return; }
+      e.preventDefault(); e.stopPropagation();
+      var bad = form.querySelector(":invalid"), pane = bad && bad.closest(".pfas-pane");
+      var tab = pane && el("psNewTabs").querySelector('[data-pane="' + pane.id + '"]');
+      if (tab) { tab.click(); }
+      form.reportValidity();
+    }, true);
     el("psNewFinal").addEventListener("input", scaleAmounts);
     el("psNewBy").value = NS.who || "";
 
     root.pfasOpenNew = function () {
-      var m = /[?&]log=([0-9A-Za-z_-]+)/.exec(location.search);
-      if (m) { state.log = m[1]; }
       if (!el("psNewDate").value) { el("psNewDate").value = newDay(); }
       el("psNew").classList.add("open");
-      refresh();
+      refresh(param("recipe"));
       /* the pills measured zero while the dialog was closed */
       if (el("psNewTabs") && root.PFAS && PFAS.components) { PFAS.components.placePill(el("psNewTabs")); }
     };
-    refresh();
+    refresh(param("recipe"));
   }
 
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }

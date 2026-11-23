@@ -21,7 +21,7 @@ from senaite.pfas import messageFactory as _
 STATUS_ACTIVE    = u"active"
 STATUS_EXHAUSTED = u"exhausted"
 STATUS_EXPIRED   = u"expired"
-STATUS_PENDING   = u"pending"       # new lots: verified before use (lot_status)
+STATUS_PENDING   = u"pending"       # new lots: accepted before use (lot_status)
 STATUS_QUARANTINE = u"quarantine"   # a rejected lot, until a manager releases it
 
 # the shipped types (the lab's list: vocab_store "prepared_standard_types")

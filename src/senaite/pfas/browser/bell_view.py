@@ -24,6 +24,26 @@ TTL_SECONDS = 60
 _CACHE = {}
 
 
+RESET_TITLE = u"Your password was reset"
+RESET_TEXT = u"Reset by %s. Change it on My profile: until then your signatures are listed for review."
+
+
+def _reset_notice(portal):
+    """The signed-in person's open password reset (esig.credentials), as a
+    notice of their own: a reset by another account until they change it."""
+    try:
+        from senaite.pfas.esig import credentials
+        userid = getSecurityManager().getUser().getId()
+        r = credentials.open_reset(userid) if userid else None
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("bell: password reset: %s", exc)
+        return []
+    if r is None:
+        return []
+    return [{"title": RESET_TITLE, "ws_id": u"", "text": RESET_TEXT % r["by"],
+             "raised_at": r["at"], "url": u"%s/@@pfas-my-profile" % portal.absolute_url()}]
+
+
 class PFASBellView(BrowserView):
 
     def __call__(self):
@@ -75,6 +95,6 @@ class PFASBellView(BrowserView):
                    for f, b, st, e in got]
         except Exception as exc:                            # noqa: BLE001
             logger.warning("bell: raw runs: %s", exc)
-        data = bell.entries(_my_notices(self.context), items, equipment, raw)
+        data = bell.entries(_my_notices(self.context) + _reset_notice(portal), items, equipment, raw)
         data["settings_url"] = u"%s/@@pfas-system#sec-notifications" % portal.absolute_url() if manager else u""
         return data

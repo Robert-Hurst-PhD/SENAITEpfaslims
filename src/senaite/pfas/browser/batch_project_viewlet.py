@@ -86,13 +86,14 @@ def _batch_matrix(portal, batch):
 
 
 def _batch_method_id(batch, request):
-    """Best-effort method id for `batch` -- delegates to the SAME resolver
-    run_builder.py already uses for a batch context (extraction session >
-    logbook 251/252 annotation > core Batch method), so this viewlet does
-    not invent a second derivation path. Returns "" (never raises)."""
+    """Best-effort method id for `batch` -- the SAME resolver every page
+    uses (batch_method.of: the batch's analyses and core Method first, then
+    the session and extraction record of its one worksheet, as
+    extraction_batch.home finds it), so this viewlet does not invent a
+    second derivation path. Returns "" (never raises)."""
     try:
-        from senaite.pfas.browser.logbooks import PFASLogbookIndexView
-        return PFASLogbookIndexView(batch, request).batch_method() or u""
+        from senaite.pfas import batch_method as bm
+        return bm.of(batch) or u""
     except Exception as exc:
         logger.warning("_batch_method_id failed for %r: %s", batch, exc)
         return u""
@@ -105,12 +106,14 @@ def _project_display(portal, project_obj):
     live: they differ). project_ref.get_project() already resolved the real
     object via the real UID, so this just reads its fields directly."""
     from senaite.pfas.browser.projects import _client_name, _qapp_title
+    from senaite.pfas import project_ref
     return {
         "project_code": getattr(project_obj, "project_code", u"") or u"",
         "title": getattr(project_obj, "title", u"") or u"",
         "client_name": _client_name(portal, getattr(project_obj, "client_uid", u"")),
         "qapp_document_id": getattr(project_obj, "qapp_document_id", u"") or u"",
         "qapp_label": _qapp_title(portal, getattr(project_obj, "qapp_document_id", u"")),
+        "standing": project_ref.is_standing(project_obj),
     }
 
 

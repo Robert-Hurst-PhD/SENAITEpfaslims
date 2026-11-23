@@ -11,6 +11,10 @@
        the wrappers that show SENAITE's dates in the laboratory's zone. -->
   <five:registerPackage package="." initialize=".initialize" />
 
+  <!-- What the pipeline worker's own account may do beyond core's roles
+       (setuphandlers.setup_worker_role grants it to the worker's role) -->
+  <permission id="senaite.pfas.WorkerTasks" title="senaite.pfas: Worker tasks" />
+
   <includeDependencies package="." />
   <include package=".browser" />
 
@@ -51,6 +55,13 @@
   <!-- Archetypes schema extenders (ReferenceDefinition PFAS QC fields) -->
   <include package=".extenders" />
 
+  <!-- A password set: its time for the expiry, and a reset by another
+       account opened for review (password_events.py) -->
+  <subscriber
+      for="Products.PluggableAuthService.interfaces.events.ICredentialsUpdatedEvent"
+      handler=".password_events.on_credentials_updated"
+      />
+
   <!-- A core Sample Type renamed renames that matrix in every method profile,
        the regulatory limits and project specs (matrix_rename.py: core owns matrix names) -->
   <subscriber
@@ -58,6 +69,8 @@
            zope.lifecycleevent.interfaces.IObjectModifiedEvent"
       handler=".matrix_rename.on_sampletype_modified"
       />
+  <!-- ... and its form refuses a title already in use (sampletype_title.py) -->
+  <adapter factory=".sampletype_title.SampleTypeTitleValidator" />
 
   <!-- A core Analysis Service added or edited in Setup (its PFAS tab holds
        the compound library) is exported to the worker with the method
@@ -102,6 +115,31 @@
       handler=".homogenisation.on_sample_initialized"
       />
 
+  <!-- A new sample with no report tier takes its client's default, frozen
+       then (report_tiers.py) -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisRequest
+           Products.Archetypes.interfaces.IObjectInitializedEvent"
+      handler=".report_tiers.on_sample_initialized"
+      />
+
+  <!-- A new batch naming no project takes its client's standing project
+       (project_ref.py) -->
+  <subscriber
+      for="bika.lims.interfaces.IBatch
+           Products.Archetypes.interfaces.IObjectInitializedEvent"
+      handler=".project_ref.on_batch_initialized"
+      />
+
+  <!-- A sample created or edited: a project-linked batch with no resolved
+       criteria file yet gets one after the commit, once its method and
+       matrix are known (project_ref.py) -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisRequest
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".project_ref.on_sample_modified"
+      />
+
   <!-- A sample registered with a generated Analysis Profile: its analyses
        carry that method (analysis_profiles.apply_method) -->
   <subscriber
@@ -135,6 +173,15 @@
            *"
       provides="senaite.app.listing.interfaces.IListingViewAdapter"
       factory=".analysis_display.SampleAnalysesColumnsAdapter"
+      />
+
+  <!-- A samples list: Matrix, Sampled and Client sample ID as the column
+       titles (sample_listing.py) -->
+  <subscriber
+      for="senaite.core.browser.samples.view.SamplesView
+           *"
+      provides="senaite.app.listing.interfaces.IListingViewAdapter"
+      factory=".sample_listing.SamplesColumnTitlesAdapter"
       />
 
   <!-- core's Laboratory edited in its own form: the site title stays the

@@ -10,12 +10,11 @@ A folder's sha256 is folder_digest over its files. Traces are kept per
 analyte ({injection: {analyte: {transition: (t, y)}}}): a transition
 scheduled in two windows is read, for each analyte, in the one holding its
 retention time, so one transition can serve two analytes in different
-windows. A quantifier whose apex the reader could not restore
-(masslynx_raw.overflowed) is flagged on its peak, and with no peak found the
-row carries the qualifier token "Saturated" (read as Overflow), not "N.D."; a calibrator flagged so is left off that
-analyte's curve, and the curve lists it under "excluded" and names the
-highest calibrator still on it (top_conc, top_level, top_injection), where
-the run's reporting range ends (pipeline.raw_range).
+windows. A calibrator with no reading is left off its analyte's curve, and
+the curve lists it under "excluded" and names the highest calibrator still
+on it (top_conc, top_level, top_injection), where the run's reporting range
+ends (pipeline.raw_range): a reading above it is above the calibration
+range.
 
 The integration settings are the method's (its Integration tab):
 {"engine": "classic" | "adaptive", "method": raw_integrate.Settings (classic)
@@ -47,10 +46,24 @@ of the peaks in its own window less the peak chosen for its partner. A
 partner's window, less the analyte's own, is left out of the analyte's noise.
 
 A reading below zero has no concentration: a detected peak reads BLoQ and
-its reading is kept on the peak's record (quant.reading). A native's reading
-under the lowest calibrator still on its curve (bottom_conc, bottom_level)
-keeps its number, with that calibrator's concentration as its reporting
-limit, so the summary reads it BLoQ.
+its reading is kept on the peak's record (quant.reading). On a straight
+line, a native's reading in a sample under the lowest calibrator still on
+its curve (bottom_conc, bottom_level) keeps its number, with that
+calibrator's concentration as its reporting limit, so the summary reads it
+BLoQ. On a quadratic, a native in a sample whose ratio is below the curve's
+response at the lowest calibrator reads BLoQ with no number here; its
+reading on the rising branch between zero and that calibrator is kept on the
+record (quant.below, bottom_response, below_reading), and the pipeline gives
+it the number only where, on the sample basis, it is at or above the MDL
+(pipeline.raw_below_mdl). Standards, check
+standards and blanks are read on the whole rising branch. A native in any
+injection but a calibrator whose ratio is above the curve's response at its
+highest calibrator is above the calibration range (quant.above_range,
+top_response), whatever the fit; a sample's with no reading on the curve
+reads ALoQ here, a spike's or blank's from pipeline.raw_range, and a check
+standard's stays N.Q. and fails its window.
+A quadratic that turns within its calibration range is not fitted, and the
+run names the analyte.
 
 The analyst's edits (<stem>.overrides.json, read through the add-on's
 raw_review record) replace a trace's automatic peak every time the run is
@@ -107,9 +120,10 @@ def _row_name(keyword):
         return canonical_name(keyword)
     except LibraryUnavailable:
         return keyword
-from .constants import IS_PEAK_DELETED, PEAK_DELETED, QUALIFIER_BLOQ, QUALIFIER_SATURATED
+from .constants import IS_PEAK_DELETED, PEAK_DELETED, QUALIFIER_ALOQ, QUALIFIER_BLOQ, QUALIFIER_NQ
 from .models import InstrumentRow
 from . import masslynx_raw
+from . import peak_asymmetry
 from . import raw_adaptive
 from . import raw_integrate as ri
 
@@ -138,6 +152,63 @@ def _expected(inj, name):
     compound its own (a scaled ladder, a labelled standard at one level)."""
     exp = inj.get("expected_conc")
     return exp.get(name) if isinstance(exp, dict) else None
+
+
+# the run roles whose labelled concentrations are stated amounts: a check
+# standard is prepared with them, as a calibrator is
+CHECK_STANDARD_ROLES = ("CCV", "ICV")
+# why a labelled standard in an injection has no recovery
+NO_FOUND_AMOUNT = "no amount found on its internal standard"
+NO_CAL_LEVEL = "the calibrators state no level of it, the level every sample is spiked to"
+SEVERAL_CAL_LEVELS = "the calibrators state it at more than one level, so the level a sample is spiked to is not one"
+# where the amount spiked is stated
+FROM_CALIBRATORS = "calibrators"
+
+
+def calibrator_levels(calibrators):
+    """{compound: set of the concentrations the calibrators state for it}."""
+    out = {}
+    for inj in calibrators:
+        for name, value in (inj.get("expected_conc") or {}).items():
+            if value is not None:
+                out.setdefault(name, set()).add(round(float(value), 12))
+    return out
+
+
+def _spiked(inj, name, levels):
+    """(amount, where it is stated, why none) of a labelled standard added to
+    an injection, in the ladder's unit. The run record's `spiked_conc` wins;
+    a check standard's is its own stated concentration; every other
+    injection taken through the extraction is spiked so its final extract
+    holds the surrogate at the calibrators' level (a method fact), which
+    must be one level. A calibrator's is a point of its curve, never a
+    recovery, and is not asked here."""
+    stated = inj.get("spiked_conc")
+    value = stated.get(name) if isinstance(stated, dict) else None
+    if value is not None:
+        return float(value), "spiked_conc", ""
+    if (inj.get("role") or "").upper() in CHECK_STANDARD_ROLES:
+        own = _expected(inj, name)
+        return (float(own), "expected_conc", "") if own is not None else (None, "", NO_CAL_LEVEL)
+    found = (levels or {}).get(name) or set()
+    if not found:
+        return None, "", NO_CAL_LEVEL
+    if len(found) > 1:
+        return None, "", SEVERAL_CAL_LEVELS
+    return next(iter(found)), FROM_CALIBRATORS, ""
+
+
+def surrogate_recovery(found, spiked, source, why, link):
+    """(percent or None, record) of a labelled standard read on the standard
+    it is linked to: Recovery = C_found / C_spiked x 100. The record keeps
+    both amounts, where the spiked one is stated and the internal standard;
+    with no recovery, why."""
+    if spiked is None or spiked <= 0:
+        return None, {"none": why or NO_CAL_LEVEL, "is": link}
+    if found is None:
+        return None, {"none": NO_FOUND_AMOUNT, "is": link, "spiked": spiked, "from": source}
+    pct = 100.0 * found / spiked
+    return pct, {"found": found, "spiked": spiked, "from": source, "is": link, "pct": pct}
 
 
 def safe_join(base, rel):
@@ -222,15 +293,14 @@ FILE_TRANSITION_NOTED = 0.005
 
 
 def _traces(base, injections, analytes, tolerance=DEFAULT_MZ_TOLERANCE):
-    """({injection: {analyte: {transition: (t, y)}}},
-    {injection: {analyte: {saturated transition}}}), after every file is
-    checked. Each analyte has its own traces: one transition scheduled in two
+    """({injection: {analyte: {transition: (t, y)}}}, {injection: {analyte:
+    {transition: file transition}}}), after every file is checked. Each analyte has its own traces: one transition scheduled in two
     windows can serve two analytes, each from the window it elutes in. Each
     configured transition is matched to the file's nearest within `tolerance`
     on Q1 and Q3 and stored under the configured one's key; the third result
     names, per injection and analyte, the file transition where it differs."""
     mzml = load("raw_mzml")
-    out, saturated, renamed, problems = {}, {}, {}, []
+    out, renamed, problems = {}, {}, []
     tol = float(tolerance)
     for inj in injections:
         path = safe_join(base, inj.get("file"))
@@ -253,7 +323,7 @@ def _traces(base, injections, analytes, tolerance=DEFAULT_MZ_TOLERANCE):
         by_key = {}
         for c in records:
             by_key.setdefault((float(c["q1"]), float(c["q3"])), []).append(c)
-        out[inj["name"]], saturated[inj["name"]], renamed[inj["name"]] = {}, {}, {}
+        out[inj["name"]], renamed[inj["name"]] = {}, {}
         for name in sorted(analytes):
             a = analytes[name]
             chosen, differs = {}, {}
@@ -280,11 +350,9 @@ def _traces(base, injections, analytes, tolerance=DEFAULT_MZ_TOLERANCE):
                         differs[key] = "%.2f > %.2f" % (file_q[0], file_q[1])
             out[inj["name"]][name] = dict((k, (c["t"], c["y"])) for k, c in chosen.items())
             renamed[inj["name"]][name] = differs
-            # an mzML record carries no flag: its signal is not stored in a wrapping format
-            saturated[inj["name"]][name] = set(k for k, c in chosen.items() if c.get("overflowed"))
     if problems:
         raise RawRunError("The raw run cannot be quantified: " + "; ".join(problems))
-    return out, saturated, renamed
+    return out, renamed
 
 
 def settings_for(a, settings, name):
@@ -342,14 +410,13 @@ def _level_order(inj):
         return (1, 0.0, str(level))
 
 
-def learn_smoothing(chroms, saturated, calibrators, analytes, settings):
+def learn_smoothing(chroms, calibrators, analytes, settings):
     """{analyte: (m, calibrator name)} for each analyte whose adaptive
     smoothing is auto; (None, None) where no calibrator qualifies.
 
     The m is learnt (raw_adaptive.learn_m) from the median-concentration
     calibrator, ranked by the analyte's stated concentration, among those
-    whose quantifier is unsaturated and holds a detected peak within its
-    window; of two middle calibrators, or equal concentrations, the lower
+    whose quantifier holds a detected peak within its window; of two middle calibrators, or equal concentrations, the lower
     level. An analyte no calibrator states a concentration for (a labelled
     standard at one level) is ranked by level alone; otherwise a calibrator
     stating none is not ranked. With none, each trace uses its own adaptive
@@ -367,7 +434,7 @@ def learn_smoothing(chroms, saturated, calibrators, analytes, settings):
         ranked = []
         for inj in calibrators:
             conc = 0 if by_level else _expected(inj, n)
-            if (not by_level and not conc) or key in saturated[inj["name"]][n]:
+            if not by_level and not conc:
                 continue
             t, y = chroms[inj["name"]][n][key]
             peaks, _m, _sigma = _adaptive_peaks(t, y, own)
@@ -625,6 +692,24 @@ def _adaptive_group(t, y, rt, tol, settings, note, exclude=()):
                    plates=one.get("plates"), smoothing=m, engine="adaptive", noise=sigma)
 
 
+def _summed_on(t, y, a, partner, settings, rt, exclude, partner_peak):
+    """A summed analyte's peak on one of its traces, the quantifier's or a
+    qualifier's, so both are integrated alike: with a partner, the peaks in
+    its own window less the partner's chosen peak (`partner_peak`); without
+    one, the touching group nearest its expected time (Adaptive) or one peak
+    across the window (Classic). `settings` are the trace's own, smoothed."""
+    if isinstance(settings, ri.AdaptiveSettings):
+        note = "no peak above the signal-to-noise of %g in the window" % settings.min_sn
+        centre = a["rt"] if rt is None else rt
+        if partner is not None:
+            return _adaptive_summed(t, y, centre, a["window"], settings, note, exclude,
+                                    _partner_bound(partner_peak))
+        return _adaptive_group(t, y, centre, a["window"], settings, note, exclude)
+    if partner is not None:
+        return ri.integrate_cluster(t, y, a["rt"], a["window"], settings, exclude, _partner_bound(partner_peak))
+    return ri.integrate_summed(t, y, [a["rt"]], a["window"], settings)
+
+
 def _peak(traces, analytes, name, settings, smooth=None, rt=None, partner_peak=None):
     """The analyte's quantifier peak. Under Adaptive, `smooth` is its learnt
     (m, source) and `rt` its expected time where relative retention moved it.
@@ -638,19 +723,14 @@ def _peak(traces, analytes, name, settings, smooth=None, rt=None, partner_peak=N
     t, y = traces[mzml.transition_key(*a["quant"])]
     exclude = _partner_span(analytes, name, rt)
     partner = analytes.get(a.get("partner")) if a.get("partner") else None
-    summed = a.get("mode") == "summed" and partner is not None
     if isinstance(settings, ri.AdaptiveSettings):
         settings, source = _smoothed(settings, smooth)
-        note = "no peak above the signal-to-noise of %g in the window" % settings.min_sn
-        centre = a["rt"] if rt is None else rt
-        if summed:
-            peak = _adaptive_summed(t, y, centre, a["window"], settings, note, exclude,
-                                    _partner_bound(partner_peak))
-        elif a.get("mode") == "summed":
-            peak = _adaptive_group(t, y, centre, a["window"], settings, note, exclude)
+        if a.get("mode") == "summed":
+            peak = _summed_on(t, y, a, partner, settings, rt, exclude, partner_peak)
         else:
             # the detected peak nearest the expected time, within its window
-            peak = _adaptive_nearest(t, y, centre, a["window"], settings, note, exclude)
+            note = "no peak above the signal-to-noise of %g in the window" % settings.min_sn
+            peak = _adaptive_nearest(t, y, a["rt"] if rt is None else rt, a["window"], settings, note, exclude)
         peak.smoothing_from = source
         return peak
     # a pair is fitted with its partner, and a summed peak integrated, as signal
@@ -663,11 +743,8 @@ def _peak(traces, analytes, name, settings, smooth=None, rt=None, partner_peak=N
             peak = ri.integrate_excluding(t, y, a["rt"], a["window"], settings, exclude)
             peak.fit_note = PAIR_FIT_FAILED + ("; " + peak.fit_note if peak.fit_note else "")
             return peak
-    if summed:
-        return ri.integrate_cluster(t, y, a["rt"], a["window"], settings, exclude,
-                                    _partner_bound(partner_peak))
     if a.get("mode") == "summed":
-        return ri.integrate_summed(t, y, [a["rt"]], a["window"], settings)
+        return _summed_on(t, y, a, partner, settings, rt, exclude, partner_peak)
     if exclude:
         return ri.integrate_excluding(t, y, a["rt"], a["window"], settings, exclude)
     return ri.integrate(t, y, a["rt"], a["window"], settings)
@@ -831,13 +908,15 @@ def _quant_choices(t, y, a, searched, own, smooth, exclude, rules=None):
     return _choices(t, y, centre, a["window"], _smoothed(own, smooth)[0], exclude, _candidate_floor(a, rules))
 
 
-def _expected_rt(peaks, inj, analytes, name, settings, surrogate_map):
+def _expected_rt(peaks, inj, analytes, name, settings, surrogate_map, composites=None):
     """(expected time or None for the configured one, note or None). Under
     relative retention a native is expected at its configured time times its
     quantitation standard's found apex over that standard's configured time;
     a labelled standard, or a native with no quantitation standard, at its
     configured time; a standard not detected in the injection leaves the
-    configured time and the note "anchor not found"."""
+    configured time and the note "anchor not found". A composite anchors on
+    its first member found, in its members' order (`composites`: {id:
+    [members]})."""
     a = analytes[name]
     own = settings_for(a, settings, name)
     if not isinstance(own, ri.AdaptiveSettings) or own.rt_anchor != "labelled" or a.get("labelled"):
@@ -845,10 +924,11 @@ def _expected_rt(peaks, inj, analytes, name, settings, surrogate_map):
     anchor = surrogate_map.get(name)
     if not anchor:
         return None, None
-    found = peaks.get((inj, anchor))
-    if anchor not in analytes or found is None or not found.detected or found.rt is None:
-        return None, ANCHOR_NOT_FOUND
-    return a["rt"] * found.rt / analytes[anchor]["rt"], None
+    for std in (composites or {}).get(anchor) or [anchor]:
+        found = peaks.get((inj, std))
+        if std in analytes and found is not None and found.detected and found.rt is not None:
+            return a["rt"] * found.rt / analytes[std]["rt"], None
+    return None, ANCHOR_NOT_FOUND
 
 
 def _qual_floor(a, settings, confirm_min):
@@ -862,9 +942,13 @@ def _qual_floor(a, settings, confirm_min):
 
 
 def _qual_peaks(traces, analytes, name, peak, settings, smooth=None, confirm_min=None, rt=None,
-                edits=None, autos=None, where=None, review=None, rules=None, unapplied=None):
+                edits=None, autos=None, where=None, review=None, rules=None, unapplied=None,
+                partner_peak=None):
     """[(transition, qualifier peak or None)]: each qualifier integrated at
-    the quantifier's apex (None when the quantifier has no peak), at the
+    the quantifier's apex (None when the quantifier has no peak); a summed
+    analyte's qualifier is summed as its quantifier is, over the same group
+    or window beside the same partner peak (`partner_peak`, _summed_on),
+    unless the analyst's edit splits it. Each is read at the
     analyte's learnt smoothing under Adaptive, found down to its own floor
     (_qual_floor; `confirm_min` is the method's confirmation limit), with an
     isomer partner's span left out of its noise (`rt` as for _peak).
@@ -893,6 +977,7 @@ def _qual_peaks(traces, analytes, name, peak, settings, smooth=None, confirm_min
     settings = dataclasses.replace(settings, min_sn=_qual_floor(a, settings, confirm_min))
     exclude = _partner_span(analytes, name, rt)
     single = (a.get("mode") or "single") == "single"
+    partner = analytes.get(a.get("partner")) if a.get("partner") else None
     for q in a.get("quals") or []:
         qp = None
         if review is not None:
@@ -902,7 +987,11 @@ def _qual_peaks(traces, analytes, name, peak, settings, smooth=None, confirm_min
             # a qualifier is sought about the quantifier's apex, within the
             # apex tolerance (Adaptive) or the analyte's window (Classic)
             tol = settings.qual_apex_tol if adaptive else a["window"]
-            if adaptive:
+            if a.get("mode") == "summed":
+                qp = _summed_on(t, y, a, partner, settings, rt, exclude, partner_peak)
+                if adaptive:
+                    qp.smoothing_from = source
+            elif adaptive:
                 # the qualifier is the detected peak within the apex
                 # tolerance of the quantifier's apex
                 qp = _adaptive_nearest(t, y, peak.rt, settings.qual_apex_tol, settings,
@@ -966,25 +1055,40 @@ def _finite(v):
     return v if v is None or math.isfinite(v) else None
 
 
-OVERFLOW_NOTE = "overflow at the apex: the stored value is above the file's number range"
-
-
-def _peak_record(a, peak, revision, saturated=False):
+def _peak_record(a, peak, revision):
     rec = {"window": [a["rt"] - a["window"], a["rt"] + a["window"]], "apex": peak.rt,
            "start": peak.start, "end": peak.end, "base_start": peak.base_start,
            "base_end": peak.base_end, "area": peak.area, "area_method": peak.method,
-           "sn": _finite(peak.sn), "note": peak.note, "settings_revision": revision,
-           "saturated": bool(saturated)}
+           "sn": _finite(peak.sn), "note": peak.note, "settings_revision": revision}
     # the adaptive engine's measures are written only when present: a
     # classic record carries none
     for key in ("fwhm_s", "tailing", "plates", "smoothing", "smoothing_from", "engine", "fit_note"):
         value = getattr(peak, key)
         if value is not None:
             rec[key] = _finite(value) if isinstance(value, float) else value
-    if saturated:
-        # a wrapped apex: the area is not the peak's, and the record says so
-        rec["note"] = OVERFLOW_NOTE + ("; " + peak.note if peak.note else "")
+    # the asymmetry factor of any engine's peak, or why it has none
+    for key in ("asymmetry", "asymmetry_note"):
+        value = getattr(peak, key)
+        if value is not None:
+            rec[key] = _finite(value) if isinstance(value, float) else value
     return rec
+
+
+# why a summed peak has no asymmetry factor: its area spans several peaks
+SUMMED_NO_FACTOR = "a summed peak has no single apex"
+
+
+def _with_asymmetry(peak, xy, a):
+    """The peak with its asymmetry factor (peak_asymmetry, EPA 537.1
+    §9.3.9) read on its quantifier trace `xy` above its own baseline, or
+    the reason it has none; a peak not detected is returned as it is."""
+    if not peak.detected or peak.rt is None:
+        return peak
+    if a.get("mode") == "summed":
+        return dataclasses.replace(peak, asymmetry=None, asymmetry_note=SUMMED_NO_FACTOR)
+    factor, why = peak_asymmetry.measure(xy[0], xy[1], peak.rt, peak.start, peak.end,
+                                         peak.base_start, peak.base_end)
+    return dataclasses.replace(peak, asymmetry=factor, asymmetry_note=why)
 
 
 def _line_of(edit, peak):
@@ -1005,9 +1109,9 @@ def _unapplied_record(edit, why):
                  if edit.get(k) is not None] + [("why", why)])
 
 
-def _provenance(a, peak, revision, auto=None, override=None, quant=None, saturated=False, file_transition=None,
+def _provenance(a, peak, revision, auto=None, override=None, quant=None, file_transition=None,
                 qual_edits=None, qual_deleted=None, unapplied=None):
-    rec = _peak_record(a, peak, revision, saturated)
+    rec = _peak_record(a, peak, revision)
     if file_transition:
         rec["file_transition"] = file_transition     # the file's transition, where it differs from the configured one
     if quant is not None:
@@ -1016,7 +1120,7 @@ def _provenance(a, peak, revision, auto=None, override=None, quant=None, saturat
         # edited by hand: the automatic peak is kept beside it, with the
         # kind of edit, the apex chosen and the line the peak was measured
         # on (its baseline, the levels set by hand)
-        rec.update(manual=True, auto=_peak_record(a, auto, revision, saturated), by=override.get("by"),
+        rec.update(manual=True, auto=_peak_record(a, auto, revision), by=override.get("by"),
                    reason=override.get("reason"), at=override.get("at"), kind=override["kind"])
         if override.get("apex") is not None:
             rec["chosen_apex"] = override["apex"]
@@ -1034,7 +1138,7 @@ def _provenance(a, peak, revision, auto=None, override=None, quant=None, saturat
     return "raw:" + json.dumps(rec, sort_keys=True)
 
 
-def _qual_edit_record(a, label, edit, auto, peak, revision, saturated=False, unapplied=None):
+def _qual_edit_record(a, label, edit, auto, peak, revision, unapplied=None):
     """A qualifier's edit on the row's record: the edit, its automatic and
     its edited peak, the line it was measured on; an edit kept with no
     effect says why ("unapplied") and has no automatic peak beside it."""
@@ -1046,8 +1150,8 @@ def _qual_edit_record(a, label, edit, auto, peak, revision, saturated=False, una
         rec.update(_line_of(edit, peak))
     if unapplied:
         rec["unapplied"] = unapplied
-    rec.update(transition=label, auto=_peak_record(a, auto, revision, saturated) if auto is not None else None,
-               peak=_peak_record(a, peak, revision, saturated) if peak is not None else None)
+    rec.update(transition=label, auto=_peak_record(a, auto, revision) if auto is not None else None,
+               peak=_peak_record(a, peak, revision) if peak is not None else None)
     return rec
 
 
@@ -1153,8 +1257,9 @@ def _reach(settings, found, y):
     return reach
 
 
-def _keep_trace(out, inj, name, q, role, xy, a, peak, revision, linked, saturated=False, file_transition=None,
-                auto=None, settings=None, edit=None, choices=None, search=None, unapplied=None):
+def _keep_trace(out, inj, name, q, role, xy, a, peak, revision, linked, file_transition=None,
+                auto=None, settings=None, edit=None, choices=None, search=None, unapplied=None,
+                members=None):
     """One trace with its peak for review. `auto` is the automatic peak an
     edit replaced: its noise sigma is the trace's, so a manual peak's S/N
     is judged against the noise the automatic call read. `settings` are the
@@ -1178,7 +1283,7 @@ def _keep_trace(out, inj, name, q, role, xy, a, peak, revision, linked, saturate
     effect rather than as waiting for the run. Every number is finite, so
     the record is JSON."""
     rt = load("raw_traces")
-    rec = _peak_record(a, peak, revision, saturated) if peak is not None else {
+    rec = _peak_record(a, peak, revision) if peak is not None else {
         "window": [a["rt"] - a["window"], a["rt"] + a["window"]]}
     found = auto if auto is not None else peak
     if found is not None and found.noise is not None:
@@ -1186,6 +1291,8 @@ def _keep_trace(out, inj, name, q, role, xy, a, peak, revision, linked, saturate
     if file_transition:
         rec["file_transition"] = file_transition
     rec["linked_is"] = linked                      # the standard it was quantified on
+    if members:
+        rec["linked_members"] = list(members)      # a composite's, averaged
     # the peak's own span first (the automatic and the manual peak's, as one):
     # past the size limit the rest is cut back around it
     own = [p for p in (peak, auto) if p is not None and p.start is not None]
@@ -1242,11 +1349,36 @@ def run_folder(manifest, manifest_path, run_root=None):
     return os.path.join(root, name)
 
 
-def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=None, run_root=None):
+def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=None, run_root=None,
+                 composites=None, linked=False, roles=None, salt_factors=None, acid_basis=None):
     """The run's rows. `cal_rule` is the method's CalibrationRule, or a
     callable giving it per analyte (Profile.calibration_rule). A `traces`
     list receives each quantifier and qualifier trace with its peak, for
-    review (raw_traces)."""
+    review (raw_traces). `composites` ({id: [member keywords]}): an analyte
+    whose surrogate map names one is read on the mean of its members' areas
+    in each injection (EPA 1633A §15.2). `linked` (the method's linked
+    response ratio on) with `roles` ({keyword: "surrogate" | "injection_is"}):
+    an analyte quantified on a surrogate is read on its area over the
+    surrogate's own response ratio on the internal standard it is linked
+    to, in every injection, calibrators included (linked_standard).
+    `salt_factors` ({labelled standard: factor}): a labelled standard's
+    stated amounts, its level in the calibrators and the amount spiked, are
+    turned to the acid form by its factor, so its found and spiked amounts
+    are acid; its recovery, their quotient, does not move, nor does any
+    native's result (in RR = A x C_L / A_L, C_L is one level in every
+    injection and folds into the slope). A standard the run's calibration
+    lots state as the acid (`acid_basis`) takes none; unset is 1.0."""
+    composites = composites or {}
+    roles = roles or {}
+    acid = set((a or "").strip().upper() for a in acid_basis or [])
+    salt = dict((k, float(f)) for k, f in (salt_factors or {}).items()
+                if f and float(f) != 1.0 and (k or "").strip().upper() not in acid)
+
+    def stated(inj, n):
+        """A compound's stated concentration in a calibrator or check
+        standard, a labelled standard's as acid."""
+        value = _expected(inj, n)
+        return value * salt[n] if value is not None and n in salt and analytes[n].get("labelled") else value
     quant = load("quant_fit")
     with open(manifest_path) as fh:
         manifest = json.load(fh)
@@ -1261,15 +1393,11 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
     confirm_min = integration.get("sn_confirm_min")
     # the candidates offered as another apex
     rules = integration.get("review_rules")
-    chroms, saturated, renamed = _traces(base, injections, analytes,
-                                         integration.get("mz_tolerance", DEFAULT_MZ_TOLERANCE))
+    chroms, renamed = _traces(base, injections, analytes, integration.get("mz_tolerance", DEFAULT_MZ_TOLERANCE))
     mzml = load("raw_mzml")
 
-    def quant_saturated(inj, n):
-        return mzml.transition_key(*analytes[n]["quant"]) in saturated[inj][n]
-
     calibrators = [inj for inj in injections if inj.get("type") == "Standard" and inj.get("level")]
-    learnt = learn_smoothing(chroms, saturated, calibrators, analytes, settings)
+    learnt = learn_smoothing(chroms, calibrators, analytes, settings)
 
     def smooth_of(inj, n):
         """The analyte's learnt (m, calibrator); with none, the trace's own m
@@ -1295,7 +1423,7 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                                             analytes[n].get("mode") == "summed", n))
     for inj in injections:
         for n in order:
-            rt, note = _expected_rt(peaks, inj["name"], analytes, n, settings, surrogate_map)
+            rt, note = _expected_rt(peaks, inj["name"], analytes, n, settings, surrogate_map, composites)
             if rt is not None:
                 searched[(inj["name"], n)] = rt
             notes[(inj["name"], n)] = note
@@ -1339,12 +1467,104 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                 p.note = (p.note + "; " if p.note else "") + RESUMMED
                 peaks[(inj_name, b)] = p
 
+    def std_of(n):
+        """The standards the analyte is read on: a composite's members, else
+        its one standard."""
+        isn = surrogate_map.get(n)
+        return list(composites[isn]) if isn in composites else ([isn] if isn else [])
+
+    def linked_standard(n):
+        """(the internal standard an analyte's ratio is linked through, None),
+        (None, why it cannot be) or (None, None) for the plain ratio.
+
+        Under the linked response ratio RR = A x C_sur / RR_sur, RR_sur =
+        A_sur x C_IS / A_IS, so RR = A x A_IS / A_sur x C_sur / C_IS. C_sur
+        and C_IS are each one level in every injection (the calibrators'
+        level, every sample spiked to it; the internal standard at its one
+        level), so their quotient is a constant of the analyte's curve: it
+        folds into the slope and the ratio is formed as A x A_IS / A_sur.
+        Only an analyte on a surrogate (or a composite of surrogates) is
+        linked; one on an injection standard keeps its plain ratio. A
+        composite's members must share their internal standard: the mean of
+        their areas has one A_IS only then."""
+        if not linked or analytes[n].get("labelled"):
+            return None, None
+        stds = std_of(n)
+        if not stds:
+            return None, None
+        found = set(roles.get(s) for s in stds)
+        if found == {"injection_is"}:
+            return None, None
+        if found != {"surrogate"}:
+            return None, ("%s is quantified on %s, which has no single role in the method's labelled "
+                          "standards, so its linked response ratio cannot be formed" % (n, surrogate_map.get(n)))
+        for s in stds:
+            if not surrogate_map.get(s):
+                return None, ("%s has no Linked to, so the linked response ratio of %s cannot be formed"
+                              % (s, n))
+        links = sorted(set(surrogate_map.get(s) for s in stds))
+        if len(links) > 1:
+            return None, ("the members of %s are linked to different internal standards (%s), so the mean "
+                          "of their areas has no one internal standard" % (surrogate_map.get(n), ", ".join(links)))
+        return links[0], None
+
+    link_of = dict((n, linked_standard(n)) for n in analytes)
+    # an analyte whose linked ratio cannot be formed at all: no curve, every
+    # detection held, naming why
+    unlinked = dict((n, v[1]) for n, v in link_of.items() if v[1])
+
+    def is_area_of(inj, n):
+        """The area of the internal standard an analyte's ratio is linked
+        through, in this injection; None while it is not detected."""
+        lk = link_of.get(n, (None, None))[0]
+        ip = peaks.get((inj, lk)) if lk else None
+        return ip.area if ip is not None and ip.detected and ip.area else None
+
+    def std_area(inj, n):
+        """The denominator: the standard's area, or the mean of a composite's
+        members' areas; None while any member is not detected (no reading
+        is made on part of the denominator the curve was fitted on)."""
+        stds = std_of(n)
+        ips = [peaks.get((inj, s)) for s in stds]
+        if not stds or any(ip is None or not ip.detected or (len(ips) > 1 and not ip.area) for ip in ips):
+            return None
+        return sum(ip.area for ip in ips) / len(ips)
+
     def ratio(inj, n):
-        p, isn = peaks[(inj, n)], surrogate_map.get(n)
-        ip = peaks.get((inj, isn)) if isn else None
-        if not (p.detected and ip is not None and ip.detected and ip.area):
-            return None, (ip.area if ip is not None and ip.detected else None)
-        return p.area / ip.area, ip.area
+        """(the response ratio, the standard's area): A / A_sur, or, linked,
+        A x A_IS / A_sur (linked_standard)."""
+        p, is_area = peaks[(inj, n)], std_area(inj, n)
+        if not (p.detected and is_area) or n in unlinked:
+            return None, is_area
+        lk = link_of.get(n, (None, None))[0]
+        if lk:
+            a_is = is_area_of(inj, n)
+            return (p.area * a_is / is_area if a_is else None), is_area
+        return p.area / is_area, is_area
+
+    def std_missing(inj_name, n):
+        """Why the standard gives no area here, naming a composite's member:
+        (reason, member or None)."""
+        stds = std_of(n)
+        one = len(stds) == 1
+        for s in stds:
+            if (inj_name, s) in deleted:
+                return IS_PEAK_DELETED, None if one else s
+        for s in stds:
+            ip = peaks.get((inj_name, s))
+            if ip is None or not ip.detected or not ip.area:
+                return ("isotope standard not detected", None) if one else (
+                    "%s not detected, a member of its standard" % s, s)
+        lk = link_of.get(n, (None, None))[0]
+        if lk and (inj_name, lk) in deleted:
+            return IS_PEAK_DELETED, None
+        if lk and not is_area_of(inj_name, n):
+            return linked_missing(n), None
+        return "isotope standard not detected", None
+
+    def linked_missing(n):
+        return ("%s not detected, the internal standard its surrogate is linked to, so the linked "
+                "response ratio cannot be formed" % link_of[n][0])
 
     if not calibrators:
         raise RawRunError("This run has no calibrators: a raw run on a reused curve cannot be "
@@ -1360,7 +1580,9 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                           % (", ".join(bare), "has" if len(bare) == 1 else "have"))
     # (injection, analyte) of each calibrator left off its curve for want of a reading
     unread = set()
-    curves, unfit, excluded, ends = {}, [], {}, {}
+    curves, unfit, one_level, few_for_quadratic, excluded, ends = {}, [], [], [], {}, {}
+    # a quadratic that turns within its calibration range is not usable
+    turns = []
     # a branched peak no calibrator states (a linear-only standard) reads on
     # its linear partner's curve
     borrowed = dict((n, analytes[n]["partner"]) for n in analytes
@@ -1369,14 +1591,12 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
     for n in sorted(analytes):
         if not surrogate_map.get(n) or n in borrowed:
             continue
-        # a calibrator whose quantifier is saturated has an area that is not
-        # its peak's: it is left off the curve, and the curve names it
-        # (a deleted one is named as deleted, the analyst's act)
-        excluded[n] = [{"injection": inj["name"],
-                        "reason": PEAK_DELETED if (inj["name"], n) in deleted else "saturated"}
-                       for inj in calibrators if _expected(inj, n) and quant_saturated(inj["name"], n)]
-        fitted = [(_expected(inj, n), ratio(inj["name"], n)[0], inj) for inj in calibrators
-                  if _expected(inj, n) and not quant_saturated(inj["name"], n)]
+        if n in unlinked:
+            curves[n], excluded[n], ends[n] = None, [], {}
+            continue
+        excluded[n] = []
+        fitted = [(stated(inj, n), ratio(inj["name"], n)[0], inj) for inj in calibrators
+                  if _expected(inj, n)]
         # a calibrator with no quantifier peak, or none of its isotope
         # standard, has no response: it is off the curve, and the curve names
         # it; a peak the analyst deleted, its own before its standard's, is
@@ -1385,67 +1605,144 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
             if p[1] is None:
                 inj_name = p[2]["name"]
                 unread.add((inj_name, n))
-                excluded[n].append({"injection": inj_name, "reason": (
-                    PEAK_DELETED if (inj_name, n) in deleted
-                    else "not detected" if not peaks[(inj_name, n)].detected
-                    else IS_PEAK_DELETED if (inj_name, surrogate_map[n]) in deleted
-                    else "isotope standard not detected")})
+                own = (PEAK_DELETED if (inj_name, n) in deleted
+                       else "not detected" if not peaks[(inj_name, n)].detected else None)
+                reason, member = (own, None) if own else std_missing(inj_name, n)
+                excluded[n].append(dict({"injection": inj_name, "reason": reason},
+                                        **({"member": member} if member else {})))
         fitted = [p for p in fitted if p[1] is not None]
         rule = cal_rule(n) if callable(cal_rule) else cal_rule
+        refused = []
         curve = quant.fit([p[:2] for p in fitted], rule.default_fit,
-                          rule.default_weighting, rule.origin)
+                          rule.default_weighting, rule.origin, refused)
         if curve is None:
-            unfit.append(n)
+            # a quadratic needs three concentrations, a straight line two: a
+            # compound every calibrator states at one level is named apart,
+            # with the setting that fits it; a quadratic must rise across its
+            # whole calibration range
+            if quant.TURNS in refused:
+                turns.append(n)
+            elif rule.default_fit == "quadratic" and len(fitted) >= 2:
+                few_for_quadratic.append(n)
+            elif len(fitted) >= 2 and len(set(p[0] for p in fitted)) < 2:
+                one_level.append(n)
+            else:
+                unfit.append(n)
         curves[n] = curve
         # the reporting range ends at the highest calibrator still on the
-        # curve (leaving a saturated top calibrator off shrinks it) and
-        # starts at the lowest
+        # curve and starts at the lowest
         top = max(fitted, key=lambda p: p[0]) if fitted else None
         bottom = min(fitted, key=lambda p: p[0]) if fitted else None
         ends[n] = ({"top_conc": top[0], "top_level": top[2].get("level"), "top_injection": top[2]["name"],
                     "bottom_conc": bottom[0], "bottom_level": bottom[2].get("level")} if top else {})
     for n, partner in sorted(borrowed.items()):
+        if n in unlinked:
+            curves[n], excluded[n], ends[n] = None, [], {}
+            continue
         if surrogate_map.get(partner) != surrogate_map[n]:
             raise RawRunError("%s has no calibrator concentrations of its own, and its linear partner %s "
                               "is quantified on another standard, so its curve cannot be used"
                               % (n, partner))
         if curves.get(partner) is None:
-            unfit.append(n)
+            (turns if partner in turns else unfit).append(n)
         curves[n], excluded[n], ends[n] = curves.get(partner), excluded.get(partner, []), ends.get(partner, {})
+    why = []
     if unfit:
-        raise RawRunError("No calibration curve can be fitted for %s: fewer than two calibrators "
-                          "with a peak and a stated concentration" % ", ".join(sorted(unfit)))
+        why.append("No calibration curve can be fitted for %s: fewer than two calibrators "
+                   "with a peak and a stated concentration" % ", ".join(sorted(unfit)))
+    if few_for_quadratic:
+        why.append("No calibration curve can be fitted for %s: the method's curve fit is Quadratic, "
+                   "which needs calibrators with a peak at three concentrations or more"
+                   % ", ".join(sorted(few_for_quadratic)))
+    if turns:
+        why.append(("The quadratic for %s turns within its calibration range. Choose Linear, or narrow "
+                    "the range at its ends" if len(turns) == 1 else
+                    "The quadratics for %s turn within their calibration ranges. Choose Linear, or narrow "
+                    "each range at its ends") % ", ".join(sorted(turns)))
+    if one_level:
+        why.append("No calibration curve can be fitted for %s: every calibrator states %s at one "
+                   "concentration, and a straight line needs two. A labelled compound at one level "
+                   "is fitted only where the method's Engine says: Labelled compounds are calibrated "
+                   "by their mean response factor"
+                   %(", ".join(sorted(one_level)), "it" if len(one_level) == 1 else "each"))
+    if why:
+        raise RawRunError("; ".join(why))
 
     rows = []
+    # each compound's level in the calibrators: what a sample is spiked to
+    cal_levels = calibrator_levels(calibrators)
     run = manifest.get("run") or os.path.splitext(os.path.basename(manifest_path))[0]
     for inj in injections:
         name = inj["name"]
         acquired = datetime.fromisoformat(inj["acquired"]) if inj.get("acquired") else None
         stamp = acquired.strftime("%Y%m%d%H%M%S") if acquired else run
         for n in sorted(analytes):
-            a, p = analytes[n], peaks[(name, n)]
+            a = analytes[n]
+            p = peaks[(name, n)] = _with_asymmetry(peaks[(name, n)],
+                                                   chroms[name][n][mzml.transition_key(*a["quant"])], a)
             if (name, n) in searched:
                 # the window written is the one searched
                 a = dict(a, rt=searched[(name, n)])
             r, is_area = ratio(name, n)
             curve = curves.get(n)
-            reading = quant.concentration(curve, r) if curve and r is not None else None
+            bottom = ends.get(n, {}).get("bottom_conc")
+            top = ends.get(n, {}).get("top_conc")
+            # a native in a sample reads a quadratic only between its lowest
+            # and its highest calibrator: below the lowest it is BLoQ with no
+            # number, no root taken (quant_fit.sample_reading). Standards,
+            # check standards and blanks are read on the whole rising branch.
+            in_sample = not a.get("labelled") and inj.get("type") not in NOT_SAMPLES
+            place = None
+            if in_sample and curve and r is not None:
+                reading, place = quant.sample_reading(curve, r, bottom, top)
+            else:
+                reading = quant.concentration(curve, r) if curve and r is not None else None
+                # above the range, judged on the ratio for every fit: a
+                # native in a blank or a spike too (pipeline.raw_range
+                # judges the injections with a sample basis); never a
+                # calibrator, a point of the curve itself
+                if (not a.get("labelled") and inj.get("type") != "Standard"
+                        and quant.above_range(curve, r, top)):
+                    place = quant.ABOVE
+            below = place == quant.BELOW
+            above = place == quant.ABOVE
+            # below a quadratic's lowest calibrator the reading on the rising
+            # branch is kept on the record, not as the row's number: the
+            # pipeline gives it the number on the sample basis only at or
+            # above the MDL (pipeline.raw_below_mdl)
+            below_reading = reading if below else None
+            if below:
+                reading = None
+            # a ratio a quadratic never reaches on its rising branch has no
+            # reading: not quantified, never not detected, which the record
+            # says; in a sample above the range it reads ALoQ
+            no_reading = bool(curve and curve.get("quadratic") and r is not None and reading is None
+                              and not below)
             # a reading below zero is no concentration: a detection below the
             # curve, its reading kept on the peak's record
             negative = reading is not None and reading < 0
             conc = None if negative else reading
             # a native's reading in a sample under the lowest calibrator keeps
-            # its number, that calibrator its reporting limit; a standard,
-            # check standard or blank keeps the method's
-            bottom = ends.get(n, {}).get("bottom_conc")
-            limit = (bottom if conc is not None and not a.get("labelled") and bottom is not None
-                     and conc < bottom and inj.get("type") not in NOT_SAMPLES else None)
-            expected = _expected(inj, n)
+            # its number, that calibrator its reporting limit (a straight
+            # line); a standard, check standard or blank keeps the method's
+            limit = (bottom if conc is not None and bottom is not None and conc < bottom and in_sample
+                     else None)
+            expected = stated(inj, n)
+            # a labelled standard read on the one it is linked to, in an
+            # injection that states the amount added: its recovery, the
+            # amount spiked as acid where the standard has a salt factor
+            recovery, rec = None, None
+            if a.get("labelled") and surrogate_map.get(n) and not (inj.get("type") == "Standard"
+                                                                  and inj.get("level")):
+                spiked, source, why = _spiked(inj, n, cal_levels)
+                if spiked is not None and n in salt:
+                    spiked = spiked * salt[n]
+                recovery, rec = surrogate_recovery(conc, spiked, source, why, surrogate_map.get(n))
             q_edits, q_autos, q_why = qual_edits.get((name, n), {}), {}, {}
             q_review = {} if traces is not None else None
             quals = _qual_peaks(chroms[name][n], analytes, n, p, settings, smooth_of(name, n), confirm_min,
                                 searched.get((name, n)), q_edits, q_autos, "%s / %s" % (name, n), q_review,
-                                rules, q_why)
+                                rules, q_why, peaks.get((name, analytes[n].get("partner"))))
             # a qualifier is read only beside a quantifier peak: with none, its
             # edit is kept on the trace as one with no effect, saying why
             if not (p.detected and p.area):
@@ -1455,40 +1752,47 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
             # a deletion beside a quantifier peak, the only place a qualifier is read
             q_marker = [_label(q) for q, qp in quals if _label(q) in q_deleted and qp is not None]
             q_records = [_qual_edit_record(a, _label(q), q_edits[_label(q)], q_autos.get(_label(q)), qp, revision,
-                                           mzml.transition_key(*q) in saturated[name][n], q_why.get(_label(q)))
+                                           q_why.get(_label(q)))
                          for q, qp in sorted(quals, key=lambda x: _label(x[0])) if _label(q) in q_edits]
-            sat = quant_saturated(name, n)
             # its own peak beside its standard's deleted peak: not quantified,
             # which the record says (qc_engine.raw_is_deleted)
-            is_deleted = bool(p.detected and surrogate_map.get(n) and (name, surrogate_map[n]) in deleted)
+            lk = link_of.get(n, (None, None))[0]
+            is_deleted = bool(p.detected and any((name, s) in deleted for s in std_of(n) + ([lk] if lk else [])))
             calibrator = bool(inj.get("type") == "Standard" and inj.get("level"))
+            # under the linked response ratio: a detection with no ratio for
+            # want of the link, or of its internal standard here, is held
+            held = ""
+            if p.detected and not calibrator and not is_deleted and (name, n) not in deleted:
+                if n in unlinked:
+                    held = unlinked[n]
+                elif lk and is_area and not is_area_of(name, n):
+                    held = linked_missing(n)
             if traces is not None:
                 # the trace's own settings and candidates, as its automatic call had them
                 xy = chroms[name][n][mzml.transition_key(*a["quant"])]
                 own = settings_for(analytes[n], settings, n)
-                _keep_trace(traces, name, n, a["quant"], "quant", xy, a, p, revision, surrogate_map.get(n), sat,
+                _keep_trace(traces, name, n, a["quant"], "quant", xy, a, p, revision, surrogate_map.get(n),
                             renamed[name][n].get(mzml.transition_key(*a["quant"])), autos.get((name, n)),
                             _smoothed(own, smooth_of(name, n))[0], edits.get((name, n)),
                             _quant_choices(xy[0], xy[1], analytes[n], searched.get((name, n)), own, smooth_of(name, n),
                                            _partner_span(analytes, n, searched.get((name, n))), rules),
-                            unapplied=unapplied.get((name, n)))
+                            unapplied=unapplied.get((name, n)), members=composites.get(surrogate_map.get(n)))
                 for q, qp in quals:
                     q_settings, q_choices, q_search = q_review.get(_label(q), (None, None, None))
                     _keep_trace(traces, name, n, q, "qual", chroms[name][n][mzml.transition_key(*q)], a, qp, revision,
-                                surrogate_map.get(n), mzml.transition_key(*q) in saturated[name][n],
-                                renamed[name][n].get(mzml.transition_key(*q)), q_autos.get(_label(q)),
+                                surrogate_map.get(n), renamed[name][n].get(mzml.transition_key(*q)), q_autos.get(_label(q)),
                                 q_settings, q_edits.get(_label(q)), q_choices, q_search, q_why.get(_label(q)))
             rows.append(InstrumentRow(
                 compound_name=_row_name(n), compound_type="Internal Standard" if a.get("labelled") else "Analyte",
                 compound_group="",
                 sample_description=name, injection_name=name, sample_group="",
-                # a calibrator left off the curve for saturation or for want
-                # of a reading is not in it, nor one of an analyte read on its
-                # partner's curve, nor of a native with no curve; a labelled
+                # a calibrator left off the curve for want of a reading is not
+                # in it, nor one of an analyte read on its partner's curve,
+                # nor of a native with no curve; a labelled
                 # standard with none (an injection standard) stays one, its
                 # response and time the reference
                 sample_type=SAMPLE_TYPES.get(inj.get("type"), inj.get("type") or ""),
-                included_in_cal=bool(calibrator and not sat and n not in borrowed
+                included_in_cal=bool(calibrator and n not in borrowed
                                      and (name, n) not in unread
                                      and (curve or a.get("labelled"))),
                 level=inj.get("level"), linked_is=surrogate_map.get(n), cal_ref_compound=None,
@@ -1497,16 +1801,25 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                 expected_conc=expected, calculated_conc=conc,
                 # a calibrator left off the curve has no deviation from it
                 pct_deviation=(quant.pct_deviation(curve, expected, r)
-                               if curve and r is not None and expected and not (calibrator and sat) else None),
-                pct_recovery_is=None, ion_ratios=_ion_ratios(quals, p, q_deleted),
+                               if curve and r is not None and expected else None),
+                pct_recovery_is=recovery, ion_ratios=_ion_ratios(quals, p, q_deleted),
                 expected_ion_ratios=None, r2=curve["r2"] if curve else None,
                 signal_to_noise=_finite(p.sn), qual_sn=_qual_sn(quals, q_deleted), quant_status=None,
                 reporting_limit=limit,
                 measured_conc=conc, acquisition_datetime=acquired, concat_id="%s|%s" % (name, stamp),
-                # a wrapped apex can hide the peak: that is saturation, not
-                # absence; a peak the analyst deleted is not detected, saturated or not
+                # a peak the analyst deleted is not detected; its own peak
+                # beside its standard's deleted one is not quantified (a
+                # calibrator is off its curve, which names it)
                 conc_qualifier=("N.D." if (name, n) in deleted
-                                else QUALIFIER_SATURATED if sat and not p.detected
+                                else QUALIFIER_NQ if is_deleted and not calibrator
+                                else QUALIFIER_NQ if held
+                                # a sample above the range with no reading: a
+                                # detection above it, never not quantified nor
+                                # not detected (a spike or blank reads it from
+                                # raw_range; a check standard never does)
+                                else QUALIFIER_ALOQ if above and no_reading and p.detected and in_sample
+                                else QUALIFIER_BLOQ if below and p.detected
+                                else QUALIFIER_NQ if no_reading and p.detected and not calibrator
                                 else QUALIFIER_BLOQ if negative and p.detected
                                 else "" if p.detected else "N.D."),
                 method_expected_ion_ratios=(None if a.get("expected_ion_ratio") is None
@@ -1514,18 +1827,48 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                 source_file=os.path.basename(inj["file"]),
                 derived_from=_provenance(a, p, revision, autos.get((name, n)), edits.get((name, n)),
                                          dict({"ratio": r, "is": surrogate_map.get(n), "is_area": is_area,
+                                               # a labelled standard's salt factor, its amounts as acid
+                                               **({"salt": salt[n]} if n in salt and a.get("labelled") else {}),
+                                               # a composite's members and their areas here
+                                               **({"members": [{"kw": s, "area": _finite(peaks[(name, s)].area)
+                                                                if peaks.get((name, s)) is not None
+                                                                and peaks[(name, s)].detected else None}
+                                                               for s in std_of(n)]}
+                                                  if surrogate_map.get(n) in composites else {}),
                                                "curve": dict([(k, curve[k]) for k in ("slope", "intercept",
-                                                                                        "kind", "weighting",
-                                                                                        "origin", "r2")],
+                                                                                        "quadratic", "kind",
+                                                                                        "weighting", "origin",
+                                                                                        "r2") if k in curve],
                                                              excluded=excluded[n], **ends[n])
                                                if curve else None},
                                               **dict({"curve_of": borrowed[n]} if n in borrowed else {},
                                                      **({"reading": reading} if negative else {}),
-                                                     **({"is_deleted": True} if is_deleted else {}))), sat,
+                                                     **({"no_reading": quant.NO_READING} if no_reading else {}),
+                                                     # above the range: the curve's
+                                                     # response at its top, the
+                                                     # reading kept where there is one
+                                                     **({"above_range": True,
+                                                         "top_response": quant.response_at(curve, top)}
+                                                        if above else {}),
+                                                     # below a quadratic's lowest
+                                                     # calibrator in a sample: no number
+                                                     # here, its reading kept for the
+                                                     # MDL judgement
+                                                     **({"below": quant.BELOW_READING,
+                                                         "bottom_response": quant.response_at(curve, bottom),
+                                                         "below_reading": below_reading}
+                                                        if below else {}),
+                                                     **({"recovery": rec} if rec else {}),
+                                                     **({"is_deleted": True} if is_deleted else {}),
+                                                     # the linked response ratio's internal standard
+                                                     **({"linked": {"is": lk, "is_area": _finite(is_area_of(name, n))}}
+                                                        if lk else {}),
+                                                     **({"held": held} if held else {}))),
                                          renamed[name][n].get(mzml.transition_key(*a["quant"])), q_records,
                                          q_marker,
                                          _unapplied_record(edits[(name, n)], unapplied[(name, n)])
                                          if (name, n) in unapplied else None),
+                ratio_held=held,
                 manual_integration=True if (name, n) in edits or q_edits else None,
                 manual_changes=_manual_changes(edits.get((name, n)), q_edits, p, unapplied.get((name, n)),
                                                dict((_label(q), qp) for q, qp in quals), q_why),

@@ -4,8 +4,9 @@ notice e-mails to be sent (notices.send_due); the deviation for criteria
 not set is raised for every open worksheet whose run holds a result not
 judged (unconfigured_deviation.raise_for_open_worksheets); and the QAO
 e-mail of such a deviation that never went is tried again
-(qc_deviation.retry_notifications). JSON {"ok", "sent", "deviations",
-"qao_retried"}."""
+(qc_deviation.retry_notifications); the CoCs left unsubmitted past the
+days set in Lab Settings are removed (coc_limits.remove_unsubmitted). JSON
+{"ok", "sent", "deviations", "qao_retried", "cocs_removed"}."""
 from __future__ import absolute_import, unicode_literals
 
 import json
@@ -43,5 +44,11 @@ class PFASNoticeRemindersView(object):
         except Exception as exc:                            # noqa: BLE001
             logger.error("QAO notification retry: %s", exc)
             retried = 0
+        try:
+            from senaite.pfas import coc_limits
+            removed = coc_limits.remove_unsubmitted(portal)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("unsubmitted CoC removal: %s", exc)
+            removed = []
         return json.dumps({"ok": True, "sent": sent, "deviations": deviations,
-                           "qao_retried": retried})
+                           "qao_retried": retried, "cocs_removed": len(removed)})

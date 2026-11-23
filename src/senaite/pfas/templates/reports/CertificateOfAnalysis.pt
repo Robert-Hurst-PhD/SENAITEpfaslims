@@ -62,7 +62,7 @@
   <tal:accred define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
                       accred python:att.accreditation_disclosure(view.collection);"
               condition="python:accred and accred.get('out_of_scope')">
-    <div class="pfas-coa-box scope">
+    <div tal:attributes="class python:'pfas-coa-box scope ' + att.variant(view.collection)">
       <div class="bh"
            i18n:translate="">
         Not covered by the laboratory's accreditation
@@ -95,17 +95,24 @@
        the deviation is authorised, justified and RECORDED — this is the
        client's half of that record. -->
   <tal:quals define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
-                     quals python:att.qc_qualifications(view.collection);"
-             condition="quals">
-    <div class="pfas-coa-box">
+                     quals python:att.qc_qualifications(view.collection);
+                     not_run python:att.qc_not_run(view.collection);"
+             condition="python:quals or not_run">
+    <div tal:attributes="class python:'pfas-coa-box ' + att.variant(view.collection)">
       <div class="bh"
            i18n:translate="">Quality control qualifications</div>
-      <div class="bt"
+      <div class="bt" tal:condition="quals"
            i18n:translate="">
         The results below were released although a quality control criterion was
         not met. Each qualified result carries the code shown.
       </div>
-      <table>
+      <!-- a QC type the method requires every run that was not run, with the
+           closed deviation that released it -->
+      <div class="bt" tal:repeat="n not_run"><tal:t replace="n/qc_type">LFSM</tal:t>
+        <span i18n:translate="">not run, though the method requires it every run</span><tal:d
+          condition="n/dev_id">; <span i18n:translate="">released by deviation</span>
+          <tal:i replace="n/dev_id">DEV-2026-004</tal:i></tal:d>.</div>
+      <table tal:condition="quals">
         <tr tal:repeat="q quals">
           <td class="code"
               tal:content="q/code">M</td>
@@ -132,20 +139,13 @@
   <!-- FOOTER (repeated on every page by the impress paginator) -->
   <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-sections')(collection=view.collection, report_view=view, section='footer')" />
 
-  <!-- CONTROLLED-DOCUMENT STAMP (PFAS, D65 A3) — report identity + revision
-       (prospective at render time) and the uncontrolled-when-printed notice. -->
+  <!-- TIME ZONE NOTE (PFAS) — every time the certificate prints is on the
+       laboratory's clock; the zone is named once, at the end. -->
   <tal:stamp define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
-                     meta python:att.controlled_doc_meta(view.collection)">
-    <div class="pfas-coa-stamp">
-      <span i18n:translate="">Controlled documentation publication</span>
-      <tal:rid condition="meta/report_id">
-        &middot; <span tal:content="meta/report_id"></span>
-      </tal:rid>
-      &middot; <span i18n:translate="">uncontrolled when printed</span>
-      <tal:z define="zone att/times_line" condition="zone">
-        &middot; <span tal:content="zone"></span>
-      </tal:z>
-    </div>
+                     zone att/times_line"
+             condition="zone">
+    <div tal:attributes="class python:'pfas-coa-stamp ' + att.variant(view.collection)"
+         tal:content="zone">Times are</div>
   </tal:stamp>
 
 </tal:report>

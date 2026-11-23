@@ -20,7 +20,7 @@ from senaite.pfas import custody_documents as cus
 from senaite.pfas import homogenisation as hg
 from senaite.pfas import lab_time
 from senaite.pfas import print_doc
-from senaite.pfas.browser.view_helpers import send_pdf
+from senaite.pfas.browser.view_helpers import core_method_name, send_pdf
 
 logger = logging.getLogger("senaite.pfas.custody_documents")
 
@@ -39,7 +39,7 @@ def _when(dt_value):
 
 def _title(obj):
     try:
-        return api.get_title(obj) if obj is not None else u""
+        return api.safe_unicode(api.get_title(obj)) if obj is not None else u""
     except Exception:                                       # noqa: BLE001
         return u""
 
@@ -47,7 +47,7 @@ def _title(obj):
 def sample_row(sample, methods):
     """One CoC row from the sample record (one owner per fact)."""
     req = hg.sample_request(sample)
-    analyses = sorted(set(_title(an.getMethod()) or an.Title()
+    analyses = sorted(set(core_method_name(an.getMethod()) or api.safe_unicode(an.Title())
                           for an in sample.getAnalyses(full_objects=True)))
     return {
         "sample_id": sample.getId(),
@@ -91,25 +91,16 @@ class PFASCoCDocumentView(BrowserView):
     """The CoC of a batch's or worksheet's samples."""
 
     def data(self):
-        from senaite.pfas import extraction_batch
         from senaite.pfas.browser.doc_people import _lab
-        from senaite.pfas.browser.logbooks import _get_logbook
         from senaite.pfas.core_fields import samples_of
         methods = hg.load_methods(api.get_portal())
         samples = sorted(samples_of(self.context), key=lambda s: s.getId())
-        record = {}
-        for holder in (extraction_batch.home(self.context), self.context):
-            record = _get_logbook(holder, "coc") or {}
-            if record:
-                break
-        record = dict(record)
-        record.setdefault("coc_id", self.context.getId())
-        # the client and contact are SENAITE's (the samples' own); the CoC
-        # record's typed client name only when no sample names one
+        record = {"coc_id": self.context.getId()}
+        # the client and contact are SENAITE's (the samples' own)
         if samples:
             client, contact = samples[0].getClient(), samples[0].getContact()
             if client is not None:
-                record["client_name"] = api.get_title(client)
+                record["client_name"] = api.safe_unicode(api.get_title(client))
             if contact is not None:
                 record["contact"] = contact.getFullname()
                 record["contact_phone"] = (contact.getBusinessPhone() or

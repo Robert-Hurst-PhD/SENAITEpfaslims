@@ -11,9 +11,32 @@
     <ul class="bench-alerts" tal:define="mine view/notices" tal:condition="mine">
       <li tal:repeat="n mine" class="bench-bad">
         <strong tal:content="n/title">Run sent back</strong>
-        <span tal:content="string:${n/ws_id}: ${n/text}">WS-1: lot rejected</span>
-        <a class="btn-sm btn-secondary" tal:attributes="href n/url">Open</a></li>
+        <a class="btn-sm btn-secondary" tal:attributes="href n/url" tal:content="n/ws_id">WS-1</a>
+        <span tal:content="n/text">lot rejected</span></li>
     </ul>
+    <!-- the worksheets waiting for review (Data Review's queue): each id
+         the button to its review; a message when none waits -->
+    <section class="pfas-card is-spaced" tal:define="waiting view/waiting">
+      <h3>Waiting for review</h3>
+      <table class="pfas-table" data-col-resize="data-review-home-waiting" tal:condition="waiting">
+        <thead><tr><th>Worksheet</th><th>Analyst</th><th>Review status</th>
+          <th class="is-right num">Open since extraction</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="ws waiting" tal:attributes="data-row-open ws/url">
+            <td><strong tal:content="ws/id">WS-337</strong>
+              <span class="pfas-muted" tal:condition="python:ws['title'] and ws['title'] != ws['id']"
+                    tal:content="ws/title">Title</span></td>
+            <td tal:content="ws/analyst">Analyst</td>
+            <td tal:define="ic context/@@pfas-icons"
+                tal:content="structure python:ic.tip('verify' if ws.get('under_review') else 'analysis', ws['stage_label'], state='now')">With analyst</td>
+            <td class="is-right num" tal:content="ws/open_age">2d 4h</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="pfas-empty" tal:condition="python:waiting == []">No worksheet is waiting for review.</p>
+      <p class="pfas-muted" tal:condition="python:waiting is None">Could not list the worksheets.</p>
+      <a class="btn-sm btn-secondary" tal:attributes="href view/queue_url">Every open worksheet</a>
+    </section>
     <div class="pfas-ws-grid" tal:define="sections view/sections">
       <a class="pfas-ws-card"
          tal:repeat="s sections"

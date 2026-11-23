@@ -6,8 +6,10 @@ own the RL; ladders are in ng/mL and the matrix factor converts.
         "level_unit": "ng/mL" | "ppt",
         "levels": [{"name": "CAL-1", "conc": 0.0390625}, ...],      # lowest first
         "analyte_scale": {"PFBA": {"factor": 4.0, "max": 250.0}, ...},
-        "levels_source": "EPA 1633A (Dec 2024) Table 4 ...",
     }
+
+The source of the levels is not stored beside them: it is on the Help page
+(value_sources).
 
 `levels` is the method's base ladder. An analyte with an `analyte_scale`
 entry runs base x factor, keeping only the points at or below its `max`
@@ -16,9 +18,11 @@ entry runs base x factor, keeping only the points at or below its `max`
   * the RL of an analyte in a matrix = its LOWEST level in the matrix's
     reporting unit -- for an ng/mL (extract) ladder that is x the method's
     matrix factor, the same number the pipeline multiplies results by; no
-    factor, no RL. A typed RL overrides (report_limits.limits_for);
+    factor, no RL -- times its salt factor, as the pipeline corrects its
+    results. A typed RL overrides (report_limits.limits_for);
   * recommended spike levels: Low = lowest, High = highest, Mid = the level
     nearest the midpoint (2, 80, 160 for a 2-160 curve). Suggestions only.
+    The same rule (midpoint) names a run's mid-level calibrator.
 
 The worker loads THIS file (pfas_pipeline.method_profiles._cal), so the add-on
 and the pipeline cannot disagree. Pure; Python 2.7 and 3.
@@ -98,8 +102,8 @@ def levels(profile, keyword=None):
 
 def calibrators(profile):
     """[(level number, concentration in the level unit)], lowest first -- the
-    calibrators a run injects and the logbook prepares (Run Builder,
-    FM-ENV-002). One list for every consumer."""
+    calibrators a run injects and the calibration series preparation makes
+    (Run Builder). One list for every consumer."""
     return [(i + 1, v) for i, v in enumerate(levels(profile))]
 
 
@@ -144,9 +148,31 @@ def to_ppt(conc, profile, matrix):
     return v * per if v is not None and per else None
 
 
+def salt_factor(profile, keyword):
+    """The analyte's salt (counter-ion) factor from the method's Salt
+    Adjustment Factors, or None where it has none (a factor of 1 is none)."""
+    for r in (profile or {}).get("salt_adjustment_factors") or []:
+        if isinstance(r, dict) and keyword and r.get("analyte") == keyword:
+            f = _num(r.get("factor"))
+            return f if f is not None and f != 1.0 else None
+    return None
+
+
 def derived_rl(profile, matrix, keyword=None):
-    """The analyte's lowest level in the matrix's reporting unit, or None."""
-    return to_reporting(lowest(profile, keyword), profile, matrix)
+    """The analyte's default RL: its lowest level in the matrix's reporting
+    unit (an extract level times the matrix factor) times its salt factor,
+    the lowest standard stated as the acid the results are reported as; or
+    None. A typed RL overrides it (reporting_limit), so the lab may raise
+    it."""
+    return _as_acid(to_reporting(lowest(profile, keyword), profile, matrix), profile, keyword)
+
+
+def _as_acid(value, profile, keyword):
+    """A level stated as the acid the results are reported as: times the
+    analyte's salt factor, as the pipeline corrects its results. One rule
+    for both ends of the range (derived_rl, derived_top)."""
+    salt = salt_factor(profile, keyword)
+    return value * salt if value is not None and salt is not None else value
 
 
 def highest(profile, keyword=None):
@@ -155,9 +181,9 @@ def highest(profile, keyword=None):
 
 
 def derived_top(profile, matrix, keyword=None):
-    """The analyte's highest level in the matrix's reporting unit, or None:
-    a result above it is above the calibration range."""
-    return to_reporting(highest(profile, keyword), profile, matrix)
+    """The analyte's highest level in the matrix's reporting unit times its
+    salt factor, or None: a result above it is above the calibration range."""
+    return _as_acid(to_reporting(highest(profile, keyword), profile, matrix), profile, keyword)
 
 
 def reporting_limit(profile, matrix, keyword):
@@ -166,6 +192,32 @@ def reporting_limit(profile, matrix, keyword):
     entry = (((profile or {}).get("reporting_limits") or {}).get(matrix) or {}).get(keyword) or {}
     rl = _num(entry.get("rl"))
     return rl if rl is not None else derived_rl(profile, matrix, keyword)
+
+
+def on_acid_basis(keyword, acid_basis):
+    """True when `keyword` (the reported analyte; an lr-/br- peak is reported
+    as the analyte it sums to) is one of a run's analytes whose calibration
+    standards are stated as the acid (the run record's acid_basis_analytes):
+    the worker applies no salt factor to it."""
+    names = set((a or u"").strip().upper() for a in acid_basis or [])
+    return bool(keyword) and keyword.strip().upper() in names
+
+
+def derived_rl_for_run(profile, matrix, keyword, acid_basis=None):
+    """The analyte's default RL for one run: derived_rl, except that an
+    analyte the run's calibration standards state as the acid
+    (on_acid_basis) takes no salt factor, as its results take none."""
+    if on_acid_basis(keyword, acid_basis):
+        return to_reporting(lowest(profile, keyword), profile, matrix)
+    return derived_rl(profile, matrix, keyword)
+
+
+def reporting_limit_for_run(profile, matrix, keyword, acid_basis=None):
+    """reporting_limit for one run: a typed RL as it is, else the run's
+    default (derived_rl_for_run)."""
+    entry = (((profile or {}).get("reporting_limits") or {}).get(matrix) or {}).get(keyword) or {}
+    rl = _num(entry.get("rl"))
+    return rl if rl is not None else derived_rl_for_run(profile, matrix, keyword, acid_basis)
 
 
 def fmt(v):
@@ -178,13 +230,22 @@ def fmt(v):
     return s
 
 
+def midpoint(values):
+    """The level nearest the midpoint of the lowest and highest of
+    `values`, the higher of two as near (80 of 2 ... 160), or None with
+    fewer than two: a run's mid-level calibrator and the recommended Mid
+    spike are chosen by this one rule."""
+    lv = sorted(set(v for v in values if v is not None))
+    if len(lv) < 2:
+        return None
+    target = (lv[0] + lv[-1]) / 2.0
+    return sorted(lv, key=lambda v: (abs(v - target), -v))[0]
+
+
 def _pick(lv):
     if len(lv) < 2:
         return {}
-    lo, hi = lv[0], lv[-1]
-    target = (lo + hi) / 2.0
-    mid = sorted(lv, key=lambda v: (abs(v - target), -v))[0]
-    return {"Low": lo, "Mid": mid, "High": hi}
+    return {"Low": lv[0], "Mid": midpoint(lv), "High": lv[-1]}
 
 
 def recommended_spikes(profile):

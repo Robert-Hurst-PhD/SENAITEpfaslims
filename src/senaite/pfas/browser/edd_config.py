@@ -3,8 +3,9 @@
 The EDD export's pages. Python 2.7.
 
     @@pfas-edd-config          the profiles and their settings (?profile=<id>)
-    @@pfas-edd-client-config   a client's EDD settings: on/off, its profile and
-                               the fields that profile asks for
+    @@pfas-edd-client-config   Client reporting: the client's report tier, its
+                               EDD on/off, its profile and the fields that
+                               profile asks for
     @@pfas-edd-export          the EDD file of a batch (or ?preview=1: its checks)
     @@pfas-edd-batches         batch EDD dashboard; ?batch_id= the per-sample
                                sample-type code editor
@@ -45,6 +46,18 @@ def _portal(context):
 
 def _safe(key):
     return re.sub(r"[^A-Za-z0-9_]", "_", key)
+
+
+def last_sent(last, times, at):
+    """What Delivered EDDs says of a batch's last issued file: an e-mail
+    ("Sent to <addresses>") or a download ("Downloaded by <user>"), when,
+    and how many times the file was issued."""
+    whom = store.delivered_to(last)
+    one = (u"%s, %s" % (whom, at)) if last.get("kind") == store.DOWNLOAD else (u"Sent to %s, %s" % (whom, at))
+    if last.get("interim"):
+        one += u", interim"
+    text = (u"Issued %d times, last: %s" % (times, one)) if times > 1 else one
+    return {"to": whom, "at": at, "file": last.get("filename") or u"", "times": times, "text": text}
 
 
 def _method_panels(portal, profile):
@@ -159,17 +172,18 @@ class PFASEDDConfigView(ViewHelpers, BrowserView):
         return [self._field(s, values.get(s["key"], u"")) for s in getattr(self.fmt(), "DEFAULT_FIELDS", [])]
 
     def example_batch_id(self):
-        """A batch ID to show what an ID built from it looks like."""
+        """A batch ID to show what an ID built from it looks like: the newest
+        Batch's (a B number), since an EDD is built from a Batch, never from
+        a worksheet."""
         try:
             from bika.lims import api
-            brains = api.search({"portal_type": "Worksheet", "sort_on": "created",
-                                 "sort_order": "descending", "sort_limit": 1},
-                                "senaite_catalog_worksheet")
-            if brains:
-                return api.get_id(brains[0])
+            from senaite.pfas.batch_ref import list_batches
+            batches = list_batches(_portal(self.context))
+            if batches:
+                return api.safe_unicode(api.get_id(batches[0]))
         except Exception as exc:                            # noqa: BLE001
             logger.warning("example batch id: %s", exc)
-        return u"WS-001"
+        return u"B-001"
 
     def method_rows(self):
         codes = store.section(self.profile(), "method_codes") or {}
@@ -584,8 +598,13 @@ class PFASEDDConfigView(ViewHelpers, BrowserView):
 
 # ── A client's EDD settings ─────────────────────────────────────────────────
 
+TIER_NOT_OFFERED = u"Choose a report tier from the list."
+
+
 class PFASEDDClientConfigView(ViewHelpers, BrowserView):
-    """On/off, the client's profile and the fields that profile asks for."""
+    """Client reporting: the client's default report tier and how its
+    certificates print, then its EDD on/off, profile and the fields that
+    profile asks for, in one save."""
 
     template = ViewPageTemplateFile("templates/edd_client_config.pt")
 
@@ -617,6 +636,19 @@ class PFASEDDClientConfigView(ViewHelpers, BrowserView):
         profs = store.get_edd_profiles(_portal(self.context))
         return [{"id": k, "name": v.get("name", k)} for k, v in sorted(profs.items())]
 
+    def tier_choices(self):
+        """[(id, label)] of the issued report tiers; the client's saved tier
+        stays offered when the issued catalogue no longer has it, so a save
+        never moves the client to another tier."""
+        from senaite.pfas import report_tiers as rt
+        from senaite.pfas.report_templates import issued_tiers
+        catalogue, _rev = issued_tiers(_portal(self.context))
+        out = [(t["id"], rt.label(catalogue, t["id"])) for t in catalogue]
+        current = self.settings().get("report_tier") or u""
+        if current and current not in [i for i, _l in out]:
+            out.insert(0, (current, current))
+        return out
+
     def client_fields(self):
         prof = self.profile()
         lists = store.section(prof, "value_lists") or {}
@@ -635,6 +667,18 @@ class PFASEDDClientConfigView(ViewHelpers, BrowserView):
     def _handle_post(self):
         form = self.request.form
         cfg = self.settings()
+        # a tier is one the page offers; nothing chosen is T1
+        tier_id = (form.get("report_tier") or u"").strip() or store.DEFAULT_CLIENT["report_tier"]
+        if tier_id not in [i for i, _l in self.tier_choices()]:
+            from Products.statusmessages.interfaces import IStatusMessage
+            # the refusal is the page's own message, never text carried in the address
+            IStatusMessage(self.request).add(TIER_NOT_OFFERED, type="error")
+            self.request.response.redirect(self.context.absolute_url() + "/@@pfas-edd-client-config")
+            return u""
+        cfg["report_tier"] = tier_id
+        # an unchecked switch is not submitted: off
+        cfg["certificate_mono"] = bool(form.get("certificate_mono"))
+        cfg["interim_certificates"] = bool(form.get("interim_certificates"))
         cfg["edd_enabled"] = bool(form.get("edd_enabled"))
         # an unchecked box is not submitted
         cfg["per_report_override_default"] = bool(form.get("per_report_override_default"))
@@ -652,8 +696,39 @@ class PFASEDDClientConfigView(ViewHelpers, BrowserView):
     def saved(self):
         return bool(self.request.get("saved"))
 
+    def status_messages(self):
+        """The messages left for the page (why a save was refused), each
+        shown once, whatever their type."""
+        from Products.statusmessages.interfaces import IStatusMessage
+        cls = {"error": "bench-bad", "warning": "bench-warn"}
+        return [{"text": m.message, "cls": cls.get(m.type, "bench-ok")}
+                for m in IStatusMessage(self.request).show()]
+
 
 # ── EDD export ────────────────────────────────────────────────────────────────
+
+def _batch_samples(batch_obj):
+    """The samples of a batch, from the sample catalogue."""
+    from bika.lims import api
+    brains = api.search({"portal_type": "AnalysisRequest", "getBatchUID": api.get_uid(batch_obj)},
+                        "senaite_catalog_sample")
+    return [b.getObject() for b in brains]
+
+
+def batch_clients(batch_obj):
+    """[(uid, title)] of the clients with a sample in the batch."""
+    from senaite.pfas.edd_builder import batch_clients as clients_of
+    return clients_of(_batch_samples(batch_obj), lambda s: s.getClientUID(),
+                      lambda s: s.getClient().Title())
+
+
+def _batch_client(batch_obj, uid):
+    """The Client object with this uid when it has a sample in the batch."""
+    for sample in _batch_samples(batch_obj):
+        if sample.getClientUID() == uid:
+            return sample.getClient()
+    return None
+
 
 class PFASEDDExportView(BrowserView):
     """
@@ -694,6 +769,14 @@ class PFASEDDExportView(BrowserView):
             except Exception:                                # noqa: BLE001
                 client_obj = None
 
+        # a batch of several clients' samples: the one chosen on the batch
+        # EDD page; the file holds that client's samples only
+        wanted = (self.request.get("client") or "").strip()
+        if wanted:
+            client_obj = _batch_client(batch_obj, wanted)
+            if client_obj is None:
+                return json.dumps({"error": "That client has no sample in batch " + batch_id})
+
         from senaite.pfas.edd_builder import EDDBuilder
         builder = EDDBuilder(portal)
         per_report = not bool(self.request.get("suppress"))
@@ -718,18 +801,58 @@ class PFASEDDExportView(BrowserView):
                 "error": "BLOCKING validation errors — cannot generate EDD",
                 "blocking_errors": [e["message"] for e in blocking],
                 "validation_report": report_text})
+        # a batch whose current issue is an interim certificate gives an EDD
+        # marked interim in its name; its columns are its format's
+        interim = self._batch_interim(batch_obj)
+        if interim and filename:
+            from senaite.pfas.certificate_delivery import interim_filename
+            filename = interim_filename(filename)
         if (filename or "").lower().endswith(".zip"):
             # a delivery of several files: one archive
             self.request.response.setHeader("Content-Type", "application/zip")
             self.request.response.setHeader(
                 "Content-Disposition", "attachment; filename=\"{0}\"".format(filename))
+            self._record_download(batch_obj, filename, csv_str, interim)
             return csv_str
         self.request.response.setHeader("Content-Type", "text/csv; charset=utf-8")
+        filename = filename or (batch_id + "_EDD.csv")
         self.request.response.setHeader(
-            "Content-Disposition", "attachment; filename=\"{0}\"".format(filename or (batch_id + "_EDD.csv")))
-        if isinstance(csv_str, unicode):                     # noqa: F821
-            return csv_str.encode("utf-8")
-        return csv_str
+            "Content-Disposition", "attachment; filename=\"{0}\"".format(filename))
+        data = csv_str.encode("utf-8") if isinstance(csv_str, unicode) else csv_str  # noqa: F821
+        self._record_download(batch_obj, filename, data, interim)
+        return data
+
+    def _batch_interim(self, batch_obj):
+        """True when a sample of the batch has an interim certificate as
+        its current issue."""
+        try:
+            from bika.lims import api
+            from senaite.pfas.browser.controlled_publications import current_is_interim
+            brains = api.search({"portal_type": "AnalysisRequest", "getBatchUID": api.get_uid(batch_obj)},
+                                "senaite_catalog_sample")
+            return any(current_is_interim(api.get_object(b)) for b in brains)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("EDD export: interim not read for %s: %s", batch_obj.getId(), exc)
+            return False
+
+    def _record_download(self, batch_obj, filename, data, interim=False):
+        """A file served is issued, as an e-mailed one is: the download is
+        appended to the batch's EDD deliveries with who took it, when, the
+        file's name and the checksum of the bytes served. The record is
+        this request's only write, after the manager gate; one that cannot
+        be written is logged and the file is still served."""
+        from datetime import datetime
+        from senaite.pfas.browser.edd_publish import record_delivery
+        from senaite.pfas.browser.perms import disable_csrf
+        try:
+            from bika.lims import api
+            by = api.get_current_user().getId()
+            disable_csrf(self.request)
+            record_delivery(batch_obj, store.delivery_entry(
+                [], datetime.utcnow().replace(microsecond=0).isoformat(), filename, data,
+                kind=store.DOWNLOAD, by=by, interim=interim))
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("EDD download not recorded for %s: %s", batch_obj.getId(), exc)
 
 
 # ── Batch EDD dashboard ───────────────────────────────────────────────────────
@@ -753,19 +876,32 @@ class PFASEDDBatchesView(ViewHelpers, BrowserView):
         profs = store.get_edd_profiles(_portal(self.context))
         return [{"id": k, "name": v.get("name", k)} for k, v in sorted(profs.items())]
 
-    def recent_batches(self):
-        """The 60 newest batches with their EDD state."""
+    def show(self):
+        v = (self.request.form.get("show") or u"").strip()
+        return v if v in [k for k, _l in store.EDD_SHOW] else u""
+
+    def q(self):
+        return (self.request.form.get("q") or u"").strip()
+
+    def url(self, show=None, page=None):
+        from senaite.pfas.browser.list_paging import list_url
+        return list_url(u"%s/@@pfas-edd-batches" % self.portal_url(),
+                        [("show", self.show() if show is None else show), ("q", self.q()),
+                         ("page", page if page and page > 1 else None)])
+
+    def shows(self):
+        return [{"label": l, "url": self.url(show=k), "on": k == self.show()} for k, l in store.EDD_SHOW]
+
+    def _all_batches(self):
+        """Every batch, newest first, with its EDD's state (its record and
+        its client's switch): what the filter needs and no more."""
         from senaite.pfas.browser.edd_publish import get_batch_edd
-        portal = _portal(self.context)
-        base = self.portal_url()
         from bika.lims import api
+        out = []
         # every batch, wherever it lives (a client's batch is in its folder)
-        batches = sorted((b.getObject() for b in api.search({"portal_type": str("Batch")})),
-                         key=lambda b: b.created(), reverse=True)[:60]
-        rows = []
-        for batch_obj in batches:
+        for batch_obj in sorted((b.getObject() for b in api.search({"portal_type": str("Batch")})),
+                                key=lambda b: b.created(), reverse=True):
             try:
-                bid = batch_obj.getId()
                 client_obj = None
                 try:
                     client_obj = batch_obj.getClient()
@@ -773,20 +909,67 @@ class PFASEDDBatchesView(ViewHelpers, BrowserView):
                     pass
                 cfg = store.get_client_settings(client_obj) if client_obj else {}
                 stored = get_batch_edd(batch_obj)
-                rows.append({
-                    "batch_id": bid, "title": batch_obj.Title() or bid,
-                    "edd_profile": store.get_edd_profile_for_client(portal, cfg)[0],
-                    "created": lab_time.show(batch_obj.created(), "utc", "%Y-%m-%d"),
-                    "client_title": client_obj.Title() if client_obj else "",
-                    "edd_enabled": bool(cfg.get("edd_enabled")),
-                    "has_edd": stored is not None,
-                    "edd_generated": lab_time.show((stored or {}).get("generated", ""), "utc", "%Y-%m-%d"),
-                    "edd_filename": (stored or {}).get("filename", ""),
-                    "edd_error_count": (stored or {}).get("error_count", 0),
-                    "edd_blocking": (stored or {}).get("blocking_count", 0),
-                    "download_url": "{0}/@@pfas-edd-export?batch_id={1}".format(base, bid),
-                    "preview_url": "{0}/@@pfas-edd-export?batch_id={1}&preview=1".format(base, bid),
-                })
+                key, text = store.edd_state(stored, bool(cfg.get("edd_enabled")))
+                out.append({"obj": batch_obj, "client": client_obj, "cfg": cfg, "stored": stored,
+                            "batch_id": batch_obj.getId(), "edd_key": key, "edd_text": text,
+                            "client_title": client_obj.Title() if client_obj else u""})
             except Exception as exc:                         # noqa: BLE001
                 logger.warning("EDD batch dashboard: %s", exc)
+        return out
+
+    def paging(self):
+        if not hasattr(self, "_pg"):
+            from senaite.pfas.browser.list_paging import page_number, paging
+            self._all = self._all_batches()
+            self._kept = store.edd_filter(self._all, self.show(), self.q())
+            self._pg = paging(len(self._kept), page_number(self.request.form),
+                              lambda p: self.url(page=p))
+        return self._pg
+
+    def empty_text(self):
+        self.paging()
+        if not self._all:
+            return u"No batch yet."
+        if self.q():
+            return u"No batch matches this search."
+        return {u"": u"No EDD has been made yet. A batch's EDD is made when one of its samples is "
+                     u"published, if its client takes EDDs.",
+                u"none": u"Every batch has its EDD."}.get(self.show(), u"No batch yet.")
+
+    def recent_batches(self):
+        """The page of batches shown, each with its EDD's state and the
+        step that state asks for."""
+        if hasattr(self, "_rows"):
+            return self._rows
+        portal = _portal(self.context)
+        base = self.portal_url()
+        pg = self.paging()
+        rows = []
+        for r in self._kept[pg["start"]:pg["end"]]:
+            batch_obj, client_obj, cfg, stored = r["obj"], r["client"], r["cfg"], r["stored"]
+            bid = r["batch_id"]
+            try:
+                clients = batch_clients(batch_obj)
+            except Exception as exc:                         # noqa: BLE001
+                logger.warning("EDD batch dashboard: clients of %s: %s", bid, exc)
+                clients = []
+            # the last report e-mail that attached it: to whom and when
+            last = store.last_delivery(stored)
+            rows.append({
+                "batch_id": bid, "title": batch_obj.Title() or bid,
+                "edd_profile": store.get_edd_profile_for_client(portal, cfg)[0],
+                "created": lab_time.show(batch_obj.created(), "utc", "%Y-%m-%d"),
+                "client_title": r["client_title"],
+                "clients": clients if len(clients) > 1 else [],
+                "client_url": (u"%s/@@pfas-edd-client-config" % client_obj.absolute_url()) if client_obj else u"",
+                "edd_enabled": bool(cfg.get("edd_enabled")),
+                "edd_key": r["edd_key"], "edd_text": r["edd_text"],
+                "has_edd": stored is not None,
+                "edd_generated": lab_time.show((stored or {}).get("generated", ""), "utc", "%Y-%m-%d"),
+                "last_sent": last_sent(last, len((stored or {}).get(store.DELIVERIES) or []),
+                                       lab_time.show(last.get("sent_at") or u"", "utc")) if last else None,
+                "download_url": "{0}/@@pfas-edd-export?batch_id={1}".format(base, bid),
+                "preview_url": "{0}/@@pfas-edd-export?batch_id={1}&preview=1".format(base, bid),
+            })
+        self._rows = rows
         return rows

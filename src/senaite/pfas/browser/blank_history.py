@@ -8,7 +8,7 @@ behind the Control Charts' blanks mode and its comparison macro
 
 The blank results come from the QC database (qc_results, joined to the run's
 method and matrix); each run's lots from the extraction's usage ledger and
-FM-ENV-002 (blank_history.lots_of). The comparison folds away the lots both
+its calibration series preparation (blank_history.lots_of). The comparison folds away the lots both
 runs used. `blank_data`, `run_lots` and `compare` are shared with Data
 Review's QC Summary (this run's blank against the previous one).
 """
@@ -47,6 +47,16 @@ def blank_data(method=None):
     except Exception as exc:                                # noqa: BLE001
         logger.warning("blank_data: %s", exc)
         rows = []
+    # an analyte by its keyword, so a run stored under the export's name and
+    # one stored under the keyword compare as one analyte; an isomer peak
+    # keeps its own name
+    try:
+        from senaite.pfas import compound_library, compound_library_store
+        name_of = compound_library.listed_namer(compound_library_store.library(), ())
+        for r in rows:
+            r["analyte"] = name_of(r.get("analyte")) or r.get("analyte")
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("blank_data: analyte names not resolved: %s", exc)
     return bh.runs(rows)
 
 

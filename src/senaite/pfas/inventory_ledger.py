@@ -18,6 +18,8 @@ QC databases. Pure apart from sqlite3; Python 2.7 and 3.
     remaining(received_text, stock_unit, uses) -> {"value", "unit", "used",
                                                    "unconverted"} or None
     record_stage(path, batch_uid, batch_id, stage_order, stage_name, rows, by, at)
+    count_stages(path, batch_uids) / delete_stages(path, batch_uids) -> rows
+    count_uses(path, kind, uids, besides=()) / delete_uses(...) -> rows
     uses_of(path, kind, uid) / uses_by_lot(path, text) / uses_for_items(path)
 """
 from __future__ import absolute_import, division, unicode_literals
@@ -159,6 +161,74 @@ def record_stage(path, batch_uid, batch_id, stage_order, stage_name, rows, by, a
                     (kind, r["inventory_uid"], r.get("lot"), r.get("name"), batch_uid, batch_id,
                      u"%s" % stage_order, stage_name, r.get("role"), text,
                      amt[0] if amt else None, amt[1] if amt else None, by, at))
+    finally:
+        conn.close()
+
+
+def _chunks(keys):
+    keys = [k for k in keys or [] if k]
+    for i in range(0, len(keys), 400):             # SQLite's variable limit
+        yield keys[i:i + 400]
+
+
+def count_stages(path, batch_uids):
+    """How many rows every stage of these batch uids holds (a preparation
+    record's are "prep:<record id>")."""
+    conn = _connect(path)
+    try:
+        return sum(conn.execute("SELECT COUNT(*) FROM inventory_usage WHERE batch_uid IN (%s)"
+                                % u",".join(u"?" * len(c)), c).fetchone()[0] for c in _chunks(batch_uids))
+    finally:
+        conn.close()
+
+
+def delete_stages(path, batch_uids):
+    """Every row of these batch uids deleted, at every stage, in one
+    transaction; returns how many went. For a record that no longer exists:
+    its uses would otherwise still count against its parent lots."""
+    conn = _connect(path)
+    try:
+        n = 0
+        with conn:
+            for c in _chunks(batch_uids):
+                n += conn.execute("DELETE FROM inventory_usage WHERE batch_uid IN (%s)"
+                                  % u",".join(u"?" * len(c)), c).rowcount
+        return n
+    finally:
+        conn.close()
+
+
+def _use_ids(conn, kind, uids, besides):
+    skip = set(besides or ())
+    out = []
+    for c in _chunks(uids):
+        out += [r[0] for r in conn.execute(
+            "SELECT id, batch_uid FROM inventory_usage WHERE kind=? AND uid IN (%s)"
+            % u",".join(u"?" * len(c)), [kind] + list(c)).fetchall() if r[1] not in skip]
+    return out
+
+
+def count_uses(path, kind, uids, besides=()):
+    """How many rows name one of these lots, leaving out the stages in
+    `besides` (counted on their own)."""
+    conn = _connect(path)
+    try:
+        return len(_use_ids(conn, kind, uids, besides))
+    finally:
+        conn.close()
+
+
+def delete_uses(path, kind, uids, besides=()):
+    """Every row naming one of these lots deleted (the stages in `besides`
+    excepted), in one transaction; returns how many went. For a lot that no
+    longer exists: its uses would otherwise attach to a new lot given its id."""
+    conn = _connect(path)
+    try:
+        with conn:
+            ids = _use_ids(conn, kind, uids, besides)
+            for c in _chunks(ids):
+                conn.execute("DELETE FROM inventory_usage WHERE id IN (%s)" % u",".join(u"?" * len(c)), c)
+        return len(ids)
     finally:
         conn.close()
 

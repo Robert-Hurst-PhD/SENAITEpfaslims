@@ -35,7 +35,7 @@ def resolve(method_id, ids, what=u"this page"):
     naming what is missing (never a stand-in method)."""
     if not method_id:
         raise MethodUnresolved(
-            u"No method is set for {0}: set the batch's method first.".format(what))
+            u"No method is set for {0}: set the worksheet's method first.".format(what))
     if method_id not in (ids or []):
         raise MethodUnresolved(
             u"{0} has no method profile, so {1} cannot use it: create it in "

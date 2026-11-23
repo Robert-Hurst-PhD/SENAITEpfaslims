@@ -30,13 +30,15 @@ def _ordered_stages(session):
 
 
 def build_sidecar(session, stage_names, worksheet_id=u"", senaite_batch_id=u"",
-                  matrix=u"", client_uid=u""):
+                  matrix=u"", client_uid=u"", fullname=None):
     """The sidecar for one run. `stage_names` = {stage order (str): name}.
 
     `worksheet_id` becomes `batch_id` (the worker's join key with Data Review,
     pipeline.run_pipeline docstring); left empty, the worker falls back to the
     CSV name and says so. Lots without a lot number are left out: a row the
-    chemist did not fill is not a lot used."""
+    chemist did not fill is not a lot used. `fullname`: a user id to the
+    person's name; the finaliser's sign-off carries the name (a stored
+    name comes back as it is)."""
     session = session or {}
     analyst = session.get(u"analyst") or u""
     steps, scans = [], []
@@ -64,8 +66,9 @@ def build_sidecar(session, stage_names, worksheet_id=u"", senaite_batch_id=u"",
                           u"by": by})
     signoffs = []
     if session.get(u"finalized"):
+        who = session.get(u"finalized_by")
         signoffs.append({u"role": u"Analyst",
-                         u"initials": session.get(u"finalized_by") or analyst,
+                         u"initials": (fullname(who) if (fullname and who) else who) or analyst,
                          u"at": session.get(u"finalized_at") or u""})
     return {
         u"source": SOURCE,

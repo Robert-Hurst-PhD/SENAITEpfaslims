@@ -38,19 +38,31 @@ logger = logging.getLogger("senaite.pfas.edd_builder")
 # the certificate's dilution qualifier (coa_format.D_CODE): never issued in an
 # EDD, whose dilution factor carries it
 DILUTION_CODE = "D"
+# the certificate's above-the-range rule (coa_format.E_CODE): issued through
+# the state's qualifier map like every internal code
+ABOVE_RANGE_CODE = "E"
 
 
 def certificate_codes(row_c):
     """The internal codes the certificate prints for one result, as the EDD
     issues them: N.D. for a non-detect (the certificate's U), the reporting
     rules' other codes (J) but not their D, and every stamped QC
-    qualification, a lab code D included. A row without the split (rule_codes,
-    qc_codes) reads its printed qualifiers, U dropped."""
+    qualification, a lab code D included, then each code the batch or report
+    carries (a rule's flag placed there: a flat file has only rows, so it
+    lands on every row). A row without the split (rule_codes, qc_codes)
+    reads its printed qualifiers, U dropped."""
     codes = ["N.D."] if row_c["detected"] is False else []
     if "rule_codes" in row_c or "qc_codes" in row_c:
         rule = [c for c in row_c.get("rule_codes") or [] if c not in ("U", DILUTION_CODE)]
         qc = [c for c in row_c.get("qc_codes") or [] if c and c != "U"]
-        return codes + rule + [c for c in qc if c not in rule]
+        out = rule + [c for c in qc if c not in rule]
+        out += [c for c in row_c.get("batch_codes") or [] if c and c != "U" and c not in out]
+        # a flag's output: a certificate-only code is not issued, an
+        # EDD-only one is (rule_flags)
+        coa_only = set(row_c.get("coa_only_codes") or [])
+        out = [c for c in out if c not in coa_only]
+        out += [c for c in row_c.get("edd_codes") or [] if c and c not in out]
+        return codes + out
     return codes + [c.strip() for c in (row_c.get("qualifiers") or "").split(",")
                     if c.strip() and c.strip() != "U"]
 
@@ -84,6 +96,44 @@ def weight_basis_for(weight_basis_map, matrix_title):
     when none is set or the value is not one of the format's codes."""
     code = ((weight_basis_map or {}).get(matrix_title or u"") or u"").strip().upper()
     return code if code in WEIGHT_BASES else None
+
+
+def client_samples(samples, client_uid, client_of):
+    """(the client's samples, the ids of those left out): an EDD sent to a
+    client holds only that client's samples, so a sample of another client
+    in the batch, or one whose client cannot be read, is left out by its
+    id. With no client named every sample is kept. `client_of(sample)`
+    gives a sample's client uid."""
+    if not client_uid:
+        return list(samples or []), []
+    kept, left = [], []
+    for sample in samples or []:
+        try:
+            uid = client_of(sample)
+        except Exception:                                   # noqa: BLE001
+            uid = None
+        if uid and uid == client_uid:
+            kept.append(sample)
+        else:
+            left.append(sample.getId())
+    return kept, left
+
+
+def batch_clients(samples, client_of, title_of):
+    """[(client uid, title)] of the clients whose samples are in a batch,
+    each once, in the order the samples come; a sample whose client cannot
+    be read is skipped. The batch EDD page offers the choice when there is
+    more than one."""
+    out, seen = [], set()
+    for sample in samples or []:
+        try:
+            uid, title = client_of(sample), title_of(sample)
+        except Exception:                                   # noqa: BLE001
+            continue
+        if uid and uid not in seen:
+            seen.add(uid)
+            out.append((uid, title or uid))
+    return out
 
 
 class EDDBuilder(object):
@@ -137,7 +187,7 @@ class EDDBuilder(object):
             prof = getattr(self, "_edd_profile", None) or {}
             if method_id:
                 msg = (u"No {0} method codes for method {1} (test code, prep method, "
-                       u"units): add them in EDD Configuration".format(
+                       u"units): add them in EDD settings".format(
                            prof.get("state") or u"EDD", method_id))
             else:
                 msg = (u"A sample's method could not be resolved, so it has no {0} "
@@ -165,7 +215,7 @@ class EDDBuilder(object):
                 self._qualifier_errors.append({
                     "row": 0, "field": "LAB_QUALIFIER", "type": "BLOCKING",
                     "message": "{0} {1}: internal qualifier {2!r} has no {3} code: map it "
-                               "in EDD Configuration (qualifier map)".format(
+                               "in EDD settings (qualifier map)".format(
                                    sample_id, keyword, code, prof.get("state") or "state")})
                 continue
             mapped = self._qualifier_dict[code]
@@ -177,7 +227,7 @@ class EDDBuilder(object):
             self._qualifier_errors.append({
                 "row": 0, "field": "LAB_QUALIFIER", "type": "BLOCKING",
                 "message": "{0} {1}: {2!r} (from {3}) is not a valid {4} qualifier: map "
-                           "the combination in EDD Configuration".format(
+                           "the combination in EDD settings".format(
                                sample_id, keyword, issued, ", ".join(codes),
                                prof.get("state") or "state")})
         return issued
@@ -188,20 +238,9 @@ class EDDBuilder(object):
         from bika.lims import api as _a
         uid = _a.get_uid(analysis)
         if not hasattr(self, "_acq_by_uid"):
-            self._acq_by_uid = {}
-            import sqlite3
-            from senaite.pfas.qc.store import DEFAULT_DB_PATH
-            try:
-                conn = sqlite3.connect(DEFAULT_DB_PATH)
-                try:
-                    for a_uid, at in conn.execute(
-                            "SELECT analysis_uid, acquired_at FROM result_pushes "
-                            "WHERE ok=1 AND acquired_at != ''"):
-                        self._acq_by_uid[a_uid] = at
-                finally:
-                    conn.close()
-            except sqlite3.Error as exc:
-                logger.warning("EDD: acquisition times unreadable: %s", exc)
+            # the certificate reads the same log (analysed_at)
+            from senaite.pfas import analysed_at
+            self._acq_by_uid = analysed_at.acquired_by_uid()
         at = self._acq_by_uid.get(uid)
         if at:
             try:
@@ -311,19 +350,8 @@ class EDDBuilder(object):
         rows_data = []
         all_errors = []
 
-        # ── Collect field sample rows from ARs in the batch ───────────────────
-        try:
-            ars = batch_obj.getAnalysisRequests()
-        except AttributeError:
-            ars = []
-        if not ars:
-            # Batch.getAnalysisRequests() is unreliable across versions —
-            # resolve via the sample catalog (ARs carry getBatchUID).
-            from Products.CMFCore.utils import getToolByName
-            cat = getToolByName(self.portal, "senaite_catalog_sample")
-            ars = [b.getObject() for b in cat(
-                portal_type="AnalysisRequest",
-                getBatchUID=batch_obj.UID())]
+        # ── Collect field sample rows from the client's ARs in the batch ─────
+        ars = self.batch_samples(batch_obj, client_obj)
 
         # Resolve the BATCH's method profile once: core Method via the
         # bridge, else the batch's extraction/run annotations. Rows speak the
@@ -400,6 +428,30 @@ class EDDBuilder(object):
         filename = self.filename_for_batch(batch_id, client_cfg)
         return (csv_str, all_errors, filename)
 
+
+    def batch_samples(self, batch_obj, client_obj=None):
+        """The batch's samples an export of `client_obj` holds: only that
+        client's (client_samples), every one when no client is named. The
+        ids left out are kept on the builder (left_out) and counted in the
+        log, never named in the file."""
+        try:
+            ars = batch_obj.getAnalysisRequests()
+        except AttributeError:
+            ars = []
+        if not ars:
+            # Batch.getAnalysisRequests() is unreliable across versions —
+            # resolve via the sample catalog (ARs carry getBatchUID).
+            from Products.CMFCore.utils import getToolByName
+            cat = getToolByName(self.portal, "senaite_catalog_sample")
+            ars = [b.getObject() for b in cat(
+                portal_type="AnalysisRequest",
+                getBatchUID=batch_obj.UID())]
+        client_uid = client_obj.UID() if client_obj is not None else None
+        ars, self.left_out = client_samples(ars, client_uid, lambda ar: ar.getClientUID())
+        if self.left_out:
+            logger.info("EDD of batch %s: %d sample(s) of other clients left out",
+                        batch_obj.getId(), len(self.left_out))
+        return ars
 
     def _batch_method_profile(self, batch_obj):
         """Method PROFILE id for a batch: the ONE resolver (batch_method.py; core first)."""
@@ -603,6 +655,11 @@ class EDDBuilder(object):
             if row_c is None:
                 continue
             conc = row_c["result"] if row_c["detected"] else None
+            # above the calibration range (the rule's E): the top of the
+            # range the certificate prints the result above, as a number;
+            # the E, issued through the state's map, says it is a bound
+            if conc and ABOVE_RANGE_CODE in (row_c.get("rule_codes") or []):
+                conc = (u"%s" % conc).replace(u">", u"", 1).strip() or None
             rl = row_c["rl"] or None
             mdl_val = row_c["mdl"] or None
             # every internal code the certificate prints for this result

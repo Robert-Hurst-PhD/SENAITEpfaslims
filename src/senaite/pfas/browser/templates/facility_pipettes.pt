@@ -24,7 +24,7 @@
 
   <form method="GET" class="pfas-filterbar"
         tal:attributes="action string:${purl}/@@pfas-pipette-calibration">
-    <div class="pfas-field"><label for="unit_id">Pipette</label>
+    <div class="pfas-form-field"><label for="unit_id">Pipette</label>
       <select name="unit_id" id="unit_id" class="pfas-select" onchange="this.form.submit()">
         <option value="">— select a pipette —</option>
         <option tal:repeat="p view/pipettes"
@@ -33,7 +33,7 @@
                 tal:content="string:${p/name} (${p/serial_number})">P200</option>
       </select></div>
     <p class="pfas-hint" tal:condition="not:view/pipettes">
-      No pipettes registered. Add one under Facility QC &rarr; Units with type
+      No pipettes registered. Add one under Equipment with type
       &quot;Pipette&quot;, then record its calibration here.
     </p>
   </form>
@@ -83,7 +83,7 @@
 
         <div id="internal-fields">
           <div class="pfas-form-row">
-            <div class="pfas-form-field is-centered"><label>Balance used</label>
+            <div class="pfas-form-field"><label>Balance used</label>
               <select name="balance_unit_id" id="pp-balance"
                       tal:attributes="data-checks view/balance_checks_json">
                 <option value="">— select —</option>
@@ -95,7 +95,7 @@
                 <span class="badge" id="pp-bal-badge"></span>
                 <span class="pfas-hint" id="pp-bal-last"></span>
                 <a class="btn-sm btn-secondary" id="pp-bal-verify"
-                   tal:attributes="href string:${purl}/@@pfas-balance-log">Verify balance</a>
+                   tal:attributes="href string:${purl}/@@pfas-balance-log">Check balance</a>
               </div></div>
             <div class="pfas-form-field"><label>Weight set used</label>
               <select name="weight_set_id">
@@ -107,7 +107,7 @@
             <div class="pfas-form-field"><label for="pp-wt">Water temperature (&deg;C)</label>
               <input type="number" step="0.1" name="water_temp" id="pp-wt" class="no-stepper is-short" /></div>
           </div>
-          <div class="pfas-rows section-gap" data-rows="data-rows" tal:define="lim view/limits">
+          <div class="pfas-rows section-gap" data-rows="data-rows" tal:define="lim view/limits; rm context/@@pfas-row-menu">
             <div class="pfas-between">
               <strong>Measurements</strong>
               <span class="pfas-hint">
@@ -120,10 +120,11 @@
                    tal:attributes="data-acc python:lim[0]; data-cv python:lim[1]">
               <thead><tr><th rowspan="2">Volume (&micro;L)</th><th colspan="5" class="is-center mass-group">Mass (g)</th>
                 <th rowspan="2">Average (&micro;L)</th><th rowspan="2">Accuracy (%)</th><th rowspan="2">SD (&micro;L)</th><th rowspan="2">RSD (%)</th>
-                <th rowspan="2" title="Systematic error, ISO 8655">PE (%)</th><th rowspan="2" class="is-center">Result</th><th rowspan="2" class="is-slim"></th></tr>
+                <th rowspan="2" title="Systematic error, ISO 8655">PE (%)</th><th rowspan="2" class="is-center">Result</th></tr>
                 <tr><th class="is-center mass-group">1</th><th class="is-center mass-group">2</th><th class="is-center mass-group">3</th><th class="is-center mass-group">4</th><th class="is-center mass-group">5</th></tr></thead>
               <tbody data-row-list="data-row-list">
-                <tr data-row="data-row" tal:define="i string:0">
+                <tr data-row="data-row" tal:define="i string:0"
+                    tal:attributes="data-row-actions python:rm.actions((u'Remove volume', 'event', 'remove-row', {'danger': True}))">
                   <td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_v.0" aria-label="Test volume, uL" /></td>
                   <td><input type="number" step="any" min="0" class="pfas-input is-num"
                     tal:attributes="name string:pm_w1.${i}; aria-label string:Weighing 1, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num"
@@ -134,25 +135,24 @@
                   <td class="pfas-mono" data-out="mean">&#8212;</td><td class="pfas-mono" data-out="acc">&#8212;</td>
                   <td class="pfas-mono" data-out="sd">&#8212;</td><td class="pfas-mono" data-out="rsd">&#8212;</td>
                   <td class="pfas-mono" data-out="pe">&#8212;</td><td class="is-center" data-out="res">&#8212;</td>
-                  <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove volume">&#215;</button></td>
                 </tr>
               </tbody>
             </table>
             <template data-row-template="data-row-template">
-              <tr data-row="data-row">
+              <tr data-row="data-row"
+                  tal:attributes="data-row-actions python:rm.actions((u'Remove volume', 'event', 'remove-row', {'danger': True}))">
                 <td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_v.__i__" aria-label="Test volume, uL" /></td>
                 <td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w1.__i__" aria-label="Weighing 1, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w2.__i__" aria-label="Weighing 2, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w3.__i__" aria-label="Weighing 3, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w4.__i__" aria-label="Weighing 4, g" /></td><td><input type="number" step="any" min="0" class="pfas-input is-num" name="pm_w5.__i__" aria-label="Weighing 5, g" /></td>
                 <td class="pfas-mono" data-out="mean">&#8212;</td><td class="pfas-mono" data-out="acc">&#8212;</td>
                   <td class="pfas-mono" data-out="sd">&#8212;</td><td class="pfas-mono" data-out="rsd">&#8212;</td>
                   <td class="pfas-mono" data-out="pe">&#8212;</td><td class="is-center" data-out="res">&#8212;</td>
-                  <td class="is-slim"><button type="button" class="pfas-row-remove" data-row-remove="data-row-remove" aria-label="Remove volume">&#215;</button></td>
               </tr>
             </template>
             <button type="button" class="btn-sm btn-secondary pfas-add-row" data-row-add="data-row-add">+ Add volume</button>
           </div>
           <p class="pfas-hint" tal:condition="not:view/weight_sets">
             No weight sets registered &mdash; an in-house check cannot be traced
-            without one. Add it under Facility QC &rarr; Weight Sets.
+            without one. Add it under Equipment checks &rarr; Weight Sets.
           </p>
         </div>
 
@@ -262,9 +262,9 @@
     var failed = mine ? mine.failed.indexOf(day) !== -1 : false;
     var badge = document.getElementById('pp-bal-badge');
     badge.className = 'badge ' + (ok ? 'badge-ok' : 'badge-fail');
-    badge.textContent = ok ? 'Verified on ' + day : (failed ? 'Verification failed on ' + day : 'Not verified on ' + day);
+    badge.textContent = ok ? 'Checked on ' + day : (failed ? 'Check failed on ' + day : 'Not checked on ' + day);
     var last = mine ? mine.passed.filter(function (d) { return d !== day; }).pop() : null;
-    document.getElementById('pp-bal-last').textContent = last ? 'Last verified ' + last : '';
+    document.getElementById('pp-bal-last').textContent = last ? 'Last checked ' + last : '';
     var v = document.getElementById('pp-bal-verify');
     v.href = v.href.split('?')[0] + '?unit_id=' + encodeURIComponent(sel.value);
     v.hidden = ok;
@@ -282,8 +282,7 @@
   }
   function mark(ok) {
     if (ok === null) return '\u2014';
-    return '<span class="badge ' + (ok ? 'badge-ok' : 'badge-fail') + ' pfas-mark" role="img" title="' + (ok ? 'Pass' : 'Fail') +
-           '" aria-label="' + (ok ? 'Pass' : 'Fail') + '">' + (ok ? '\u2713' : '\u2717') + '</span>';
+    return window.PFAS.components.icon.tip(ok ? 'pass' : 'fail', ok ? 'Pass' : 'Fail');
   }
   function workOut() {
     var tbl = document.getElementById('pp-meas');

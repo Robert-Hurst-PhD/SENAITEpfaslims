@@ -5,10 +5,12 @@ depth, as the nodes prepared_standards.build_parentage returns.
 A node is flagged when it is
     - expired by the run date (a lot expiring on the run date is in date,
       as bench_queue.is_usable has it), or has no expiry date at all;
-    - made from a parent that was out of date on the day it was prepared;
+    - made from a parent that was out of date on the day it was prepared,
+      unless the preparation kept a reason on that parent;
     - set to expire after one of its parents;
-    - pending verification, quarantined, or without its storage conditions.
+    - pending acceptance, quarantined, or without its storage conditions.
 
+    in_force(node, day)                         -> the node's expiry in force on day
     node_problems(node, parent_nodes, run_date) -> [reason]
     walk_problems(nodes, run_date)              -> [{"lot", "name", "reason", "pending"}]
     walk_below(root, use_date)                  -> walk_problems without the
@@ -20,7 +22,9 @@ Dates are ISO strings (YYYY-MM-DD), compared as text. Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-PENDING_REASON = u"pending verification"
+from senaite.pfas.lot_expiry import expired_on
+
+PENDING_REASON = u"pending acceptance"
 _CHECKED_KINDS = (u"manufacturer", u"water", u"prepared", None)
 
 
@@ -43,19 +47,37 @@ def capped_expiry(own, parent_expiries):
     return min(known) if known else u""
 
 
+def in_force(node, day):
+    """A node's expiry in force on `day`: its latest extension QA approved by
+    then (lot_extension.in_force) over its own date ("expiry_base" when the
+    node shows the extended date as "expiry"); a node that carries no
+    extensions is its "expiry"."""
+    if not node.get("extensions"):
+        return _d(node.get("expiry"))
+    from senaite.pfas import lot_extension
+    base = node.get("expiry_base") if "expiry_base" in node else node.get("expiry")
+    return _d(lot_extension.in_force(_d(base), node.get("extensions"), _d(day) or None))
+
+
 def node_problems(node, parent_nodes, run_date):
-    """The reasons one lot fails the review."""
+    """The reasons one lot fails the review. Each lot is judged on the date
+    in force on the day in question (in_force): the lot on the run date, a
+    parent on the day this lot was prepared."""
     out = []
-    expiry, made, run_date = _d(node.get("expiry")), _d(node.get("prepared_date")), _d(run_date)
+    expiry, made, run_date = in_force(node, run_date), _d(node.get("prepared_date")), _d(run_date)
     if not expiry:
-        out.append(u"no expiry date")
-    elif run_date and expiry < run_date:
+        # a lot whose category has no expiry is not missing a date
+        if not node.get("no_expiry"):
+            out.append(u"no expiry date")
+    elif expired_on(expiry, run_date):
         out.append(u"expired on the run date (%s)" % expiry)
     for p in parent_nodes or []:
-        pexp = _d(p.get("expiry"))
+        pexp = in_force(p, run_date)
         if not pexp:
             continue
-        if made and pexp < made:
+        # a parent used out of date with a reason kept on it (lot_expiry.gate)
+        # is a recorded use, not a finding
+        if expired_on(in_force(p, made), made) and not (p.get("expired_reason") or u"").strip():
             out.append(u"parent %s was out of date when this lot was prepared" % p.get("lot"))
         if expiry and expiry > pexp:
             out.append(u"expires after its parent %s (%s)" % (p.get("lot"), pexp))

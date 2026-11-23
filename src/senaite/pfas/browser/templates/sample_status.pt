@@ -4,10 +4,10 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Batch Status</title>
+  <title metal:fill-slot="title">Worksheet status</title>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Batch Status</tal:t>
+  <tal:t metal:fill-slot="header-title">Worksheet status</tal:t>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-track">Client Tracker</a>
   </tal:r>
@@ -16,15 +16,28 @@
   <div class="page-body">
 
     <p class="pfas-lead">
-      Real-time batch progress &#8212; stage is computed from SENAITE worksheet
-      workflow state and the batch&#8217;s guided extraction. Batches are sorted newest first.
+      Where each worksheet stands, from receipt to its published report, newest first.
+      A client follows a sample on the Client Tracker.
     </p>
 
-    <div class="pfas-empty" tal:condition="not:view/batches">
-      No worksheets found. Create a worksheet in SENAITE to begin tracking.
-    </div>
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+          tal:attributes="action string:${view/portal_url}/@@pfas-sample-status">
+      <input type="hidden" name="show" tal:attributes="value view/show" />
+      <div class="pfas-form-field"><span>Show</span>
+        <nav class="pfas-seg" aria-label="Show">
+          <a class="pfas-seg-item" tal:repeat="o view/shows"
+             tal:attributes="href o/url; aria-selected python:'true' if o['on'] else 'false'"
+             tal:content="o/label">Not finished</a>
+        </nav></div>
+      <div class="pfas-form-field"><label for="ss-q">Worksheet</label>
+        <input type="search" name="q" id="ss-q" class="pfas-input" placeholder="WS-001"
+               tal:attributes="value view/q" /></div>
+      <noscript><button type="submit" class="btn btn-primary">Filter</button></noscript>
+    </form>
 
-    <div tal:condition="view/batches">
+    <div class="pfas-empty" tal:condition="not:view/batches" tal:content="view/empty_text">None.</div>
+
+    <div tal:condition="view/batches" tal:define="pg view/paging">
 
       <div class="pfas-card" tal:repeat="b view/batches">
 
@@ -34,17 +47,19 @@
           <span class="pfas-muted pfas-card-end" tal:content="b/created">2026-06-11</span>
         </div>
 
-        <ol class="pfas-stepper pfas-stepper-compact">
+        <!-- each stage its own picture (icons.py): filled when done, outlined
+             where the worksheet is, dashed to come; the stage's words beside it -->
+        <ol class="pfas-stages" tal:define="ic context/@@pfas-icons">
           <li tal:repeat="step b/steps"
-              tal:attributes="class string:is-${step/status}" tal:content="step/label">Received</li>
+              tal:attributes="class string:is-${step/status}"><tal:m
+              tal:replace="structure python:ic.stage(step['icon'], step['label'], step['status'], size='lg')" /><span
+              class="pfas-stages-l" tal:content="step/label">Received</span></li>
         </ol>
 
         <div class="pfas-meta-row">
-          <span tal:attributes="class python:'badge badge-ok' if b['stage'] == 5 else ('badge badge-pending' if b['stage'] == 1 else 'badge badge-info')"
-                tal:content="b/stage_label">Received</span>
           <span tal:condition="b/responsible">Responsible: <strong tal:content="b/responsible">Jane Smith</strong></span>
           <span tal:condition="b/sample_count">Samples: <strong tal:content="b/sample_count">18</strong></span>
-          <span>WS state: <strong tal:content="b/ws_state">open</strong></span>
+          <span>Worksheet state: <strong tal:content="b/ws_state_title">Open</strong></span>
         </div>
 
         <div class="pfas-why" tal:condition="b/extraction_started">
@@ -88,6 +103,7 @@
 
       </div>
 
+      <metal:p use-macro="context/@@pfas-macros/macros/paging" />
     </div>
   </div>
   </div><!-- /content slot -->

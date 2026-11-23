@@ -460,6 +460,25 @@ def set_member_roles(roles):
     _MEMBER_ROLES.update(dict(roles or {}))
 
 
+# The levels a reviewer's identity correction fixes a CCV at
+# (senaite.pfas.injection_identity): {injection name: "low" | "standard"}.
+# Set once per run with the member roles (run_pipeline).
+_LEVEL_OVERRIDES = {}
+
+
+def set_level_overrides(levels):
+    """Replace the run's corrected CCV levels; {} clears them."""
+    _LEVEL_OVERRIDES.clear()
+    _LEVEL_OVERRIDES.update(dict((k, v) for k, v in (levels or {}).items() if v in ("low", "standard")))
+
+
+def level_override(name):
+    """"low" or "standard" for an injection a reviewer's correction fixes
+    the CCV level of, else None (its level column and expected
+    concentration decide)."""
+    return _LEVEL_OVERRIDES.get(name)
+
+
 def classify_injection(name: str, dilutions: "dict | None" = None) -> str:
     """
     Return the QC type code for an injection name.

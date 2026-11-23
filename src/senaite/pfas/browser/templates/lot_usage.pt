@@ -12,7 +12,7 @@
   <metal:fill fill-slot="content" tal:define="it view/item; rows view/rows; q view/query">
     <section class="bench-block">
       <form method="get" class="pfas-filterbar" tal:attributes="action string:${view/portal_url}/@@pfas-lot-usage">
-        <div class="pfas-field">
+        <div class="pfas-form-field">
           <label for="lu-q">Lot number</label>
           <input id="lu-q" type="text" name="q" class="pfas-input pfas-input-wide"
                  placeholder="Lot number (or part of it)" tal:attributes="value q" />
@@ -32,18 +32,17 @@
 
     <section class="bench-block" tal:condition="python:it or q">
       <table class="pfas-table" data-col-resize="lot-usage-1" tal:condition="rows">
-        <thead><tr><th>Used</th><th>Batch</th><th>Stage</th><th>Item</th><th>Lot</th>
-          <th>Amount</th><th>By</th><th></th></tr></thead>
+        <thead><tr><th>Used</th><th>Worksheet</th><th>Stage</th><th>Item</th><th>Lot</th>
+          <th>Amount</th><th>By</th></tr></thead>
         <tbody>
-          <tr tal:repeat="r rows">
+          <tr tal:repeat="r rows" tal:attributes="data-row-open python:view.guide_url(r)">
             <td tal:content="python:view.lab_at(r.get('used_at'), (r.get('used_at') or '')[:16].replace('T', ' '))">2026-10-02 14:00</td>
-            <td tal:content="r/batch_id">B-1</td>
+            <td tal:content="r/batch_id">WS-1</td>
             <td tal:content="r/stage_name">Extraction</td>
             <td tal:content="python:r.get('item_name') or r.get('role')">Methanol</td>
             <td tal:content="r/lot">M-1</td>
             <td tal:content="python:('%g %s' % (r['amount_value'], r.get('amount_unit') or '')) if r.get('amount_value') is not None else (r.get('amount_text') or '—')">5 mL</td>
             <td tal:content="r/used_by">DEMO</td>
-            <td><a class="btn-sm btn-secondary" tal:attributes="href python:view.guide_url(r)">Extraction</a></td>
           </tr>
         </tbody>
       </table>

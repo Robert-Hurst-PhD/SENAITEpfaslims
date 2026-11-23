@@ -1,0 +1,201 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  Shared renderer for ONE record field: a stage question of the guided
+  extraction (6C: define UI once). The template loops over its own field
+  list and calls this macro.
+
+  Caller must define, ON A WRAPPING ELEMENT (Chameleon does not pass
+  tal:define from the metal:use-macro element itself into the macro):
+
+      field   the field dict from field_schema_json
+      view    the page's view (for view.data())
+
+  Everything else is derived here.
+-->
+<metal:field define-macro="logbook_field">
+      <tal:fdef define="fname python:field.get('name','');
+                         ftype python:field.get('type','text');
+                         flabel python:field.get('label', field.get('name',''));
+                         fvalue python:view.data().get(field.get('name',''), '');
+                         fcorr python:bool(field.get('correctable', False));
+                         fshown python:view.is_shown(field);
+                         freq python:bool(field.get('required', False)) and fshown;
+                         fwidth python:field.get('width', 'md');
+                         fhelp python:field.get('help') or u''">
+      <div class="lb-q"
+           tal:attributes="data-q fname;
+                           data-show-if python:view.show_if_json(field);
+                           hidden python:None if fshown else 'hidden'">
+
+        <!-- ── SECTION: a heading between groups of questions ── -->
+        <tal:section condition="python:ftype == 'section'">
+          <div class="lb-section-head">
+            <h3 tal:content="flabel">Section</h3>
+            <p tal:condition="field/description|nothing" tal:content="field/description"></p>
+          </div>
+        </tal:section>
+
+        <!-- ── CHOICE: radio buttons, a dropdown, or checkboxes ── -->
+        <tal:choice condition="python:ftype == 'choice'"
+                    define="disp python:field.get('display') or 'radio';
+                            opts python:field.get('options') or [];
+                            picked python:fvalue if isinstance(fvalue, (list, tuple)) else ([fvalue] if fvalue else [])">
+          <div class="lb-fields-row">
+            <div class="lb-field lb-field-wide">
+              <fieldset class="lb-choice" tal:condition="python:disp != 'dropdown'">
+                <legend><tal:l tal:replace="flabel" /></legend>
+                <label class="pfas-switch lb-opt" tal:repeat="o opts">
+                  <input tal:condition="python:disp == 'radio'" type="radio"
+                         tal:attributes="name fname; value o/value;
+                                         checked python:'checked' if o['value'] in picked else None;
+                                         required python:'required' if freq else None" />
+                  <input tal:condition="python:disp == 'checkboxes'" type="checkbox" value="yes"
+                         tal:attributes="name python:view.option_param(fname, repeat['o'].index);
+                                         data-value o/value;
+                                         checked python:'checked' if o['value'] in picked else None" /><span class="pfas-switch-track"></span>
+                  <span tal:content="o/label">Option</span>
+                </label>
+              </fieldset>
+              <tal:dd condition="python:disp == 'dropdown'">
+                <label tal:attributes="for fname"><tal:l tal:replace="flabel" /></label>
+                <select class="lb-input lb-input-lg"
+                        tal:attributes="name fname; id fname; required python:'required' if freq else None">
+                  <option value="">&#8212; choose &#8212;</option>
+                  <option tal:repeat="o opts"
+                          tal:attributes="value o/value; selected python:'selected' if o['value'] in picked else None"
+                          tal:content="o/label">Option</option>
+                </select>
+              </tal:dd>
+            </div>
+          </div>
+        </tal:choice>
+
+        <!-- ── CHECKBOX ── -->
+        <tal:checkbox condition="python:ftype == 'checkbox'">
+          <div class="lb-section">
+            <div class="lb-fields-row">
+              <div class="lb-field">
+                <div class="check-row">
+                  <label class="pfas-switch"><input type="checkbox" value="yes"
+                         tal:attributes="name fname;
+                                         id fname;
+                                         checked python:'checked' if fvalue else None" /><span class="pfas-switch-track"></span></label>
+                  <label tal:attributes="for fname" tal:content="flabel">Label</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </tal:checkbox>
+
+        <!-- ── TEXTAREA ── -->
+        <tal:textarea condition="python:ftype == 'textarea'">
+          <div class="lb-section lb-field-wide">
+            <div tal:attributes="class python:'corr-field lb-field-wide' if fcorr else 'lb-field-wide';
+                                 data-field python:fname if fcorr else None">
+              <label>
+                <tal:l tal:replace="flabel" />
+                <tal:corrbtn condition="fcorr">
+                  <button class="btn-correct" type="button"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">correct</button>
+                </tal:corrbtn>
+              </label>
+              <textarea class="lb-textarea"
+                        tal:attributes="name fname"
+                        tal:content="python:fvalue or u''"></textarea>
+              <tal:corrpanel condition="fcorr">
+                <div class="corr-panel" tal:attributes="id string:cp-${fname}">
+                  <label>Original:
+                    <span tal:attributes="id string:co-${fname}"
+                          class="lb-original is-block"></span>
+                  </label>
+                  <label>Correction:
+                    <input type="text"
+                           tal:attributes="id string:cn-${fname};
+                                           name string:_newval_${fname}"
+                           class="pfas-w-220" />
+                  </label>
+                  <label>Initials:
+                    <input type="text"
+                           tal:attributes="id string:cb-${fname};
+                                           name string:_corr_by_${fname}"
+                           class="corr-initials" placeholder="JS" />
+                  </label>
+                  <button type="button" class="corr-cancel"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">&#215;</button>
+                </div>
+              </tal:corrpanel>
+            </div>
+          </div>
+        </tal:textarea>
+
+        <!-- ── TEXT / DATE / TIME / NUMBER ── -->
+        <tal:scalar condition="python:ftype in ('text','date','time','datetime','number')">
+          <div class="lb-fields-row">
+            <div tal:attributes="class python:'lb-field corr-field' if fcorr else 'lb-field';
+                                 data-field python:fname if fcorr else None">
+              <label>
+                <tal:l tal:replace="flabel" />
+                <tal:corrbtn condition="fcorr">
+                  <button class="btn-correct" type="button"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">correct</button>
+                </tal:corrbtn>
+              </label>
+
+              <!-- plain text / date / number -->
+              <tal:plain condition="python:ftype in ('text','date','time','datetime','number')">
+                <input tal:condition="not:field/core_owned|nothing"
+                       tal:attributes="type python:{'datetime': 'datetime-local'}.get(ftype, ftype);
+                                       step python:'any' if ftype == 'number' else None;
+                                       min python:field.get('min') if ftype == 'number' else None;
+                                       max python:field.get('max') if ftype == 'number' else None;
+                                       pattern python:field.get('pattern') if ftype == 'text' else None;
+                                       title python:field.get('message') or None;
+                                       class string:lb-input lb-input-${fwidth};
+                                       name fname;
+                                       value python:fvalue if fvalue not in (None, False) else u'';
+                                       required python:'required' if freq else None" />
+                <!-- shown from the samples' own field, edited on the sample
+                     (core_fields.py) -->
+                <input tal:condition="field/core_owned|nothing" type="text" readonly="readonly"
+                       title="Each sample's Sampled date: change it on the sample"
+                       tal:attributes="class string:lb-input lb-input-lg; id fname;
+                                       value python:fvalue or u''" />
+              </tal:plain>
+
+              <!-- Correction panel -->
+              <tal:corrpanel condition="fcorr">
+                <div class="corr-panel" tal:attributes="id string:cp-${fname}">
+                  <label>Original:
+                    <span tal:attributes="id string:co-${fname}"
+                          class="lb-original"></span>
+                  </label>
+                  <label>Correction:
+                    <input tal:attributes="type python:'date' if ftype == 'date' else 'text';
+                                           id string:cn-${fname};
+                                           name string:_newval_${fname}"
+                           class="pfas-w-160" />
+                  </label>
+                  <label>Initials:
+                    <input type="text"
+                           tal:attributes="id string:cb-${fname};
+                                           name string:_corr_by_${fname}"
+                           class="corr-initials" placeholder="JS" />
+                  </label>
+                  <button type="button" class="corr-cancel"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">&#215;</button>
+                </div>
+              </tal:corrpanel>
+            </div>
+          </div>
+        </tal:scalar>
+
+        <p class="lb-help" tal:condition="python:fhelp and ftype != 'section'" tal:content="fhelp"></p>
+      </div>
+      </tal:fdef>
+</metal:field>
+
+</body>
+</html>

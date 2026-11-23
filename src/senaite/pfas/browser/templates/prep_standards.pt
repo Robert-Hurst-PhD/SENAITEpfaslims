@@ -9,27 +9,28 @@
 <body>
   <tal:t metal:fill-slot="header-title">Prepared Standards</tal:t>
   <tal:r metal:fill-slot="header-right">
-    
+    <button type="button" class="btn-sm btn-primary" onclick="pfasOpenNew()">+ New Prepared Standard</button>
   </tal:r>
 
   <div metal:fill-slot="content">
   <div class="page-body">
 
+    <!-- with a lot's record open, its card shows the message -->
+    <tal:m condition="not:view/record">
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
-
-    <tal:lots condition="python:view.tab() == 'lots'">
+    </tal:m>
 
     <!-- Filters: one bar, applies on change -->
     <form method="GET" class="pfas-filterbar" id="ps-filters" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${context/absolute_url}/@@pfas-prep-standards">
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="ps-q">Search</label>
         <input type="text" id="ps-q" name="q" class="pfas-input pfas-input-wide"
-               placeholder="Name, lot, logbook..."
+               placeholder="Name, lot, record..."
                tal:attributes="value python:request.form.get('q','')" />
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="ps-status">Status</label>
         <select id="ps-status" name="status" class="pfas-select">
           <option value="all"       tal:attributes="selected python:'selected' if not view.status_filter() else None">All statuses</option>
@@ -37,7 +38,7 @@
                   tal:content="python:s[1]">Active</option>
         </select>
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="ps-type">Type</label>
         <select id="ps-type" name="type" class="pfas-select">
           <option value="">&#8212; All Types &#8212;</option>
@@ -48,9 +49,6 @@
       </div>
       <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
       <span class="pfas-filterbar-spacer"></span>
-      <button type="button" class="btn btn-primary" onclick="pfasOpenNew()">
-        + New Prepared Standard
-      </button>
     </form>
 
     <tal:stds tal:define="stds view/prepared_standards">
@@ -64,7 +62,7 @@
       </div>
 
       <div class="table-wrap" tal:condition="stds">
-        <table class="pfas-table pfas-table-fixed" data-col-resize="prep-standards-1">
+        <table class="pfas-table pfas-table-fixed" data-col-resize="prep-standards-1" tal:define="rm context/@@pfas-row-menu">
           <thead>
             <tr>
               <th class="pfas-col-name">Name / Lot</th>
@@ -74,20 +72,31 @@
               <th class="pfas-col-date">Prepared Date</th>
               <th class="pfas-col-expiry">Expiry</th>
               <th class="pfas-col-status">Status</th>
-              <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             <tal:rows tal:repeat="std stds">
-              <tr tal:attributes="data-href string:${view/portal_url}/@@pfas-prep-standards?record=${std/uid}"
-                  tal:define="std_json python:__import__('json').dumps(std).replace('&amp;', '\\u0026').replace('&lt;', '\\u003c').replace('&gt;', '\\u003e')">
+              <!-- the row opens the lot's record (recipe, parentage, steps,
+                   labels); every other action is in its menu, as on Reagent
+                   Inventory. Edit is filled from the row's data-std -->
+              <tr tal:define="std_json python:__import__('json').dumps(std).replace('&amp;', '\\u0026').replace('&lt;', '\\u003c').replace('&gt;', '\\u003e')"
+                  tal:attributes="data-std std_json;
+                                  data-row-open string:${view/portal_url}/@@pfas-prep-standards?record=${std/uid};
+                                  data-row-actions python:rm.actions(
+                                      (u'Edit', 'event', 'ps-edit'),
+                                      (u'Usage', 'href', u'%s/@@pfas-lot-usage?kind=prepared_standard&amp;uid=%s' % (context.absolute_url(), std['uid'])),
+                                      (u'Certificate', 'href', u'%s/@@pfas-prep-standards?action=cert&amp;uid=%s' % (context.absolute_url(), std['uid']), {'blank': True}),
+                                      (u'Print label', 'href', view.label_url(std), {'blank': True}),
+                                      (u'Request extension', 'href', u'%s/@@pfas-lot-extensions?lot=%s' % (view.portal_url(), std['uid'])),
+                                      (u'Mark emptied', 'form', u'ps-status-%s' % std['uid'], {'confirm': u'Mark this lot as emptied? It will no longer be offered in the lot pickers.', 'off': None if std.get('status') == 'active' else u'Only an active lot can be marked emptied, this one is %s' % std.get('status')}) if std.get('status') != 'exhausted' else None,
+                                      (u'Reactivate', 'form', u'ps-status-%s' % std['uid'], {'note': u'Offer this lot in the lot pickers again'}) if std.get('status') == 'exhausted' else None)">
                 <td>
-                  <div class="pfas-cell-name" tal:content="std/title">Name</div>
-                  <div class="pfas-sub" tal:content="std/lot_number">LOT</div>
+                  <strong tal:content="std/lot_number">LOT</strong>
+                  <div class="pfas-sub" tal:content="std/title">Name</div>
                 </td>
                 <td class="pfas-muted" tal:content="std/standard_type">—</td>
                 <td>
-                  <span class="pfas-mono" tal:condition="std/entry_id" tal:content="std/entry_id">FM-ENV-002-261013-01</span>
+                  <span class="pfas-mono" tal:condition="std/entry_id" tal:content="std/entry_id">PDS-A-261105-01</span>
                   <span class="pfas-muted" tal:condition="python:std['logbook_slug'] and not std['entry_id']">
                     <tal:x tal:replace="std/logbook_title">Logbook</tal:x>
                     rev <tal:x tal:replace="std/logbook_revision">1</tal:x>
@@ -102,43 +111,12 @@
                     &#8675; inherited: <span tal:content="std/expiry_inherited_from">parent</span>
                   </div>
                 </td>
+                <!-- the next step each reason asks for: the row opens the
+                     record; Request extension is in its menu -->
                 <td tal:define="attn_label python:(std.get('status') or u'').capitalize();
                                 attn_cls python:'badge badge-' + std['status'];
                                 attn_reasons python:view.attention(std)">
                   <metal:a use-macro="context/@@pfas-macros/macros/status-attention" />
-                </td>
-                <!-- every action in the row's "+" menu, as on Reagent Inventory -->
-                <td class="row-plus-cell">
-                    <details class="row-more">
-                      <summary class="row-plus" aria-label="Actions for this standard" title="Actions">+</summary>
-                      <div class="row-more-menu">
-                        <a class="btn-sm btn-secondary" title="Its recipe, parentage, steps and labels"
-                           tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards?record=${std/uid}">Record</a>
-                        <button type="button" class="btn-sm btn-secondary" title="Edit this standard's preparation record"
-                                tal:attributes="onclick string:editStandard(${std_json})">Edit</button>
-                        <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
-                           tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Usage</a>
-                        <a class="btn-sm btn-secondary" target="_blank" title="Open the preparation certificate (PDF)"
-                           tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}">Certificate</a>
-                        <a class="btn-sm btn-secondary" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
-                           tal:attributes="href python:view.label_url(std)">Print label</a>
-                        <!-- Emptied lots must leave the logbook lot picker; this
-                             is how an analyst says a standard is used up. -->
-                        <form method="POST" tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
-                          <input type="hidden" name="action" value="status" />
-                          <input type="hidden" name="uid" tal:attributes="value std/uid" />
-                          <input type="hidden" name="new_status"
-                                 tal:attributes="value python:'active' if std.get('status') == 'exhausted' else 'exhausted'" />
-                          <button type="submit" class="btn-sm btn-secondary"
-                                  tal:condition="python:std.get('status') != 'exhausted'"
-                                  tal:attributes="disabled python:None if std.get('status') == 'active' else 'disabled';
-                                                  title python:'No longer offered when filling a logbook' if std.get('status') == 'active' else 'Only an active lot can be marked emptied (this one is %s)' % std.get('status')"
-                                  onclick="return confirm('Mark this lot as emptied? It will no longer be offered when filling a logbook.')">Mark emptied</button>
-                          <button type="submit" class="btn-sm btn-secondary" tal:condition="python:std.get('status') == 'exhausted'"
-                                  title="Offer this lot in logbooks again">Reactivate</button>
-                        </form>
-                      </div>
-                    </details>
                 </td>
               </tr>
             </tal:rows>
@@ -146,53 +124,23 @@
         </table>
       </div>
 
-    </tal:stds>
-    </tal:lots>
-
-    <tal:log condition="python:view.tab() != 'lots'">
-    <tal:d define="entries view/entries; fm python:[x for x in view.prep_forms() if x['code'] == view.tab()][0]">
-      <form method="GET" class="pfas-filterbar" data-autosubmit="data-autosubmit"
-            tal:attributes="action string:${context/absolute_url}/@@pfas-prep-standards">
-        <input type="hidden" name="tab" tal:attributes="value view/tab" />
-        <div class="pfas-field"><label for="pe-from">From</label>
-          <input type="date" id="pe-from" name="from" class="pfas-input" tal:attributes="value python:view.date_range()[0]" /></div>
-        <div class="pfas-field"><label for="pe-to">To</label>
-          <input type="date" id="pe-to" name="to" class="pfas-input" tal:attributes="value python:view.date_range()[1]" /></div>
-        <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
-        <span class="pfas-filterbar-spacer"></span>
-        <button type="button" class="btn btn-secondary" onclick="window.print()">Print</button>
-        <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">Logbooks</a>
+      <!-- Emptied lots must leave the logbook lot picker; the row menu's
+           Mark emptied / Reactivate sends this. -->
+      <tal:sf repeat="std stds">
+      <form method="POST" hidden="hidden"
+            tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards; id string:ps-status-${std/uid}">
+        <input type="hidden" name="action" value="status" />
+        <input type="hidden" name="uid" tal:attributes="value std/uid" />
+        <input type="hidden" name="new_status"
+               tal:attributes="value python:'active' if std.get('status') == 'exhausted' else 'exhausted'" />
+        <button type="submit" class="btn-sm btn-secondary"
+                tal:condition="python:std.get('status') != 'exhausted'"
+                tal:attributes="disabled python:None if std.get('status') == 'active' else 'disabled'">Mark emptied</button>
+        <button type="submit" class="btn-sm btn-secondary" tal:condition="python:std.get('status') == 'exhausted'">Reactivate</button>
       </form>
+      </tal:sf>
 
-      <p class="pfas-muted" tal:condition="not:entries">No entries in this range.</p>
-      <div class="table-wrap" tal:condition="entries">
-        <table class="pfas-table" data-col-resize="prep-standards-2">
-          <thead><tr><th>Entry</th><th>Prepared</th><th>By</th><th>Lots made</th><th>Made from</th><th>Reviewed</th></tr></thead>
-          <tbody>
-            <tr tal:repeat="e entries">
-              <td class="pfas-mono" tal:content="e/id">FM-ENV-002-261014-01</td>
-              <td tal:content="e/prepared_date">2026-10-14</td>
-              <td tal:content="e/prepared_by">AN1</td>
-              <td tal:content="e/lot_numbers">C1, C2</td>
-              <td tal:content="e/parents_text">PDS mix PDS-1</td>
-              <td>
-                <span tal:condition="e/reviewed_by" tal:content="python:u'%s %s' % (e['reviewed_by'], view.lab_at(e['reviewed_at'], e['reviewed_at'][:10], u'%Y-%m-%d'))">qao</span>
-                <form method="POST" tal:condition="not:e/reviewed_by"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
-                  <input type="hidden" name="action" value="review_prep" />
-                  <input type="hidden" name="prep_form" tal:attributes="value view/tab" />
-                  <input type="hidden" name="entry_id" tal:attributes="value e/id" />
-                  <span class="badge badge-pending">Not reviewed</span>
-                  <button type="submit" class="btn-sm btn-secondary">Review</button>
-                </form>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-    </tal:d>
-    </tal:log>
+    </tal:stds>
 
     <!-- ── Create/Edit modal ─────────────────────────────────────────── -->
     <div class="pfas-modal" id="psModal">
@@ -290,7 +238,7 @@
                           tal:content="string:${b/name} (${b/serial_number})">Bal</option>
                 </select>
                 <span class="pfas-hint" tal:condition="not:view/facility_balances">
-                  No balance registered under Facility QC &#8594; Units.
+                  No balance registered under Equipment.
                 </span>
               </div>
               <div class="pfas-form-field">
@@ -329,6 +277,11 @@
                 </thead>
                 <tbody id="parentsBody"></tbody>
               </table>
+              <div class="pfas-form-field is-full">
+                <label for="psEditExpiredReason">Reason for using a lot out of date</label>
+                <textarea id="psEditExpiredReason" name="expired_reason" rows="2"></textarea>
+                <span class="pfas-hint">Needed only for a parent added here that was out of date on the date prepared.</span>
+              </div>
             </div>
           </div>
 
@@ -363,12 +316,24 @@
         <h2 id="psRecordTitle" tal:content="r/title">Lot DEMO-PS-L3 &#183; DEMO 537.1 CAL-3</h2>
         <dl class="rc-facts">
           <div tal:condition="r/recipe"><dt>Recipe, pinned</dt><dd tal:content="r/recipe">537_CAL Rev 1</dd></div>
-          <div tal:condition="r/log"><dt>Recorded on</dt><dd><tal:x replace="r/log">FM-ENV-002 Rev 1</tal:x>
-            <span class="pfas-mono" tal:condition="r/entry_id" tal:content="r/entry_id">FM-ENV-002-261013-01</span></dd></div>
+          <div tal:condition="r/recorded_on"><dt>Recorded on</dt><dd class="pfas-mono" tal:content="r/recorded_on">PDS-A r2 &#183; PDS-A-261105-01</dd></div>
           <div><dt>Made</dt><dd tal:content="r/made">2026-10-13 by DEMO analyst</dd></div>
           <div><dt>Expires</dt><dd><tal:x replace="r/expires">2026-11-12</tal:x><tal:n condition="r/expiry_note"> &#183;
             <tal:x replace="r/expiry_note">the recipe's shelf life</tal:x></tal:n></dd></div>
+          <div tal:condition="python:r.get('extension')"><dt>Extended</dt><dd tal:content="python:r['extension']">2027-03-13, extended from 2026-09-13, approved by DEMO QA on 2026-11-10</dd></div>
         </dl>
+        <!-- a parent used out of date on the prep date, with the reason the preparer signed -->
+        <div class="alert alert-warning" tal:condition="r/expired_parents" tal:content="r/expired_parents">Used out of date: lot DEMO-P1 expired 2026-09-13. Reason: DEMO reason</div>
+        <!-- the preparation record's signatures, read from the ledger against its content now -->
+        <tal:sg condition="r/entry_id" define="sigs r/signatures">
+          <h4 class="rc-h">Signatures</h4>
+          <div class="alert alert-success" tal:condition="view/ok_msg" tal:content="view/ok_msg">Signatures checked</div>
+          <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg">Signed content changed</div>
+          <div tal:define="sig_rows sigs; sig_resize string:prep-standards-signatures;
+                           sig_verify python:{'url': u'%s/@@pfas-prep-standards?action=verify_prep&amp;entry=%s&amp;record=%s' % (view.portal_url(), r['entry_id'], r['uid']),
+                                              'title': u'Recompute the record\u2019s content hash and check each signature in the ledger'}"><metal:s
+               use-macro="context/@@pfas-esig-macros/macros/signature_list" /></div>
+        </tal:sg>
         <h4 class="rc-h">Made from</h4>
         <ul class="lr-tree">
           <li tal:repeat="n r/tree" tal:attributes="class python:'lr-row d%d%s' % (min(n['depth'], 5), ' is-problem' if n['problem'] else '')">
@@ -382,7 +347,7 @@
           <table class="pfas-table">
             <tbody><tr tal:repeat="st r/steps">
               <td class="pfas-num" tal:content="python:st[0]">1</td><td tal:content="python:st[1]">Take the stock</td>
-              <td>&#10003; <tal:x replace="python:st[2]">DEMO analyst</tal:x></td>
+              <td><tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('sig-signed', u'Signed')" /> <tal:x replace="python:st[2]">DEMO analyst</tal:x></td>
             </tr></tbody>
           </table>
         </tal:s>
@@ -404,6 +369,7 @@
           <a class="btn btn-secondary" target="_blank" tal:attributes="href r/label_url">Print label</a>
           <a class="btn btn-secondary" target="_blank" tal:condition="r/labels_url" tal:attributes="href r/labels_url"
              tal:content="python:u'Print all %d labels' % len(r['sitting'])">Print all 7 labels</a>
+          <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-lot-extensions?lot=${r/uid}">Request extension</a>
           <span class="pfas-filterbar-spacer"></span>
           <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards">Close</a>
           <a class="btn btn-primary" target="_blank" tal:attributes="href r/cert_url">Print certificate</a>
@@ -419,29 +385,20 @@
         <h2 id="psNewTitle">New Prepared Standard</h2>
         <form method="POST" id="psNewForm" tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
           <input type="hidden" name="action" value="make_recipe" />
-          <div class="pfas-form-row">
-          <div class="pfas-form-field is-full">
-            <label>Prep log
-              <tal:h define="hid string:new-prepared-standard"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
-            <div class="pfas-seg" id="psNewLog" role="group" aria-label="Prep log">
-              <button type="button" class="pfas-seg-item" tal:repeat="l python:view.new_standard()['logs']"
-                      tal:attributes="data-log l/slug; aria-selected python:'true' if repeat['l'].start else 'false'"
-                      tal:content="string:${l/code} ${l/title}">FM-ENV-002 Calibration Curve Prep</button>
-            </div>
-          </div>
-          </div>
+          <input type="hidden" name="make_nonce" tal:attributes="value view/make_nonce" />
           <div class="pfas-form-row">
             <div class="pfas-form-field">
               <label for="psNewMethod">Method</label>
               <select id="psNewMethod" name="method"></select>
             </div>
             <div class="pfas-form-field">
-              <label for="psNewRecipe">Standard</label>
+              <label for="psNewRecipe">Standard
+                <tal:h define="hid string:recipes"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></label>
               <select id="psNewRecipe" name="recipe"></select>
             </div>
           </div>
           <div class="pfas-empty" id="psNewEmpty" hidden="hidden">
-            <p>This method has no recipe on this log yet.</p>
+            <p>This method has no recipe yet.</p>
             <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-recipes">Recipes</a>
           </div>
 
@@ -537,6 +494,11 @@
                 <thead><tr><th>Made from</th><th>Lot</th><th>Amount taken</th><th>Unit</th></tr></thead>
                 <tbody id="psNewParents"></tbody>
               </table>
+              <div class="pfas-form-field is-full" id="psNewExpiredField" hidden="hidden">
+                <label for="psNewExpiredReason">Reason for using a lot out of date</label>
+                <textarea id="psNewExpiredReason" name="expired_reason" rows="2" disabled="disabled"></textarea>
+                <span class="pfas-hint">Out of date on the prep date: <span id="psNewExpiredLots"></span>. The reason prints on the preparation record.</span>
+              </div>
             </div>
             <div class="pfas-pane" id="psNewConc">
               <p class="pfas-hint">Calculated when saved from the lots and volumes used.</p>
@@ -547,11 +509,13 @@
 
           <div class="form-actions is-end">
             <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="psNewSave">Save &amp; Generate Certificate</button>
+            <button type="button" class="btn btn-primary" id="psNewSave" data-modal-open="esig-make_recipe">Save &amp; Generate Certificate</button>
           </div>
         </form>
       </div>
     </div>
+    <!-- Save opens the sign dialog; its Sign posts the form: a record is saved signed or not at all -->
+    <div tal:define="esig view/make_esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div>
     <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/prep_standard_new.js?v=${context/@@pfas-macros/asset_version}"></script>
 
     <div class="pane-footer">
@@ -614,6 +578,12 @@
     document.getElementById('psModal').classList.add('open');
     switchTab('tabBasic');
   }
+  /* a lot row's menu: Edit, filled from the row's data-std */
+  document.addEventListener('pfas:row-action', function(e) {
+    if (e.detail && e.detail.name === 'ps-edit' && e.detail.row) {
+      editStandard(e.detail.row.getAttribute('data-std'));
+    }
+  });
 
   /* ── Reagent lookup ────────────────────────────────────────────────── */
   var _lookupTimer = null;

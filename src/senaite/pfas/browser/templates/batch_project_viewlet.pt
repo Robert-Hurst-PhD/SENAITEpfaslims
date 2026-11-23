@@ -8,6 +8,9 @@
            tal:content="python: '%s (%s)' % (view.project['project_code'], view.project['client_name'])">
         PRJ-001 (Acme Labs)
       </div>
+      <div tal:condition="view/project/standing">
+        <span class="badge badge-opened">Standing</span>
+      </div>
       <div class="pfas-muted">
         <tal:has-qapp condition="view/project/qapp_label">
           QAPP <span tal:content="view/project/qapp_label">QAPP-001</span>

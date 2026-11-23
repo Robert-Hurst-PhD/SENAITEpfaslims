@@ -7,7 +7,10 @@
    shown. A rail button shows its section's panel and hides the others, on
    the page as it stands (it is a button, never a link); the mark of the
    current page's section (aria-current) stays where the page put it. The
-   trees are the navigation tree component's.
+   tiles and their row menu are the nav tiles component's
+   (pfas-components.js initNavTiles). Choosing a page folds the panel to the
+   rail (nav.choose): a plain click or Enter on a tile, not one that opens the
+   page in another tab or window.
 
    How the panel sits by the screen's width (pfas-sidebar.css draws each):
    - wide, 1280 px and more: the panel beside the rail. The top bar's menu
@@ -45,11 +48,80 @@
   function panel(sb) { return sb.querySelector('.pfas-panel'); }
   function shownSection(sb) { return sb.querySelector('.pfas-panel-section:not([hidden])'); }
 
+  /* ── Motion (pfas-sidebar.css): something shown rises (the shared arrive);
+     a closed panel is closed at once and keeps is-closing on the nav while
+     its fade plays, then goes; opened again meanwhile, it stays. With no
+     animation to play (reduced motion; no getAnimations) it goes at once. */
+  function arrive(n, cls) {
+    var m = PFAS.components && PFAS.components.motion;
+    if (n && m) m.arrive(n, cls);
+  }
+  function unsettle(sb) { sb.__pfasClosing = null; sb.classList.remove('is-closing'); }
+  function settle(sb) {
+    var p = panel(sb), anims = [];
+    unsettle(sb);
+    if (p && p.getAnimations) {
+      sb.classList.add('is-closing');
+      anims = p.getAnimations().filter(function (a) {
+        var t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+        return a.animationName && t && t.endTime > 0;
+      });
+    }
+    if (!anims.length) { unsettle(sb); return; }
+    var token = {};
+    sb.__pfasClosing = token;
+    function end() { if (sb.__pfasClosing === token) unsettle(sb); }
+    anims[0].finished.then(end, end);
+  }
+  /* the pressed fill: one mark behind the rail's buttons, moved by transform
+     to the pressed one (its size taken at once); the first place, and a
+     place after the rail changed size, is drawn there, not slid to */
+  function placeMark(sb, slide) {
+    var rail = sb.querySelector('.pfas-rail');
+    if (!rail) return;
+    var mark = rail.querySelector('.pfas-rail-mark');
+    if (!mark) {
+      mark = document.createElement('span');
+      mark.className = 'pfas-rail-mark';
+      mark.setAttribute('aria-hidden', 'true');
+      rail.insertBefore(mark, rail.firstChild);
+    }
+    var on = rail.querySelector('.pfas-rail-btn[aria-pressed="true"]');
+    var drawn = !!(on && on.offsetWidth);
+    mark.hidden = !drawn;
+    rail.classList.toggle('has-mark', drawn);
+    if (!drawn) { mark.__pfasAt = null; return; }
+    var at = 'translate(' + on.offsetLeft + 'px, ' + on.offsetTop + 'px)';
+    mark.style.width = on.offsetWidth + 'px';
+    mark.style.height = on.offsetHeight + 'px';
+    if (slide && mark.__pfasAt) {
+      mark.style.transform = at;
+    } else {
+      mark.style.transition = 'none';
+      mark.style.transform = at;
+      void mark.offsetWidth;               /* drawn there before the transition is back */
+      mark.style.transition = '';
+    }
+    mark.__pfasAt = at;
+  }
+  nav.placeMark = function () { var sb = el(); if (sb) placeMark(sb, false); };
+
   /* 'wide', 'compact' or 'phone' */
   nav.mode = function () { return media(PHONE) ? 'phone' : (media(COMPACT) ? 'compact' : 'wide'); };
   /* the panel is not beside the page: the rail alone, a section opening over the page */
   nav.folded = function () {
     return nav.mode() !== 'wide' || root().classList.contains(FOLDED);
+  };
+  /* a page was chosen: the panel folds, for the session on a wide screen, and
+     the page it leads to is drawn folded. */
+  nav.choose = function () {
+    var sb = el();
+    if (!sb) return;
+    if (nav.mode() === 'wide') {
+      root().classList.add(FOLDED);
+      store(true);
+    }
+    nav.close();
   };
   nav.isOpen = function () { var sb = el(); return !!(sb && sb.classList.contains('is-open')); };
 
@@ -58,6 +130,7 @@
     var sb = el();
     var target = sb && sb.querySelector('.pfas-panel-section[data-section="' + id + '"]');
     if (!target) return false;
+    var fresh = target.hasAttribute('hidden');
     sb.setAttribute('data-section', id);
     each(sb, '.pfas-panel-section', function (s) {
       if (s === target) s.removeAttribute('hidden'); else s.setAttribute('hidden', 'hidden');
@@ -66,6 +139,9 @@
       b.setAttribute('aria-pressed', b.getAttribute('data-section') === id ? 'true' : 'false');
     });
     if (sb.classList.contains('is-open') && nav.mode() === 'phone') sheet(sb, true);
+    /* a section shown in a drawn panel rises; in a panel about to open, the panel does */
+    if (fresh) arrive(target, 'is-arriving');
+    placeMark(sb, true);
     return true;
   };
 
@@ -98,6 +174,8 @@
     var sb = el();
     if (!sb || (id && !nav.show(id))) return false;
     opener = from || null;
+    sb.classList.remove('is-closing');
+    unsettle(sb);
     sb.classList.add('is-open');
     if (nav.mode() === 'phone') {
       sheet(sb, true);
@@ -115,6 +193,7 @@
     sb.classList.remove('is-open');
     sheet(sb, false);
     if (back && (inside || modal)) back.focus();
+    settle(sb);
   };
   /* the top bar's menu button: on a wide screen it folds and unfolds the
      panel for the session; below, it opens and closes it over the page */
@@ -126,6 +205,14 @@
       nav.close();
       root().classList.toggle(FOLDED, fold);
       store(fold);
+      /* folded: the panel fades out over the page, which takes its width at
+         once; unfolded: it rises in beside the page */
+      if (fold) {
+        settle(sb);
+      } else {
+        unsettle(sb);
+        arrive(panel(sb), 'is-arriving');
+      }
     } else if (nav.isOpen()) {
       nav.close();
     } else {
@@ -133,6 +220,13 @@
     }
   };
 
+  function tileClick(sb, e) {
+    var a = e.target && e.target.closest ? e.target.closest('a.pfas-navtile') : null;
+    if (!a || !sb.contains(a) || e.defaultPrevented) return;
+    /* a page opened in another tab or window leaves this one as it is */
+    if (e.button > 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    nav.choose();
+  }
   function railClick(sb, e) {
     var b = e.target && e.target.closest ? e.target.closest('.pfas-rail-btn') : null;
     if (!b || !sb.contains(b)) return;
@@ -174,13 +268,12 @@
     });
   }
   /* ── Pins: Pin and Unpin in a row's menu, saved on the server ──
-     The navigation tree says Pin or Unpin in a pfas:pin event {path, pinned}
-     on the row, its data-pinned already flipped. That is one POST of path,
+     A tile's menu says Pin or Unpin in a pfas:pin event {path, pinned}
+     on the tile, its data-pinned already flipped. That is one POST of path,
      pinned and the page's _authenticator (data-token) to the pins view
      (data-pins-url). Its reply's rows (sidebar_pins.pins_for) are the pins
      as Home lists them: the list is drawn again from them alone, as the
-     template draws it, and every page row's data-pinned follows them; a
-     family's row, which leads to one of its pages, is never pinned. A refused
+     template draws it, and every tile's data-pinned follows them. A refused
      POST, a reply that is not the view's or none at all puts the row back
      and says why in the panel's status line. A page stored under another of
      its paths is unpinned by the path it is stored under. The nav's
@@ -208,22 +301,26 @@
     if (text) n.textContent = text;
     return n;
   }
+  function iconOf(name) { return /^ico-[a-z0-9-]+$/.test(name || '') ? name : 'ico-page'; }
   function drawPins(sb) {
     var box = sb.querySelector('#pfas-nav-pins');
     if (!box) return;
     var active = document.activeElement;
     var had = active && box.contains(active) && active.getAttribute ? active.getAttribute('data-path') : null;
+    /* the pins drawn before: a page newly pinned rises in, the others stay */
+    var before = {}, fresh = [];
+    each(box, 'a.pfas-navtile', function (a) { before[a.getAttribute('data-path')] = true; });
     while (box.firstChild) box.removeChild(box.firstChild);
     var purl = sb.getAttribute('data-portal') || '', back = null;
     pinRows(sb).forEach(function (r) {
-      var li = make('li'), a = make('a', 'pfas-nav-row'), more = make('button', 'pfas-nav-more');
-      li.setAttribute('role', 'none');
-      a.setAttribute('role', 'treeitem');
+      var li = make('li'), a = make('a', 'pfas-navtile'), more = make('button', 'pfas-nav-more');
+      li.setAttribute('role', 'listitem');   /* the panel's lists have no box (display: contents) */
       a.setAttribute('data-pinned', 'true');
       a.setAttribute('href', purl + '/' + r.url_path);
       a.setAttribute('data-path', r.path);
-      a.appendChild(make('span', 'pfas-nav-label', r.label));
-      if (r.ambiguous) a.appendChild(make('span', 'pfas-nav-place', r.place));
+      a.innerHTML = '<svg aria-hidden="true"><use href="#' + iconOf(r.icon) + '"></use></svg>';
+      a.appendChild(make('span', 'pfas-navtile-label', r.label));
+      if (r.ambiguous) a.appendChild(make('span', 'pfas-navtile-place', r.place));
       more.setAttribute('type', 'button');
       more.setAttribute('tabindex', '-1');
       more.setAttribute('aria-haspopup', 'menu');
@@ -232,23 +329,27 @@
       li.appendChild(a);
       li.appendChild(more);
       box.appendChild(li);
+      if (!before[r.path]) fresh.push(a);
       if (had !== null && r.path === had) back = a;
     });
+    /* the list is as many tiles across as it holds, up to three: the panel's width follows */
+    box.setAttribute('data-cols', String(Math.max(1, Math.min(pinRows(sb).length, 3))));
     if (pinRows(sb).length) box.removeAttribute('hidden'); else box.setAttribute('hidden', 'hidden');
-    if (PFAS.components && PFAS.components.resetNavTree) PFAS.components.resetNavTree(box, back);
+    if (PFAS.components && PFAS.components.resetNavTiles) PFAS.components.resetNavTiles(box);
+    fresh.forEach(function (a) { arrive(a, 'is-arriving'); });
     if (had === null) return;
-    /* the focus was in the list: on the same pin, else the first, else Home's first row */
+    /* the focus was in the list: on the same pin, else the first, else Home's first tile */
     var home = box.closest('.pfas-panel-section');
-    var to = back || box.querySelector('[role=treeitem]') || (home && home.querySelector('[role=treeitem]'));
+    var to = back || box.querySelector('a.pfas-navtile') || (home && home.querySelector('a.pfas-navtile'));
     if (to) to.focus();
   }
   function syncPinned(sb) {
     var on = {};
     pinRows(sb).forEach(function (r) { on[r.url_path] = true; });
     var box = sb.querySelector('#pfas-nav-pins');
-    each(sb, '.pfas-nav-row[role=treeitem]', function (a) {
+    each(sb, 'a.pfas-navtile', function (a) {
       if (box && box.contains(a)) return;
-      var pinned = !a.hasAttribute('aria-owns') && !!on[a.getAttribute('data-path')];
+      var pinned = !!on[a.getAttribute('data-path')];
       a.setAttribute('data-pinned', pinned ? 'true' : 'false');
     });
   }
@@ -289,14 +390,21 @@
     sb.__pfasNav = true;
     root().classList.add(HAS_NAV);
     root().classList.toggle(FOLDED, stored());
-    sb.addEventListener('click', function (e) { railClick(sb, e); });
+    sb.addEventListener('click', function (e) { railClick(sb, e); tileClick(sb, e); });
     sb.addEventListener('pfas:pin', function (e) { savePin(sb, e); });
     shedCore(sb);
     if (window.MutationObserver) {
       new window.MutationObserver(function () { shedCore(sb); }).observe(sb, { attributes: true, attributeFilter: ['class'] });
     }
     watch();
-    if (PFAS.components && PFAS.components.initNavTree) PFAS.components.initNavTree(sb);
+    if (PFAS.components && PFAS.components.initNavTiles) PFAS.components.initNavTiles(sb);
+    placeMark(sb, false);
+    /* the rail's buttons change size with the width and the web font */
+    window.addEventListener('resize', function () { placeMark(sb, false); });
+    var rail = sb.querySelector('.pfas-rail');
+    if (rail && window.ResizeObserver) {
+      try { new window.ResizeObserver(function () { placeMark(sb, false); }).observe(rail); } catch (e) {}
+    }
   };
   nav.init();
 })();

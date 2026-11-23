@@ -12,10 +12,15 @@
     <a class="btn-sm btn-secondary" tal:attributes="href python:view.unit()['url'] + '/base_edit'">Edit in SENAITE</a>
   </tal:r>
 
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:condition="view/can_configure" tal:define="sb_form string:equipment-settings-form"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
   <div metal:fill-slot="content">
   <div class="page-body-narrow" tal:define="u view/unit; kind u/unit_type">
 
     <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-error" tal:condition="view/folder_refused">Not saved: use an absolute path.</div>
     <p class="form-note">
       <strong tal:content="u/name">Balance 1</strong>
       &middot; type <span tal:replace="u/type_title">Balance</span>
@@ -23,43 +28,56 @@
       Identity and certificates live in SENAITE; the PFAS check settings live here. <tal:h define="hid string:equipment-types"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
     </p>
 
-    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-equipment-settings?uid=${u/id}">
+    <form method="post" id="equipment-settings-form" tal:attributes="action string:${view/portal_url}/@@pfas-equipment-settings?uid=${u/id}">
       <input type="hidden" name="action" value="save" tal:condition="view/can_configure" />
 
       <tal:study condition="python:kind in ('thermometer', 'ir_gun', 'nitrogen_evaporator')">
         <div class="section-group-hdr">Temperature study</div>
         <p class="form-note">Corrected to the NIST reference by its quarterly study; the factor in force applies wherever its readings are used. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
-        <div class="field-row"><label>Study tolerance per reading pair (&deg;C)</label>
-          <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
-        <div class="field-row" tal:condition="view/multi_point"><label for="es-wt">Working temperatures (&deg;C)</label>
-          <input type="text" name="working_temps" id="es-wt" data-chips="list" placeholder="-20, 4, 20"
-                 tal:attributes="value view/working_temps_text" /></div>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field"><label>Study tolerance per reading pair (&deg;C)</label>
+            <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+          <div class="pfas-form-field" tal:condition="view/multi_point"><label for="es-wt">Working temperatures (&deg;C)</label>
+            <input type="text" name="working_temps" id="es-wt" data-chips="list" placeholder="-20, 4, 20"
+                   tal:attributes="value view/working_temps_text" /></div>
+        </div>
       </tal:study>
       <p class="form-note" tal:condition="python:kind == 'reference_thermometer'">
-        Verified externally: record its certificate in SENAITE; the certificate&rsquo;s valid-to date is its due date. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
+        Checked externally: record its certificate in SENAITE; the certificate&rsquo;s valid-to date is its due date. <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
       <tal:temp condition="python:kind in ('refrigerator', 'freezer', 'water_bath', 'room_sensor')">
         <div class="section-group-hdr">Temperature monitoring</div>
-        <div class="field-row"><label>Sensor id</label>
-          <input type="text" name="sensor_id" tal:attributes="value u/sensor_id" /></div>
-        <div class="field-row"><label>Temperature range (&deg;C)</label>
-          <div data-range="data-range" data-scale="-90,40" data-unit="&#176;C">
-            <input type="number" step="0.1" name="temp_min" aria-label="Temperature minimum" tal:attributes="value u/temp_min" />
-            <input type="number" step="0.1" name="temp_max" aria-label="Temperature maximum" tal:attributes="value u/temp_max" /></div></div>
-        <div class="field-row"><label>Humidity range (%)</label>
-          <div data-range="data-range" data-scale="0,100" data-unit="%">
-            <input type="number" step="0.1" name="humidity_min" aria-label="Humidity minimum" tal:attributes="value u/humidity_min" />
-            <input type="number" step="0.1" name="humidity_max" aria-label="Humidity maximum" tal:attributes="value u/humidity_max" /></div></div>
-        <div class="field-row"><label>Mapping study tolerance (&deg;C)</label>
-          <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field"><label>Sensor id</label>
+            <input type="text" name="sensor_id" tal:attributes="value u/sensor_id" /></div>
+          <div class="pfas-form-field"><label>Temperature range (&deg;C)</label>
+            <div data-range="data-range" data-scale="-90,40" data-unit="&#176;C">
+              <input type="number" step="0.1" name="temp_min" aria-label="Temperature minimum" tal:attributes="value u/temp_min" />
+              <input type="number" step="0.1" name="temp_max" aria-label="Temperature maximum" tal:attributes="value u/temp_max" /></div></div>
+          <div class="pfas-form-field"><label>Humidity range (%)</label>
+            <div data-range="data-range" data-scale="0,100" data-unit="%">
+              <input type="number" step="0.1" name="humidity_min" aria-label="Humidity minimum" tal:attributes="value u/humidity_min" />
+              <input type="number" step="0.1" name="humidity_max" aria-label="Humidity maximum" tal:attributes="value u/humidity_max" /></div></div>
+          <div class="pfas-form-field"><label>Mapping study tolerance (&deg;C)</label>
+            <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+        </div>
         <div class="alert alert-warning" tal:define="hc view/hold_conflict" tal:condition="hc" tal:content="hc">ranges do not overlap</div>
-        <div class="field-row" tal:repeat="m view/kept_choices">
-          <span class="pfas-label" tal:content="string:Holds, ${m/mid}">Holds, EPA_537_1</span>
-          <div class="cf-chips">
-            <label class="pfas-switch cf-chip" tal:repeat="k m/items">
-              <input type="checkbox" value="on" tal:attributes="name k/name; checked python:'checked' if k['on'] else None" /><span class="pfas-switch-track"></span>
-              <span tal:replace="k/label">Samples</span></label>
-          </div></div>
+        <p class="form-note" tal:define="hr view/hold_range" tal:condition="hr" tal:content="hr">Judged at -20 to -10 °C</p>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field" tal:repeat="m view/kept_choices">
+            <span class="pfas-label" tal:content="python:u'Holds, %s' % view.method_name(m['mid'])">Holds, EPA 537.1 Drinking Water</span>
+            <div class="cf-chips">
+              <label class="pfas-switch cf-chip" tal:repeat="k python:m['items']">
+                <input type="checkbox" value="on" tal:attributes="name k/name; checked python:'checked' if k['on'] else None" /><span class="pfas-switch-track"></span>
+                <span tal:replace="k/label">Samples</span></label>
+            </div>
+            <span class="pfas-label" tal:condition="m/matrices">Matrices held</span>
+            <div class="cf-chips" tal:condition="m/matrices">
+              <label class="pfas-switch cf-chip" tal:repeat="x m/matrices">
+                <input type="checkbox" value="on" tal:attributes="name x/name; checked python:'checked' if x['on'] else None" /><span class="pfas-switch-track"></span>
+                <span tal:replace="x/label">Soil</span></label>
+            </div></div>
+        </div>
       </tal:temp>
 
       <tal:bal condition="python:kind in ('balance_analytical', 'balance_prep')">
@@ -83,25 +101,46 @@
 
       <tal:water condition="python:kind == 'water_system'">
         <div class="section-group-hdr">Water limits</div>
-        <div class="field-row"><label>Maximum conductivity (&micro;S/cm)</label>
-          <input type="number" step="0.01" name="conductivity_max" tal:attributes="value view/extra/conductivity_max|nothing" /></div>
-        <div class="field-row"><label>Maximum TOC (ppb)</label>
-          <input type="number" step="1" name="toc_max" tal:attributes="value view/extra/toc_max|nothing" /></div>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field"><label>Maximum conductivity (&micro;S/cm)</label>
+            <input type="number" step="0.01" name="conductivity_max" tal:attributes="value view/extra/conductivity_max|nothing" /></div>
+          <div class="pfas-form-field"><label>Maximum TOC (ppb)</label>
+            <input type="number" step="1" name="toc_max" tal:attributes="value view/extra/toc_max|nothing" /></div>
+        </div>
       </tal:water>
 
       <tal:pip condition="python:kind == 'pipette'">
         <div class="section-group-hdr">Calibration limits</div>
-        <div class="field-row"><label for="es-acc">Systematic error limit (&#177; %)</label>
-          <input type="number" step="any" min="0" name="pipette_accuracy_pct" id="es-acc" tal:attributes="value u/pipette_accuracy_pct" /></div>
-        <div class="field-row"><label for="es-cv">Random error limit (RSD %)</label>
-          <input type="number" step="any" min="0" name="pipette_precision_cv" id="es-cv" tal:attributes="value u/pipette_precision_cv" /></div>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field"><label for="es-acc">Systematic error limit (&#177; %)</label>
+            <input type="number" step="any" min="0" name="pipette_accuracy_pct" id="es-acc" tal:attributes="value u/pipette_accuracy_pct" /></div>
+          <div class="pfas-form-field"><label for="es-cv">Random error limit (RSD %)</label>
+            <input type="number" step="any" min="0" name="pipette_precision_cv" id="es-cv" tal:attributes="value u/pipette_precision_cv" /></div>
+        </div>
       </tal:pip>
 
-      <p class="form-note" tal:condition="python:kind in ('analytical', 'eyewash', 'other')">
+      <tal:spe condition="python:kind == 'spe_manifold'">
+        <div class="section-group-hdr">Ports</div>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field is-wide"><label for="es-ports">Ports</label>
+            <input type="text" name="spe_ports" id="es-ports" data-chips="list" placeholder="1, 2, 3"
+                   tal:attributes="value view/spe_ports_text" /></div>
+        </div>
+      </tal:spe>
+
+      <tal:raw condition="python:kind == 'analytical'">
+        <div class="section-group-hdr">Raw data</div>
+        <div class="pfas-form-row">
+          <div class="pfas-form-field is-wide"><label for="es-raw">Raw data folder, as mounted in the worker</label>
+            <input type="text" name="raw_folder" id="es-raw" placeholder="/mnt/lcms/data/instrument-1"
+                   tal:attributes="value u/raw_folder|nothing; disabled python:'disabled' if not view.can_configure() else None" /></div>
+        </div>
+      </tal:raw>
+
+      <p class="form-note" tal:condition="python:kind in ('eyewash', 'other')">
         Nothing to set here for this kind; its type and certificates are in SENAITE.
       </p>
 
-      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
     </form>
   </div>
   </div>

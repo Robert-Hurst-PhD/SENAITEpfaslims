@@ -135,6 +135,8 @@ class PFASRegulatoryLimitsView(ViewHelpers, GateMixin, BrowserView):
         r["no_matrix"] = rg.no_matrix(l)
         r["matrix_uids"] = l.get("matrix_uids") or []
         r["subtypes_text"] = u", ".join(l.get("subtypes") or [])
+        # DEMO test data is marked as the certificate marks it
+        r["test_data"] = rg.TEST_DATA_MARK if rg.is_test_data(l) else u""
         return r
 
     def rows(self):

@@ -86,11 +86,13 @@ def layout_hash():
 def draft_snapshot(portal):
     from senaite.pfas.method_profile_store import get_profile, list_method_ids
     from senaite.pfas.print_settings import get_print_settings
+    from senaite.pfas import report_tiers
     from senaite.pfas.report_templates import snapshot
     formats = dict((mid, get_profile(portal, mid).get("report_format") or {})
                    for mid in list_method_ids(portal))
     return snapshot(get_print_settings(portal), formats, layout_hash(),
-                    designed=designed_draft(portal))
+                    designed=designed_draft(portal),
+                    report_tiers=report_tiers.saved_catalogue(portal))
 
 
 def designed_draft(portal):
@@ -217,12 +219,31 @@ class PFASReportTemplateView(ViewHelpers, BrowserView):
         return u""
 
 
-class PFASReportTemplatePreviewView(BrowserView):
+def refusal_of(exc, sample_id, receipt_url, review_url):
+    """What the refusal page shows for a certificate that could not be
+    produced: {"sample", "text", "received", "rows", "receipt_url",
+    "review_url"}. A refusal for results analysed before the sample was
+    received (coa_document.DatesRefused) gives the receipt and each
+    analysis time side by side; any other gives its reason."""
+    rows = list(getattr(exc, "rows", None) or [])
+    if rows:
+        text = u"Results were analysed before the sample was received."
+    else:
+        text = u"The designed certificate could not be produced: %s" % (u"%s" % exc)
+    return {"sample": getattr(exc, "sample", None) or sample_id, "text": text,
+            "received": getattr(exc, "received", None) or u"no receipt date", "rows": rows,
+            "receipt_url": receipt_url, "review_url": review_url}
+
+
+class PFASReportTemplatePreviewView(ViewHelpers, BrowserView):
     """The certificate body for one sample, drawn from the DRAFT (?which=draft,
     the default) or the ISSUED revision -- what issuing would change, on real
     data. Not a certificate: no number, no publication. ?designed=1 shows the
     DESIGNED certificate as the renderer produces it, marked
-    PREVIEW in its controlled stamp."""
+    PREVIEW in its controlled stamp; one that cannot be produced opens a
+    page in the app saying why, with the buttons to where it is put right."""
+
+    refused = ViewPageTemplateFile("templates/certificate_refused.pt")
 
     def _designed(self, sample, snap, rev):
         from senaite.pfas import report_templates as rt
@@ -235,9 +256,37 @@ class PFASReportTemplatePreviewView(BrowserView):
                                       request=self.request, preview=True)
         except Exception as exc:                            # noqa: BLE001
             logger.warning("designed certificate preview: %s", exc)
-            from senaite.pfas.html_text import escape
-            return u"<p><strong>The designed certificate could not be produced:</strong> %s</p>" % escape(u"%s" % exc)
+            self._refusal = refusal_of(exc, sample.getId(), self._receipt_url(sample),
+                                       self._review_url(sample))
+            return self.refused()
         return send_pdf(self.request.response, pdf, "certificate-preview.pdf")
+
+    def refusal(self):
+        return getattr(self, "_refusal", None) or {}
+
+    def _receipt_url(self, sample):
+        """The sample's CoC receipt, where its receipt date is recorded; the
+        sample itself when it came under no CoC."""
+        try:
+            fld = sample.getField("CoCNumber")
+            number = (fld.get(sample) if fld else u"") or u""
+        except Exception:                                   # noqa: BLE001
+            number = u""
+        if number:
+            return u"%s/@@pfas-coc-receive?coc=%s" % (self.portal_url(), quote_plus(number.encode("utf-8")))
+        return sample.absolute_url()
+
+    def _review_url(self, sample):
+        """Data Review of the worksheet the sample's results were run on,
+        or u"" when none is."""
+        try:
+            for an in sample.getAnalyses(full_objects=True) or []:
+                ws = an.getWorksheet()
+                if ws is not None:
+                    return u"%s/@@pfas-data-review?tab=final_data" % ws.absolute_url()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("refusal: worksheet of %s: %s", sample.getId(), exc)
+        return u""
 
     def __call__(self):
         flatten_form(self.request)
@@ -255,7 +304,8 @@ class PFASReportTemplatePreviewView(BrowserView):
             if snap is None:
                 return u"<p>No revision has been issued yet.</p>"
         else:
-            snap, rev = draft_snapshot(portal), None
+            snap = draft_snapshot(portal)
+            rev = rt.revision_for_draft(rt.records(portal), rt.fingerprint(snap))
         if self.request.form.get("designed"):
             return self._designed(sample, snap, rev)
         parts = []

@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Dilution tracking — the contract between FM-ENV-003 and the pipeline.
+Dilution tracking — the contract between the extraction record and the pipeline.
 
 A dilution is not a separate sample. It is the SAME sample re-injected at a
 known factor because the neat extract read above the calibration range, so
-the over-range analytes have a quantifiable number. The lab records it on the
-Extraction Log (FM-ENV-003): a dilution is made from the final extract at
-reconstitution, an extraction step.
+the over-range analytes have a quantifiable number. The lab records it in
+the extraction record, the worksheet's record of the guided extraction: a
+dilution is made from the final extract at reconstitution, an extraction step.
 
 That record is the ONLY source of truth for the relationship; it is never
 derived from the injection name (naming conventions belong to the lab).
 
 ## The contract
 
-FM-ENV-003's ``samples`` table carries two columns per row:
+The extraction record's ``samples`` table carries two columns per row:
 
     dilution_of      the Sample ID (or injection name) this row was diluted from
     dilution_factor  the total fold, a number > 1 ("2", "10"); ratios are refused
@@ -40,6 +40,7 @@ import re
 
 logger = logging.getLogger("senaite.pfas.dilution_ref")
 
+# where the extraction record's sample table is stored on the batch
 LOGBOOK_SLUG = "252"
 LOGBOOK_KEY = u"senaite.pfas.logbook.252"
 SAMPLES_FIELD = "samples"
@@ -71,7 +72,7 @@ def parse_factor(raw):
 def get_dilutions(batch):
     """{dilution_sample_id: {"parent": str, "factor": float|None}} for a batch.
 
-    Empty when the logbook has no dilution rows.
+    Empty when the extraction record has no dilution rows.
     """
     out = {}
     if batch is None:
@@ -86,7 +87,7 @@ def get_dilutions(batch):
     try:
         data = json.loads(raw)
     except (ValueError, TypeError):
-        logger.warning("FM-ENV-003 on %r is not valid JSON",
+        logger.warning("the extraction record on %r is not valid JSON",
                        getattr(batch, "getId", lambda: "?")())
         return out
 
@@ -140,6 +141,8 @@ def get_sample_amounts(batch):
     from senaite.pfas import extraction_batch
     rows = active_rows(data.get(SAMPLES_FIELD))
     rows = extraction_batch.rekey_rows(rows, extraction_batch.load(batch))
+    # an amount or final volume copied wrongly is read as amended
+    rows = extraction_batch.samples_in_force(batch, rows)
     return sample_amounts_from_rows(rows)
 
 
@@ -154,7 +157,7 @@ EXTRACTION_SESSION_KEY = u"senaite.pfas.extraction_session"
 
 def spikes_from_rows(rows):
     """{injection: {"parent", "spike", "spike_unit", "level", "qc_type",
-    "lfsm"}} from FM-ENV-003's `spikes` rows (read where the extraction
+    "lfsm"}} from the extraction record's `spikes` rows (read where the extraction
     batch's members, extraction_batch.py, hold none). `spike` is the amount added in `spike_unit` (the matrix's reporting
     unit), None for the method's level; a row's `spike_ppt` is ppt."""
     out = {}
@@ -182,18 +185,25 @@ def spikes_from_rows(rows):
 def get_spikes(batch):
     """{injection: {"parent", "spike", "spike_unit", "level", "qc_type", "lfsm"}}.
 
-    The extraction batch's members are the record, else FM-ENV-003's `spikes`
+    The extraction batch's members in force are the record (each
+    amendment in force applied), else the extraction record's `spikes`
     rows. A reviewer's amount for a recorded spike whose amount was blank
-    (Data Review) fills it in; session records that name a parent are read
-    too."""
+    (Data Review) fills it in, except on a member whose level an amendment
+    changed: a recorded amount moves with the level, so an amount entered
+    for the level as recorded is not carried over. Session records that
+    name a parent are read too."""
     out = {}
     if batch is None:
         return out
+    from senaite.pfas import extraction_amendments as ea
     from senaite.pfas import extraction_batch
-    members = extraction_batch.load(batch)
-    if members:
-        recorded = extraction_batch.spike_map(members)
-        out.update(_session_spikes(batch, recorded))
+    stored = extraction_batch.load(batch)
+    if stored:
+        state = extraction_batch.amendments_state(batch)
+        recorded = extraction_batch.spike_map(ea.members_in_force(stored, state))
+        relevelled = extraction_batch.relevelled(stored, state)
+        fillable = dict((k, v) for k, v in recorded.items() if k not in relevelled)
+        out.update(_session_spikes(batch, fillable))
         out.update(recorded)
         return out
     try:

@@ -30,6 +30,7 @@ Python 2.7 and 3.
 from __future__ import absolute_import, unicode_literals
 
 from senaite.pfas import calibration_levels as _cl
+from senaite.pfas import composite_standards as _cmp
 from senaite.pfas import isomers as _iso
 from senaite.pfas import recipe_calc as _rc
 from senaite.pfas import run_plan as _rp
@@ -160,13 +161,26 @@ def _split(expected, entries, fractions, slot, attached, used):
     return expected
 
 
+def _equal_members(profile, expected, slot, lot):
+    """Refuses a calibrator or check standard whose composite standard's
+    members are at different concentrations (lot values, else the method's
+    labelled level): the mean of their areas stands for one amount only, as
+    EPA 1633A Table 4 adds 13C2-PFDoA and 13C2-PFTeDA at one level."""
+    for cname, stated in _cmp.unequal_members(profile, expected):
+        where = u"Lot {0}, loaded for {1},".format(lot, slot) if lot else u"{0}".format(slot)
+        raise ValueError(u"{0} states the members of {1} at different concentrations: {2}. A composite "
+                         u"averages its members' areas, so they must be added at one concentration. Load a "
+                         u"lot that states them alike, or change the composite's members.".format(
+                             where, cname, u", ".join(u"{0} {1:g}".format(m, float(c)) for m, c in stated)))
+
+
 def raw_expectation(rows, record, profile, columns, lot_values=None, calibration=None, run=u"",
-                    branched=None):
+                    branched=None, lot_names=None):
     """The run's expectation from its sequence `rows` (the run manifest's).
     `branched`: {analyte keyword: {lot slot ("CAL-3", "CCV", "ICV"):
     {"fraction": 0-1, "from": [the certificate lots stating it]}}}, from
     each slot's native certificate. A slot in `lot_values` has a lot
-    attached."""
+    attached; `lot_names` ({slot: lot number}) names it in a refusal."""
     lots = lot_values or {}
     labelled = labelled_conc(profile)
     grid = (profile or {}).get(u"labelled_standards")
@@ -197,6 +211,7 @@ def raw_expectation(rows, record, profile, columns, lot_values=None, calibration
                         expected[kw] = labelled
                         if kw not in given.setdefault(slot, []):
                             given[slot].append(kw)
+            _equal_members(profile, expected, slot, (lot_names or {}).get(slot))
             _split(expected, entries, branched, slot, slot in lots, used)
         if expected:
             inj[u"expected_conc"] = expected

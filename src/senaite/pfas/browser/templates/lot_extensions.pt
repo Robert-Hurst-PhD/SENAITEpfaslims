@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Lot Extensions</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Lot Extensions</tal:t>
+
+  <metal:fill fill-slot="content" tal:define="qa view/is_qa; waiting view/waiting; decided view/decided">
+    <div class="alert alert-success" tal:condition="view/ok_msg" tal:content="view/ok_msg">Extension approved</div>
+    <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg">Give the reason</div>
+
+    <!-- the request for one lot (?lot=<uid>): reached from the lot's Request extension -->
+    <tal:lot define="lot view/lot" condition="lot">
+    <div class="pfas-modal open" id="lxRequest">
+      <div class="pfas-modal-box is-narrow" role="dialog" aria-modal="true" aria-labelledby="lxRequestTitle">
+        <h2 id="lxRequestTitle" tal:content="string:Request extension: lot ${lot/lot_number}">Request extension: lot DEMO-CRM-1</h2>
+        <div class="pfas-meta-row"><span class="pfas-muted">Lot</span>
+          <strong tal:content="lot/name">DEMO PFAS mix</strong></div>
+        <div class="pfas-meta-row"><span class="pfas-muted">Expiry in force</span>
+          <strong tal:content="python:lot['in_force'] or u'—'">2026-09-13</strong></div>
+        <div class="pfas-meta-row" tal:condition="lot/cap"><span class="pfas-muted">Parent lots in date until</span>
+          <strong tal:content="lot/cap">2027-01-01</strong></div>
+        <p class="alert alert-warning" tal:condition="lot/waiting">An extension of this lot is already waiting for QA.</p>
+        <form method="POST" tal:condition="not:lot/waiting"
+              tal:attributes="action view/page_url">
+          <input type="hidden" name="action" value="request" />
+          <input type="hidden" name="lot" tal:attributes="value lot/uid" />
+          <div class="pfas-form-row">
+            <div class="pfas-form-field is-full">
+              <label for="lxNew">New expiry</label>
+              <input type="date" id="lxNew" name="new_expiry" class="pfas-input" required="required"
+                     tal:attributes="min python:lot['in_force'] or None; max python:lot['cap'] or None" />
+            </div>
+            <div class="pfas-form-field is-full">
+              <label for="lxReason">Reason</label>
+              <textarea id="lxReason" name="reason" rows="2" class="pfas-textarea" required="required"></textarea>
+            </div>
+            <div class="pfas-form-field is-full">
+              <label for="lxEvidence">Evidence</label>
+              <textarea id="lxEvidence" name="evidence" rows="2" class="pfas-textarea" required="required"
+                        placeholder="The re-check, or the supplier's re-certification"></textarea>
+            </div>
+          </div>
+          <div class="form-actions is-end">
+            <a class="btn btn-secondary" tal:attributes="href view/page_url">Cancel</a>
+            <button type="submit" class="btn btn-primary">Send to QA</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    </tal:lot>
+
+    <section class="bench-block">
+      <h2 class="bench-h">Waiting for QA</h2>
+      <p class="bench-sub" tal:condition="not:waiting">No extension is waiting.</p>
+      <div class="pfas-card" tal:repeat="e waiting">
+        <h3 tal:content="string:Lot ${e/lot_number} · ${e/lot_name}">Lot DEMO-CRM-1 · DEMO PFAS mix</h3>
+        <div class="pfas-meta-row"><span class="pfas-muted">Expiry</span>
+          <strong tal:content="string:${e/from_expiry} to ${e/new_expiry}">2026-09-13 to 2027-03-13</strong></div>
+        <div class="pfas-meta-row"><span class="pfas-muted">Reason</span><span tal:content="e/reason">DEMO reason</span></div>
+        <div class="pfas-meta-row"><span class="pfas-muted">Evidence</span><span tal:content="e/evidence">DEMO evidence</span></div>
+        <div class="pfas-meta-row"><span class="pfas-muted">Asked by</span>
+          <span tal:content="python:u'%s, %s' % (e.get('requested_name'), view.lab_at(e.get('requested_at'), (e.get('requested_at') or u'')[:16]))">DEMO, 2026-11-10 09:00</span></div>
+        <a class="btn-sm btn-secondary" tal:attributes="href python:view.lot_url(e)">Open lot</a>
+        <tal:qa condition="qa">
+        <tal:d define="d python:view.decision(e)">
+        <form method="POST" tal:attributes="action view/page_url; id d/esig/form_id">
+          <input type="hidden" name="action" value="approve" />
+          <input type="hidden" name="entry" tal:attributes="value e/id" />
+          <tal:kids condition="d/children">
+          <h4 class="rc-h">Lots made from it</h4>
+          <p class="pfas-hint">Switch on each lot to extend in the same signature.</p>
+          <table class="pfas-table" data-col-resize="lot-extensions-children">
+            <thead><tr><th>Extend</th><th>Lot</th><th>Expiry in force</th><th>New expiry</th></tr></thead>
+            <tbody>
+              <tr tal:repeat="c d/children">
+                <td><label class="pfas-switch"><input type="checkbox" value="1"
+                           tal:attributes="name string:child.${c/uid}; id string:lx-child-${e/id}-${c/uid};
+                                           disabled python:(c['open'] or not c['later']) or None" /><span class="pfas-switch-track"></span></label></td>
+                <td><label tal:attributes="for string:lx-child-${e/id}-${c/uid}"
+                           tal:content="string:${c/lot_number} · ${c/name}">DEMO-STK-1</label>
+                  <span class="pfas-hint" tal:condition="c/open">has an extension waiting</span></td>
+                <td tal:content="python:c['in_force'] or u'—'">2026-09-13</td>
+                <td><input type="date" class="pfas-input"
+                           tal:attributes="name string:child_new.${c/uid}; value c/offer; max c/offer;
+                                           aria-label string:New expiry of lot ${c/lot_number}" /></td>
+              </tr>
+            </tbody>
+          </table>
+          </tal:kids>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" tal:attributes="data-modal-open string:lx-refuse-${e/id}">Refuse</button>
+            <button type="button" class="btn btn-primary" tal:attributes="data-modal-open string:esig-${d/esig/action}">Approve</button>
+          </div>
+        </form>
+        <!-- Approve opens the sign dialog; its Sign posts the approval -->
+        <div tal:define="esig d/esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div>
+        <div class="pfas-modal" tal:attributes="id string:lx-refuse-${e/id}">
+          <div class="pfas-modal-box is-narrow">
+            <h2>Refuse the extension</h2>
+            <form method="POST" tal:attributes="action view/page_url">
+              <input type="hidden" name="action" value="refuse" />
+              <input type="hidden" name="entry" tal:attributes="value e/id" />
+              <div class="pfas-form-field is-full">
+                <label tal:attributes="for string:lx-why-${e/id}">Reason</label>
+                <textarea name="why" rows="2" class="pfas-textarea" required="required"
+                          tal:attributes="id string:lx-why-${e/id}"></textarea>
+              </div>
+              <div class="form-actions is-end">
+                <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                <button type="submit" class="btn btn-primary">Refuse</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        </tal:d>
+        </tal:qa>
+      </div>
+    </section>
+
+    <section class="bench-block">
+      <h2 class="bench-h">Decided</h2>
+      <p class="bench-sub" tal:condition="not:decided">No extension decided yet.</p>
+      <table class="pfas-table" data-col-resize="lot-extensions-decided" tal:condition="decided">
+        <thead><tr><th>Lot</th><th>Expiry</th><th>State</th><th>By</th><th>Reason</th></tr></thead>
+        <tbody tal:define="rm context/@@pfas-row-menu">
+          <tr tal:repeat="e decided"
+              tal:attributes="data-row-open python:view.lot_url(e);
+                              data-row-actions python:rm.actions((u'Print label', 'href', view.label_url(e), {'blank': True}))">
+            <td tal:content="string:${e/lot_number} · ${e/lot_name}">DEMO-CRM-1</td>
+            <td tal:content="string:${e/from_expiry} to ${e/new_expiry}">2026-09-13 to 2027-03-13</td>
+            <td tal:content="e/state_label">Approved</td>
+            <td tal:content="python:e.get('approved_name') or e.get('refused_name') or u'—'">DEMO QA</td>
+            <td tal:content="python:e.get('refused_reason') or e.get('withdrawn_reason') or e.get('reason')">DEMO reason</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </metal:fill>
+</body>
+</html>

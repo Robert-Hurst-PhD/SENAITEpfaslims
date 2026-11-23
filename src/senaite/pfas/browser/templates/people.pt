@@ -11,6 +11,7 @@
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-terminals">Lab terminals</a>
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-laboratory">Laboratory Director</a>
+    <button type="button" class="btn-sm btn-primary" data-modal-open="people-add">+ New person</button>
   </tal:r>
 
   <metal:fill fill-slot="content"
@@ -31,62 +32,59 @@
           <input type="checkbox" name="inactive" value="1" onchange="this.form.submit()"
                  tal:attributes="checked python:'checked' if view.show_inactive() else None" />
           <span class="pfas-switch-track"></span>
-          <span class="pfas-switch-word">Show inactive</span>
+          Show inactive
         </label>
       </form>
-      <button type="button" class="btn-sm btn-primary" data-modal-open="people-add">Add person</button>
     </div>
 
     <p class="bench-sub" tal:condition="not:rows">Nobody to show.</p>
     <div class="table-wrap" tal:condition="rows">
-    <table class="pfas-table" data-col-resize="people-1">
+    <table class="pfas-table" data-col-resize="people-1" tal:define="rm context/@@pfas-row-menu">
       <thead><tr><th>Name</th><th>User name</th><th>Initials</th><th>Roles</th>
-                 <th>Signature</th><th>Can enter data</th><th>Status</th>
-                 <th class="row-actions-cell"><span class="pfas-sr-hide">Edit</span></th>
-                 <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
+                 <th>Signature</th><th>Can enter data</th><th>Status</th></tr></thead>
       <tbody>
-        <tr tal:repeat="r rows" tal:attributes="id python:r['userid'] or r['contact_uid'] or None">
+        <tr tal:repeat="r rows"
+            tal:attributes="id python:r['userid'] or r['contact_uid'] or None;
+                            data-row-dialog string:person-${repeat/r/number};
+                            data-row-actions python:rm.actions((u'Deactivate' if r['status'] != 'Inactive' else u'Reactivate', 'modal', u'person-status-%s' % (r['userid'] or r['contact_uid']), {'danger': r['status'] != 'Inactive'}))">
           <td><strong tal:content="r/fullname">Ana Demo</strong>
             <div class="cf-hint dt-problem" tal:condition="r/issues" tal:content="python: u', '.join(r['issues'])">no signature</div></td>
           <td tal:content="python:r['username'] or u'—'">an1</td>
           <td tal:content="python:r['initials'] or u'—'">AD</td>
           <td tal:content="python:u', '.join(r['roles']) or u'—'">Analyst</td>
-          <td tal:content="python:u'✓' if r['has_signature'] else u'✗'">&#10003;</td>
-          <td tal:content="python:u'✓' if r['can_enter'] else u'✗'">&#10003;</td>
+          <td tal:define="ic context/@@pfas-icons"
+              tal:content="structure python:ic.tip('pass', u'Has a signature') if r['has_signature'] else ic.tip('warn', u'No signature')">&#10003;</td>
+          <td tal:define="ic context/@@pfas-icons"
+              tal:content="structure python:ic.tip('pass', u'Can enter data') if r['can_enter'] else ic.tip('warn', u'Cannot enter data')">&#10003;</td>
           <td><span tal:content="r/status"
                     tal:attributes="class python:'badge badge-active' if r['status'] == 'Active' else 'badge badge-archived'">Active</span></td>
-          <td class="row-actions-cell">
-            <button type="button" class="btn-sm btn-secondary"
-                    tal:attributes="data-modal-open string:person-${repeat/r/number}">Edit</button>
-          </td>
-          <td class="row-plus-cell">
-            <details class="row-more">
-              <summary class="row-plus" aria-label="Actions for this person" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <form method="post" tal:condition="python: r['status'] != 'Inactive'" tal:attributes="action action">
-                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
-                  <input type="hidden" name="action" value="deactivate" />
-                  <input type="hidden" name="userid" tal:attributes="value r/userid" />
-                  <input type="hidden" name="contact_uid" tal:attributes="value r/contact_uid" />
-                  <label class="mp-issue-label">Reason
-                    <input type="text" name="reason" class="pfas-input" required="required" /></label>
-                  <button class="btn-sm btn-danger" type="submit">Deactivate</button>
-                </form>
-                <form method="post" tal:condition="python: r['status'] == 'Inactive'" tal:attributes="action action">
-                  <input type="hidden" name="_authenticator" tal:attributes="value token" />
-                  <input type="hidden" name="action" value="reactivate" />
-                  <input type="hidden" name="userid" tal:attributes="value r/userid" />
-                  <input type="hidden" name="contact_uid" tal:attributes="value r/contact_uid" />
-                  <label class="mp-issue-label">Reason
-                    <input type="text" name="reason" class="pfas-input" required="required" /></label>
-                  <button class="btn-sm btn-secondary" type="submit">Reactivate</button>
-                </form>
-              </div>
-            </details>
-          </td>
         </tr>
       </tbody>
     </table>
+    </div>
+
+    <!-- one status dialog per person: deactivate or reactivate, with its reason -->
+    <div class="pfas-modal" tal:repeat="r rows"
+         tal:attributes="id python:u'person-status-%s' % (r['userid'] or r['contact_uid'])">
+      <div class="pfas-modal-box is-narrow">
+        <!-- a name from core can be a byte string: drawn by TAL, never joined to text in python -->
+        <h2><tal:w replace="python:u'Deactivate' if r['status'] != 'Inactive' else u'Reactivate'">Deactivate</tal:w>
+          <tal:n replace="r/fullname">Ana Demo</tal:n></h2>
+        <form method="post" tal:attributes="action action">
+          <input type="hidden" name="_authenticator" tal:attributes="value token" />
+          <input type="hidden" name="action" tal:attributes="value python:'deactivate' if r['status'] != 'Inactive' else 'reactivate'" />
+          <input type="hidden" name="userid" tal:attributes="value r/userid" />
+          <input type="hidden" name="contact_uid" tal:attributes="value r/contact_uid" />
+          <label class="mp-issue-label">Reason
+            <input type="text" name="reason" class="pfas-input" required="required" /></label>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit"
+                    tal:attributes="class python:'btn btn-danger' if r['status'] != 'Inactive' else 'btn btn-primary'"
+                    tal:content="python:u'Deactivate' if r['status'] != 'Inactive' else u'Reactivate'">Deactivate</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <!-- one dialog per person: sign-in, Lab Contact, roles; each part posts on its own -->
@@ -135,7 +133,6 @@
             <input type="hidden" name="_authenticator" tal:attributes="value token" />
             <input type="hidden" name="action" value="save_staff" />
             <input type="hidden" name="userid" tal:attributes="value r/userid" />
-            <input type="hidden" name="signs_as" tal:attributes="id string:signs-${repeat/r/number}; value python:view.signs_as_key(info)" />
             <div class="pfas-form-row">
               <div class="pfas-form-field is-wide"><label>Name</label>
                 <input type="text" name="fullname" class="pfas-input" tal:attributes="value r/fullname" /></div>
@@ -148,13 +145,12 @@
               <div class="pfas-form-field"><label>Credentials</label>
                 <input type="text" name="credentials" class="pfas-input" tal:attributes="value info/credentials" /></div>
             </div>
-            <div class="pfas-form-field is-full"><label>Signs as</label>
-              <div class="pfas-seg pfas-seg-sm is-fit" role="group" data-field="data-field"
-                   tal:define="key python:view.signs_as_key(info)"
-                   tal:attributes="data-input string:signs-${repeat/r/number}; aria-label string:Signs as, ${r/fullname}">
-                <button type="button" class="pfas-seg-item" tal:repeat="c view/signs_as"
-                        tal:attributes="data-value python:c[0]; aria-pressed python:'true' if c[0] == key else 'false'"
-                        tal:content="python:c[1]">None</button>
+            <div class="pfas-form-field is-full" tal:define="held info/sign_as"><span class="pfas-label">Signs as</span>
+              <div class="cf-chips" role="group" tal:attributes="aria-label string:Signs as, ${r/fullname}">
+                <!-- one switch per sign right (staff.SIGN_ROLES) -->
+                <label class="pfas-switch cf-chip" tal:repeat="role view/sign_roles">
+                  <input type="checkbox" name="sign_as:list" tal:attributes="value python:role[0]; checked python:'checked' if role[0] in held else None" /><span class="pfas-switch-track"></span>
+                  <tal:t replace="python:role[1]">Preparer</tal:t></label>
               </div>
             </div>
             <div class="form-actions is-end">
@@ -227,16 +223,18 @@
     <!-- Add person: the account is made with a random password; the person sets theirs from the reset e-mail -->
     <div class="pfas-modal" id="people-add">
       <div class="pfas-modal-box is-narrow">
-        <h2>Add person</h2>
+        <h2>New person</h2>
         <form method="post" tal:attributes="action action">
           <input type="hidden" name="_authenticator" tal:attributes="value token" />
           <input type="hidden" name="action" value="add_person" />
-          <div class="pfas-form-field"><label for="people-add-name">Full name</label>
-            <input type="text" name="fullname" id="people-add-name" required="required" class="pfas-input" /></div>
-          <div class="pfas-form-field"><label for="people-add-user">User name</label>
-            <input type="text" name="username" id="people-add-user" required="required" class="pfas-input" /></div>
-          <div class="pfas-form-field"><label for="people-add-email">E-mail</label>
-            <input type="text" name="email" id="people-add-email" required="required" class="pfas-input" /></div>
+          <div class="pfas-form-row">
+            <div class="pfas-form-field"><label for="people-add-name">Full name</label>
+              <input type="text" name="fullname" id="people-add-name" required="required" class="pfas-input" /></div>
+            <div class="pfas-form-field"><label for="people-add-user">User name</label>
+              <input type="text" name="username" id="people-add-user" required="required" class="pfas-input" /></div>
+            <div class="pfas-form-field"><label for="people-add-email">E-mail</label>
+              <input type="text" name="email" id="people-add-email" required="required" class="pfas-input" /></div>
+          </div>
           <p class="fld-help">A reset e-mail is sent so the person sets their own password. Set their roles afterwards.</p>
           <div class="form-actions is-end">
             <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>

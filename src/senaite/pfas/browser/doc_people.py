@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """The laboratory and signatory fields of a designed record:
-the extraction log, the QC Review report and the batch logbooks.
+the batch record, the preparation record and the QC Review report.
 
     signed_fields(design, people, preview=False) -> {field: value}
 
@@ -9,11 +9,13 @@ record names the person. The Director is the one named on the Laboratory page.
 
 A person is looked up as a user only when the record names them by user id;
 any other name prints as written and has no signature -- a name is never
-matched to an account. A signature prints only for a user holding that sign
-right on People & Roles. When the design PLACES a role's signature and it cannot be
-given -- not a user, no sign right, no signature on file -- the document is
-refused outside a preview (sign rights are enforced
-on designed documents). A design that places no signature is not affected.
+matched to an account. A role the record names no one for (not yet signed)
+prints "Not yet signed" with no signature, and refuses nothing. A signature
+prints only for a user holding that sign right on People & Roles. When the
+design PLACES a role's signature and it cannot be given -- not a user, no
+sign right, no signature on file -- the document is refused outside a
+preview (sign rights are enforced on designed documents). A design that
+places no signature is not affected.
 Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
@@ -29,6 +31,11 @@ class SignatoryError(ValueError):
     """A placed signature that its signer may not give."""
 
 
+# a role no one has signed yet (a record not yet finalised, approved or
+# reviewed): its block prints this and no signature, and the print goes on
+NOT_YET_SIGNED = u"Not yet signed"
+
+
 def _placed(design):
     return set(dt.base_key(f.get("name")) for page in (design or {}).get("schemas") or []
                for f in page or [] if f.get("type") == "image")
@@ -39,7 +46,9 @@ def _lab():
     from senaite.pfas.browser.coa_sections import PFASCoASectionsView
     view = PFASCoASectionsView(api.get_portal(), getRequest())
     s = view.settings()
-    return {"lab_name": s.get("lab_name") or u"", "lab_address": s.get("lab_address") or u"",
+    # a record prints the laboratory's name and address as core holds them now
+    from senaite.pfas import lab_identity
+    return {"lab_name": lab_identity.lab_name(), "lab_address": lab_identity.lab_address(),
             "lab_phone": s.get("lab_phone") or u"", "lab_email": s.get("lab_email") or u"",
             "lab_accreditation": s.get("accreditation") or u"", "lab_logo": _logo_uri(s)}
 
@@ -47,7 +56,9 @@ def _lab():
 def _person(role, who, date, placed, problems):
     from senaite.pfas.browser import staff
     who = (u"%s" % (who or u"")).strip()
-    user = api.get_user(who) if who else None
+    if not who:
+        return cd.signatory({"fullname": NOT_YET_SIGNED})
+    user = api.get_user(who)
     if user is None:
         if role + "_signature" in placed:
             problems.append(u"%s (%s) is not a user, so no signature can be placed"
@@ -69,14 +80,18 @@ def _person(role, who, date, placed, problems):
                          "credentials": info["credentials"], "date": date}, signature)
 
 
-def signed_fields(design, people, preview=False):
+def signed_fields(design, people, preview=False, ledger_roles=()):
+    """ledger_roles: the roles whose signature image comes from the
+    signature ledger (the image kept at signing); their current sign right
+    and image on file are not checked here, the ledger row stands for them."""
     from senaite.pfas.browser import staff
     placed = _placed(design)
     problems = []
     out = _lab()
     for role in ("preparer", "reviewer"):
         who, date = (people or {}).get(role) or (u"", u"")
-        p = _person(role, who, u"%s" % (date or u""), placed, problems)
+        p = _person(role, who, u"%s" % (date or u""),
+                    placed - set([role + "_signature"]) if role in ledger_roles else placed, problems)
         for k in ("name", "title", "credentials", "date", "signature"):
             out["%s_%s" % (role, k)] = p.get(k) or u""
     director = staff.director_userid()

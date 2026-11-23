@@ -7,21 +7,25 @@ Pure; Python 2.7 and 3.
     inventory_alerts(items, today, soon_days=30) -> {"expired", "expiring",
                                                      "quarantined", "low"}
     is_usable(item, today)                    -> may this lot be used today?
+    out_of_date_only(item, today)             -> usable but for its expiry
     rank_lots(lots, role, remembered)         -> lots, best candidates first
     default_pick(lots, role, remembered)      -> the lot to preselect, or None
     suggested(lots, role, remembered)         -> the ranked lots worth listing
                                                  first (remembered item or a
                                                  shared word with the role)
     resolve_rows(index, rows)                 -> rows as the inventory has them
-    is_standard_row(row)                      -> FM-ENV-003 standards[] or reagents[]
-    is_consumable_row(row)                    -> FM-ENV-003 extraction_materials[]
-    equipment_family(label)                   -> "balance" | "pipette" | ""
+    is_standard_row(row)                      -> the extraction record's standards[] or reagents[]
+    is_consumable_row(row)                    -> the extraction record's extraction_materials[]
+    equipment_family(label)                   -> "balance" | "pipette" | ... | ""
+    manifold_ports(equipment_maps, units)     -> the recorded SPE manifold's ports
     lot_on_file(items, lot)                   -> the inventory lot with that
                                                  number (any status), or None
     units_for(label, units)                   -> registered units of that family
     stage_warnings(rows, today)               -> what a deviation note must
                                                  explain before the stage is
                                                  complete
+    stage_lot_blocks(rows)                    -> what no note can excuse: a
+                                                 lot not in the inventory
     balance_blocks(balances)                  -> what no note can excuse: a
                                                  balance without a passed
                                                  verification that day
@@ -42,21 +46,60 @@ import unicodedata
 from datetime import datetime, timedelta
 
 NOT_STARTED, IN_PROGRESS, FINISHED = u"not_started", u"in_progress", u"finished"
+# a worksheet holding no sample: nothing to extract until samples are added
+EMPTY = u"empty"
+READY_TO_FINALISE = u"Ready to finalise"
+NO_SAMPLES = u"This worksheet holds no samples. Add samples to it before the extraction starts."
 _UNUSABLE = (u"exhausted", u"archived")
 _BLOCKED = (u"quarantine", u"expired")
 
 
-def extraction_state(session, stage_orders):
-    """Where a batch's extraction is: not started / stage N of M / finished."""
+def extraction_state(session, stage_orders, has_samples=True):
+    """Where a batch's extraction is: no samples / not started / stage N of
+    M / finished. A worksheet with no sample and no extraction says so."""
     total = len(stage_orders or [])
+    if not session and not has_samples:
+        return {"state": EMPTY, "done": 0, "total": total, "label": u"No samples"}
     if not session:
         return {"state": NOT_STARTED, "done": 0, "total": total, "label": u"Not started"}
     done = len([o for o in stage_orders or []
                 if u"%s" % o in (session.get("stages") or {})])
-    if session.get("finalized") or (total and done >= total):
+    # finished means finalised, as the Run Builder and Data Review read it;
+    # every stage recorded waits for the finalise
+    if session.get("finalized"):
         return {"state": FINISHED, "done": done, "total": total, "label": u"Finished"}
+    if total and done >= total:
+        return {"state": IN_PROGRESS, "done": done, "total": total, "label": READY_TO_FINALISE}
     return {"state": IN_PROGRESS, "done": done, "total": total,
             "label": u"Stage %d of %d" % (min(done + 1, total), total) if total else u"Started"}
+
+
+def start_refusal(has_samples):
+    """Why an extraction may not start on a worksheet, or None."""
+    return None if has_samples else NO_SAMPLES
+
+
+# the queue's order: work under way, then work waiting, then what cannot
+# start, then what is done
+QUEUE_ORDER = {IN_PROGRESS: 0, NOT_STARTED: 1, EMPTY: 2, FINISHED: 3}
+SHOW = ((u"", u"Not finished"), (u"finished", u"Finished"), (u"all", u"All"))
+
+
+def queue_filter(rows, show=u"", q=u""):
+    """The queue rows a list shows: `show` "" what is not finished,
+    "finished" what is, "all" every row; `q` a word in the batch, its title
+    or its method."""
+    q = (q or u"").strip().lower()
+    out = []
+    for r in rows or []:
+        done = r.get("state") == FINISHED
+        if (show == u"" and done) or (show == u"finished" and not done):
+            continue
+        if q and q not in u" ".join([r.get("id") or u"", r.get("title") or u"",
+                                      r.get("method_label") or u""]).lower():
+            continue
+        out.append(r)
+    return out
 
 
 def _date(s):
@@ -95,10 +138,8 @@ def inventory_alerts(items, today, soon_days=30):
 
 def _expired(it, today):
     """`today` may be a date or an ISO date string (callers pass both)."""
-    today = _date(today) if not hasattr(today, "toordinal") else today
-    exp = _date(it.get("expiry"))
-    return (it.get("status") or u"").lower() == u"expired" or (
-        exp is not None and today is not None and exp < today)
+    from senaite.pfas.lot_expiry import expired_on
+    return (it.get("status") or u"").lower() == u"expired" or expired_on(it.get("expiry"), today)
 
 
 def is_usable(item, today):
@@ -108,6 +149,17 @@ def is_usable(item, today):
     if status in _UNUSABLE or status in _BLOCKED or item.get("is_archived"):
         return False
     return not _expired(item, today)
+
+
+def out_of_date_only(item, today):
+    """Usable but for its date: not used up, archived or quarantined, and
+    past its expiry on `today`. A preparation may still use such a lot with
+    a reason (lot_expiry.gate)."""
+    from senaite.pfas.lot_expiry import expired_on
+    status = (item.get("status") or u"").lower()
+    if status in _UNUSABLE or status == u"quarantine" or item.get("is_archived"):
+        return False
+    return expired_on(item.get("expiry"), today)
 
 
 _SUBSCRIPTS = dict((ord(c), u"%d" % i) for i, c in enumerate(u"\u2080\u2081\u2082\u2083\u2084"
@@ -223,7 +275,7 @@ def is_consumable_row(row):
 
 
 def is_standard_row(row):
-    """FM-ENV-003 standards[] (resolves a prepared standard OR a reagent) or
+    """The extraction record's standards[] (resolves a prepared standard OR a reagent) or
     reagents[] (resolves a reagent only), decided by the stored kind: a
     prepared standard filed in reagents[] could never resolve. A row with
     no kind, or a typed reagent row, is decided by its supplier and name."""
@@ -247,11 +299,30 @@ def _why_unusable(row, today):
     return u""
 
 
+def stage_lot_blocks(rows):
+    """Why a stage cannot be completed, whatever note is written: a lot it
+    names that is not in the inventory -- typed rather than picked, or a
+    link to a lot no longer there -- traces to nothing.
+
+    `rows` = resolved reagent rows (resolve_rows)."""
+    out = []
+    for r in rows or []:
+        what = r.get("role") or r.get("name") or u"Item"
+        lot = (r.get("lot") or u"").strip()
+        if r.get("inventory_missing"):
+            out.append(u"%s: lot %s is no longer in the inventory. Pick a lot from the inventory."
+                       % (what, lot or u"?"))
+        elif lot and not r.get("from_inventory"):
+            out.append(u"%s: lot %s is not in the inventory. Pick it from the inventory, or receive "
+                       u"it first." % (what, lot))
+    return out
+
+
 def stage_warnings(rows, today):
     """Everything about a stage the chemist may go ahead with only after
-    writing a deviation note: a role with no
-    lot, a lot typed rather than picked from the inventory or no longer in it,
-    a lot expired / quarantined / used up at the time of use.
+    writing a deviation note: a role with no lot, a lot expired /
+    quarantined / used up at the time of use. A lot not in the inventory is
+    refused outright (stage_lot_blocks).
 
     `rows` = resolved reagent rows (resolve_rows). Balances: see
     balance_blocks."""
@@ -259,12 +330,10 @@ def stage_warnings(rows, today):
     for r in rows or []:
         what = r.get("role") or r.get("name") or u"Item"
         lot = (r.get("lot") or u"").strip()
-        if r.get("inventory_missing"):
-            out.append(u"%s: lot %s is no longer in the inventory" % (what, lot or u"?"))
+        if r.get("inventory_missing") or (lot and not r.get("from_inventory")):
+            continue
         elif not lot:
             out.append(u"%s: no lot recorded" % what)
-        elif not r.get("from_inventory"):
-            out.append(u"%s: lot %s was typed, not picked from the inventory" % (what, lot))
         else:
             why = _why_unusable(r, today)
             if why:
@@ -293,15 +362,16 @@ def balance_blocks(balances):
                        u"Equipment)" % (label, serial))
         elif not b.get("verified"):
             out.append(u"%s (%s): %s" % (label, b["unit_name"],
-                                         b.get("note") or u"no passed verification that day"))
+                                         b.get("note") or u"no passed check that day"))
     return out
 
 
 def equipment_family(label):
     """The Equipment family a label names: a balance (verified daily), a
-    pipette (calibrated on a period) or a homogeniser (mill, cryogrinder:
-    picked by unit, nothing to calibrate); "" for equipment not registered
-    (vortex, centrifuge, manifold...)."""
+    pipette (calibrated on a period), a homogeniser (mill, cryogrinder:
+    picked by unit, nothing to calibrate) or an SPE manifold (picked by
+    unit, its ports offered where the ports are recorded); "" for equipment
+    not registered (vortex, centrifuge...)."""
     words = _tokens(label)
     if any(w.startswith(u"balance") for w in words):
         return u"balance"
@@ -310,7 +380,14 @@ def equipment_family(label):
     if any(w.startswith(p) for w in words for p in (u"homogen", u"mill", u"grinder",
                                                     u"cryogrind", u"blender")):
         return u"homogeniser"
+    if u"manifold" in words:
+        return SPE_MANIFOLD
     return u""
+
+
+# a family named in words, and the equipment kinds that are it
+SPE_MANIFOLD = u"SPE manifold"
+FAMILY_KINDS = {SPE_MANIFOLD: ("spe_manifold",)}
 
 
 def units_for(label, units):
@@ -318,8 +395,30 @@ def units_for(label, units):
     fam = equipment_family(label)
     if not fam:
         return []
+    kinds = FAMILY_KINDS.get(fam)
     return [u for u in units or []
-            if (u.get("unit_type") or u"").startswith(fam) and u.get("active", 1)]
+            if ((u.get("unit_type") or u"") in kinds if kinds else (u.get("unit_type") or u"").startswith(fam))
+            and u.get("active", 1)]
+
+
+def manifold_ports(equipment_maps, units):
+    """(manifold name, its ports) for the SPE manifold an extraction
+    recorded, or (u"", []): `equipment_maps` are the stages' equipment
+    {label: serial}, the one to look at first first; the first label of the
+    SPE manifold family whose serial is a registered manifold with ports
+    decides."""
+    from senaite.pfas import equipment_types as et
+    for sns in equipment_maps or []:
+        for label, serial in sorted((sns or {}).items()):
+            serial = (u"%s" % (serial or u"")).strip()
+            if not serial or equipment_family(label) != SPE_MANIFOLD:
+                continue
+            for u in units_for(label, units):
+                if (u.get("serial_number") or u"").strip() == serial:
+                    ports = et.spe_ports(u.get("spe_ports_json"))
+                    if ports:
+                        return u.get("name") or serial, ports
+    return u"", []
 
 
 def lot_on_file(items, lot):

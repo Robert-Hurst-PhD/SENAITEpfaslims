@@ -44,7 +44,7 @@ GROUPS = (
 GROUP_INTROS = {
     "Method setup": "What a method is: its analytes per matrix, standards, factors and limits.",
     "QC criteria": "What each QC must meet, and how a failure is qualified or blocks release.",
-    "Bench and extraction": "The extraction batch and its records.",
+    "Bench and extraction": "The extraction worksheet and its records.",
     "Equipment": "What each piece of equipment owes, and how its checks and readings are recorded.",
     "Instrument runs": "Calibration, the injection list, the import and corrections to a run.",
     "Review and release": "The technical review before a result is released.",
@@ -61,10 +61,10 @@ WORKFLOW = [
      ("method-profile", "analyte-matrix", "qc-types")),
     ("Register and receive samples", "Holding times start at collection; a project can change the method's settings.",
      ("holding-time", "project-specs")),
-    ("Build the extraction batch", "Samples, the QC the method asks for, each QC's parent and level, then labels.",
+    ("Build the extraction worksheet", "Samples, the QC the method asks for, each QC's parent and level, then labels.",
      ("extraction-batch", "spike-levels")),
     ("Extract", "The guided extraction records every lot, amount and deviation.",
-     ("guided-extraction", "traceability", "logbooks")),
+     ("guided-extraction", "batch-records", "traceability")),
     ("Run the instrument", "A new curve or not, the injection list, the import.",
      ("calibration-decision", "sequence-export", "import-profiles")),
     ("Review", "QC, manual integrations, dilutions and re-injections, then the five checks.",
@@ -83,21 +83,24 @@ _TAB = {
     "QC criteria": ("qc-types", "spike-levels", "recovery-tiers", "recovery-grid", "window-drawer",
                     "eis-limits", "rule-switches", "specifications", "qualified-release", "judged-value",
                     "method-studies", "chart-overlay"),
-    "Bench and extraction": ("extraction-batch", "guided-extraction", "traceability", "dilution", "logbooks",
+    "Bench and extraction": ("extraction-batch", "guided-extraction", "traceability", "dilution",
                              "homogenisation", "coc", "expiry-defaults", "certificate-values", "recipes",
-              "new-prepared-standard"),
+              "batch-records", "extraction-corrections"),
     "Equipment": ("equipment-types", "balance-before-weighing", "temperature-study", "pipette-quarter",
                   "sensor-key"),
-    "Instrument runs": ("calibration-decision", "calibration-curve", "ccv-bracketing", "sequence-export",
+    "Instrument runs": ("calibration-decision", "calibration-curve", "curve-origin", "ccv-bracketing", "sequence-export",
                         "import-profiles", "manual-integration", "adaptive-integration", "identity-confirmation",
                         "reprocess"),
-    "Review and release": ("data-review", "warnings-strip", "qc-standards-table", "publishing-holds",
-                           "method-identified", "raw-review"),
+    "Review and release": ("data-review", "warnings-strip", "qc-standards-table", "publishing-holds", "above-range",
+                           "no-number", "value-sources",
+                           "method-identified", "raw-review", "peak-asymmetry"),
     "Reporting": ("rounding", "rl", "non-detect", "qualifier-j", "qualifier-d", "reporting-format", "action-level",
-                  "sample-subtypes", "reporting-template", "document-designs", "settings-report"),
-    "EDD": ("edd-values", "edd-qualifiers", "edd-profiles", "edd-column-mapped"),
+                  "sample-subtypes", "reporting-template", "document-designs", "settings-report",
+                  "report-tiers"),
+    "EDD": ("edd-values", "edd-qualifiers", "edd-profiles", "edd-column-mapped", "client-reporting"),
     "Signatures and access": ("sign-rights", "lab-director", "laboratory-page", "people-roles",
-                              "time-language", "system-page", "badges", "backups"),
+                              "time-language", "system-page", "badges", "backups",
+                              "signatures", "signature-ledger"),
     "Pages and grids": ("navigation", "column-chips", "folded-groups", "help-panel"),
 }
 TAB_OF = dict((eid, tab) for tab, ids in _TAB.items() for eid in ids)
@@ -108,21 +111,22 @@ TAB_OF = dict((eid, tab) for tab, ids in _TAB.items() for eid in ids)
 # A section with no entry of its own opens its tab's overview entry.
 SECTION_HELP = {
     # Analytes
-    "analytes": "analyte-matrix", "notes": "analyte-matrix",
+    "analytes": "analyte-matrix", "notes": "analyte-matrix", "dilrec": "dilution",
     # Isotope standards
-    "standards": "labelled-standards", "sur": "eis-limits", "engine_fallback": "eis-limits",
-    "surscope": "qualified-release", "engine_notes_sur": "eis-limits",
+    "standards": "labelled-standards", "sur": "eis-limits",
+    "surscope": "qualified-release", "flags_std": "qualified-release", "lrr": "labelled-standards",
     # QC criteria
-    "rules": "qc-types", "windows": "recovery-grid", "xbatch": "extraction-batch",
+    "rules": "qc-types", "windows": "recovery-grid",
     # Matrices
     "matrices": "holding-time", "scorr": "matrix-factor",
     # Run & reporting
-    "run_template": "ccv-bracketing", "qc_comp": "qc-types", "solv": "traceability",
+    "run_template": "ccv-bracketing", "qc_comp": "qc-types", "xbatch": "extraction-batch",
+    "run_rules": "calibration-decision", "solv": "traceability",
     "stages": "guided-extraction", "lbl": "extraction-batch", "dil": "dilution",
     "solv_spe": "guided-extraction", "intg": "integration", "rf": "reporting-format", "al": "action-level",
     # Engine
     "names": "method-profile", "engine_mcodes": "method-profile", "qcnames": "qc-types",
-    "engine": "calibration-levels", "engine_studies": "method-studies",
+    "engine_rec": "rounding", "engine_studies": "method-studies",
 }
 
 # The entries a section's Help entry leads on to: the panel ends the entry
@@ -150,11 +154,11 @@ ENTRIES = [
              "and matrix. Its design names the preparations (the blanks and the method's spike "
              "levels for the matrix, at their concentrations), the replicates per level and the "
              "days; each day is one part, given to an analyst as its own worksheet. Annual MDL: 40 CFR 136 Appendix B Revision 2: the greater of "
-             "MDLs (spiked LFBs at one spiking level) and MDLb (method blanks), over the "
+             "MDLs (spiked samples at one level, no blank subtracted) and MDLb (method blanks), over the "
              "last 24 months. MRL confirmation: seven LFBs at the proposed MRL, upper "
-             "prediction limit at most 150 %, lower at least 50 % (EPA 537.1 9.2.6). "
-             "Precision and accuracy: four to seven mid-level LFBs, RSD under 20 %, mean "
-             "recovery within 30 % (9.2.3, 9.2.4). Detection limit: seven or more LFBs over "
+             "prediction limit \u2264 150 %, lower \u2265 50 % (EPA 537.1 9.2.6). "
+             "Precision and accuracy: four to seven mid-level LFBs, RSD \u2264 the LFB RSD limit, mean "
+             "recovery within the LFB recovery window (9.2.3, 9.2.4). Detection limit: seven or more LFBs over "
              "three days (9.2.8). A result is excluded only with a reason. QA approval "
              "freezes the study, writes its MDLs (or a confirmed MRL as the RL) to the "
              "method's Reporting Limits and freezes the packet PDF.",
@@ -171,7 +175,10 @@ ENTRIES = [
      "text": "How every reported number is rounded, set per method and matrix on the "
              "method's Reporting tab: EPA and FDA round half up, ISO rounds half to "
              "even. Results, reporting limits (RL) and MDLs share the significant "
-             "figures; QC percentages are whole percents.",
+             "figures; RPDs and responses are whole percents. A recovery is judged "
+             "and shown at the decimal places set on the method's Engine tab, a "
+             "whole percent unless the method sets more; a run judged at other "
+             "places is reprocessed before its certificate is issued.",
      "where": [("Run & reporting tab", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
@@ -179,30 +186,37 @@ ENTRIES = [
          ("EDD values (the certificate's own rows)", P + "edd_builder.py", "self._certificate_rows(ar)"),
          ("The QC checks of the pipeline judge the rounded value", W + "qc_engine.py", "profile.judged_pct("),
          ("Each run records the rule it was judged with", W + "injection_store.py", "judged_rule"),
+         ("A recovery shows the method's decimal places", P + "rounding.py", "def recovery_text("),
      ]},
     {"id": "judged-value", "term": "Judged on the rounded value",
      "text": "Every result and QC check compares the value as the report states it: a "
-             "concentration at the reported significant figures, a recovery, RPD or "
-             "response as a whole percent. Criteria (RL, MDL, windows, MCLs) are used "
+             "concentration at the reported significant figures, a recovery at the "
+             "method's decimal places for recoveries, an RPD or response as a whole "
+             "percent. Criteria (RL, MDL, windows, MCLs) are used "
              "as configured. Instrument criteria (retention time, ion ratio, S/N, r²) "
              "are not rounded.",
      "where": [("Run & reporting tab", "@@pfas-method-profiles")],
      "who": "system",
      "effects": [
          ("Detected versus the RL (U qualifier)", P + "coa_format.py", "judged < rl"),
-         ("Recovery and RPD windows", W + "qc_engine.py", "judged = profile.judged_pct(recovery_pct, matrix)"),
+         ("Recovery windows", W + "qc_engine.py", "judged = profile.judged_recovery(recovery_pct, matrix)"),
+         ("RPD limits", W + "qc_engine.py", "judged = profile.judged_pct(rpd_pct, matrix)"),
          ("Method blank, MDL and duplicate detection", W + "run_queue.py", "profile.judged_conc("),
          ("A run judged under another rule is held", P + "coa_qc_standards.py", "\"rule_changed\""),
      ]},
     {"id": "rl", "term": "Reporting limit (RL)",
      "text": "The lowest concentration reported as a number; below it a result is a "
              "non-detect. It is the RL typed on the method's Analytes tab, else "
-             "the method's lowest calibration level in the reporting unit. A diluted "
-             "result's RL is multiplied by the dilution.",
+             "the method's lowest calibration level in the reporting unit. A typed RL "
+             "or MDL is saved rounded to its matrix's significant figures by its "
+             "rounding rule, as the certificate prints it; the tab names a stored "
+             "value its next Save rounds. A diluted result's RL is multiplied by the "
+             "dilution.",
      "where": [("Analytes tab", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
          ("Derived from the lowest calibrator when none is typed", P + "calibration_levels.py", "def derived_rl"),
+         ("Saved rounded as it prints", P + "method_profile_sections.py", "def _store_reported"),
          ("Scaled by the dilution", P + "report_limits.py", "def scaled_rl"),
          ("Printed on the certificate and the EDD", P + "coa_format.py", "\"rl\": format_rl(rl, n, rule)"),
      ]},
@@ -232,12 +246,12 @@ ENTRIES = [
     {"id": "action-level", "term": "MCL / action level (regulatory limit)",
      "text": "A limit from a regulatory program (e.g. the US EPA PFAS MCLs). Kept on "
              "Regulatory Limits with its citation; a limit reaches a certificate only "
-             "once the laboratory marks it Verified. A limit on several analytes is "
+             "once the laboratory marks it Confirmed. A limit on several analytes is "
              "compared with the sum of their reported values.",
      "where": [("Regulatory Limits", "@@pfas-regulatory-limits"), ("Run & reporting tab", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
-         ("Only verified limits apply", P + "regulatory_limits.py", "if l.get(\"verified\")"),
+         ("Only confirmed limits apply", P + "regulatory_limits.py", "if l.get(\"verified\")"),
          ("Compared with the certificate's rounded values", P + "browser/coa_sections.py", "by_kw = dict((r[\"keyword\"], r) for r in rows)"),
      ]},
     {"id": "qc-standards-table", "term": "Surrogate and internal-standard table",
@@ -249,7 +263,7 @@ ENTRIES = [
      "who": "system",
      "lists": ["qc_statuses"],
      "effects": [
-         ("Rows from the stored verdicts, neat injection only", P + "coa_qc_standards.py", "def select(rows, client_sid)"),
+         ("Rows from the stored verdicts, neat injection only", P + "coa_qc_standards.py", "def select(rows, names)"),
          ("Required on a designed certificate", P + "coa_document.py", "\"qc_standards\": _qcs.REQUIRED"),
      ]},
     # ── Quality control ───────────────────────────────────────────────────
@@ -273,7 +287,7 @@ ENTRIES = [
          ("A section's Help opens beside the page", P + "browser/static/pfas-components.js", "function openHelp(btn)"),
      ]},
     {"id": "recovery-tiers", "term": "Recovery tiers",
-     "text": "The recovery windows per QC type, by analyte group (key analytes, "
+     "text": "The recovery windows per QC type, by analyte group (regulated analytes, "
              "analytes with their own isotope standard, analytes without one) and by "
              "matrix: a tier applies in all matrices or in the matrices listed for it. "
              "Each listed tier has its own list, a search box named after the tier; a "
@@ -301,7 +315,15 @@ ENTRIES = [
              "The legend under the pickers repeats this. Nothing is stored "
              "per cell; every window belongs to a tier. Low-level recoveries covers "
              "the recovery checks: while it is Off, Low level is locked for LFB and "
-             "LFSM; LFSMD RPD and SD RPD still show and judge their low-level tiers.",
+             "LFSM; LFSMD RPD and SD RPD still show and judge their low-level tiers. "
+             "The same settings are drawn as tiers in the Rules list: each QC type of "
+             "Analyte recoveries opens into its tiers, each beside its card, with the "
+             "analytes it covers in each matrix as the engine chooses them, the "
+             "low-level window that may replace it, the tiers of other QC types stored "
+             "under the same name and what they store alike, the cells set on their "
+             "own under the tier they fall back to, and the spike levels of its "
+             "matrices. A click on a tile opens the window that edits it; a right "
+             "click gives its actions.",
      "where": [("QC criteria tab", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
@@ -336,9 +358,8 @@ ENTRIES = [
              "unconfigured, and its Effective limits read no limit set (coral when "
              "Enforced). A state drawn outlined is the method's default (its Scope ends "
              "in a muted \u00b7 default); a filled one is set on this method. A project's QAPP "
-             "switch turns a type Off for its batches; "
-             "switched on, an Evaluate type stays Evaluate and a type the method has "
-             "Off runs Enforced. An Evaluate failure is shown at Data Review but does "
+             "switch turns a type Off for its batches, and On runs it Enforced "
+             "whatever the method holds. An Evaluate failure is shown at Data Review but does "
              "not hold release.",
      "where": [("QC criteria tab", "@@pfas-method-profiles")],
      "who": "config",
@@ -346,7 +367,8 @@ ENTRIES = [
      "effects": [
          ("Read by the pipeline before each check", W + "run_queue.py", "_rule_enabled(toggles,"),
          ("One reader for every row's state", P + "qc/rules.py", "def rule_state("),
-         ("A project's switch keeps the method's state", P + "qc/rules.py", "def qc_row_switched("),
+         ("A project's On is Enforced", P + "method_profile_sections.py",
+          "u\"enforced\" if state == u\"on\" else u\"off\""),
      ]},
     {"id": "qualified-release", "term": "QC qualification codes",
      "text": "When a QC criterion fails on client material, the reviewer may release "
@@ -398,9 +420,12 @@ ENTRIES = [
              "the method's sensitivity times the slope's spread and ends where it settles; a flat "
              "stretch above the shoulder split is a shoulder; touching peaks share one straight "
              "baseline split by drop lines. Each peak is measured for its width at half height, "
-             "its tailing and its plates. On Data Review's Raw Data tab each analyte's card "
-             "names its Engine, Classic when the peak says none, and shows, where the peak has "
-             "them, the Qualifier S/N, FWHM in seconds, Tailing, Plates, Smoothing as the number "
+             "its tailing and its plates. Every peak, under either engine, is measured for its "
+             "asymmetry factor at 10 % of its height above its baseline, the back half's width "
+             "over the front half's (EPA 537.1 §9.3.9). On Data Review's Raw Data tab each "
+             "analyte's card names its Engine, Classic when the peak says none, and shows, where "
+             "the peak has them, the Qualifier S/N, FWHM in seconds, Tailing, Asymmetry, or why it "
+             "was not measured, Plates, Smoothing as the number "
              "of points the filter ran over, twice the half-width plus one, with the calibrator "
              "it was learnt from, and the File transition where the file's "
              "differs from the method's. The peak's note says anchor not found, a baseline dip, "
@@ -415,6 +440,8 @@ ENTRIES = [
          ("The peak's measures recorded", W + "raw_run.py",
           "for key in (\"fwhm_s\", \"tailing\", \"plates\", \"smoothing\", \"smoothing_from\", \"engine\", \"fit_note\"):"),
          ("The card's values", P + "raw_review.py", "def _measures(peak, row):"),
+         ("The asymmetry factor at 10 % of the height", W + "peak_asymmetry.py", "FRACTION = 0.10"),
+         ("Every peak's asymmetry, on its quantifier trace", W + "raw_run.py", "def _with_asymmetry(peak, xy, a):"),
          ("Classic when the peak names no engine", P + "raw_review.py", "ENGINES.get(peak.get(\"engine\") or u\"classic\""),
          ("Fit refused, with its reason; Pair fit failed", P + "raw_review.py", "def _fit_text(peak):"),
          ("Smoothing shown as the points filtered over", P + "raw_review.py", "2 * int(m) + 1"),
@@ -467,7 +494,7 @@ ENTRIES = [
              "a cell to set Reported and the RL together: Escape discards, a click "
              "elsewhere keeps it. \u2713 all under a matrix reports every analyte in it. "
              "Until the analyte set is checked against the published method a banner "
-             "asks for it; Confirmed records who and when, and Verify again asks for the "
+             "asks for it; Confirm analyte set records who and when, and Confirm again asks for the "
              "check again after the set changes. Ticked rows open the bulk bar: Edit "
              "selected, or a one-column action (set Quantified by, set the panel for a "
              "matrix, copy a column, reset to inherited) that applies at once and can be "
@@ -478,7 +505,7 @@ ENTRIES = [
          ("Read by the pipeline per matrix", W + "method_profiles.py", "inclusion = data.get(\"analyte_matrix_inclusion\")"),
          ("A flag and the RL in one cell", P + "profile_grids.py", "PANEL_GROUP = \"Reported in, with RL\""),
          ("The one-column actions", P + "profile_grids.py", "ANALYTE_ACTIONS = ["),
-         ("Verify again asks for the check again", P + "browser/templates/method_profile_edit.pt", "form=\"analytes-verify\">Verify again</button>"),
+         ("Confirm again asks for the check again", P + "browser/templates/method_profile_edit.pt", "form=\"analytes-verify\">Confirm again</button>"),
      ]},
     {"id": "labelled-standards", "term": "Isotope standards",
      "text": "Every isotope standard the method uses, its role (SUR, an extracted "
@@ -488,13 +515,22 @@ ENTRIES = [
              "tier. Add and Remove sit above the grid; a standard that quantifies a "
              "native cannot be removed. The row menu, at the row's end, sets the role and edits the link and limits, "
              "copies the Aqueous limits to every class, resets the classes to Aqueous, "
-             "or removes the standard. Where the method has SUR limits, Source holds the "
-             "method table they come from and reads VERIFY until they are confirmed.",
+             "or removes the standard. + Combine surrogates, on the Surrogates card, makes "
+             "a composite standard: two or more of the method's surrogates, linked to one "
+             "standard, whose areas are averaged in each injection, the analyte's area "
+             "divided by that mean (EPA 1633A \u00a715.2 for PFTrDA). Its name is built from "
+             "its members; each member is judged on its own, a failed member flags the "
+             "analytes on it, and a member missing gives that injection no reading. What it "
+             "corrects is set by Quantified by on the Analytes tab, which lists the "
+             "composites after the surrogates; it cannot be removed while it corrects an "
+             "analyte, nor a member while a composite holds it. A calibrator lot stating the "
+             "members at different concentrations refuses the raw run.",
      "where": [("Isotope standards tab", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
          ("The row menu", P + "browser/static/pfas-components.js", "label: \"Copy Aqueous to every class\""),
-         ("The Source column", P + "profile_grids.py", "Column(\"source\", \"Source\", \"text\")"),
+         ("A composite's members and checks", P + "composite_standards.py", "def check(profile, keywords=None)"),
+         ("The raw run divides by the members' mean", W + "raw_run.py", "def std_area(inj, n)"),
          ("Decides the \"no isotope standard\" analytes", P + "method_profile_sections.py", "def no_std_set"),
          ("Surrogate versus internal-standard checks", W + "qc_engine.py", "get_labelled_roles(method_id)"),
      ]},
@@ -526,7 +562,7 @@ ENTRIES = [
              "sensitivity, shoulder split and qualifier apex tolerance are "
              "shown only for it, Classic's baseline only for Classic, and Adaptive's smoothing may be auto: the half-width is then learnt "
              "for each compound from its median-concentration calibrator whose quantifier "
-             "has not overflowed and holds a peak, or its middle level where the calibrators state "
+             "holds a peak, or its middle level where the calibrators state "
              "no concentration for it, and each peak names that calibrator. Adaptive's "
              "expected time is Fixed, each peak sought at its own retention time, or Isotope "
              "standard, where a native's time moves with its quantitation standard's found time "
@@ -536,8 +572,8 @@ ENTRIES = [
              "is read, the peak names the file's transition where it differs, and two equally near "
              "refuse the run. Each qualifier is integrated at the quantifier's apex; the first "
              "qualifier's signal-to-noise is the row's qualifier S/N. On a summed row, a br "
-             "cluster or FOSA, the qualifier is the peak at the tallest member's apex, so the ion "
-             "ratio is that peak over the summed quantifier; the calibrators share that basis. "
+             "cluster or FOSA, the qualifier is summed as the quantifier is, over the same group or "
+             "window, unless an edit splits it. "
              "A compound's Qualifier "
              "detection S/N decides only whether its qualifier is found, the method's confirmation "
              "value when blank; the method's confirmation S/N alone decides whether the identity is "
@@ -552,7 +588,7 @@ ENTRIES = [
              "S/N is not judged. A deleted peak is never refused, but a calibrator whose peak, "
              "or whose isotope standard's, was deleted comes off its curve, and more such "
              "calibrators on one analyte's curve than the method's Most calibrators dropped, "
-             "on the Calibration tab, fails its calibration check; overflowed or undetected "
+             "on the Calibration tab, fails its calibration check; undetected "
              "calibrators are not counted. "
              "Edge points, beside Smoothing under Classic, 6 when blank, is the number of raw points "
              "averaged at each baseline end: it sets every automatic Classic baseline, so it "
@@ -623,38 +659,45 @@ ENTRIES = [
          ("The sub-types of a type", P + "sample_subtypes.py", "def from_form("),
          ("Which limits apply", P + "regulatory_limits.py", "def applicable("),
      ]},
-    {"id": "new-prepared-standard", "term": "New Prepared Standard",
-     "text": "One prep sitting, made from a recipe of the method on the chosen prep log. Saving "
-             "writes one entry in that log: who, when, the equipment, the lots used and the lots "
-             "made. A series makes one lot per level, named from the method's code and the level "
-             "and numbered by the prep date. Change the volume prepared to make a larger batch; "
-             "the parent amounts scale with it. Concentrations are calculated when saved, from the "
-             "lots picked and the volumes measured; expiry is the prep date plus the recipe's shelf "
-             "life, no later than the earliest parent's. Each lot is pinned to the recipe revision "
-             "that made it. A lot made before recipes keeps its typed concentrations, marked typed.",
-     "where": [("Prepared Standards", "@@pfas-prep-standards")],
-     "who": "bench",
-     "effects": [
-         ("The lots a sitting makes", P + "prep_sitting.py", "def build("),
-         ("One entry in the prep log", P + "prep_entries.py", "def make("),
-     ]},
     {"id": "recipes", "term": "Recipes",
-     "text": "Each recipe says how the lab prepares one standard or reagent: what it is "
-             "made from, the prep log that records it (FM-ENV-001 or 002), its steps, shelf "
-             "life and storage, and what is made from it. Purchased materials are not "
+     "text": "A recipe is the preparation logbook: Make fills it in. Each preparation is a "
+             "numbered record under its recipe code. Each recipe says how the lab prepares one "
+             "standard or reagent: what it is made from, its kind and code, its steps, shelf "
+             "life and storage, and what is made from it. Its preparations list on its card, "
+             "each reviewed by another person. Purchased materials are not "
              "recipes; they appear as the parents. A calibration recipe can make a series in "
-             "one sitting, serially or each level from the stock. Concentrations are "
+             "one sitting, serially or each level from the stock: one lot per level, named "
+             "from the method's code and the level and numbered by the prep date. Change the "
+             "volume prepared to make a larger batch; the parent amounts scale with it. A "
+             "lot's expiry is the prep date plus the recipe's shelf life, no later than the "
+             "earliest parent lot's expiry: a lot made from another lot inherits that lot's "
+             "expiry rather than adding its own shelf life on top. A lot made before recipes "
+             "keeps its typed concentrations, marked typed. Concentrations are "
              "calculated, never typed: each level = the parent lot's concentration \u00d7 "
              "volume taken \u00f7 final volume, a purchased parent's from its lot's "
              "certificate values as the acid, an in-house parent's from its own recipe. "
              "Amounts are the lab's own. Saving issues a new revision; preps already made "
-             "keep the revision they followed. A recipe with no shelf life takes its log's "
-             "default expiry.",
-     "where": [("Logbooks, 4 \u00b7 Recipes", "@@pfas-recipes")],
+             "keep the revision they followed. Every recipe states its shelf life.",
+     "where": [("Reagents & Standards, Recipes", "@@pfas-recipes")],
      "who": "config",
      "effects": [
          ("Revisions", P + "recipes.py", "def new_revision("),
          ("Calculated concentrations", P + "recipe_calc.py", "def resolve("),
+         ("The lots a preparation makes", P + "prep_sitting.py", "def build("),
+         ("The preparation record", P + "prep_entries.py", "def make("),
+     ]},
+    {"id": "report-tiers", "term": "Certificate tiers",
+     "text": "A certificate tier is a named list of the parts a report holds, from the certificate "
+             "alone to the full data package. A sample takes the tier its client is set to, "
+             "and can be changed until it is published. A tier beyond the certificate alone is "
+             "built into one PDF once the certificate is generated, and Send waits until it "
+             "is ready; a failed certificate build is retried from Certificates. A tier "
+             "cannot be removed while a client or an unpublished sample names it.",
+     "where": [("Reporting Setup \u00b7 Certificate tiers", "@@pfas-report-tiers")],
+     "who": "config",
+     "effects": [
+         ("The catalogue", P + "report_tiers.py", "def save_catalogue("),
+         ("Send waits for the certificate", P + "browser/edd_email.py", "def package_refusal("),
      ]},
     {"id": "certificate-values", "term": "Certificate values",
      "text": "A purchased standard lot's analytes, typed exactly as its certificate states "
@@ -685,7 +728,7 @@ ENTRIES = [
          ("The derived RL", P + "calibration_levels.py", "matrix_factors"),
      ]},
     {"id": "qc-types", "term": "QC types",
-     "text": "The batch QC samples a method runs (method blank, LFB / LCS, LFSM, "
+     "text": "The QC samples a method runs on each worksheet (method blank, LFB / LCS, LFSM, "
              "LFSMD, duplicate): a type runs while its row on the rules table is "
              "Enforced or Evaluate. The row of a type the method holds counts the "
              "analytes that have no window yet.",
@@ -712,7 +755,7 @@ ENTRIES = [
              "reported as a retest of the analysis, with its own time and an RL "
              "multiplied by the fold. Each method says which routes it allows (Lab "
              "Workflow, Dilutions): dilute the extract; a smaller aliquot, diluted to volume "
-             "before the EIS and extracted again in the next extraction batch; or the EIS "
+             "before the EIS and extracted again on the next worksheet; or the EIS "
              "re-spiked into the diluted extract, a method modification whose result is "
              "qualified. A dilution's surrogate (EIS) is judged only when it was added to the "
              "dilution, against the method's window, the lowest EIS recovery in a diluted "
@@ -756,7 +799,11 @@ ENTRIES = [
              "move both edges together. A right-click on the chart, the Actions button and the menu "
              "key open the same menu: Set start here, Set end here, Drop baseline here, Baseline, "
              "Peaks found, Add peak at cursor, Split at cursor, Delete peak, Undo edit, Restore "
-             "automatic, Zoom to peak, Zoom to window and Copy values. An entry that cannot act is "
+             "automatic, Set as expected retention time, Zoom to peak, Zoom to window and Copy "
+             "values. The dashed line is the compound's expected retention time on the method: drag "
+             "it to the peak and release, and the method takes the new time at once, the card says "
+             "what was set and Next takes the focus; the menu entry takes the quantifier's own "
+             "apex. The time must lie in every trace of the compound. An entry that cannot act is "
              "shown with the reason, and each entry's key is shown beside it. The wheel zooms the time "
              "axis and dragging the axis pans it. Above the chart, the magnifiers zoom in and out, the "
              "dashed box zooms to a box dragged on the chart, and the corners go back to the whole "
@@ -798,19 +845,20 @@ ENTRIES = [
              "processed may ask for the run to be processed again before a drop or skim can be "
              "measured on it. "
              "A deleted quantifier makes the analyte N.D.; a deleted qualifier makes the result N.C. "
-             "on every run, whatever the S/N rule; and the ion ratio is taken from the qualifiers "
+             "on every run, a dilution too, whatever the S/N rule; and the ion ratio is taken from the qualifiers "
              "left. A qualifier is read only beside a quantifier peak, so a qualifier edit is refused "
              "while the quantifier has none, and one made before reads No effect, saying why, and asks "
              "no reason or signature. An edit the run cannot make, such as levels off the trace or a "
              "span too short to measure, is kept the same way. Deleting an isotope standard's peak "
-             "asks for a confirmation that names the natives that lose their concentration, and takes "
+             "asks for a confirmation that names the natives that lose their concentration, which then "
+             "read N.Q., not quantified, and takes "
              "that injection's calibrators off the curve. An edit needs no reason when it is made, and "
              "the card shows it as waiting until the run is processed again; submit and release wait "
              "until it has been. At the end of review the Manual changes panel lists every edit with "
              "the line and levels it used: the analyst gives a reason for each and initials once, and "
-             "the verifier's Approve Release countersigns them, saved only once the worksheet is "
+             "the verifier's Verify countersigns them, saved only once the worksheet is "
              "verified. Initials need the preparer sign right in People & Roles and the countersign the "
-             "reviewer sign right. The verifier cannot be the analyst who initialled, or anyone who "
+             "reviewer sign right, and both a signature on file. The verifier cannot be the analyst who initialled, or anyone who "
              "edited the peak since its last undo. An edit in the run's file that no change lists "
              "holds submit and release until it is undone. A method can also set Most calibrators "
              "dropped: more manual deletions than that on one analyte's curve fails its calibration "
@@ -826,7 +874,7 @@ ENTRIES = [
          ('Split at the cursor', P + 'browser/static/raw_data.js', 'Split at cursor'),
          ('A peak is deleted from its card', P + 'browser/static/raw_data.js', 'Delete peak'),
          ('Restore automatic', P + 'browser/static/raw_data.js', 'Restore automatic'),
-         ('The Actions button', P + 'browser/templates/data_review.pt', 'Actions'),
+         ('The Actions button', P + 'browser/static/raw_data.js', '"Actions"'),
          ('The baseline is one of four', P + 'browser/static/raw_data.js', 'The baseline is Valley, Drop, Flat or Skim.'),
          ('Another apex only on a single peak', P + 'browser/static/raw_data.js', 'Another apex is chosen only on a single peak.'),
          ('Another apex is the peak whose own apex it is', P + 'raw_review.py', 'Two peaks share the apex at'),
@@ -843,7 +891,7 @@ ENTRIES = [
          ('Submit and release wait for the run to be processed', P + 'raw_edit.py', 'Edits are waiting for the run to be processed again.'),
          ('The Manual changes panel', P + 'browser/templates/data_review.pt', 'Manual changes'),
          ('The verifier is never the analyst or an editor', P + 'manual_integration.py', 'a different person countersigns these manual changes'),
-         ('A deleted qualifier is N.C. whatever the S/N rule', W + 'run_queue.py', 'for flag in qualifier_deleted_check(rows, analyte):'),
+         ('A deleted qualifier is N.C. whatever the S/N rule', W + 'run_queue.py', 'for flag in qualifier_deleted_check(all_rows, analyte):'),
          ('A qualifier edit beside no quantifier peak is refused', P + 'raw_edit.py', 'a qualifier edit would have no effect.'),
          ('An edit with no effect asks nothing', P + 'manual_integration.py', 'less those the run could not apply'),
          ('Sign rights from People & Roles', P + 'manual_integration.py', 'sign right in People & Roles, so does not'),
@@ -853,7 +901,7 @@ ENTRIES = [
     {"id": "spike-levels", "term": "Spike levels",
      "text": "The concentration a spiked QC sample is fortified at, per level (Low, "
              "Mid, High) and matrix, in that matrix's reporting unit (soil in ng/g, "
-             "water in ng/L). Each spike in an extraction batch is given a level; its "
+             "water in ng/L). Each spike on a worksheet is given a level; its "
              "amount is the level's unless the bench records what was added. LFSMD "
              "uses its LFSM's. Without a level, recovery is not judged and the release "
              "is held.",
@@ -883,34 +931,67 @@ ENTRIES = [
              "reused curve opens with a CCV (or an ICV, if the method says so); a new "
              "curve is followed by an ICV unless the method says not. The answer and "
              "who gave it are recorded on the run.",
-     "where": [("QC criteria tab", "@@pfas-method-profiles"), ("Run Builder", "@@pfas-run-builder")],
+     "where": [("Run & reporting tab", "@@pfas-method-profiles"), ("Run Builder", "@@pfas-run-builder")],
      "who": "bench",
      "effects": [
          ("Decided", P + "run_plan.py", "def curve_decision"),
          ("Opening checks", P + "run_plan.py", "def opening"),
      ]},
     {"id": "calibration-curve", "term": "Calibration curve",
-     "text": "Each analyte's response ratio, its peak area divided by its internal "
-             "standard's, fitted against the expected concentration of each calibration level.",
-     "where": [("Calibration Archive", "@@pfas-calibrations")],
+     "text": "Each analyte's peak area over its internal standard's, fitted against each level's "
+             "expected concentration as the method's Curve fit, Weighting and Origin say.",
+     "where": [("Calibration Archive", "@@pfas-calibrations"), ("QC criteria tab", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
          ("The curve drawn and judged on the Calibration Archive", P + "browser/static/calibration_fit.js",
           "function fit(pts, opts)"),
+         ("A raw run's curve, fitted as the method says", P + "quant_fit.py",
+          "def fit(points, kind, weighting, origin, why=None):"),
          ("A manager's choice of fit, weighting and origin for one curve", P + "browser/calibrations.py",
           "def _handle_override(self):"),
      ]},
-    {"id": "extraction-batch", "term": "Extraction batch",
-     "text": "The worksheet is the extraction batch: its samples, then the QC the "
+    {"id": "curve-origin", "term": "Curve origin and range",
+     "text": "Origin means the same for every fit, in the curve card and the worker. Exclude fits a "
+             "constant term. Force passes the curve through the origin and adds no point. Include "
+             "adds the origin as a point weighted as the lowest calibrator, so the curve does not "
+             "change with the unit. An average RF always passes through the origin and is not "
+             "weighted. EPA 537.1 and EPA 533 require Force; EPA 1633A does not force a weighted "
+             "curve; SW-846 8000D advises against Include. A quadratic must rise across its whole "
+             "calibration range, or the run is refused, naming the analyte. In a sample, below "
+             "a quadratic's lowest calibrator, the reading is taken on the curve between zero "
+             "and that calibrator and kept only where, on the sample basis, it is at or above "
+             "the MDL, so it can print with J; below the MDL, or with no MDL set for the analyte "
+             "and matrix, it reads BLoQ with no number, and its record says which. A straight "
+             "line keeps its number there. Standards and blanks keep their readings. A "
+             "calibrator, ICV or CCV with no reading fails its check.",
+     "where": [("Calibration Archive", "@@pfas-calibrations"), ("QC criteria tab", "@@pfas-method-profiles")],
+     "who": "config",
+     "effects": [
+         ("The origin weighted as the lowest calibrator", P + "quant_fit.py", "def origin_weight("),
+         ("A quadratic refused when it turns within its range", P + "quant_fit.py", "def rises_across("),
+         ("A sample read between the curve's ends", P + "quant_fit.py", "def sample_reading("),
+         ("Below the lowest calibrator, a number only at or above the MDL",
+          W + "pipeline.py", "def raw_below_mdl("),
+         ("The card reads and refuses the same way", P + "browser/static/calibration_fit.js",
+          "function sampleReading(m, y, bottom, top)"),
+     ]},
+    {"id": "extraction-batch", "term": "Extraction worksheet",
+     "text": "The worksheet is the method's extraction batch: its samples, then the QC the "
              "method profile (or the project plan) asks for, then each QC's parent "
-             "sample and spike level, before labels are printed. Every member is "
+             "sample and spike level, and each spike's lot and volume, before labels "
+             "are printed. Every member is "
              "injected under the name the LIMS gives it: a sample's SENAITE id, a QC "
-             "'<worksheet>-<QC><n>'.",
-     "where": [("Worksheet: Extraction batch", "@@pfas-extraction-batch")],
+             "'<worksheet>-<QC><n>'. Once the guided extraction is finalised the "
+             "members are read only: QC, parents, levels, amounts, spike lots and "
+             "volumes show as text and a save that would change one is refused. "
+             "Only the subtraction blank can still be chosen, until a run is in.",
+     "where": [("Worksheet: Extraction worksheet", "@@pfas-extraction-batch")],
      "who": "bench",
      "effects": [
          ("QC populated from the method", P + "extraction_batch.py", "def plan_qc"),
          ("Read by the pipeline as the spike record", P + "dilution_ref.py", "extraction_batch.spike_map"),
+         ("Each spike's lot and volume printed on the batch record", P + "extraction_logbook.py",
+          "def spike_table"),
      ]},
     {"id": "chart-overlay", "term": "Control chart overlay",
      "text": "Plots a room's humidity or temperature, or a fridge's or freezer's temperature, "
@@ -923,6 +1004,23 @@ ENTRIES = [
      "effects": [
          ("Each run's reading", P + "browser/controlchart.py", "def overlay_series"),
          ("The day's mean", P + "facility_qc.py", "def daily_means"),
+     ]},
+    {"id": "peak-asymmetry", "term": "Peak asymmetry",
+     "text": "Every peak integrated from raw data is measured for its asymmetry factor: the "
+             "width of its back half over its front half at 10 % of its height above its "
+             "baseline (EPA 537.1 v2.0 §9.3.9). Control Charts, QC type Peak asymmetry, follows "
+             "each analyte's factor at every run's mid-level calibrator, with the mean and the "
+             "2 and 3 SD limits of every control chart. It is tracked, not reviewed: no run is "
+             "held for it. An initial demonstration of capability takes the factors of the "
+             "first two eluting analytes from a reviewed run's mid-level calibrator, or typed "
+             "values with the PDF of their calculation.",
+     "where": [("Control Charts", "@@pfas-control-chart"), ("Method Studies", "@@pfas-method-studies")],
+     "who": "bench",
+     "effects": [
+         ("Each run's mid-level calibrator", P + "asymmetry_track.py", "def mid_level(rows):"),
+         ("The limits, from the plotted runs", P + "browser/controlchart.py", "def _asymmetry_chart_dict"),
+         ("A point beyond a limit is marked, never held", P + "control_chart.py", "def lj_warnings"),
+         ("The IDC's first two eluting analytes", P + "asymmetry_track.py", "def first_eluting(run, n=2):"),
      ]},
     {"id": "project-qapp", "term": "Project QAPP",
      "text": "The quality assurance project plan a project's work follows. A QAPP belongs to "
@@ -977,8 +1075,8 @@ ENTRIES = [
          ("A designed certificate must be complete to issue", P + "browser/report_template.py", "dt.validate(\"coa\", designed)"),
      ]},
     {"id": "document-designs", "term": "Designed documents",
-     "text": "Layouts drawn in the document designer for the certificate, extraction "
-             "log, QC Review, settings report, logbooks and labels. A design is a "
+     "text": "Layouts drawn in the document designer for the certificate, the batch "
+             "record, the preparation record, QC Review, the settings report and labels. A design is a "
              "draft until issued; an issued design is that document from then on, and "
              "it must show every required part.",
      "where": [("Document Templates", "@@pfas-document-templates")],
@@ -999,15 +1097,38 @@ ENTRIES = [
          ("A preparation inherits an earlier parent expiry", P + "browser/prepared_standards.py",
           "expiry_inherited_from"),
      ]},
-    {"id": "logbooks", "term": "Logbooks",
-     "text": "Templates are the versioned logbook forms, numbered FM-ENV-001 onwards. A "
-             "method's sequence says which templates its batches use, in order, and each "
-             "batch's logbooks are filled in under By batch. A correction keeps the "
-             "original value and records who changed it.",
-     "where": [("Logbooks", "@@pfas-logbook-index")],
-     "who": "config",
+    {"id": "batch-records", "term": "Batch records",
+     "text": "Each worksheet's record from receipt to release: the samples' chain of custody, "
+             "the extraction worksheet, every stage of the guided extraction, the lots the run was "
+             "loaded with, the injection list and the review. The record is kept under the method "
+             "revision its extraction started with, so a later change to the method never moves "
+             "it. A record is not started, open, finalised, run built or released; the list "
+             "opens on In progress, every worksheet not yet released, the 50 oldest first, "
+             "or shows every one.",
+     "where": [("Batch records", "@@pfas-batch-records")],
+     "who": "bench",
      "effects": [
-         ("Form numbers from the logbook sequence", P + "logbook_store.py", "def form_code("),
+         ("Where a record is", P + "batch_record.py", "def state(session, manifest, checklist, review_state"),
+         ("The record from each store", P + "batch_record.py",
+          "def assemble(ws_id, method_title, revision, receipt, members, stages_review, loaded, run, review,"),
+         ("The chain of custody Data Review checks", P + "coc_records.py", "def summary(records, numbers)"),
+     ]},
+    {"id": "extraction-corrections", "term": "Extraction corrections",
+     "text": "A finalised extraction record is corrected, never edited. Amend changes one fact "
+             "to a value the method defines; the original stays on the record with the reason, "
+             "and the run is judged again. A wrong or unknown amount added is a re-extraction: "
+             "nothing from those members is reported, their analyses leave the worksheet for the "
+             "next extraction, and a re-extraction is not undone. Send back reopens the members, "
+             "a stage, the run build or the data import. Undo puts the recorded value back in "
+             "force; Final Data and Instrument Report are signed off again once the run is "
+             "judged. A different person with the reviewer sign right confirms each correction "
+             "before release.",
+     "where": [("Batch records", "@@pfas-batch-records")],
+     "who": "bench",
+     "effects": [
+         ("The log and its rules", P + "extraction_amendments.py",
+          "def amend(state, members, member_id, field, to, reason, who, when, ws_state, can_act,"),
+         ("The record in force", P + "extraction_amendments.py", "def members_in_force(members, state)"),
      ]},
     {"id": "settings-report", "term": "Settings report",
      "text": "Every quality-control setting and whether the pipeline actually judges it, "
@@ -1018,6 +1139,25 @@ ENTRIES = [
      "who": "system",
      "effects": [
          ("Configuration id over every store", P + "settings_report.py", "def fingerprint(*stores)"),
+     ]},
+    {"id": "value-sources", "term": "Where the values come from",
+     "text": "Every value the system ships with comes from a published source, listed below by "
+             "document and section, or is the laboratory's own setting, entered on the method's "
+             "pages. The values carry no citation of their own: an assessor finds the basis of "
+             "each here. A regulatory limit is the exception: it keeps its source, which a "
+             "certificate prints beside it. Test material, such as working spreadsheets, "
+             "instrument files supplied for testing and demonstration data, is never a source.",
+     "where": [("Settings Report", "@@pfas-settings-report"), ("Regulatory Limits", "@@pfas-regulatory-limits")],
+     "who": "system",
+     "lists": ["value_sources"],
+     "effects": [
+         ("No method profile stores a citation beside a value", P + "value_sources.py", "def strip_citations"),
+         ("The Settings Report points here", P + "browser/templates/settings_report_body.pt",
+          "hid string:value-sources"),
+         ("The designed Settings Report prints this entry's address", P + "report_documents.py",
+          "(\"value_sources\", \"Where the values come from\","),
+         ("A regulatory limit keeps its source on the certificate", P + "coa_document.py",
+          "text += \" (%s)\" % f[\"citation\"]"),
      ]},
     {"id": "publishing-holds", "term": "Why a sample cannot be published",
      "text": "Publishing (and re-publishing) is held until the cause is fixed: no "
@@ -1043,6 +1183,7 @@ ENTRIES = [
      "who": "bench",
      "effects": [
          ("A re-import replaces the run's stored rows", W + "injection_store.py", "DELETE FROM injection_results WHERE batch_id=?"),
+         ("The earlier import's rows are kept as superseded", W + "injection_store.py", "def begin_import("),
      ]},
     {"id": "method-identified", "term": "Identified method",
      "text": "A certificate needs one method: the one every reported analysis carries "
@@ -1056,14 +1197,16 @@ ENTRIES = [
      ]},
     # ── Signatures and access ─────────────────────────────────────────────
     {"id": "sign-rights", "term": "Sign rights",
-     "text": "Who signs as preparer, reviewer or both, set per person on People & Roles "
-             "with their title, credentials and signature. A designed document that "
-             "places a signature its signer may not give is refused.",
+     "text": "Three sign rights, switched on per person on People & Roles with their "
+             "title, credentials and signature. Preparer signs a preparation record as "
+             "its maker and a batch record as its finaliser; Reviewer signs the review "
+             "of either; Authoriser signs certificates. A designed document that places "
+             "a signature its signer may not give is refused.",
      "where": [("People & Roles", "@@pfas-people"), ("My profile", "@@pfas-my-profile")],
      "who": "config",
      "effects": [
          ("Certificate signatories checked", P + "browser/coa_document.py", "may not sign as"),
-         ("Extraction log, QC Review and logbook signatories", P + "browser/doc_people.py", "class SignatoryError"),
+         ("Batch record, preparation record and QC Review signatories", P + "browser/doc_people.py", "class SignatoryError"),
      ]},
     {"id": "lab-director", "term": "Laboratory Director",
      "text": "The one person named on the Laboratory page whose name and signature appear as "
@@ -1133,7 +1276,8 @@ ENTRIES = [
              "restored on its own: its changes are shown first and recorded in Configuration "
              "History with the reason. Status is the backup tool's own report after each run. "
              "Backup settings are changed here by a site administrator, with a reason: the "
-             "destination, when backups run, when old ones are removed and the public keys; each "
+             "destination, when backups run, when old ones are removed, the public keys and the "
+             "folders the system snapshots and the store backups are kept in; each "
              "change waits for the tool's next run, which applies it or refuses it (a destination "
              "must be mounted and writable; at least two public keys, no private key) and says so "
              "under Settings changes. A waiting change can be withdrawn. Backups already made stay "
@@ -1144,6 +1288,43 @@ ENTRIES = [
          ("A failed backup or a restore test due on the Manager's landing", P + "attention.py", "Restore test due"),
          ("A method restore through each store's tracked saver", P + "method_restore.py", "def apply"),
          ("Settings changes, applied by the tool at its next run", P + "backup_settings.py", "def request("),
+     ]},
+    {"id": "signatures", "term": "Signatures page",
+     "text": "Every electronic signature the system has recorded, for Managers: filter by kind, "
+             "signer, meaning, the days it was signed and its state. Sealed and Unsealed say "
+             "whether the seal worker has sealed the row; Superseded and Withdrawn say a later "
+             "row replaced or took it back; Orphan is a signature whose record no longer exists "
+             "or no longer lists it. Check chain reads the ledger from its first row and says "
+             "where it holds or where it breaks. Export CSV downloads the rows the filters show. "
+             "Open goes to the signed record. A signature is withdrawn only by its signer, "
+             "always with a reason; it then stops counting and the record needs it "
+             "given again. The seal worker block says whether the seal key is usable, how many "
+             "rows have waited over 10 minutes for their seal and when the worker last reported.",
+     "where": [("Signatures", "@@pfas-signatures")],
+     "who": "config",
+     "effects": [
+         ("A withdrawal needs a reason", P + "browser/signatures_page.py",
+          "Give the reason for withdrawing the signature."),
+         ("Only the signer withdraws", P + "browser/signatures_page.py", "def may_withdraw("),
+         ("The chain check names the first broken row", P + "browser/signatures_page.py",
+          'CHAIN_BROKEN = "Chain broken at row %d"'),
+         ("Orphans found from each record's own list", P + "browser/signatures_page.py", "def orphans("),
+     ]},
+    {"id": "signature-ledger", "term": "Signature ledger",
+     "text": "The one record of who signed what: each signature is a row naming the record, "
+             "the content it signed by its hash, the meaning, the signer and the time, chained "
+             "to the row before it so that a changed or removed row breaks the chain. Rows are "
+             "never changed or deleted; the seal worker adds the laboratory's seal to each row "
+             "once. A record shows its signatures from here. Signing the same content again is "
+             "the same row; signing after a withdrawal, or after another person's signature "
+             "replaced yours, is a new row that names the one it replaces.",
+     "where": [("Signatures", "@@pfas-signatures")],
+     "who": "system",
+     "effects": [
+         ("Rows are never deleted", P + "esig/ledger.py", "signatures_no_delete"),
+         ("Each row chained to the one before", P + "esig/ledger.py", "def verify_chain("),
+         ("A re-sign after a withdrawal is a new row", P + "esig/signing.py", "def _resolve_supersedes("),
+         ("The worker reports its seal key and the last row", "pfas_pipeline/esig_seal.py", "def write_head("),
      ]},
     {"id": "badges", "term": "Badges and lab terminals",
      "text": "At a registered lab terminal a badge scan signs its holder in (and "
@@ -1161,7 +1342,7 @@ ENTRIES = [
              "result, RL and MDL at the laboratory's precision, and the same "
              "non-detect decision. A sample the certificate cannot assemble blocks the "
              "EDD.",
-     "where": [("EDD Export", "@@pfas-edd-config")],
+     "where": [("EDD settings", "@@pfas-edd-config")],
      "who": "system",
      "effects": [
          ("Rows from the certificate's assembly", P + "edd_builder.py", "def _certificate_rows"),
@@ -1171,7 +1352,7 @@ ENTRIES = [
              "the state profile's qualifier map, distinct codes joined. An internal "
              "code without a state code, or a joined code the state does not accept, "
              "blocks the EDD until it is mapped.",
-     "where": [("EDD Export", "@@pfas-edd-config")],
+     "where": [("EDD settings", "@@pfas-edd-config")],
      "who": "config",
      "effects": [
          ("Mapped, joined, unmapped refused", P + "edd_builder.py", "def _issue_qualifiers"),
@@ -1179,12 +1360,28 @@ ENTRIES = [
     {"id": "edd-profiles", "term": "EDD state profiles",
      "text": "Each state program's EDD format and vocabulary: columns and headings, "
              "sample-type codes, qualifier and QC-type codes, and the state's analyte "
-             "codes. The seeded format is the base; a client is given a profile on its EDD "
-             "page. The state's lookup tables keep the valid codes current.",
-     "where": [("EDD Export", "@@pfas-edd-config")],
+             "codes. The seeded format is the base; a client is given a profile on its Client "
+             "reporting page. The state's lookup tables keep the valid codes current.",
+     "where": [("EDD settings", "@@pfas-edd-config")],
      "who": "config",
      "effects": [
          ("A client's profile (the default profile otherwise)", P + "edd_store.py", "def get_edd_profile_for_client"),
+     ]},
+    {"id": "client-reporting", "term": "Client reporting",
+     "text": "A client's reporting on one page, saved together: its default report tier, then "
+             "its EDD on or off, its profile and the fields that profile asks for. A new sample "
+             "takes its client's tier when it is registered, and keeps it if the client's "
+             "default later changes; a Lab Manager can change a sample's own tier until the "
+             "sample is published. A sample registered before tiers existed reports at its "
+             "client's tier, T1 until it is set. Open it from the client's Client reporting tab.",
+     "where": [("Clients", "clients")],
+     "who": "config",
+     "effects": [
+         ("A client's default report tier, T1 until set", P + "edd_store.py", "\"report_tier\": \"T1\""),
+         ("Only a tier the page offers is saved", P + "browser/edd_config.py", "TIER_NOT_OFFERED"),
+         ("A new sample takes its client's tier", P + "report_tiers.py", "def on_sample_initialized"),
+         ("A sample's own tier, else its client's", P + "report_tiers.py", "def tier_id_of"),
+         ("Read-only once published", P + "extenders/sample.py", "class _ReportTierField"),
      ]},
     {"id": "edd-column-mapped", "term": "Column-mapped EDD profiles",
      "text": "A delivery format described on the EDD pages, never in code. Files: each file's name "
@@ -1201,9 +1398,9 @@ ENTRIES = [
              "problem block the delivery. Value lists: one column of a sheet of the agency's "
              "workbook, or pasted codes. Lab values: the lab's identity, named for the columns (the "
              "sample delivery group follows the prefix and format values). Client fields: what a "
-             "client gives, on its EDD settings for any profile. The profile is chosen per export "
-             "on the batch EDD page; a profile no client uses can be deleted.",
-     "where": [("EDD Export", "@@pfas-edd-config")],
+             "client gives, on its Client reporting page for any profile. The profile is chosen per export "
+             "on EDD downloads; a profile no client uses can be deleted.",
+     "where": [("EDD settings", "@@pfas-edd-config")],
      "who": "config",
      "effects": [
          ("A value a map lacks is refused", P + "edd_delimited.py", "def lookup"),
@@ -1284,14 +1481,18 @@ ENTRIES = [
      ]},
     {"id": "coc", "term": "Chain of custody",
      "text": "One CoC per shipment, numbered by the LIMS. The sampler enters each sample "
-             "and submits; the laboratory records receipt, temperatures (judged against the "
-             "method profile's range) and compliance. "
-             "A paper kit CoC is transcribed here and its scan attached before receipt.",
+             "and submits; the laboratory records receipt and compliance. Temperatures and "
+             "on ice are asked where a sample's method sets a receipt range, and are judged "
+             "against it; within holding time where its method sets a holding time. "
+             "A paper kit CoC is transcribed here and its scan attached before receipt. "
+             "A signed correction changes the receipt date and keeps the original.",
      "where": [("Chain of Custody", "@@pfas-coc")],
      "who": "bench",
      "effects": [
-         ("What blocks receipt, and what is flagged", P + "coc_records.py", "def receipt_problems(record, receipt, extra_flags=())"),
+         ("What blocks receipt, and what is flagged", P + "coc_records.py", "def receipt_problems(record, receipt, extra_flags=(), asked=None)"),
+         ("What a receipt asks", P + "coc_records.py", "def asked_checks(samples)"),
          ("Receipt temperatures judged against the method's range", P + "coc_records.py", "def judge_temperatures(readings, on_ice)"),
+         ("The receipt date in force", P + "coc_records.py", "def received_in_force(record)"),
          ("Who may edit a CoC", P + "coc_records.py", "def may_edit(record, staff, own_client)"),
          ("What a CoC row must give", P + "coc_entry.py", "def row_problems(rows, field_qc_types)"),
      ]},
@@ -1301,28 +1502,28 @@ ENTRIES = [
              "eggs, fish or portions, ground together into this one sample. "
              "The bench records each homogenisation; what differs from the request needs a note.",
      "where": [("Homogenisation", "@@pfas-homogenisation"),
-               ("Homogenisation Methods", "@@pfas-homogenisation-setup")],
+               ("Homogenisation Techniques", "@@pfas-homogenisation-setup")],
      "who": "bench",
      "effects": [
          ("The matrix default is frozen on the new sample", P + "homogenisation.py", "def on_sample_initialized(sample, event)"),
          ("What a composite must state", P + "homogenisation.py", "def composite_problems(composite, units, description)"),
          ("What a homogenisation record must explain in a note", P + "homogenisation.py", "def record_warnings(req, method, unit_name, cleaned, units_combined, methods)"),
      ]},
-    {"id": "balance-before-weighing", "term": "Balance verified before weighing",
+    {"id": "balance-before-weighing", "term": "Balance checked before weighing",
      "text": "A stage that lists a balance cannot be completed until the balance chosen "
-             "has passed its verification that day. A deviation note does not unlock it. "
+             "has passed its check that day. A deviation note does not unlock it. "
              "A correction is judged on the day the stage was first done.",
      "where": [("Balance", "@@pfas-balance-log"), ("Extraction Guide", "@@pfas-extraction-guide")],
      "who": "bench",
      "effects": [
-         ("Blank, unregistered, failed and unverified balances block", P + "bench_queue.py", "def balance_blocks(balances)"),
+         ("Blank, unregistered, failed and unchecked balances block", P + "bench_queue.py", "def balance_blocks(balances)"),
          ("The stage refuses whatever note is written", P + "browser/extraction_guide.py", "if blocks or (warnings and not deviations):"),
      ]},
     {"id": "guided-extraction", "term": "Guided extraction",
-     "text": "The method's extraction stages, walked through step by step on a batch: "
+     "text": "The method's extraction stages, walked through step by step on a worksheet: "
              "every reagent, standard and consumable lot is picked from the inventory, "
              "sample amounts and dilutions are recorded, and the finished record is the "
-             "batch's Extraction Log, handed to the pipeline with the run. The stage that "
+             "worksheet's Extraction Log, handed to the pipeline with the run. The stage that "
              "takes the test portion is the Sample Processing Log. An extraction keeps the "
              "stages and method revision it started with, so a later change to the method's "
              "stages never moves its records. A stage that creates a solution records a new "
@@ -1470,13 +1671,45 @@ ENTRIES = [
              "is. Certificate format sets the rule per method and matrix (J, or \"< RL\" "
              "as before) and QC Qualifiers holds its wording. A certificate prints as its "
              "reporting-template revision was issued: a revision issued before J existed "
-             "prints \"< RL\" until a new one is issued.",
+             "prints \"< RL\" until a new one is issued. Data Review's Final Data shows J "
+             "beside a number in the band, and never a J beside a result with no number: a "
+             "quantifier below its S/N limit is an estimate only where there is a number.",
      "where": [("Run & reporting tab", "@@pfas-method-profiles"), ("QC Qualifiers", "@@pfas-qc-qualifiers")],
      "who": "config",
      "effects": [
          ("Printed between the MDL and the RL", P + "coa_format.py", "J_CODE = \"J\""),
          ("The rule on Certificate format", P + "report_format.py", "\"Between MDL and RL\""),
          ("Older revisions keep their rule", P + "report_format.py", "LEGACY_DEFAULTS = {"),
+     ]},
+    {"id": "above-range", "term": "Above the calibration range (E)",
+     "text": "A result above the highest calibrator on the curve, for every fit, is never "
+             "reported extrapolated. A dilution reports it, with D. With no dilution it reaches "
+             "SENAITE as ALoQ and holds release: Data Review lists it under Final Data until a "
+             "dilution is run or the reviewer records, from its row's menu, the reason to report "
+             "it with E. The certificate then prints it as above the top of the range on the "
+             "sample basis, with E in the QC Qualifiers wording; the reading stays in Data "
+             "Review. The EDD issues E through the state's qualifier map.",
+     "where": [("Data Review", "@@pfas-data-review"), ("Reporting Template", "@@pfas-report-template")],
+     "who": "system",
+     "effects": [
+         ("Printed above the top of the range", P + "coa_format.py", "E_CODE = \"E\""),
+         ("The hold and the reviewer's reason", P + "above_range.py", "def reason_record("),
+         ("Issued through the state's map", P + "edd_builder.py", "ABOVE_RANGE_CODE = \"E\""),
+     ]},
+    {"id": "no-number", "term": "The instrument gave no number",
+     "text": "An instrument-processed export may write BLoQ instead of a concentration. A number "
+             "the file carries is used: beside the word in the concentration cell, or in the "
+             "concentration column with the word in Quantitation Status. Where the cell holds "
+             "the word alone, the result is never reported not detected silently: it holds "
+             "release, and Data Review lists it under Final Data until the reviewer records, "
+             "from its row's menu, the reason to report it. It then prints as before, \"< RL\" "
+             "with U, and the reason stays on the worksheet's record. A raw run's BLoQ is the "
+             "LIMS's own reading and holds nothing.",
+     "where": [("Data Review", "@@pfas-data-review")],
+     "who": "system",
+     "effects": [
+         ("A result the instrument gave no number for", W + "pipeline.py", "def instrument_gave_no_number("),
+         ("The hold and the reviewer's reason", P + "no_number.py", "def reason_record("),
      ]},
     {"id": "qualifier-d", "term": "Diluted (D)",
      "text": "A result from a diluted analysis (a dilution above 1:1) carries D. Its row keeps its "

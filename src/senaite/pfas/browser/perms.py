@@ -3,9 +3,9 @@
 Shared role gate for PFAS management views.
 
 Extracted from browser/logbooks.py so that sibling management views
-(prep logbook definitions, logbook step media) can enforce the SAME rule
-without importing each other — a module-level back-import between
-logbooks.py and prep_logbooks.py would be a cycle waiting to happen.
+(logbook step media among them) can enforce the SAME rule without
+importing each other: a module-level back-import between two views would
+be a cycle waiting to happen.
 
 Python 2.7 compatible.
 """
@@ -73,6 +73,30 @@ def _has_any_role(context, roles):
         user = getSecurityManager().getUser()
         return bool(roles.intersection(user.getRolesInContext(portal)))
     except Exception:
+        return False
+
+
+# The pipeline worker's own account: a group holding the worker's role and
+# the two core roles its JSON pushes need (Analyst: an analysis's result and
+# remarks, a worksheet's attachments; Lab Clerk: a client batch's remarks),
+# never Manager. The worker's role holds WORKER_PERMISSION, which the
+# endpoints only the worker (or a Manager) calls are protected by
+# (setuphandlers.setup_worker_role).
+WORKER_ROLE = "PFASWorker"
+WORKER_GROUP = "PFASWorkers"
+WORKER_GROUP_ROLES = (WORKER_ROLE, "Analyst", "LabClerk")
+WORKER_PERMISSION = "senaite.pfas: Worker tasks"
+WORKER_PERMISSION_ROLES = ("Manager", "Site Administrator", WORKER_ROLE)
+
+
+def may_run_worker_tasks(context):
+    """True when the current user holds WORKER_PERMISSION at the portal (the
+    worker's account, a Manager). Never raises."""
+    try:
+        from AccessControl import getSecurityManager
+        portal = context.portal_url.getPortalObject()
+        return bool(getSecurityManager().checkPermission(WORKER_PERMISSION, portal))
+    except Exception:                                       # noqa: BLE001
         return False
 
 
@@ -179,9 +203,14 @@ CLIENT_VIEWS = frozenset((
     "pfas-coc", "pfas-coc-print",
     # page chrome every page draws, and the signed-out / machine entry points
     "pfas-macros", "pfas-topbar", "pfas-sidebar", "pfas-sidebar-pins",
-    "pfas-logbook-macros", "pfas-config-form-macros", "pfas-badge-signin",
-    "pfas-sensor-ingest",
+    "pfas-record-macros", "pfas-config-form-macros", "pfas-badge-signin",
+    "pfas-sensor-ingest", "pfas-row-menu", "pfas-type-icons", "pfas-icons",
 ))
+
+
+# Of those, the page a client writes on: a read-only staff account posts
+# nothing there either.
+CLIENT_WRITE_VIEWS = frozenset(("pfas-coc",))
 
 
 # What a visitor who is NOT signed in may open: the pages registered
@@ -192,8 +221,8 @@ CLIENT_VIEWS = frozenset((
 # anonymous requests (F1 / F4).
 ANON_VIEWS = frozenset((
     "pfas-track", "pfas-badge-signin", "pfas-sensor-ingest",
-    "pfas-macros", "pfas-topbar", "pfas-logbook-macros", "pfas-config-form-macros",
-    "pfas-blank-history-macros",
+    "pfas-macros", "pfas-topbar", "pfas-record-macros", "pfas-config-form-macros",
+    "pfas-blank-history-macros", "pfas-row-menu", "pfas-type-icons", "pfas-icons",
 ))
 
 
@@ -202,10 +231,23 @@ ANON_VIEWS = frozenset((
 # method's QC types, the certificate qualifiers and the CoA register.
 # Configuration is the manager's.
 MANAGER_VIEWS = frozenset((
-    "pfas-print-settings", "pfas-qc-qualifiers", "pfas-method-wizard",
+    "pfas-print-settings", "pfas-qc-qualifiers", "pfas-report-tiers",
+    "pfas-method-wizard",
     "pfas-controlled-publications", "pfas-lab-settings", "pfas-backups",
     "pfas-laboratory", "pfas-people", "pfas-time-language", "pfas-system",
+    "pfas-signatures",
 ))
+
+
+# Of those, what the read-only inspector may open, by GET only: the
+# certificate register, to read and download it.
+INSPECTOR_READ_VIEWS = frozenset(("pfas-controlled-publications",))
+
+# Who may download a stored certificate's PDF: the roles core's own download
+# gives it to (senaite.core: Manage Analysis Requests, held at the portal),
+# and the inspector, who reads and takes copies but changes nothing.
+CORE_REPORT_ROLES = frozenset(("Manager", "LabManager", "LabClerk", "Analyst", "Publisher"))
+CERTIFICATE_READ_ROLES = CORE_REPORT_ROLES | READ_ONLY_STAFF_ROLES
 
 
 def is_json_api(request):
@@ -222,6 +264,33 @@ def is_json_api(request):
 def _view_name(published):
     view = getattr(published, "__self__", published)      # a view's method
     return getattr(view, "__name__", "") or ""
+
+
+# SENAITE's listing fetches a list's rows by a POST to the list's own view
+# (<view>/folderitems): reading, which the read-only inspector may do; any
+# other subpath of a listing (a transition, a field set) is a write
+LISTING_READS = frozenset(("folderitems", "query_folderitems", "get_children"))
+
+
+# A download a page's own form asks for by POST: reading, which the
+# read-only inspector may do. (page, action)
+READ_POSTS = frozenset((("pfas-data-review", "download_report"),))
+
+
+def read_post(name, request):
+    """True when the POST is one of READ_POSTS."""
+    form = getattr(request, "form", None) or {}
+    action = form.get("action") if hasattr(form, "get") else None
+    if isinstance(action, (list, tuple)):
+        action = action[0] if action else None
+    return (name, action) in READ_POSTS
+
+
+def listing_read(published):
+    """True when the request is a PFAS listing reading its rows."""
+    view = getattr(published, "__self__", published)
+    sub = list(getattr(view, "traverse_subpath", None) or [])
+    return len(sub) == 1 and sub[0] in LISTING_READS
 
 
 def is_staff(context):
@@ -271,11 +340,46 @@ def cross_site_post(request):
     return _host(source) not in own
 
 
+# core's client pages: a client and the list of clients
+CLIENT_PAGE_TYPES = frozenset(("Client", "ClientFolder"))
+
+
+def _published_context(published):
+    """The object a published page shows: a view's context, else the
+    object a method belongs to, else a skin template's container."""
+    obj = getattr(published, "__self__", published)
+    ctx = getattr(obj, "context", None)
+    if ctx is not None:
+        return ctx
+    try:
+        from Acquisition import aq_base, aq_inner, aq_parent
+    except ImportError:                                     # Python 3 (tests)
+        return obj
+    if getattr(aq_base(obj), "portal_type", None):
+        return obj
+    return aq_parent(aq_inner(obj))
+
+
+def client_sent_to_tracker(request):
+    """True when a signed-in user without a lab role opens one of core's
+    client pages: they are sent to the tracker, the client's own page. Staff,
+    a signed-out visitor and a POST are left to core."""
+    if (request.get("REQUEST_METHOD") or "GET").upper() not in ("GET", "HEAD"):
+        return False
+    if getattr(_published_context(request.get("PUBLISHED")), "portal_type", None) not in CLIENT_PAGE_TYPES:
+        return False
+    if _is_anonymous():
+        return False
+    portal = _portal()
+    return portal is not None and not is_staff(portal)
+
+
 def keep_clients_out(event):
     """IPubAfterTraversal: a visitor who is not signed in reaches only the
     public PFAS pages (ANON_VIEWS) -- any other, read or write, sends them to
     sign in; a signed-in user who holds no lab role (a client) is refused
-    every PFAS staff page and the JSON API; an inspector-only user posts to
+    every PFAS staff page and the JSON API, and is sent from core's client
+    pages to the tracker; an inspector-only user posts to
     none of them; the configuration pages core leaves to LabClerk are the
     manager's (MANAGER_VIEWS); and no PFAS page
     or JSON API call accepts a POST from another site."""
@@ -292,6 +396,11 @@ def keep_clients_out(event):
             raise Forbidden("The data interface is for laboratory staff.")
         return
     name = _view_name(request.get("PUBLISHED"))
+    # core's own client pages are the lab's view of a client: a signed-in
+    # client opening one is sent to their own page, the tracker
+    if not name.startswith("pfas-") and client_sent_to_tracker(request):
+        from zExceptions import Redirect
+        raise Redirect(_portal().absolute_url() + "/@@pfas-track")
     # a page, not a static resource: ++resource++senaite.pfas/pfas-tokens.css
     # publishes under its file name, and refusing it left the sign-in page,
     # the tracker and every client page without their stylesheet
@@ -306,19 +415,25 @@ def keep_clients_out(event):
         from zExceptions import Unauthorized
         raise Unauthorized("Please sign in.")
     if name in CLIENT_VIEWS:
+        if (name in CLIENT_WRITE_VIEWS and (request.get("REQUEST_METHOD") or "").upper() == "POST"
+                and is_staff(_portal()) and not may_write(_portal())):
+            from zExceptions import Forbidden
+            raise Forbidden("This account is read-only.")
         return
     portal = _portal()
     if portal is not None and is_staff(portal):
         if ((request.get("REQUEST_METHOD") or "").upper() == "POST"
-                and not may_write(portal)):
+                and not may_write(portal) and not listing_read(request.get("PUBLISHED"))
+                and not read_post(name, request)):
             from zExceptions import Forbidden
             raise Forbidden("This account is read-only.")
-        if name in MANAGER_VIEWS and not require_manager(portal):
+        if (name in MANAGER_VIEWS and not require_manager(portal)
+                and not inspector_reads(name, request, portal)):
             from zExceptions import Forbidden
             raise Forbidden("This configuration page is for lab managers.")
         # recording or reviewing data needs a Lab Contact, initials and a
         # signature (entry_rights.py); no override
-        if (request.get("REQUEST_METHOD") or "").upper() == "POST":
+        if (request.get("REQUEST_METHOD") or "").upper() == "POST" and not read_post(name, request):
             why = data_entry_refusal(name)
             if why:
                 # a person submitting a form is shown why, with the way to
@@ -333,13 +448,23 @@ def keep_clients_out(event):
     raise Unauthorized("This page is for laboratory staff.")
 
 
+def inspector_reads(name, request, portal):
+    """True when the inspector opens one of the manager's pages it may read
+    (INSPECTOR_READ_VIEWS) by GET."""
+    return (name in INSPECTOR_READ_VIEWS
+            and (request.get("REQUEST_METHOD") or "GET").upper() in ("GET", "HEAD")
+            and _has_any_role(portal, READ_ONLY_STAFF_ROLES))
+
+
 def data_entry_refusal(name):
     """Why a POST to this page is refused for the current user (a data-entry
     or review page, and no Lab Contact, initials or signature), else None."""
     from senaite.pfas import entry_rights
     if name not in entry_rights.DATA_ENTRY_VIEWS:
         return None
-    from senaite.pfas.browser.staff import may_enter
+    from senaite.pfas.browser.staff import is_automation, may_enter
+    if entry_rights.exempt(name, is_automation()):
+        return None
     return None if may_enter() else entry_rights.REFUSAL
 
 

@@ -33,6 +33,7 @@
     .dr-strip-count { flex:1; }
     .dr-strip[data-open="false"] .dr-strip-body { display:none; }
     .dr-strip-lines { margin:var(--sp-1) 0 0; padding-left:var(--sp-5); }
+    .dr-foot-notes { margin:var(--sp-5) 0 0; }
     .dr-verdict { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3); margin-bottom:var(--sp-4); }
     .dr-path { margin:0 0 var(--sp-4); padding:var(--sp-3) var(--sp-4); border:1px solid var(--line);
                border-radius:var(--radius-card); background:var(--surface-raised); }
@@ -46,16 +47,12 @@
     .dr-card-actions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3); margin-top:var(--sp-3); }
     .dr-inline-form { display:flex; align-items:center; gap:var(--sp-2); margin:0; }
     .dr-initials { width:84px; text-transform:uppercase; }
-    .dr-corr-form { display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-4); }
-    .dr-corr-form label { display:flex; flex-direction:column; gap:4px; font-size:var(--fs-xs); color:var(--s-secondary); }
-    .dr-corr-form .pfas-input, .dr-corr-form .pfas-select { height:var(--ctl-h); box-sizing:border-box; }
-    .dr-corr-reason .pfas-input { width:260px; }
-    .dr-signed-as { display:inline-flex; align-items:center; height:var(--ctl-h); font-weight:var(--fw-strong); }
     .dr-request-form { display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-4); margin-bottom:var(--sp-3); }
     .dr-request-form label { display:flex; flex-direction:column; gap:4px; font-size:var(--fs-xs); color:var(--s-secondary); }
     .dr-request-form .pfas-select, .dr-request-form .pfas-input { height:var(--ctl-h); box-sizing:border-box; border-radius:var(--radius); }
     .dr-request-form input[name=fold] { width:90px; }
     .dr-request-why .pfas-input { width:280px; }
+    .dr-identity-lines { margin:0; padding-left:var(--sp-5); }
     .dr-ask-choose { flex-basis:100%; margin:0; font-weight:var(--fw-strong); }
     .fd-note { font-size:var(--fs-xs); color:var(--s-secondary); }
     /* an isomer sum's parts: a muted line under the value, joined to its row */
@@ -150,6 +147,14 @@
     .dr-stage-h { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
     .dr-stage-meta { color:var(--s-secondary); font-size:var(--fs-sm); }
     .dr-line { font-size:var(--fs-sm); margin:4px 0; }
+    /* the certificate card's sign area, the amended-result note and the button: room between the table above and the button below */
+    .dr-cert-sign { margin:var(--sp-5) 0 var(--sp-4); }
+    .dr-issue-form { margin:var(--sp-4) 0 var(--sp-5); }
+    .dr-reissue { margin:0 0 var(--sp-4); padding:var(--sp-4) var(--sp-5); border:1px solid var(--s-warn-bd);
+                  border-radius:var(--radius-card); background:var(--s-warn-lt); }
+    .dr-reissue-title { margin:0 0 var(--sp-2); font-weight:600; font-size:var(--fs-base); color:var(--s-warn-text); }
+    .dr-reissue-text { margin:0 0 var(--sp-3); font-size:var(--fs-sm); color:var(--s-secondary); }
+    .dr-reissue textarea { width:100%; box-sizing:border-box; font-size:var(--fs-sm); padding:var(--sp-2) var(--sp-3); }
     .dr-warn { margin:2px 0 6px 18px; font-size:var(--fs-sm); }
     .dr-empty { color:var(--s-secondary); font-size:var(--fs-sm); }
 </style>
@@ -165,8 +170,8 @@
   </tal:t>
 
   <tal:r metal:fill-slot="header-context">
-    <span class="pfas-chip" tal:condition="view/batch_id"><b tal:content="view/batch_id">WS-1</b><tal:m tal:condition="view/batch_method|nothing"><span class="pfas-chip-sep">&#183;</span><tal:x tal:replace="view/batch_method">EPA_537_1</tal:x></tal:m><span class="pfas-chip-sep">&#183;</span><span tal:attributes="class string:ws-badge ws-${view/ws_state}; title view/ws_state"
-          tal:content="view/ws_state">open</span></span>
+    <span class="pfas-chip" tal:condition="view/batch_id"><b tal:content="view/batch_id">WS-1</b><tal:m tal:condition="view/batch_method|nothing"><span class="pfas-chip-sep">&#183;</span><tal:x tal:replace="view/method_label">EPA 537.1 Drinking Water</tal:x></tal:m><span class="pfas-chip-sep">&#183;</span><span tal:attributes="class string:ws-badge ws-${view/ws_state}"
+          tal:content="view/ws_state_title">Open</span></span>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -175,8 +180,8 @@
   <tal:no_ws tal:condition="not:view/batch_id">
     <div class="page-body">
       <p class="pfas-muted">Open a worksheet&#8217;s review. Each row shows who has it and how long it has been open. <tal:h define="hid string:data-review"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
-      <!-- the review queue: compact rows, the worksheet id is the row's
-           button, the stage a plain word -->
+      <!-- the review queue: compact rows, the row opens the worksheet's
+           review, the stage a plain word -->
       <div class="table-wrap">
       <table class="pfas-table dr-queue" data-col-resize="data-review-dr-queue">
         <thead>
@@ -189,12 +194,13 @@
           </tr>
         </thead>
         <tbody>
-          <tr tal:repeat="ws view/recent_worksheets">
-            <td><a class="btn-sm btn-secondary" tal:attributes="href ws/url" tal:content="ws/id">WS</a>
+          <tr tal:repeat="ws view/recent_worksheets" tal:attributes="data-row-open ws/url">
+            <td><strong tal:content="ws/id">WS</strong>
               <span class="pfas-muted" tal:condition="python:ws['title'] and ws['title'] != ws['id']"
                     tal:content="ws/title">Title</span></td>
             <td tal:content="ws/analyst">Analyst</td>
-            <td tal:content="ws/stage_label">With analyst</td>
+            <td tal:define="ic context/@@pfas-icons"
+                tal:content="structure python:ic.tip('verify' if ws.get('under_review') else 'analysis', ws['stage_label'], state='now')">With analyst</td>
             <td class="is-right num" tal:content="ws/open_age">2d 4h</td>
             <td class="is-right num"><tal:a tal:condition="ws/review_age" tal:replace="ws/review_age">5h 20m</tal:a><span
                 class="pfas-muted" tal:condition="not:ws/review_age">not yet</span></td>
@@ -216,6 +222,8 @@
     <tal:msg tal:condition="view/save_message">
       <div tal:attributes="class string:dr-msg ${view/save_message_type}">
         <tal:m tal:replace="view/save_message_text">msg</tal:m>
+        <a class="btn-sm btn-secondary" tal:condition="request/form/car|nothing"
+           tal:attributes="href string:${view/portal_url}/@@pfas-deviations?new=car&amp;ws=${view/batch_id}">Raise a CAR</a>
       </div>
     </tal:msg>
 
@@ -228,7 +236,7 @@
       <a class="btn-sm btn-secondary" tal:condition="view/batch_url"
          tal:attributes="href string:${view/batch_url}/manage_results">Results entry</a>
       <tal:method tal:condition="view/batch_method">
-        <span class="cf-hint" tal:content="view/batch_method">method</span>
+        <span class="cf-hint" tal:content="view/method_label">method</span>
       </tal:method>
     </div>
 
@@ -238,31 +246,41 @@
          table: Severity, What, and the button to where the fix is made.
          The accreditation notes are among them so no reviewer must open a
          particular tab to learn a report is outside accreditation. -->
+    <!-- Submit held: said at the top, with the step to take first -->
+    <p class="pfas-banner is-warn" tal:define="held view/submit_held" tal:condition="held">
+      <span><tal:t replace="held/text"></tal:t>
+        <tal:n condition="held/next"><br /><tal:x replace="held/next"></tal:x></tal:n></span>
+      <a class="btn-sm btn-secondary" tal:condition="held/fix_url"
+         tal:attributes="href held/fix_url" tal:content="held/fix_label"></a>
+    </p>
     <div class="dr-strip" id="dr-strip"
-         tal:define="warns view/warnings; wc python:view.warning_counts(warns); opened python:view.active_tab() == 'overview'"
-         tal:condition="warns"
+         tal:define="warns view/warnings; wc python:view.warning_counts(warns); act python:view.warnings_actionable(warns);
+                     opened python:act and view.active_tab() == 'overview'"
+         tal:condition="python:warns and act"
          tal:attributes="data-open python:'true' if opened else 'false'">
       <div class="dr-strip-head">
-        <span class="dr-strip-count"><span tal:attributes="class python:'pfas-flag-text is-flag' if wc['blocks'] else None"
-              tal:content="wc/blocks_text">1 blocks release</span> &#183; <span class="pfas-muted"
+        <span class="dr-strip-count" tal:define="ic context/@@pfas-icons"><tal:m tal:condition="wc/blocks"
+              tal:replace="structure python:ic.svg('fail', hidden=True)" /><span tal:attributes="class python:'pfas-flag-text is-flag' if wc['blocks'] else None"
+              tal:content="wc/blocks_text">1 blocks release</span> &#183; <tal:m tal:replace="structure python:ic.svg('note', hidden=True)" /><span class="pfas-muted"
               tal:content="wc/notes_text">3 notes</span></span>
-        <button type="button" class="btn-sm btn-secondary dr-strip-toggle" aria-controls="dr-strip-body"
+        <button type="button" class="btn-sm btn-secondary dr-strip-toggle" aria-controls="dr-strip-body" tal:condition="act"
                 tal:attributes="aria-expanded python:'true' if opened else 'false'"
                 tal:content="python:u'Hide' if opened else u'Show'">Hide</button>
       </div>
-      <div class="dr-strip-body" id="dr-strip-body">
-        <table class="pfas-table dr-strip-table" data-col-resize="data-review-dr-strip-table">
-          <thead><tr><th>Severity</th><th>What</th><th>Fix</th></tr></thead>
+      <div class="dr-strip-body" id="dr-strip-body" tal:condition="act">
+        <!-- a line with a fix: its menu opens the page that fixes it -->
+        <table class="pfas-table dr-strip-table" data-col-resize="data-review-dr-strip-table" tal:define="rm context/@@pfas-row-menu">
+          <thead><tr><th>Severity</th><th>What</th></tr></thead>
           <tbody>
-            <tr tal:repeat="w warns" tal:attributes="data-severity w/severity">
-              <td><span tal:attributes="class python:'pfas-tag is-flag' if w['severity'] == 'blocks' else 'pfas-tag'"
-                        tal:content="python:u'Blocks' if w['severity'] == 'blocks' else u'Note'">Note</span></td>
+            <tr tal:repeat="w warns"
+                tal:attributes="data-severity w/severity;
+                                data-row-actions python:rm.actions((w['fix_label'], 'href', w['fix_url']) if w['fix_url'] else None)">
+              <td tal:define="ic context/@@pfas-icons"
+                  tal:content="structure python:ic.tip('fail', u'Blocks release') if w['severity'] == 'blocks' else ic.tip('note', u'Note')">Note</td>
               <td><tal:x tal:replace="w/text">What the reviewer must read.</tal:x>
                 <ul class="dr-strip-lines" tal:condition="w/lines">
                   <li tal:repeat="line w/lines" tal:content="line">departure</li>
                 </ul></td>
-              <td><a class="btn-sm btn-secondary" tal:condition="w/fix_url"
-                     tal:attributes="href w/fix_url" tal:content="w/fix_label">QC criteria</a></td>
             </tr>
           </tbody>
         </table>
@@ -274,6 +292,7 @@
       var strip = document.getElementById('dr-strip');
       if (!strip) return;
       var btn = strip.querySelector('.dr-strip-toggle');
+      if (!btn) return;
       btn.addEventListener('click', function () {
         var open = strip.getAttribute('data-open') !== 'true';
         strip.setAttribute('data-open', open ? 'true' : 'false');
@@ -289,7 +308,7 @@
       <tal:tl tal:define="at view/active_tab;
                           tabs python:(('?tab=overview', u'Overview', u''), ('?tab=coc', u'Chain of Custody', u''),
                                        ('?tab=traceability', u'Traceability', u''),
-                                       ('?tab=extraction', u'Extraction', u'The guided extraction of this worksheet\'s batch'),
+                                       ('?tab=extraction', u'Extraction', u'The guided extraction of this worksheet'),
                                        ('?tab=qc_summary', u'Blanks', u''), ('?tab=calibration', u'Calibration', u''),
                                        ('?tab=spike_qc', u'Spike QC', u'LFSM/LFSMD/LFB/LCS recovery + RPD'),
                                        ('?tab=final_data', u'Final Data', u''), ('?tab=instrument_report', u'Instrument Report', u'')) +
@@ -309,12 +328,12 @@
          tal:condition="python: view.active_tab() == 'overview'">
 
       <!-- Where this run sits: client, chain of custody, batch, worksheet and
-           the stages reached, then a dashed "Run release" until it is done -->
+           the stages reached, then the next stage dashed until it is reached -->
       <div class="dr-path" tal:define="tree view/context_tree" tal:condition="tree">
         <strong class="dr-path-title">Where this run sits</strong>
         <div class="dr-path-nodes"
              tal:define="reached python:[st for st in tree['stages'] if st['status'] != 'pending'];
-                         released python:bool([st for st in tree['stages'] if st['num'] == 4 and st['status'] == 'done'])">
+                         ahead python:[st for st in tree['stages'] if st['status'] == 'pending'][:1]">
           <a class="pfas-tree-node is-path" tal:condition="tree/client" tal:attributes="href tree/client/url"><tal:x tal:replace="tree/client/title">Client</tal:x> <small>Client</small></a>
           <tal:c tal:repeat="c tree/coc"><span class="dr-path-sep" aria-hidden="true">&#8250;</span><a class="pfas-tree-node is-path" tal:attributes="href c/url"><tal:x tal:replace="c/number">COC</tal:x> <small>Chain of custody</small>
             <span class="badge badge-opened" tal:condition="c/status" tal:content="c/status">received</span></a></tal:c>
@@ -322,13 +341,13 @@
           <span class="dr-path-sep" aria-hidden="true">&#8250;</span><span class="pfas-tree-node is-selected"><tal:x tal:replace="tree/worksheet/id">WS</tal:x> <small>Worksheet</small>
             <span class="badge badge-quarantine" tal:content="tree/worksheet/state">state</span></span>
           <tal:st tal:repeat="st reached"><span class="dr-path-sep" aria-hidden="true">&#8250;</span><span
-              tal:attributes="class python:'pfas-tree-node is-path' if st['status'] == 'done' else 'pfas-tree-node is-selected'">
-              <tal:x tal:replace="st/label">Stage</tal:x> <small>Stage</small>
-              <span class="badge badge-active" tal:condition="python:st['status'] == 'done'">done</span></span></tal:st>
-          <tal:rel tal:condition="not:released"><span class="dr-path-dash" aria-hidden="true"></span><span
-              class="pfas-tree-node dr-path-next">Run release <small>not yet</small></span></tal:rel>
-          <tal:rel tal:condition="released"><span class="dr-path-sep" aria-hidden="true">&#8250;</span><span
-              class="pfas-tree-node is-path">Run release <small>done</small></span></tal:rel>
+              tal:define="ic context/@@pfas-icons"
+              tal:attributes="class python:'pfas-tree-node is-path' if st['status'] == 'done' else 'pfas-tree-node is-selected'"><tal:m
+              tal:replace="structure python:ic.stage(st['icon'], st['label'], st['status'])" />
+              <tal:x tal:replace="st/label">Stage</tal:x> <small>Stage</small></span></tal:st>
+          <tal:rel tal:repeat="st ahead"><span class="dr-path-dash" aria-hidden="true"></span><span
+              class="pfas-tree-node dr-path-next" tal:define="ic context/@@pfas-icons"><tal:m
+              tal:replace="structure python:ic.stage(st['icon'], st['label'], st['status'])" /><tal:x tal:replace="st/label">Verify</tal:x></span></tal:rel>
         </div>
       </div>
 
@@ -354,13 +373,15 @@
                    one that could not run is BLOCKED. Both used to read
                    "PENDING", the state least likely to make anyone look.
                    A qualified pass is a PASS with its word after it. -->
-              <span tal:attributes="class python:{
-                      'pass': 'cl-badge cl-pass', 'qualified': 'cl-badge cl-pass',
-                      'fail': 'cl-badge cl-fail',
-                      'blocked': 'cl-badge cl-blocked'}.get(v, 'cl-badge cl-pending')"
-                    tal:content="python:{
-                      'pass': 'PASS', 'qualified': 'PASS', 'fail': 'FAIL',
-                      'blocked': 'NOT EVALUATED'}.get(v, 'PENDING')">status</span><span
+              <span tal:condition="python:v in ('pass', 'qualified', 'fail', 'blocked')" class="cl-verdict"
+                    tal:define="ic context/@@pfas-icons;
+                                kw python:{'pass': ('pass', u'Pass'), 'qualified': ('pass', u'Pass'), 'fail': ('fail', u'Fail'),
+                                           'blocked': ('unjudged', u'Not evaluated')}[v]"><tal:m
+                    tal:replace="structure python:ic.svg(kw[0], hidden=True, size='md')" /><span tal:content="python:kw[1]">Pass</span></span><span
+                    tal:condition="python:v not in ('pass', 'qualified', 'fail', 'blocked')" class="cl-verdict"
+                    tal:define="ic context/@@pfas-icons"><tal:m
+                    tal:replace="structure python:ic.svg('sig-wait' if not item['auto'] else 'waiting', hidden=True, size='md')" /><span
+                    tal:content="python:u'Waiting for a signature' if not item['auto'] else u'Waiting'">Waiting</span></span><span
                     class="cl-qualified" tal:condition="python:v == 'qualified'">qualified</span>
               <div class="cl-card-reason" tal:condition="item/reason|nothing"
                    tal:content="item/reason">why</div>
@@ -387,9 +408,12 @@
                 <input type="hidden" name="item_key"
                        tal:attributes="value item/key"/>
                 <input type="hidden" name="tab" value="overview"/>
-                <input type="text" name="initials" required="required"
-                       placeholder="Initials" maxlength="6"
-                       style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;"/>
+                <!-- the box is labelled where it is seen, and named with
+                     its checklist item where it is read out -->
+                <label>Initials
+                <input type="text" name="initials" required="required" maxlength="6"
+                       tal:attributes="aria-label string:Initials, ${item/label}"
+                       style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;"/></label>
                 <button class="btn btn-action" type="submit">
                   Sign &amp; Mark Reviewed
                 </button>
@@ -399,25 +423,14 @@
         </tal:cl>
       </div>
 
-      <!-- assign-before-submit process point -->
+      <!-- a worksheet with no samples yet: they are added on its samples page -->
       <tal:asg tal:condition="python:view.needs_assignment() and view.can_act()">
-        <div style="background:var(--s-warn-lt);border:1px solid var(--s-warn-bd);color:var(--s-warn-text);
-                    border-radius:8px;padding:12px 16px;margin-bottom:16px;
-                    display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-          <div style="flex:1;min-width:260px;font-size:var(--fs-sm);">
-            <strong>No analyses are assigned to this worksheet.</strong>
-            Assignment must happen <em>before</em> results are submitted —
-            afterwards SENAITE's workflow forbids it (already-submitted
-            analyses will be skipped and reviewed via the batch join instead).
-          </div>
-          <form method="post"
-                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
-            <input type="hidden" name="action" value="assign_batch_samples"/>
-            <input type="hidden" name="batch_id" tal:attributes="value view/batch_id"/>
-            <button class="btn btn-warn btn-action" type="submit">
-              Receive &amp; assign batch samples
-            </button>
-          </form>
+        <div class="pfas-banner is-warn">
+          <span><strong>No samples are on this worksheet.</strong>
+            Add them before any result is entered.</span>
+          <span class="pfas-banner-end">
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/batch_url}/@@pfas-worksheet-samples">Add samples</a>
+          </span>
         </div>
       </tal:asg>
 
@@ -462,40 +475,85 @@
             <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-report-template">Reporting Setup</a>
           </p>
           <tal:go tal:condition="python:trev and not view.certificate_layout_problem()">
-          <p class="dr-line">SENAITE&#8217;s publisher opens with this worksheet&#8217;s samples: preview, publish and
-            email the certificate there.</p>
-          <!-- First issue: straight to the publisher. -->
-          <a class="btn btn-success btn-approve"
-             tal:condition="not:view/is_reissue"
-             tal:attributes="href purl">Issue certificate →</a>
+          <p class="dr-line">Sign the certificate, then SENAITE&#8217;s publisher opens with this worksheet&#8217;s
+            samples. Only you can issue it; your signature binds to the PDF issued.</p>
 
-          <!-- Amended reissue (samples already published): capture the reason
-               up front so the controlled register records why. -->
-          <tal:reissue tal:condition="view/is_reissue">
-            <div style="background:var(--s-warn-lt);border:1px solid var(--s-warn-bd);border-radius:6px;
-                        padding:10px 12px;margin-top:6px;">
-              <div style="font-weight:600;font-size:var(--fs-base);color:var(--s-warn-text);margin-bottom:6px;">
-                Amended reissue — this sample was already published
+          <!-- the signature waiting on the samples: the publish guard asks for it -->
+          <tal:pend tal:define="pend view/pending_certificate" tal:condition="pend">
+          <!-- the signed-in person's own, still good: only they can issue it -->
+          <p class="dr-line dr-cert-ready" tal:condition="python:pend['mine'] and not pend['stale']">
+            <span class="cl-badge cl-pass">Signed, ready to issue</span>
+            <strong tal:content="pend/signer">AUTH DEMO</strong>,
+            <span tal:content="pend/at">2026-11-06 09:30</span><tal:i tal:condition="pend/interim">, Interim</tal:i>
+            <a class="btn btn-success btn-approve" tal:attributes="href purl">Open the publisher</a>
+          </p>
+          <!-- once the certificate is generated and its package built, the
+               signer issues and e-mails it here in one step -->
+          <tal:ie tal:condition="python:pend['mine'] and not pend['stale']"><tal:d tal:define="ie view/issue_email_state">
+          <form method="post" class="dr-line" tal:condition="ie/ready"
+                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+            <input type="hidden" name="action" value="issue_email"/>
+            <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid"/>
+            <button type="submit" class="btn btn-success btn-approve">Issue and e-mail</button>
+            <span class="pfas-muted" tal:content="python:u'To ' + u', '.join(ie['to_shown'])">To the client</span>
+          </form>
+          <div class="dr-line" tal:condition="not:ie/ready">
+            <button type="button" class="btn btn-success btn-approve" disabled="disabled"
+                    aria-describedby="dr-issue-email-why">Issue and e-mail</button>
+            <span class="pfas-muted" id="dr-issue-email-why" tal:content="ie/why">why</span>
+          </div>
+          </tal:d></tal:ie>
+          <p class="dr-line dr-cert-other" tal:condition="python:not pend['mine'] and not pend['stale']">
+            Signed by <strong tal:content="pend/signer">AUTH DEMO</strong>,
+            <span tal:content="pend/at">2026-11-06 09:30</span>, waiting for them to issue
+          </p>
+          <p class="dr-line dr-cert-stale" tal:condition="pend/stale">
+            <span class="cl-badge cl-fail">Signature expired</span>
+            Signed by <strong tal:content="pend/signer">AUTH DEMO</strong>,
+            <span tal:content="pend/at">2026-11-06 09:30</span>. Sign the certificate again to issue it.
+          </p>
+          </tal:pend>
+
+          <!-- the current register row's signatures, from the ledger -->
+          <div class="dr-cert-sign" tal:define="sig_rows view/certificate_signatures; sig_doc string:Certificate;
+                           sig_resize string:data-review-certificate-signatures" tal:condition="sig_rows"><metal:s
+               use-macro="context/@@pfas-esig-macros/macros/signature_list" /></div>
+
+          <!-- Issue certificate opens the sign dialog; its Sign posts the
+               signature (and a reissue's reason), then the publisher opens -->
+          <form method="post" id="drIssueForm" class="dr-issue-form"
+                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+            <input type="hidden" name="action" value="sign_certificate"/>
+            <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid"/>
+            <!-- Amended reissue (samples already published): capture the reason
+                 up front so the controlled register records why. -->
+            <tal:reissue tal:condition="view/is_reissue">
+              <div class="dr-reissue">
+                <div class="dr-reissue-title">Amended reissue: this sample was already published</div>
+                <p class="dr-reissue-text">
+                  State the reason for reissuing. It is recorded against the new
+                  revision in the Certificates register. The original
+                  certificate is not modified.
+                </p>
+                <textarea name="reason" rows="3" required="required"
+                          placeholder="Reason for reissuing this certificate"></textarea>
               </div>
-              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 8px;">
-                State the reason for reissuing. It is recorded against the new
-                revision in the Controlled Publications register. The original
-                report is not modified.
-              </p>
-              <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"
-                    tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
-                <input type="hidden" name="action" value="record_amendment_reason"/>
-                <input type="hidden" name="batch_uid"
-                       tal:attributes="value view/batch_uid"/>
-                <textarea name="reason" rows="2" required="required"
-                          placeholder="Reason for reissuing this certificate"
-                          style="flex:1;min-width:240px;font-size:var(--fs-sm);padding:4px 6px;"></textarea>
-                <button type="submit" class="btn btn-success btn-approve">
-                  Record reason &amp; issue certificate →
-                </button>
-              </form>
-            </div>
-          </tal:reissue>
+            </tal:reissue>
+            <button type="button" class="btn btn-success btn-approve"
+                    data-modal-open="esig-sign_certificate">Sign and issue certificate</button>
+          </form>
+          <div tal:define="esig view/certificate_esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div>
+          <script>
+            (function () {
+              var form = document.getElementById('drIssueForm');
+              // Enter never signs: Sign is the form's default button
+              if (form) {
+                form.addEventListener('keydown', function (e) {
+                  if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'BUTTON') { e.preventDefault(); }
+                });
+              }
+            })();
+          </script>
           </tal:go>
         </div>
       </tal:coa>
@@ -505,15 +563,54 @@
         <div class="tree-section" tal:condition="si/submitted_by">
           <div class="tree-heading">Submission History</div>
           <div class="dr-sig-row">
-            Submitted for review by <strong tal:content="si/submitted_by">user</strong>
+            Submitted for verification by <strong tal:content="si/submitted_by">user</strong>
             at <tal:t tal:replace="si/submitted_at">time</tal:t>
           </div>
           <div class="dr-sig-row" tal:condition="si/approved_by">
-            Approved by <strong tal:content="si/approved_by">user</strong>
+            Verified by <strong tal:content="si/approved_by">user</strong>
             at <tal:t tal:replace="si/approved_at">time</tal:t>
           </div>
         </div>
       </tal:sinfo>
+
+      <!-- each time Verify sent the worksheet back: why, who, when, the
+           sign-offs it cleared -->
+      <section class="bench-block" id="dr-sent-back"
+               tal:define="sh view/send_back_history" tal:condition="sh">
+        <h2 class="bench-h">Sent back</h2>
+        <ul class="bench-alerts" tal:condition="view/send_back_pending">
+          <li class="bench-bad" tal:content="view/SEND_BACK_PENDING">Pending</li>
+        </ul>
+        <table class="pfas-table pfas-table-fit" data-col-resize="data-review-sent-back">
+          <thead><tr><th>Change</th><th>Reason</th><th>By</th><th>When</th><th>Sign-offs cleared</th></tr></thead>
+          <tbody><tr tal:repeat="c sh">
+            <td tal:content="c/change">Sent back to Data Review</td>
+            <td tal:content="c/reason">Look again</td>
+            <td tal:content="c/by">manager1</td>
+            <td class="cell-nowrap" tal:content="c/when">2026-11-20 12:00</td>
+            <td tal:content="python:c['cleared_text'] or u'\u2014'">Final Data Summary</td>
+          </tr></tbody>
+        </table>
+      </section>
+
+      <!-- every identity correction and undo: who, when, why -->
+      <section class="bench-block" id="dr-identity-history"
+               tal:define="ih view/identity_history; ti context/@@pfas-type-icons" tal:condition="ih">
+        <h2 class="bench-h">Identity corrections</h2>
+        <ul class="bench-alerts" tal:condition="view/identity_pending">
+          <li class="bench-bad" tal:content="view/IDENTITY_PENDING">Pending</li>
+        </ul>
+        <table class="pfas-table pfas-table-fit" data-col-resize="data-review-identity">
+          <thead><tr><th>Injection</th><th>Change</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
+          <tbody><tr tal:repeat="c ih">
+            <td tal:content="c/injection">FDA_CCV_261027_02</td>
+            <td tal:content="structure python:ti.change(c)">CCV, lowest level to CCV</td>
+            <td tal:content="c/reason">One CCV level on this method</td>
+            <td tal:content="c/by">analyst</td>
+            <td class="cell-nowrap" tal:content="c/when">2026-11-20 10:12</td>
+          </tr></tbody>
+        </table>
+      </section>
 
       <!-- the changes made on the Raw Data tab: a reason each and the
            analyst's initials once, before submit; countersigned at release -->
@@ -525,18 +622,22 @@
           <li tal:attributes="class python:'bench-ok' if mc['ok'] else 'bench-bad'">
             <strong tal:content="python:('%d initialled' % mc['initialled']) if mc['ok'] else 'Not ready to submit'">Not ready</strong>
             <span tal:condition="not:mc/ok" tal:content="python:'; '.join(mc['missing'])">missing</span>
-            <span tal:condition="python:mc['ok'] and not mc['verify_ok']">: Approve Release countersigns them; the verifier is a different person.</span>
+            <span tal:condition="python:mc['ok'] and not mc['verify_ok']">: Verify countersigns them; the verifier is a different person.</span>
           </li>
         </ul>
         <form method="post" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <input type="hidden" name="action" value="save_manual_changes" />
-          <table class="pfas-table pfas-table-form pfas-table-fit" data-col-resize="data-review-manual-changes">
+          <!-- a row's menu opens the change in Raw Data; the row itself
+               opens nothing, so a reason being typed is never lost -->
+          <table class="pfas-table pfas-table-form pfas-table-fit" data-col-resize="data-review-manual-changes"
+                 tal:define="rm context/@@pfas-row-menu">
             <thead><tr><th>Injection</th><th>Analyte</th><th>Transition</th><th>Change</th>
-                       <th>Automatic &#8594; now</th><th>Reason</th><th>Initials</th><th>Countersigned</th>
-                       <th></th></tr></thead>
+                       <th>Automatic &#8594; now</th><th>Reason</th><th>Initials</th><th>Countersigned</th></tr></thead>
             <tbody>
-              <tr tal:repeat="r mc/rows" tal:attributes="data-change r/id">
+              <tr tal:repeat="r mc/rows"
+                  tal:attributes="data-change r/id;
+                                  data-row-actions python:rm.actions((u'Open in Raw Data', 'href', r['href']))">
                 <td tal:content="r/injection">S-1</td>
                 <td tal:content="r/analyte">PFOA</td>
                 <td tal:content="r/transition">quantifier</td>
@@ -558,8 +659,6 @@
                 </td>
                 <td tal:content="python:'not needed' if r['no_effect'] else r['analyst']['initials'] if r['analyst'] else 'not initialled'">AN1</td>
                 <td tal:content="python:'not needed' if r['no_effect'] else r['verifier']['name'] if r['verifier'] else 'not countersigned'">AN2</td>
-                <td><a class="btn-sm btn-secondary"
-                       tal:attributes="href r/href">Open in Raw Data</a></td>
               </tr>
             </tbody>
           </table>
@@ -572,20 +671,35 @@
       </section>
 
       <!-- action bar -->
-      <div class="dr-action-bar">
+      <div class="dr-action-bar" id="dr-submit">
         <!-- Analyst: submit when all pass and ws is open -->
         <tal:submit_btn
             tal:condition="python:view.can_act() and view.ws_state() == 'open'">
-          <form method="post"
+          <!-- a client taking interim certificates: Submit opens the sign
+               dialog, signed as released interim; when none can be
+               released, a plain Submit and the reason beside it -->
+          <tal:ints tal:define="ints view/interim_submit">
+          <form method="post" id="drSubmitForm"
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="submit_for_review"/>
-            <button class="btn btn-primary btn-submit" type="submit"
+            <button class="btn btn-primary btn-submit" type="submit" tal:condition="not:ints/ok"
                     tal:attributes="disabled python:None if view.all_items_pass() else 'disabled'">
-              Submit for Review
+              Submit for verification
             </button>
+            <button class="btn btn-primary btn-submit" type="button" tal:condition="ints/ok"
+                    data-modal-open="esig-submit_for_review"
+                    tal:attributes="disabled python:None if view.all_items_pass() else 'disabled'">
+              Submit and sign the interim
+            </button>
+            <span class="pfas-muted" tal:condition="python:ints['due'] and not ints['ok']"
+                  tal:content="ints/why">No interim certificate: why</span>
+            <span class="pfas-muted" tal:condition="python:ints['ok'] and ints['current']">Another interim needs a reason in the note.</span>
           </form>
+          <tal:sg tal:condition="python:ints['ok'] and view.all_items_pass()"><div
+              tal:define="esig view/submit_esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div></tal:sg>
+          </tal:ints>
           <tal:incomplete tal:condition="not:view/all_items_pass">
-            <span style="font-size:var(--fs-sm);color: var(--s-danger-dk);">
+            <span class="pfas-flag-text is-flag">
               Complete all checklist items before submitting.
             </span>
           </tal:incomplete>
@@ -594,19 +708,101 @@
         <!-- Manager: approve or reject when to_be_verified -->
         <tal:mgr_btns
             tal:condition="python:view.is_manager() and view.ws_state() == 'to_be_verified'">
-          <form method="post"
+          <!-- every identity correction and extraction correction in force is
+               confirmed before Verify; one the verifier will not confirm is
+               not released: Reject -->
+          <section class="pfas-card dr-card" id="dr-identity-confirm-card"
+                   tal:define="tc view/identity_to_confirm; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons" tal:condition="tc">
+            <h3 class="dr-card-title">Corrections to confirm</h3>
+            <table class="pfas-table dr-identity-confirm" data-col-resize="data-review-identity-confirm">
+              <thead><tr><th>Item</th><th>Change</th><th>Reason</th><th>By</th><th>When</th><th>Confirmed</th></tr></thead>
+              <tbody><tr tal:repeat="c tc" tal:attributes="data-row-actions c/actions">
+                <td tal:content="c/injection">FDA_CCV_261027_02</td>
+                <td tal:content="structure python:ti.change(c)">CCV, lowest level to CCV</td>
+                <td tal:content="c/reason">One CCV level on this method</td>
+                <td tal:content="c/by">analyst1</td>
+                <td class="cell-nowrap" tal:content="c/when">2026-11-20 10:12</td>
+                <td><span tal:attributes="class python:'pfas-tag' if c['confirmed'] else 'pfas-tag is-warn'"
+                          tal:content="c/confirmed_text">Not confirmed</span></td>
+              </tr></tbody>
+            </table>
+            <form method="post" id="dr-identity-confirm" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
+              <input tal:replace="structure context/@@authenticator/authenticator" />
+              <input type="hidden" name="action" value="confirm_identity" />
+              <input type="hidden" name="injection" value="" />
+              <button type="submit" hidden="hidden">Confirm</button>
+            </form>
+            <form method="post" id="dr-extraction-confirm"
+                  tal:attributes="action string:${view/ws_url}/@@pfas-extraction-corrections">
+              <input tal:replace="structure context/@@authenticator/authenticator" />
+              <input type="hidden" name="action" value="confirm" />
+              <input type="hidden" name="back" value="review" />
+              <input type="hidden" name="entry" value="" />
+              <button type="submit" hidden="hidden">Confirm</button>
+            </form>
+          </section>
+          <!-- Verify opens the sign dialog; its Sign posts the
+               release, signed as the batch record's reviewer -->
+          <form method="post" id="drApproveForm"
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="approve_release"/>
-            <button class="btn btn-success btn-approve" type="submit"
-                    tal:attributes="disabled python:None if view.all_items_pass() else 'disabled'">Approve Release</button>
+            <button class="btn btn-success btn-approve" type="button" data-modal-open="esig-approve_release"
+                    tal:attributes="disabled python:None if view.all_items_pass() else 'disabled'">Verify</button>
             <span class="text-danger" tal:condition="not:view/all_items_pass">The checklist no longer passes: send it back.</span>
+            <span class="text-danger" tal:define="evr view/extraction_verify_refusal" tal:condition="evr"
+                  tal:content="evr">Confirm each extraction correction first.</span>
           </form>
-          <form method="post"
-                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
-            <input type="hidden" name="action" value="reject"/>
-            <button class="btn btn-danger btn-reject" type="submit">Reject / Send Back</button>
-          </form>
+          <tal:sg tal:condition="view/all_items_pass"><div tal:define="esig view/approve_esig"><metal:d use-macro="context/@@pfas-esig-macros/macros/sign_dialog" /></div></tal:sg>
+          <!-- Reject asks why and what becomes of the run -->
+          <!-- Send back reopens the worksheet for the analyst, with a reason;
+               Reject ends it (retests on a new worksheet) -->
+          <button class="btn btn-secondary" type="button" data-modal-open="dr-send-back">Send back</button>
+          <div class="pfas-modal" id="dr-send-back">
+            <form method="post" class="pfas-modal-box is-narrow"
+                  tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
+              <input tal:replace="structure context/@@authenticator/authenticator" />
+              <input type="hidden" name="action" value="send_back_review"/>
+              <h2>Send back to the analyst</h2>
+              <div class="pfas-form-field is-full">
+                <label for="dr-send-back-reason">Reason</label>
+                <textarea id="dr-send-back-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+              </div>
+              <div class="form-actions is-end">
+                <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                <button type="submit" class="btn btn-primary">Send back</button>
+              </div>
+            </form>
+          </div>
+          <button class="btn btn-danger btn-reject" type="button" data-modal-open="dr-reject">Reject</button>
+          <div class="pfas-modal" id="dr-reject">
+            <form method="post" class="pfas-modal-box is-narrow"
+                  tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+              <input type="hidden" name="action" value="reject"/>
+              <h2>Reject the run</h2>
+              <div class="pfas-form-field is-full">
+                <label for="dr-reject-reason">Reason</label>
+                <textarea id="dr-reject-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+              </div>
+              <div class="pfas-form-field is-full">
+                <label>Disposition</label>
+                <input type="hidden" id="dr-reject-disposition" name="disposition" value=""/>
+                <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-label="Disposition"
+                     data-field="data-field" data-quiet="data-quiet" data-input="dr-reject-disposition">
+                  <button type="button" class="pfas-seg-item" aria-pressed="false" data-value="retest">Retest requested</button>
+                  <button type="button" class="pfas-seg-item" aria-pressed="false" data-value="void">Run voided</button>
+                </div>
+                <span class="hint">Results go to a new worksheet. A voided run leaves charts and the archive.</span>
+              </div>
+              <div class="form-actions is-end">
+                <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                <button type="submit" class="btn btn-danger">Reject</button>
+              </div>
+            </form>
+          </div>
         </tal:mgr_btns>
+        <!-- the batch returned to an earlier step: the batch record's window -->
+        <a class="btn btn-secondary" tal:define="sbu view/send_back_url" tal:condition="sbu"
+           tal:attributes="href sbu">Send back…</a>
       </div>
 
     </div><!-- /overview -->
@@ -666,19 +862,18 @@
       <section class="pfas-card dr-card">
         <h3 class="dr-card-title">Chain of custody</h3>
         <table class="pfas-table" data-col-resize="data-review-1" tal:define="crs python:(coc or {}).get('records')" tal:condition="crs">
-          <thead><tr><th>CoC</th><th>Status</th><th>Receipt flags</th><th></th></tr></thead>
-          <tbody><tr tal:repeat="c crs">
-            <td tal:content="c/number">COC-2026-0001</td>
+          <thead><tr><th>CoC</th><th>Status</th><th>Receipt flags</th></tr></thead>
+          <tbody><tr tal:repeat="c crs" tal:attributes="data-row-open string:${view/portal_url}/@@pfas-coc?coc=${c/number}">
+            <td><strong tal:content="c/number">COC-2026-0001</strong></td>
             <td tal:content="python:c['status'].capitalize()">Received</td>
             <td tal:content="python:u'; '.join(c['flags']) + ((u' ' + c['note']) if c['flags'] else u'')">x</td>
-            <td><a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-coc?coc=${c/number}">Open</a></td>
           </tr></tbody>
         </table>
         <div class="dr-card-actions">
           <a class="btn btn-secondary" target="_blank"
              tal:attributes="href string:${view/batch_url}/@@pfas-coc-document">Print CoC</a>
           <a class="btn btn-secondary"
-             tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=coc">Open CoC form</a>
+             tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${view/batch_uid}">Open the batch record</a>
           <tal:coc_check_btn
               tal:condition="python:not [i for i in view.checklist_status() if i['key']=='coc' and i['checked']] and view.can_act()">
             <form method="post" class="dr-inline-form"
@@ -686,7 +881,8 @@
               <input type="hidden" name="action" value="check_item"/>
               <input type="hidden" name="item_key" value="coc"/>
               <input type="hidden" name="tab" value="coc"/>
-              <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" class="dr-initials"/>
+              <label>Initials
+              <input type="text" name="initials" required="required" maxlength="6" class="dr-initials" aria-label="Initials, CoC review"/></label>
               <button class="btn btn-action" type="submit">Mark CoC reviewed</button>
             </form>
           </tal:coc_check_btn>
@@ -715,10 +911,13 @@
             <span class="coc-value"
                   tal:content="python:(coc.get('lab_received_by') or '') + (' on ' + coc.get('lab_received_date') if coc.get('lab_received_date') else '')">—</span>
           </div>
-          <div class="coc-field">
+          <!-- custody seals are not asked: shown only where a receipt holds
+               an answer -->
+          <div class="coc-field" tal:condition="python:(coc.get('checks') or {}).get('seals_intact', True)"
+               tal:define="sw python:(coc.get('checks') or {}).get('seals_word', 'Yes' if coc.get('seals_intact') else 'No')">
             <span class="coc-label">Seals intact</span>
-            <span tal:attributes="class python:'coc-value coc-bool-ok' if coc.get('seals_intact') else 'coc-value coc-bool-fail'"
-                  tal:content="python:'Yes' if coc.get('seals_intact') else 'No'">No</span>
+            <span tal:attributes="class python:{'Yes': 'coc-value coc-bool-ok', 'No': 'coc-value coc-bool-fail'}.get(sw, 'coc-value')"
+                  tal:content="python:sw or 'Not answered'">No</span>
           </div>
           <div class="coc-field">
             <span class="coc-label">Labels legible</span>
@@ -752,8 +951,11 @@
         <div class="coc-summary">
           <div class="coc-field">
             <span class="coc-label">Declared on the CoC</span>
-            <span tal:attributes="class python:'coc-value coc-bool-ok' if coc.get('holding_time_ok') else 'coc-value coc-bool-fail'"
-                  tal:content="python:'Within holding time' if coc.get('holding_time_ok') else 'Not declared'">No</span>
+            <span class="coc-value" tal:condition="python:not (coc.get('checks') or {}).get('holding_time_ok', True)">Not asked</span>
+            <span tal:condition="python:(coc.get('checks') or {}).get('holding_time_ok', True)"
+                  tal:define="declared python:(coc.get('checks') or {}).get('holding_declared', coc.get('holding_time_ok'))"
+                  tal:attributes="class python:'coc-value coc-bool-ok' if declared else 'coc-value coc-bool-fail'"
+                  tal:content="python:'Within holding time' if declared else 'Not declared'">No</span>
           </div>
         </div>
         <table class="pfas-table" data-col-resize="data-review-2" tal:condition="htr"
@@ -768,13 +970,15 @@
             </tal:note>
             <tal:clock condition="not:r/note">
             <td tal:content="python:u'All %d samples' % len(r['samples']) if r['clock'] != 'processed' and len([x for x in htr if x['clock'] == r['clock']]) == 1 else u', '.join(r['samples'])">All 4 samples</td>
-            <td class="cell-nowrap" tal:content="python:r['start'] and u'%s %s' % (r['start'].isoformat(), r['start_word']) or u'not recorded'">2026-10-09 collected</td>
+            <td class="cell-nowrap" tal:content="python:r['start'] and u'%s %s' % (r['start'].isoformat(), r['start_word']) or u'not recorded'">2026-10-09 sampled</td>
             <td tal:content="python:r['limit_text'] and u'%s days' % r['limit_text'] or u'not set'">14 days</td>
             <td class="cell-nowrap" tal:content="python:r['due'] and r['due'].isoformat() or u'\u2014'">2026-10-23</td>
             <td class="cell-nowrap" tal:content="python:r['end'] and u'%s %s' % (r['end'].isoformat(), r['end_word']) or u'not recorded'">2026-10-11 extracted</td>
             <td><span tal:condition="python:r['elapsed_days'] is not None"
                       tal:attributes="class python:'qv qv-plain' if r['ok'] else 'qv qv-fail'"
-                      tal:content="python:u'%s %s of %s days' % (u'\u2713' if r['ok'] else u'\u2717', r['elapsed_days'], r['limit_text'])">2 of 14 days</span>
+                      tal:define="ic context/@@pfas-icons"><tal:m
+                      tal:replace="structure python:ic.svg('pass', u'Within the holding time') if r['ok'] else ic.svg('fail', u'Past the holding time')" />
+                      <tal:t tal:replace="python:u'%s of %s days' % (r['elapsed_days'], r['limit_text'])">2 of 14 days</tal:t></span>
                 <span tal:condition="python:r['elapsed_days'] is None" class="pfas-muted">&#8212;</span></td>
             </tal:clock>
           </tr></tbody>
@@ -805,7 +1009,7 @@
       </section>
       </tal:with_coc>
       <tal:no_coc tal:condition="not:coc/client_name|nothing">
-        <p class="dr-line">CoC not yet completed for this batch.</p>
+        <p class="dr-line">CoC not yet completed for this worksheet.</p>
       </tal:no_coc>
       </tal:coc_data>
       </tal:routine>
@@ -837,34 +1041,8 @@
           <p tal:condition="not:corr" class="dr-line">No corrections recorded.</p>
         </tal:corr>
 
-        <tal:corr_form tal:condition="view/can_act">
-          <form method="post" class="dr-corr-form" tal:define="mine view/my_initials"
-                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
-            <input type="hidden" name="action" value="correct_field"/>
-            <label>Field
-              <select name="field" class="pfas-select">
-                <option value="lab_received_date">Lab Received Date</option>
-              </select>
-            </label>
-            <label>Corrected value
-              <input type="date" name="new_value" required="required" class="pfas-input"/>
-            </label>
-            <label class="dr-corr-reason">Reason
-              <input type="text" name="reason" class="pfas-input"/>
-            </label>
-            <!-- signed as the signed-in person (their Lab Contact's initials) -->
-            <tal:signed tal:condition="mine">
-              <input type="hidden" name="initials" tal:attributes="value mine"/>
-              <span class="dr-signed-as" tal:content="string:Signed as ${mine}">Signed as AN1</span>
-            </tal:signed>
-            <label tal:condition="not:mine">Initials
-              <input type="text" name="initials" required="required" maxlength="6" class="pfas-input dr-initials"/>
-            </label>
-            <button class="btn btn-action" type="submit">Sign &amp; correct</button>
-          </form>
-          <p class="form-note">Corrections never overwrite silently: the previous value, your
-            initials and the date are recorded and shown in the final review.</p>
-        </tal:corr_form>
+        <p class="form-note">A received CoC is corrected on its own record, with a reason that is
+          logged: open it from the Chain of custody card.</p>
       </section>
 
     </div><!-- /coc -->
@@ -884,7 +1062,7 @@
              `reason`, hence the `|nothing` default. -->
         <tal:unresl tal:condition="t/unresolved|nothing">
           <div class="tree-warn-box">
-            <i class="fas fa-exclamation-triangle"></i>
+            <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('warn', hidden=True, size='md')" />
             <strong>Traceability blocked:</strong>
             <ul style="margin:6px 0 0 18px;padding:0">
               <tal:ur tal:repeat="u t/unresolved">
@@ -900,7 +1078,7 @@
                   <tal:why tal:condition="u/reason|nothing">
                     &mdash; <tal:r tal:replace="u/reason">reason</tal:r>
                   </tal:why>
-                  <!-- a lot pending verification: the reviewer approves or
+                  <!-- a lot pending acceptance: the reviewer approves or
                        rejects it here (lot_status.review_lot) -->
                   <details class="row-more" tal:condition="python:u.get('pending') and u.get('uid') and view.can_act()">
                     <summary class="btn-sm btn-secondary">Review lot</summary>
@@ -910,14 +1088,14 @@
                         <input type="hidden" name="batch_id" tal:attributes="value view/batch_id" />
                         <input type="hidden" name="uid" tal:attributes="value u/uid" />
                         <input type="hidden" name="kind" tal:attributes="value u/kind" />
-                        <label class="mp-issue-label">Verified by
+                        <label class="mp-issue-label">Acceptance check
                           <select name="how" required="required">
                             <option value="method_blank">Method blank</option>
                             <option value="comparison">Comparison with a fit-for-use lot</option>
                           </select></label>
                         <label class="mp-issue-label">Evidence
                           <input type="text" name="evidence" class="pfas-input" required="required" /></label>
-                        <button class="btn-sm btn-primary" type="submit">Approve</button>
+                        <button class="btn-sm btn-primary" type="submit">Accept the lot</button>
                       </form>
                       <form method="post" class="mp-issue-form" tal:attributes="action request/URL">
                         <input type="hidden" name="action" value="reject_lot" />
@@ -947,7 +1125,7 @@
              certificate values were corrected (R5-78) -->
         <tal:rf tal:define="rf view/review_flags" tal:condition="rf">
           <div class="tree-warn-box">
-            <i class="fas fa-exclamation-triangle"></i>
+            <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('warn', hidden=True, size='md')" />
             <strong>Flagged:</strong>
             <ul style="margin:6px 0 0 18px;padding:0">
               <li tal:repeat="f rf" tal:content="python:u'%s (%s, %s)' % (f.get('why'), f.get('by') or u'?', view.lab_at(f.get('at'), (f.get('at') or u'').replace(u'T', u' ')))">why</li>
@@ -956,7 +1134,7 @@
         </tal:rf>
         <tal:warn tal:condition="t/warnings|nothing">
           <div class="tree-warn-box" style="border-left-color:var(--s-secondary)">
-            <i class="fas fa-info-circle"></i>
+            <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('note', hidden=True, size='md')" />
             <strong>Not checked:</strong>
             <ul style="margin:6px 0 0 18px;padding:0">
               <li tal:repeat="w t/warnings" tal:content="w">warning</li>
@@ -967,25 +1145,18 @@
         <!-- One table for everything the extraction log names: reagents,
              consumables and the standards used -->
         <section class="pfas-card dr-card" tal:define="rows python:view.trace_rows(t)" tal:condition="rows">
-          <h3 class="dr-card-title">Reagents and standards (<tal:f replace="python:view.form_code('252')"/>)</h3>
-          <table class="pfas-table" data-col-resize="data-review-5">
-            <thead><tr><th>Reagent or standard</th><th>Lot</th><th>Supplier</th><th>Expiry</th>
-              <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th></tr></thead>
-            <tbody><tr tal:repeat="r rows">
+          <h3 class="dr-card-title">Reagents and standards</h3>
+          <!-- a lot in the inventory: its menu opens the lot and its
+               certificate, each in a new tab -->
+          <table class="pfas-table" data-col-resize="data-review-5" tal:define="rm context/@@pfas-row-menu">
+            <thead><tr><th>Reagent or standard</th><th>Lot</th><th>Supplier</th><th>Expiry</th></tr></thead>
+            <tbody><tr tal:repeat="r rows"
+                       tal:attributes="data-row-actions python:rm.actions(*[(m['label'], 'href', m['url'], {'blank': True}) for m in (r['menu'] or [])])">
               <td tal:content="r/name">Methanol</td>
               <td class="cell-nowrap"><tal:l tal:content="r/lot">LOT-1</tal:l>
                 <div class="tree-unresolved" tal:condition="python:not r['found'] and r['lot']">not in inventory</div></td>
               <td tal:content="r/supplier">Supplier</td>
               <td class="cell-nowrap" tal:content="python:r['expiry'] or u'\u2014'">2027-10-01</td>
-              <td class="row-plus-cell">
-                <details class="row-more" tal:condition="r/menu">
-                  <summary class="row-plus" title="Actions" tal:attributes="aria-label string:Actions for ${r/lot}">+</summary>
-                  <div class="row-more-menu">
-                    <a class="btn-sm btn-secondary" tal:repeat="m r/menu" target="_blank"
-                       tal:attributes="href m/url" tal:content="m/label">Open in Reagent Inventory</a>
-                  </div>
-                </details>
-              </td>
             </tr></tbody>
           </table>
         </section>
@@ -1018,7 +1189,7 @@
             tal:condition="python:not t.get('direct_reagents') and not t.get('direct_standards') and not t.get('prepared_standards')">
           <p style="color:var(--s-secondary);font-size:var(--fs-base);">
             No traceability data found. Choose the lots loaded in the Run Builder and fill in
-            <tal:f replace="python:view.form_code('252')"/> for this worksheet.
+            the extraction record for this worksheet.
           </p>
           <div style="display:flex;gap:10px;margin-top:10px;">
             <a class="btn btn-action"
@@ -1026,8 +1197,8 @@
                Run Builder
             </a>
             <a class="btn btn-action"
-               tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=252">
-               Open <tal:f replace="python:view.form_code('252')"/>
+               tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${view/batch_uid}">
+               Open the batch record
             </a>
           </div>
         </tal:empty_tree>
@@ -1041,20 +1212,20 @@
          tal:condition="python: view.active_tab() == 'extraction'">
     <tal:x tal:condition="python: view.active_tab() == 'extraction'">
     <tal:r tal:define="rec view/extraction_record">
-      <p class="dr-empty" tal:condition="not:rec">This worksheet has no batch, so there is no extraction to show.</p>
+      <p class="dr-empty" tal:condition="not:rec">There is no extraction to show.</p>
       <p class="dr-empty" tal:condition="python: rec and not rec['started']">No guided extraction is recorded for
-        batch <strong tal:content="rec/batch_id">B-1</strong>.</p>
+        <tal:k tal:replace="python:rec.get('kind', u'Worksheet').lower()">worksheet</tal:k> <strong tal:content="rec/batch_id">WS-1</strong>.</p>
       <tal:s tal:condition="python: rec and rec['started']">
       <div class="dr-ext-head">
         <span tal:attributes="class python:'cl-badge ' + ('cl-auto' if rec['finalized'] else 'cl-manual')"
-              tal:content="python: 'Finalized' if rec['finalized'] else 'Not finalized'">Finalized</span>
-        <span>Batch <strong tal:content="rec/batch_id">B-1</strong> &#183;
+              tal:content="python: 'Finalised' if rec['finalized'] else 'Not finalised'">Finalised</span>
+        <span><tal:k tal:replace="python:rec.get('kind', u'Worksheet')">Worksheet</tal:k> <strong tal:content="rec/batch_id">WS-1</strong> &#183;
           started <span tal:replace="python: view.lab_at(rec['started_at'], rec['started_at'][:16].replace('T', ' '))">x</span>
           by <span tal:replace="rec/analyst">AN1</span>
-          <tal:f tal:condition="rec/finalized"> &#183; finalized
+          <tal:f tal:condition="rec/finalized"> &#183; finalised
             <span tal:replace="python: view.lab_at(rec['finalized_at'], rec['finalized_at'][:16].replace('T', ' '))">x</span>
             by <span tal:replace="rec/finalized_by">AN1</span></tal:f></span>
-        <a class="btn-sm btn-secondary" target="_blank" tal:attributes="href rec/pdf_url">Logbook PDF</a>
+        <a class="btn-sm btn-secondary" target="_blank" tal:attributes="href rec/pdf_url">Batch record PDF</a>
         <a class="btn-sm btn-secondary" tal:attributes="href rec/guide_url">Open the extraction</a>
       </div>
 
@@ -1069,9 +1240,11 @@
           <td tal:content="python: st['analyst'] or u'\u2014'">AN1</td>
           <td class="cell-nowrap">
             <tal:t tal:condition="st/completed_at" tal:replace="python: view.lab_at(st['completed_at'], st['completed_at'][:16].replace('T', ' '))">x</tal:t>
-            <span class="cl-badge cl-manual" tal:condition="not:st/completed_at">not recorded</span></td>
+            <tal:m tal:condition="not:st/completed_at" tal:define="ic context/@@pfas-icons"
+                   tal:replace="structure python:ic.tip('sig-wait', u'Not recorded', colour='warn')" /></td>
           <td>
-            <span class="cl-badge cl-fail" tal:condition="python: st['warnings'] and not st['deviations']">needs a note</span>
+            <span class="pfas-not-recorded" tal:condition="python: st['warnings'] and not st['deviations']"
+                  tal:define="ic context/@@pfas-icons"><tal:m tal:replace="structure python:ic.svg('warn', hidden=True)" />Needs a note</span>
             <div tal:repeat="w python: st['warnings'] if not st['deviations'] else []" tal:content="w">x</div>
             <div tal:condition="st/deviations" tal:content="st/deviations">note</div>
             <div tal:condition="st/confirmed" tal:content="python: u'Checked: ' + u'; '.join(st['confirmed'])">x</div>
@@ -1131,18 +1304,21 @@
             </tal:why>
             <span class="pfas-muted"
                   tal:content="python:str(qc.get('result_count',0)) + ' QC results'">0 results</span>
-            <tal:rd tal:condition="qc/run_date|nothing">
+            <tal:rd tal:define="days view/run_days" tal:condition="days">
               <span class="pfas-muted"
-                    tal:content="python:'Run: ' + str(qc.get('run_date',''))">date</span>
+                    tal:content="python:u'Run: ' + days">date</span>
             </tal:rd>
           </div>
 
           <tal:rp tal:define="plan view/run_plan_items" tal:condition="plan">
             <h3>Run plan</h3>
-            <table class="pfas-table" data-col-resize="data-review-8">
-              <thead><tr><th>What differs from the plan</th><th>Status</th><th></th></tr></thead>
+            <!-- a departure that holds release: Clear (its menu) asks why the run stands -->
+            <table class="pfas-table" data-col-resize="data-review-8" tal:define="rm context/@@pfas-row-menu">
+              <thead><tr><th>What differs from the plan</th><th>Status</th></tr></thead>
               <tbody>
-                <tr tal:repeat="it plan">
+                <tr tal:repeat="it plan"
+                    tal:attributes="data-row-actions python:rm.actions(
+                                        (u'Clear', 'modal', u'dr-clear-%s' % repeat['it'].index) if it.get('result_status') != 'cleared' and view.can_act() else None)">
                   <td tal:content="it/flag">DW-1 was planned but did not run</td>
                   <td>
                     <span tal:condition="python:it.get('result_status') == 'cleared'"
@@ -1151,19 +1327,33 @@
                     <span tal:condition="python:it.get('result_status') != 'cleared'"
                           class="cl-badge cl-fail">Holds release</span>
                   </td>
-                  <td>
-                    <form method="post" tal:condition="python:it.get('result_status') != 'cleared' and view.can_act()"
-                          tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
-                      <input type="hidden" name="action" value="clear_run_plan"/>
-                      <input type="hidden" name="tab" value="qc_summary"/>
-                      <input type="hidden" name="result_id" tal:attributes="value it/id"/>
-                      <input type="text" name="note" required="required" placeholder="Why the run stands"/>
-                      <button class="btn btn-action" type="submit">Clear</button>
-                    </form>
-                  </td>
                 </tr>
               </tbody>
             </table>
+            <tal:d tal:repeat="it plan">
+            <div class="pfas-modal" tal:condition="python:it.get('result_status') != 'cleared' and view.can_act()"
+                 tal:attributes="id string:dr-clear-${repeat/it/index}">
+              <div class="pfas-modal-box is-narrow">
+                <h2>Clear</h2>
+                <div class="pfas-meta-row"><strong tal:content="it/flag">DW-1 was planned but did not run</strong></div>
+                <form method="post"
+                      tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+                  <input type="hidden" name="action" value="clear_run_plan"/>
+                  <input type="hidden" name="tab" value="qc_summary"/>
+                  <input type="hidden" name="result_id" tal:attributes="value it/id"/>
+                  <div class="pfas-form-field is-full">
+                    <label tal:attributes="for string:dr-clear-note-${repeat/it/index}">Why the run stands</label>
+                    <input type="text" name="note" required="required" class="pfas-input"
+                           tal:attributes="id string:dr-clear-note-${repeat/it/index}"/>
+                  </div>
+                  <div class="form-actions is-end">
+                    <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+                    <button class="btn btn-action" type="submit">Clear</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            </tal:d>
           </tal:rp>
 
           <!-- blanks only: each against the limit it was judged by, and how
@@ -1207,6 +1397,7 @@
             </table>
             <div class="dr-line" tal:repeat="n bt/notes"
                  tal:content="python:u'%s limit: %s' % (n[0], n[1])">LRB limit: below 1/3 x RL</div>
+            <div class="dr-line" tal:repeat="a bt/absent" tal:content="a">No FRB on this worksheet.</div>
           </section>
           <p class="dr-empty" tal:condition="not:bt/rows">No blanks are recorded for this run.</p>
           </tal:bt>
@@ -1285,13 +1476,13 @@
              evaluated. Ask for the value rather than skipping it. -->
         <div class="tree-warn-box is-pending" tal:condition="page/pending_spikes">
           <strong>Spike level needed before these can be evaluated.</strong>
-          <p style="font-size:var(--fs-sm);margin:6px 0 12px;">Enter the amount added; it is saved on the batch&#8217;s extraction record.</p>
+          <p style="font-size:var(--fs-sm);margin:6px 0 12px;">Enter the amount added; it is saved on the worksheet&#8217;s extraction record.</p>
           <tal:rec tal:repeat="p page/pending_spikes">
           <!-- not in the extraction's spike record: the record is the only
                source of a spike's sample and level, so it is recorded there -->
           <p class="tree-warn-line" tal:condition="p/unrecorded">
-            <strong tal:content="p/injection">injection</strong>: not in the batch&#8217;s QC.
-            <a class="btn-sm" tal:attributes="href view/extraction_guide_url">Batch QC</a>
+            <strong tal:content="p/injection">injection</strong>: not in the worksheet&#8217;s QC.
+            <a class="btn-sm" tal:attributes="href view/extraction_guide_url">Worksheet QC</a>
           </p>
           <form method="post" tal:condition="not:p/unrecorded"
                 style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
@@ -1326,6 +1517,10 @@
              tal:condition="python:not page['groups'] and not page['pending_spikes']">
           No spike QC results for this worksheet yet.
         </div>
+        <p class="dr-verdict" tal:define="fx page/factor|nothing" tal:condition="fx">
+          <span class="dr-verdict-why" tal:content="fx/text"></span>
+          <a class="btn-sm btn-secondary" tal:attributes="href fx/url" tal:content="fx/label"></a>
+        </p>
         <tal:has tal:condition="page/groups">
           <div class="qv-legend">
             <span class="qv qv-review">Review</span><span class="qv qv-fail">Fail</span>
@@ -1377,7 +1572,7 @@
                a row shows a chip only for the codes beyond it -->
           <p class="dr-common" tal:define="common python:view.common_codes_line(rows)"
              tal:condition="common" tal:content="common">All results carry H</p>
-          <div class="table-wrap" tal:define="meanings view/qualifier_meanings; iu view/instrument_unit">
+          <div class="table-wrap" tal:define="meanings view/qualifier_meanings; iu view/instrument_unit; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons">
             <table class="pfas-table dr-final" data-col-resize="data-review-dr-final">
               <thead>
                 <tr>
@@ -1388,20 +1583,34 @@
                   <th>Unit</th>
                   <th class="is-right num" tal:content="python:u'Instrument result (%s)' % iu if iu else u'Instrument result'">Instrument result (ng/L)</th>
                   <th class="is-right num">RT (min)</th>
-                  <th class="is-slim" tal:condition="asks"><span class="pfas-sr-hide">Ask the preparer</span></th>
                 </tr>
               </thead>
               <tbody>
                 <tal:row tal:repeat="row rows">
                   <!-- the value in its number column; an isomer sum's parts
-                       on the muted line under it (tr.fd-parts) -->
+                       on the muted line under it (tr.fd-parts); the row's
+                       menu asks the preparer about its injection (dr-ask) -->
                   <tr tal:define="parted python:bool(row.get('instrument_parts') or row.get('rt_parts'))"
-                      tal:attributes="class python:u' '.join(c for c in ({'review': u'is-review'}.get(row.get('state')), u'fd-has-parts' if parted else None) if c) or None">
-                    <td tal:content="row/sample_id">SID</td>
+                      tal:attributes="class python:u' '.join(c for c in ({'review': u'is-review'}.get(row.get('state')), u'fd-has-parts' if parted else None, 'is-archived' if row.get('withheld') else None) if c) or None;
+                                      data-ask-injection python:view.ask_target(row.get('injection')) if asks and not row.get('withheld') else None;
+                                      data-row-actions python:rm.actions((u'Ask the preparer\u2026', 'event', 'dr-ask',
+                                                                          {'note': u'A dilution or re-injection of %s %s' % (row.get('sample_id'), row.get('analyte'))}) if asks and not row.get('withheld') else None,
+                                                                         (u'Needs re-extraction\u2026', 'href', row['reextract_url']) if row.get('reextract_url') else None)">
+                    <!-- a field QC or a dilution retest carries its type's icon; a plain sample none;
+                         a row withheld for re-extraction says so -->
+                    <td tal:define="tc row/type_code|nothing"><span class="pfas-type-cell" tal:condition="tc"><tal:i
+                          tal:replace="structure python:ti.svg(tc)" /><span tal:content="row/sample_id">SID</span></span><tal:s
+                          tal:condition="not:tc" tal:replace="row/sample_id">SID</tal:s>
+                        <span class="pfas-tag" tal:condition="row/withheld|nothing"
+                              title="Withheld for re-extraction: not reported">Withheld</span></td>
                     <td class="qv-analyte" tal:content="row/analyte">analyte</td>
                     <!-- a qualifier explains itself: its meaning and why it was
-                         applied on hover; a click opens the QC record behind it -->
-                    <td><tal:q tal:condition="row/qualifier|nothing"><span class="fd-qual"
+                         applied on hover; a click opens the QC record behind it.
+                         J first: the certificate's J beside a number between
+                         the MDL and the RL -->
+                    <td><span class="fd-qual" tal:condition="row/rule_code|nothing"
+                          tal:attributes="title view/estimate_meaning; aria-label view/estimate_meaning"
+                          tal:content="row/rule_code">J</span><tal:q tal:condition="row/qualifier|nothing"><span class="fd-qual"
                           tal:define="why python:u': '.join(x for x in (meanings.get(row['qualifier']), row.get('qc_reasons')) if x)"
                           tal:attributes="title python:why or None; aria-label python:why or None;
                                           data-prov python:(row.get('qc_cell') or {}).get('prov') and row['qc_cell']['prov'][0] or None;
@@ -1420,26 +1629,31 @@
                                         tabindex python:0 if row.get('instrument_prov') else None"
                         tal:content="python:row.get('instrument') or (u'' if parted else u'\u2014')">0.42</td>
                     <td class="is-right num" tal:content="python:row.get('rt') or (u'' if parted else u'\u2014')">7.82</td>
-                    <td class="is-slim" tal:condition="asks"><button type="button" class="btn-sm btn-secondary dr-ask"
-                        tal:attributes="data-ask-injection python:view.ask_target(row.get('injection'));
-                                        aria-label string:Ask the preparer about ${row/sample_id} ${row/analyte}">Ask…</button></td>
                   </tr>
                   <tr class="fd-parts" tal:condition="python:row.get('instrument_parts') or row.get('rt_parts')">
                     <td colspan="5"></td>
                     <td class="is-right num" tal:content="row/instrument_parts|nothing">lr 4.896 · br 1.224</td>
                     <td class="is-right num" tal:content="row/rt_parts|nothing">lr 8.10 · br 7.95</td>
-                    <td tal:condition="asks"></td>
                   </tr>
                 </tal:row>
               </tbody>
             </table>
+          </div>
+          <!-- the key: what each code on the table means, as the certificate's legend says it -->
+          <div class="pfas-legend" tal:define="lines python:view.final_data_legend(rows)" tal:condition="lines">
+            <tal:l repeat="l lines"><span tal:content="l/line"></span> </tal:l>
+          </div>
+          <!-- an Evaluate rule's failure: the code its kind would print, for the reviewer only -->
+          <div class="pfas-legend" tal:define="adv view/advisory_lines|nothing" tal:condition="adv">
+            <strong>Not printed (Evaluate):</strong>
+            <tal:l repeat="l adv"><span tal:content="l"></span>; </tal:l>
           </div>
         </tal:has_rows>
         <tal:no_rows tal:condition="not:rows|nothing">
           <p class="dr-empty">No results found for this worksheet.</p>
         </tal:no_rows>
 
-        <!-- what was asked of the preparer from a row's Ask… -->
+        <!-- what was asked of the preparer from a row's Ask the preparer… -->
         <section class="pfas-card dr-card" tal:condition="view/run_requests">
           <h3 class="dr-card-title">Requests to the preparer</h3>
           <table class="pfas-table" data-col-resize="data-review-10">
@@ -1453,8 +1667,101 @@
           </table>
         </section>
 
-        <!-- the request form: a row's Ask… opens it in the centred dialog
-             with that row's injection chosen -->
+        <!-- a sample's result above the calibration range with no dilution:
+             release waits on each until a dilution is run or the reviewer
+             records, from its row's menu, the reason to report it with E -->
+        <tal:above tal:define="above view/above_range_items" tal:condition="above">
+        <section class="pfas-card dr-card" tal:define="rm context/@@pfas-row-menu;
+                                                       open python:view.can_act() and view.ws_state() not in view.CLOSED_STATES">
+          <h3 class="dr-card-title">Above the calibration range</h3>
+          <table class="pfas-table dr-above" data-col-resize="data-review-above-range">
+            <thead><tr><th>Injection</th><th>Analyte</th><th class="is-right num">Reading</th>
+              <th class="is-right num">Top of the range</th><th>Status</th></tr></thead>
+            <tbody><tr tal:repeat="a above"
+                       tal:attributes="data-above-injection a/injection; data-above-analyte a/analyte;
+                                       data-row-actions python:rm.actions((u'Report with E…', 'event', 'dr-report-e')
+                                                                          if open and not a['reason'] else None)">
+              <td tal:content="a/injection">S-1</td>
+              <td tal:content="a/analyte">PFOA</td>
+              <td class="is-right num" tal:content="python:view.above_range_number(a['reading'])">73.2</td>
+              <td class="is-right num" tal:content="python:view.above_range_number(a['limit'])">40</td>
+              <td tal:content="python:view.above_range_status(a)">Waiting for a dilution or a reason</td>
+            </tr></tbody>
+          </table>
+        </section>
+        </tal:above>
+        <template id="dr-report-e-form" tal:condition="python:view.can_act() and view.above_range_items()"
+                  data-title="Report with E">
+          <form method="post" class="dr-request-form">
+            <input type="hidden" name="action" value="report_above_range" />
+            <input type="hidden" name="tab" value="final_data" />
+            <input type="hidden" name="injection" value="" />
+            <input type="hidden" name="analyte" value="" />
+            <p class="dr-report-e-what"></p>
+            <label class="dr-request-why">Reason to report it without a dilution
+              <input type="text" name="reason" required="required" class="pfas-input" /></label>
+            <button class="btn btn-primary" type="submit">Report with E</button>
+          </form>
+        </template>
+
+        <!-- a sample's result the instrument wrote BLoQ with no number:
+             release waits on each until the reviewer records, from its
+             row's menu, the reason to report it; never reported not
+             detected silently -->
+        <tal:nonum tal:define="nonum view/no_number_items" tal:condition="nonum">
+        <section class="pfas-card dr-card" tal:define="rm context/@@pfas-row-menu;
+                                                       open python:view.can_act() and view.ws_state() not in view.CLOSED_STATES">
+          <h3 class="dr-card-title">The instrument gave no number</h3>
+          <table class="pfas-table dr-no-number" data-col-resize="data-review-no-number">
+            <thead><tr><th>Injection</th><th>Analyte</th><th>Status</th></tr></thead>
+            <tbody><tr tal:repeat="a nonum"
+                       tal:attributes="data-above-injection a/injection; data-above-analyte a/analyte;
+                                       data-row-actions python:rm.actions((u'Record a reason…', 'event', 'dr-no-number')
+                                                                          if open and not a['reason'] else None)">
+              <td tal:content="a/injection">S-1</td>
+              <td tal:content="a/analyte">PFOA</td>
+              <td tal:content="python:view.no_number_status(a)">Waiting for a reason</td>
+            </tr></tbody>
+          </table>
+        </section>
+        </tal:nonum>
+        <template id="dr-no-number-form" tal:condition="python:view.can_act() and view.no_number_items()"
+                  data-title="Record a reason">
+          <form method="post" class="dr-request-form">
+            <input type="hidden" name="action" value="resolve_no_number" />
+            <input type="hidden" name="tab" value="final_data" />
+            <input type="hidden" name="injection" value="" />
+            <input type="hidden" name="analyte" value="" />
+            <p class="dr-report-e-what"></p>
+            <label class="dr-request-why">Reason to report it without the instrument's number
+              <input type="text" name="reason" required="required" class="pfas-input" /></label>
+            <button class="btn btn-primary" type="submit">Record the reason</button>
+          </form>
+        </template>
+        <script tal:condition="python:view.can_act() and (view.above_range_items() or view.no_number_items())">
+        /* a row's Report with E… (the menu's event "dr-report-e") or Record
+           a reason… ("dr-no-number") opens its reason form in the centred
+           dialog, naming the row's result */
+        (function () {
+          var forms = {'dr-report-e': 'dr-report-e-form', 'dr-no-number': 'dr-no-number-form'};
+          document.addEventListener('pfas:row-action', function (e) {
+            var row = e.detail ? e.detail.row : null;
+            var C = window.PFAS && window.PFAS.components;
+            var tpl = row && forms[e.detail.name] ? document.getElementById(forms[e.detail.name]) : null;
+            if (!tpl || !C || !C.drawer) return;
+            var form = tpl.content.firstElementChild.cloneNode(true);
+            var inj = row.getAttribute('data-above-injection') || '', an = row.getAttribute('data-above-analyte') || '';
+            form.querySelector('input[name="injection"]').value = inj;
+            form.querySelector('input[name="analyte"]').value = an;
+            form.querySelector('.dr-report-e-what').textContent = an + ' in ' + inj;
+            C.drawer.open(tpl.getAttribute('data-title'), form,
+                          { cls: 'is-dialog', opener: row, focus: form.querySelector('input[name="reason"]') });
+          });
+        })();
+        </script>
+
+        <!-- the request form: a row's Ask the preparer… (its menu) opens it
+             in the centred dialog with that row's injection chosen -->
         <template id="dr-ask-form" tal:condition="asks"
                   data-title="Ask the preparer for a dilution or re-injection">
           <form method="post" class="dr-request-form">
@@ -1474,16 +1781,17 @@
           </form>
         </template>
         <script tal:condition="asks">
-        /* a row's Ask… opens the request form in the centred dialog, the
-           row's injection chosen; a row whose injection is none of the
-           batch's chooses nothing and asks for it */
+        /* a row's Ask the preparer… (the menu's event "dr-ask") opens the
+           request form in the centred dialog, the row's injection chosen; a
+           row whose injection is none of the batch's chooses nothing and
+           asks for it */
         (function () {
           var tpl = document.getElementById('dr-ask-form');
           if (!tpl) return;
-          document.addEventListener('click', function (e) {
-            var btn = e.target.closest ? e.target.closest('button[data-ask-injection]') : null;
+          document.addEventListener('pfas:row-action', function (e) {
+            var btn = e.detail ? e.detail.row : null;
             var C = window.PFAS && window.PFAS.components;
-            if (!btn || !C || !C.drawer) return;
+            if (!btn || e.detail.name !== 'dr-ask' || !C || !C.drawer) return;
             var form = tpl.content.firstElementChild.cloneNode(true);
             var inj = btn.getAttribute('data-ask-injection') || '';
             var select = form.querySelector('select[name="injection"]');
@@ -1514,7 +1822,8 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="final_data"/>
             <input type="hidden" name="tab" value="final_data"/>
-            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
+            <label>Initials
+            <input type="text" name="initials" required="required" maxlength="6" aria-label="Initials, final data review" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/></label>
             <button class="btn btn-action" type="submit">Mark Final Data Reviewed</button>
           </form>
         </tal:fd_check>
@@ -1527,7 +1836,6 @@
          tal:condition="python: view.active_tab() == 'raw' and view.raw_available()">
       <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/raw_data.css?v=${context/@@pfas-macros/asset_version}" />
       <script type="application/json" id="raw-data-json" tal:content="structure view/raw_tab_json">{}</script>
-      <p class="pfas-muted raw-help"><tal:h define="hid string:raw-review"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
       <div id="raw-data"></div>
       <!-- asked over the open card when its change is not applied: Previous, Next, Escape -->
       <div class="pfas-modal is-top" id="raw-leave">
@@ -1602,7 +1910,9 @@
             <td tal:content="python:'%.4g' % l['raw_conc'] if l['raw_conc'] is not None else u'\u2014'">1</td>
             <td tal:content="python:'%.1f' % l['conc_pct'] if l['conc_pct'] is not None else u'\u2014'">0</td>
             <td tal:content="l/vendor_verdict">pass</td>
-            <td tal:content="python:(u'\u2717 ' if l['disagree'] else u'') + l['raw_verdict']">pass</td>
+            <td><tal:m tal:condition="l/disagree" tal:define="ic context/@@pfas-icons"
+                       tal:replace="structure python:ic.svg('fail', u'Disagrees with the instrument')" />
+                <tal:t tal:replace="l/raw_verdict">pass</tal:t></td>
           </tr>
         </tbody>
       </table>
@@ -1646,6 +1956,144 @@
         </div>
       </tal:raw>
 
+      <!-- the run's injections and what each was judged as: a row's menu
+           corrects its identity (a reason each, the run judged again) -->
+      <section class="pfas-card dr-card" id="dr-injections"
+               tal:define="inj view/identity_injections; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons" tal:condition="inj">
+        <h3 class="dr-card-title">Injections</h3>
+        <ul class="bench-alerts" tal:condition="view/identity_pending">
+          <li class="bench-bad" tal:content="view/IDENTITY_PENDING">Pending</li>
+        </ul>
+        <table class="pfas-table dr-injections" data-col-resize="data-review-injections">
+          <thead><tr><th>Injection</th><th>Judged as</th><th>Sample</th><th class="is-right num">Compounds</th></tr></thead>
+          <tbody><tr tal:repeat="i inj"
+                     tal:attributes="data-identity-injection i/injection; data-identity-role i/role;
+                                     data-identity-label i/role_label; data-row-actions i/actions">
+            <td tal:content="i/injection">FDA_CCV_261027_01</td>
+            <td><tal:r tal:replace="structure python:ti.cell(i['role'], i['role_label'])">CCV</tal:r><span tal:condition="i/marker"
+                  tal:attributes="class python:'pfas-tag is-warn' if i['marker']['waiting'] else 'pfas-tag';
+                                  title i/marker/title"
+                  tal:content="i/marker/text">Corrected</span></td>
+            <td tal:content="python:i['sample_id'] or u'\u2014'">S-1</td>
+            <td class="is-right num" tal:content="i/compounds">32</td>
+          </tr></tbody>
+        </table>
+      </section>
+      <template id="dr-identity-form" tal:condition="python:view.identity_injections() and not view.identity_closed()"
+                data-title="Correct identity">
+        <form method="post" class="dr-identity-form" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="correct_identity" />
+          <input type="hidden" name="injection" value="" />
+          <input type="hidden" name="to" value="" />
+          <div class="pfas-form-field is-full is-spaced">
+            <label>Judged now as</label>
+            <strong class="dr-identity-current">CCV</strong>
+          </div>
+          <div class="pfas-form-field is-full is-spaced">
+            <label>Correct to</label>
+            <div class="pfas-seg pfas-seg-sm is-fit dr-identity-roles" role="group" aria-label="Correct to"
+                 tal:define="ti context/@@pfas-type-icons">
+              <button type="button" class="pfas-seg-item" aria-pressed="false" tal:repeat="o view/identity_offered"
+                      tal:attributes="data-value o/code" tal:content="structure python:ti.cell(o['code'], o['label'])">CCV</button>
+            </div>
+          </div>
+          <div class="pfas-form-field is-full is-spaced">
+            <label for="dr-identity-reason">Reason</label>
+            <textarea id="dr-identity-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+          </div>
+          <div class="pfas-form-field is-full is-spaced dr-identity-what" hidden="hidden">
+            <label>What will be judged again</label>
+            <ul class="dr-identity-lines"></ul>
+          </div>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-identity-cancel="1">Cancel</button>
+            <button type="submit" class="btn btn-primary" disabled="disabled">Correct identity</button>
+          </div>
+        </form>
+      </template>
+      <template id="dr-identity-undo-form" tal:condition="python:view.identity_injections() and not view.identity_closed()"
+                data-title="Undo the correction">
+        <form method="post" class="dr-identity-form" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="revert_identity" />
+          <input type="hidden" name="injection" value="" />
+          <div class="pfas-form-field is-full is-spaced">
+            <label>Judged now as</label>
+            <strong class="dr-identity-current">CCV</strong>
+          </div>
+          <div class="pfas-form-field is-full is-spaced">
+            <label for="dr-identity-undo-reason">Reason</label>
+            <textarea id="dr-identity-undo-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+          </div>
+          <div class="pfas-form-field is-full is-spaced">
+            <label>What follows</label>
+            <ul class="dr-identity-lines">
+              <li tal:repeat="t view/identity_undo_lines" tal:content="t">Judged again as the run says.</li>
+            </ul>
+          </div>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-identity-cancel="1">Cancel</button>
+            <button type="submit" class="btn btn-danger">Undo the correction</button>
+          </div>
+        </form>
+      </template>
+      <script type="application/json" id="dr-identity-what"
+              tal:condition="python:view.identity_injections() and not view.identity_closed()"
+              tal:content="structure view/identity_what_json">{}</script>
+      <script tal:condition="python:view.identity_injections() and not view.identity_closed()">
+      /* a row's Correct identity… (the menu's event "dr-identity") or Undo
+         the correction… ("dr-identity-undo") opens its form in the centred
+         dialog: the injection, what it is judged as now, the roles the
+         method offers but that one, a required reason and, for the role
+         chosen, what will be judged again */
+      (function () {
+        var forms = {'dr-identity': 'dr-identity-form', 'dr-identity-undo': 'dr-identity-undo-form'};
+        var what = {};
+        try { what = JSON.parse(document.getElementById('dr-identity-what').textContent || '{}'); } catch (e) { what = {}; }
+        document.addEventListener('pfas:row-action', function (e) {
+          var row = e.detail ? e.detail.row : null;
+          var C = window.PFAS && window.PFAS.components;
+          var tpl = row && forms[e.detail.name] ? document.getElementById(forms[e.detail.name]) : null;
+          if (!tpl || !C || !C.drawer) return;
+          var form = tpl.content.firstElementChild.cloneNode(true);
+          var inj = row.getAttribute('data-identity-injection') || '';
+          var cur = row.getAttribute('data-identity-role') || '';
+          form.querySelector('input[name="injection"]').value = inj;
+          var label = row.getAttribute('data-identity-label') || cur, now = form.querySelector('.dr-identity-current');
+          if (C.type) { now.innerHTML = C.type.cell(cur, label); } else { now.textContent = label; }
+          var seg = form.querySelector('.dr-identity-roles'), submit = form.querySelector('button[type="submit"]');
+          var reason = form.querySelector('textarea[name="reason"]');
+          if (seg) {
+            var to = form.querySelector('input[name="to"]'), box = form.querySelector('.dr-identity-what');
+            var lines = form.querySelector('.dr-identity-lines');
+            Array.prototype.forEach.call(seg.querySelectorAll('.pfas-seg-item'), function (b) {
+              if (b.getAttribute('data-value') === cur) b.parentNode.removeChild(b);
+            });
+            var ready = function () { submit.disabled = !(to.value && reason.value.replace(/\s+/g, '')); };
+            seg.addEventListener('click', function (ev) {
+              var b = ev.target.closest('.pfas-seg-item');
+              if (!b) return;
+              to.value = b.getAttribute('data-value') || '';
+              lines.textContent = '';
+              ((what[cur] || {})[to.value] || []).forEach(function (t) {
+                var li = document.createElement('li'); li.textContent = t; lines.appendChild(li);
+              });
+              box.hidden = !lines.childNodes.length;
+              ready();
+            });
+            reason.addEventListener('input', ready);
+          }
+          Array.prototype.forEach.call(form.querySelectorAll('[data-identity-cancel]'), function (b) {
+            b.addEventListener('click', function () { C.drawer.close(); });
+          });
+          C.drawer.open(tpl.getAttribute('data-title') + ': ' + inj, form,
+                        { cls: 'is-dialog', opener: row, focus: seg ? seg.querySelector('.pfas-seg-item') : reason });
+          if (seg && C.seg) C.seg(seg);
+        });
+      })();
+      </script>
+
       <!-- existing files -->
       <tal:files tal:define="files view/get_instrument_reports">
         <tal:has_files tal:condition="files|nothing">
@@ -1664,7 +2112,7 @@
                   <input type="hidden" name="filename"
                          tal:attributes="value f/filename"/>
                   <button class="btn btn-action" type="submit">
-                    <i class="fas fa-download" style="font-size:var(--fs-xs);"></i> Download
+                    <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('download', hidden=True)" /> Download
                   </button>
                 </form>
               </div>
@@ -1680,7 +2128,7 @@
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="upload_instrument_report"/>
             <label for="ir-file-input">
-              <i class="fas fa-cloud-upload-alt" style="font-size:var(--fs-xl);display:block;margin-bottom:6px;"></i>
+              <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('upload', hidden=True, size='xl')" />
               Click to upload instrument report (PDF, CSV, TSV)
             </label>
             <div class="ir-upload-row">
@@ -1744,13 +2192,20 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="instrument_report"/>
             <input type="hidden" name="tab" value="instrument_report"/>
-            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
+            <label>Initials
+            <input type="text" name="initials" required="required" maxlength="6" aria-label="Initials, instrument report review" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/></label>
             <button class="btn btn-action" type="submit">Mark Instrument Report Reviewed</button>
           </form>
         </tal:ir_check>
       </div>
 
     </div><!-- /instrument_report -->
+
+    <!-- notes nobody can act on: no strip, one summary line at the foot -->
+    <p class="pfas-hint dr-foot-notes"
+       tal:define="warns view/warnings; wc python:view.warning_counts(warns)"
+       tal:condition="python:warns and not view.warnings_actionable(warns)"><tal:n replace="wc/notes_text">1 note</tal:n>:
+      <tal:w replace="python:u' \u00b7 '.join([w['text'] for w in warns])">What the reviewer must read.</tal:w></p>
 
   </div><!-- /page-body -->
   </tal:with_ws>

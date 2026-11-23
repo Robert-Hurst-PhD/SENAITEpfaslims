@@ -21,13 +21,13 @@ from __future__ import absolute_import, unicode_literals
 import os
 
 FIGURES_DIR = os.environ.get("PFAS_HELP_FIGURES", "/data/help_figures")
-ROW = u"tr[data-href] >> nth=0"
+ROW = u"table.pfas-table tbody tr >> nth=0"
 
 FIGURES = [
     {"entry": u"method-profile", "title": u"Figure 1 · Method Profiles & QC",
      "page": u"@@pfas-method-profiles",
      "marks": [(1, u"a:has-text('+ New method')", u"+ New method starts a new method profile in the wizard."),
-               (2, ROW, u"A row opens its method profile."),
+               (2, ROW + u" >> a.btn-sm >> nth=0", u"The method's name opens its profile."),
                (3, ROW + u" >> td >> nth=3", u"The SENAITE Method the profile is linked to."),
                (4, ROW + u" >> td.mp-rev", u"The issued revision; the row's + menu holds the rest.")]},
     {"entry": u"data-review", "title": u"Figure 1 · Data Review of a worksheet",
@@ -37,18 +37,18 @@ FIGURES = [
                (3, u".pfas-seg-item:has-text('Spike QC')", u"QC: blanks, calibration and spikes against the method's limits."),
                (4, u".pfas-seg-item:has-text('Final Data')", u"Final Data: the reported results, reviewed by the analyst."),
                (5, u".pfas-seg-item:has-text('Instrument Report')", u"Instrument Report: the raw data file, attached and reviewed."),
-               (6, u"button:has-text('Submit for Review')", u"Submit for Review once all five pass; the manager verifies.")]},
+               (6, u"button:has-text('Submit for verification')", u"Submit for verification once all five pass; the manager verifies.")]},
     {"entry": u"calibration-decision", "title": u"Figure 1 · Run Builder: a new calibration curve",
      "page": u"@@pfas-run-builder?batch_id={rb}",
-     "marks": [(1, u"select[name=batch_id]", u"The extraction batch the run follows."),
+     "marks": [(1, u"select[name=batch_id]", u"The worksheet the run follows."),
                (2, u"text=Is a new calibration curve needed?", u"Whether the run builds a new curve: the method's rule, or the analyst's decision with a reason."),
                (3, u"label:has-text('Calibration series')", u"The prep sitting whose levels the curve is made from.")]},
-    {"entry": u"extraction-batch", "title": u"Figure 1 · An extraction batch",
+    {"entry": u"extraction-batch", "title": u"Figure 1 · An extraction worksheet",
      "page": u"worksheets/{ws}/@@pfas-extraction-batch",
      "marks": [(1, u"text=1. Samples", u"The worksheet's samples, as the extraction will take them."),
-               (2, u"text=2. QC", u"The QC the method asks for and the batch's size."),
-               (3, u"text=3. Parents and levels", u"Each QC member's parent sample and spiking level."),
-               (4, u"a:has-text('Guided extraction')", u"The guided extraction records the batch stage by stage.")]},
+               (2, u"text=2. QC", u"The QC the method asks for and the worksheet's size."),
+               (3, u"text=3. Parents and levels", u"Each QC member's parent sample and spiking level, and each spike's lot and volume."),
+               (4, u"a:has-text('Guided extraction')", u"The guided extraction records the worksheet stage by stage.")]},
 ]
 BY_ENTRY = dict((f["entry"], f) for f in FIGURES)
 

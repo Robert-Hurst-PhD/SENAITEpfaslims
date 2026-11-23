@@ -71,6 +71,7 @@ SOURCES = (
     ("analysis.cas", u"Analyte: CAS (the profile's code override wins)"),
     ("analysis.name", u"Analyte: name in this format (Analytes tab)"),
     ("analysis.role", u"Analyte: role (target, tentative, surrogate, internal standard)"),
+    ("analysis.quantified_by", u"Analyte: quantified by"),
     ("analysis.method", u"Analysis: method"),
     ("analysis.test_kind", u"Analysis: test (initial, dilution 1, ...)"),
     ("analysis.acquired_at", u"Analysis: analysed (acquired)"),
@@ -210,8 +211,8 @@ def _context(facts, profile, sample=None, result=None):
     if sample is not None:
         _flat(u"sample", sample, ctx)
     if result is not None:
-        for k in ("keyword", "cas", "name", "role", "method", "test_kind", "acquired_at", "run_date",
-                  "judged_at", "worksheet"):
+        for k in ("keyword", "cas", "name", "role", "quantified_by", "method", "test_kind", "acquired_at",
+                  "run_date", "judged_at", "worksheet"):
             ctx[u"analysis.%s" % k] = result.get(k)
         for k in ("value", "detected", "unit", "rl", "mdl", "dilution_factor", "qualifiers", "reportable",
                   "prep_date"):

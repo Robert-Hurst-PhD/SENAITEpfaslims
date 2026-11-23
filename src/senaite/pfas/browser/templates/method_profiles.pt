@@ -8,6 +8,10 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Method Profiles</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-primary" tal:condition="view/is_manager"
+       tal:attributes="href string:${context/portal_url}/@@pfas-method-wizard">+ New method</a>
+  </tal:r>
 
   <div metal:fill-slot="content">
   <div class="page-body">
@@ -19,36 +23,37 @@
     </ul>
     <div class="pfas-between">
       <p class="pfas-lead">Each method&#8217;s QC criteria; a save is handed to the pipeline at once. <tal:h define="hid string:method-profile"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
-      <a class="btn btn-primary" tal:condition="view/is_manager"
-         tal:attributes="href string:${context/portal_url}/@@pfas-method-wizard">+ New method</a>
     </div>
 
     <div class="table-wrap">
-    <table class="pfas-table" data-col-resize="method-profiles-1">
+    <table class="pfas-table" data-col-resize="method-profiles-1" tal:define="rm context/@@pfas-row-menu">
       <thead>
         <tr>
-          <th>Method ID</th>
-          <th>Display Name</th>
+          <th>Method</th>
           <th class="hide-mobile">Description</th>
           <th>SENAITE Method</th>
           <th>Revision</th>
-          <th class="row-plus-cell"><span class="pfas-sr-hide">Actions</span></th>
         </tr>
       </thead>
       <tbody>
-        <!-- the row opens the method's editor; the rest is in its "+" menu -->
+        <!-- the row opens the method's editor; the prints, the SENAITE
+             method and Issue revision are its menu -->
         <tr tal:repeat="m view/methods"
-            tal:attributes="data-href string:${view/portal_url}/@@pfas-method-profile-edit?method_id=${m/method_id}">
-          <td>
-            <span class="pfas-id" tal:content="m/method_id">FDA_32PFAS</span>
-          </td>
-          <td tal:content="m/display_name">FDA 32-PFAS in Food</td>
+            tal:attributes="data-row-open string:${view/portal_url}/@@pfas-method-profile-edit?method_id=${m/method_id};
+                            data-row-actions python:rm.actions(
+                                (u'Print revision', 'href', u'%s/@@pfas-settings-report?method_id=%s&rev=%s' % (view.portal_url(), m['method_id'], m['revision']['rev']),
+                                 {'blank': True, 'note': u'The issued PDF of this revision'}) if m['revision']['rev'] else None,
+                                (u'Print draft', 'href', u'%s/@@pfas-settings-report?method_id=%s&format=pdf' % (view.portal_url(), m['method_id']),
+                                 {'blank': True, 'note': u'No revision issued yet: a draft PDF of the current settings'}) if not m['revision']['rev'] else None,
+                                (u'SENAITE method', 'href', m['core_method_url'], {'note': u'The core SENAITE Method record'}),
+                                (u'Issue revision', 'modal', u'mp-issue-%s' % m['method_id']) if m['revision']['unissued'] else None)">
+          <td><strong tal:content="python:m['display_name'] or m['method_id']">FDA 32-PFAS in Food</strong></td>
           <td class="hide-mobile">
             <div class="pfas-sub" tal:content="m/description">...</div>
           </td>
           <td>
             <tal:linked tal:condition="m/core_method_url">
-              <strong tal:content="m/core_method_title">method</strong>
+              <strong>Linked</strong>
               <div class="pfas-sub">
                 <span tal:content="m/linked_services">0</span> analytes &#183;
                 <span tal:content="m/linked_sampletypes">0</span> matrices
@@ -63,34 +68,32 @@
             <span class="sur-tag sur-nocore" tal:condition="python:rv['rev'] and rv['unissued']"
                   title="Settings changed since this revision was issued">unissued changes</span>
           </td>
-          <td class="row-plus-cell" tal:define="rv m/revision">
-            <details class="row-more">
-              <summary class="row-plus" aria-label="Actions for this method" title="Actions">+</summary>
-              <div class="row-more-menu">
-                <a class="btn-sm btn-secondary" tal:condition="rv/rev"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;rev=${rv/rev}"
-                   title="The issued PDF of this revision">Print revision</a>
-                <a class="btn-sm btn-secondary" tal:condition="not:rv/rev"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;format=pdf"
-                   title="No revision issued yet: a draft PDF of the current settings">Print draft</a>
-                <a class="btn-sm btn-secondary" tal:condition="m/core_method_url"
-                   tal:attributes="href m/core_method_url"
-                   title="Open the core SENAITE Method record">SENAITE method</a>
-                <form method="post" class="mp-issue-form" tal:condition="m/revision/unissued"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
-                  <input type="hidden" name="action" value="issue_revision" />
-                  <input type="hidden" name="method_id" tal:attributes="value m/method_id" />
-                  <label class="mp-issue-label">Issue revision
-                    <input type="text" name="reason" placeholder="Reason" /></label>
-                  <button type="submit" class="btn-sm btn-primary">Issue</button>
-                </form>
-              </div>
-            </details>
-          </td>
         </tr>
       </tbody>
     </table>
     </div><!-- /table-wrap -->
+
+    <!-- Issue revision: a reason, in the shared dialog -->
+    <tal:d tal:repeat="m view/methods">
+    <div class="pfas-modal" tal:condition="m/revision/unissued" tal:attributes="id string:mp-issue-${m/method_id}">
+      <div class="pfas-modal-box is-narrow">
+        <h2 tal:content="python:u'Issue revision: %s' % (m['display_name'] or m['method_id'])">Issue revision</h2>
+        <form method="post" class="mp-issue-form"
+              tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
+          <input type="hidden" name="action" value="issue_revision" />
+          <input type="hidden" name="method_id" tal:attributes="value m/method_id" />
+          <div class="pfas-form-field is-full">
+            <label class="mp-issue-label" tal:attributes="for string:mp-issue-reason-${m/method_id}">Reason</label>
+            <input type="text" name="reason" class="pfas-input" tal:attributes="id string:mp-issue-reason-${m/method_id}" />
+          </div>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Issue</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    </tal:d>
 
   <div class="pane-footer">
     <span>Per-method QC limits applied by the calibration engine at analysis time</span>

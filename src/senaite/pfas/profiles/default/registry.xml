@@ -4,6 +4,11 @@
   <records interface="senaite.core.registry.schema.ISampleViewRegistry">
     <value key="sampleview_collapse_lab_analysis_table">True</value>
   </records>
+  <!-- core screens show dates as 2026-11-12 and times as 09:30: Plone's override of
+       its locale formats is switched on (its formats are already ISO) -->
+  <record name="Products.CMFPlone.i18nl10n.override_dateformat.Enabled">
+    <value>True</value>
+  </record>
   <!-- D65: make the controlled PFAS Certificate of Analysis the default
        impress report template (record is owned by senaite.impress; we only
        set its value). Single-per-sample so each sample gets its own

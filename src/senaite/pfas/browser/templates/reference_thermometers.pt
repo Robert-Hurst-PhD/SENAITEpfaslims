@@ -8,21 +8,23 @@
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Reference Thermometers</tal:t>
+<tal:r metal:fill-slot="header-right">
+  <a class="btn-sm btn-primary" tal:attributes="href view/add_url">+ New reference thermometer</a>
+</tal:r>
 <metal:content metal:fill-slot="content">
   <div class="page-body" tal:define="purl view/portal_url; rows view/rows">
 
     <div class="pfas-filterbar">
       <tal:h define="hid string:temperature-study"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h>
       <span class="pfas-filterbar-spacer"></span>
-      <a class="btn btn-primary" tal:attributes="href view/add_url">+ Add reference thermometer</a>
     </div>
 
     <table class="pfas-table" data-col-resize="reference-thermometers-1">
       <thead><tr><th>Equipment</th><th>Model</th><th>Serial</th><th>Laboratory</th><th>Certificate</th>
         <th>Calibrated</th><th>Due</th><th>Status</th></tr></thead>
       <tbody>
-        <tr tal:repeat="r rows" tal:attributes="data-href r/url">
-          <td tal:content="r/name">REF-1</td>
+        <tr tal:repeat="r rows" tal:attributes="data-row-open r/url">
+          <td><strong tal:content="r/name">REF-1</strong></td>
           <td tal:content="r/model">Model</td>
           <td class="pfas-mono" tal:content="r/serial">SN</td>
           <td tal:content="r/lab">Metrology lab</td>

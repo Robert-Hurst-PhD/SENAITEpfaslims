@@ -8,7 +8,7 @@ barcode, line, image ...) and a name. A field is either FIXED content (the
 lab's own text, logo, lines: pdfme's `readOnly`) or bound to a DATA FIELD of
 its kind -- a label's lot, expiry, name -- by its name.
 
-Labels are generated and printed in the browser from the ISSUED revision.
+Labels print from the ISSUED revision, one label to a page of its stock.
 The certificate's design is issued with the reporting-template revision
 (report_templates.py).
 
@@ -41,6 +41,8 @@ LABEL_FIELDS = [
     ("conc", "Concentration", "100 ng/mL"),
     ("vol", "Volume", "10 mL"),
     ("exp", "Expiry", "2027-12-31"),
+    ("exp_original", "Original expiry", "2027-06-30"),
+    ("extended", "Extended", "ext."),
     ("date", "Prepared", "2026-10-04"),
     ("analyst", "Prepared by", "AN1"),
     ("method", "Method", "EPA 537.1"),
@@ -54,34 +56,62 @@ LABEL_SIZES = [
     ("4x2", '4" × 2" (larger bottle)', 101.6, 50.8),
     ("3x1", '3" × 1" (rack/tube)', 76.2, 25.4),
     ("4x3", '4" × 3" (bulk container)', 101.6, 76.2),
+    ("89x28", "89 × 28 mm address", 89.0, 28.0),
+    ("89x36", "89 × 36 mm large address", 89.0, 36.0),
+    ("54x25", "54 × 25 mm multi-purpose", 54.0, 25.0),
+    ("57x32", "57 × 32 mm multi-purpose", 57.0, 32.0),
+    ("102x59", "102 × 59 mm shipping", 102.0, 59.0),
+    ("25x25", "25 × 25 mm square", 25.0, 25.0),
     ("a4", "A4 full page (PDF archive)", 210.0, 297.0),
 ]
 
 from senaite.pfas import coa_document as _coa                 # noqa: E402
 from senaite.pfas import custody_documents as _cus            # noqa: E402
 from senaite.pfas import doc_fields as _df                    # noqa: E402
+from senaite.pfas import label_designs as _lab                # noqa: E402
 from senaite.pfas import pdf_layout as _pl                    # noqa: E402
 from senaite.pfas import report_documents as _rep             # noqa: E402
 
 # A kind may also have TABLES: {table name: [(column key, title, example)]}.
 # A table field named after one takes that table's rows; its columns are
 # linked by key (pdfme keeps `pfasColumns` beside the header row).
+
+# Tables a design may leave out: a design issued before the table existed
+# keeps printing without it, and the Document Templates page says it is not
+# placed.
+OPTIONAL_TABLES = ("signatures",)
+
+
 def _report_kind(title, single, fields, tables, order, required, long_fields, groups=None,
-                 images=(), starter_fields=None):
-    """A designable report: one design, issued here, every table required.
-    Its fields are listed under the shared categories (doc_fields)."""
-    own = starter_fields or fields
+                 images=(), starter_fields=None, controlled=False):
+    """A designable report: one design, issued here, every table but the
+    optional ones required. Its fields are listed under the shared
+    categories (doc_fields). No table of a report prints smaller than
+    _rep.MIN_PT, whatever its design says. `controlled`: a record that
+    carries the laboratory's name and address and the document control
+    block; its starting layout places them, and a design that does not
+    place them prints them at the foot of every page (_control_footer)."""
+    own = list(starter_fields or fields)
+    banner, foot = (), ()
+    if controlled:
+        have = set(k for k, _t, _e in own)
+        own = [f for f in fields if f[0] in _rep.BANNER and f[0] not in have] + own
+        banner, foot = _rep.BANNER, (_rep.CONTROL_FIELD[0],)
     return {"title": title, "fields": fields, "sizes": PAGE_SIZES, "tables": tables,
             "single": single, "required": required,
-            "required_columns": dict((n, ()) for n in tables), "page_numbers": True,
+            "required_columns": dict((n, ()) for n in tables if n not in OPTIONAL_TABLES),
+            "page_numbers": True, "min_table_pt": _rep.MIN_PT,
+            "control_footer": tuple(banner + foot),
             "long": long_fields, "groups": groups, "images": tuple(images),
-            "starter": lambda w, h: _rep.starter(title, own, tables, order, long_fields, w, h)}
+            "starter": lambda w, h: _rep.starter(title, own, tables, order, long_fields, w, h,
+                                                 banner=banner, foot=foot)}
 
 
 # labels: what is on the bottle (traceability), who made it, for which method
 LABEL_GROUPS = _df.grouped(LABEL_FIELDS, {
     "name": _df.TRACE, "lot": _df.TRACE, "conc": _df.TRACE, "vol": _df.TRACE,
-    "exp": _df.TRACE, "storage": _df.TRACE, "date": _df.PREPARER, "analyst": _df.PREPARER,
+    "exp": _df.TRACE, "exp_original": _df.TRACE, "extended": _df.TRACE,
+    "storage": _df.TRACE, "date": _df.PREPARER, "analyst": _df.PREPARER,
     "method": _df.ANALYSIS})
 
 # An extraction batch member's label: one per container the method's Extraction labels list. The injection
@@ -113,18 +143,29 @@ EXTRACTION_LABEL_GROUPS = _df.grouped(EXTRACTION_LABEL_FIELDS, {
 PAGE_SIZES = [("a4", "A4", 210.0, 297.0), ("letter", "US Letter", 215.9, 279.4)]
 
 KINDS = {
+    # a label kind keeps one design per stock size; each starts from the
+    # layout drawn for that size (label_designs)
     "label": {"title": "Labels", "fields": LABEL_FIELDS, "sizes": LABEL_SIZES, "tables": {},
-              "groups": LABEL_GROUPS},
+              "groups": LABEL_GROUPS, "starter": _lab.label_starter,
+              "required": ("lot", "exp", "name"), "required_codes": ("lot",)},
     "extraction_label": {"title": "Extraction labels", "fields": EXTRACTION_LABEL_FIELDS,
-                         "sizes": LABEL_SIZES, "tables": {}, "groups": EXTRACTION_LABEL_GROUPS},
+                         "sizes": LABEL_SIZES, "tables": {}, "groups": EXTRACTION_LABEL_GROUPS,
+                         "starter": _lab.extraction_label_starter,
+                         "required": ("injection",), "required_codes": ("injection",)},
     # The certificate: one design, issued WITH the reporting-template revision
     # (report_templates), not on its own.
     "coa": {"title": "Certificate of Analysis", "fields": _coa.FIELDS, "sizes": PAGE_SIZES,
+            # the Signatures table is optional (OPTIONAL_TABLES): not in
+            # REQUIRED_COLUMNS, so a layout without it issues and prints
             "tables": {"results": _coa.RESULT_COLUMNS,
-                       "qc_standards": _coa.QC_STANDARD_COLUMNS}, "single": "certificate",
+                       "qc_standards": _coa.QC_STANDARD_COLUMNS,
+                       "signatures": _rep.SIGNATURES_TABLE}, "single": "certificate",
             "issued_with": "report_template",
             "required": _coa.REQUIRED_FIELDS, "required_columns": _coa.REQUIRED_COLUMNS,
             "page_numbers": True, "starter": _coa.starter,
+            # no table heading or row prints smaller than _rep.MIN_PT,
+            # whatever the issued design says
+            "min_table_pt": _rep.MIN_PT,
             "groups": _coa.GROUPS, "images": _coa.IMAGES,
             "column_groups": {"results": _coa.RESULT_COLUMN_GROUPS},
             # what a layout issued earlier may still carry: a warning on
@@ -138,17 +179,32 @@ KINDS = {
             "column_headings": {"results": {"result": _coa.RESULT_HEADING}},
             "column_widths": {"results": _coa.RESULT_WIDTHS},
             "right_aligned": {"results": _coa.RIGHT_ALIGNED},
+            # identifiers printed whole, on one line, in any layout issued
+            "unbroken": _coa.UNBROKEN_COLUMNS,
             # paragraphs: added as text that grows and moves what follows down
             "long": ("note", "legend", "qc_standards_note", "qs_statement", "departures", "regulatory",
-                     "accreditation", "qc_qualifications", "remarks", "interpretation")},
-    "extraction_log": _report_kind(
-        "Extraction Log", "extraction-log", _rep.EXTRACTION_FIELDS, _rep.EXTRACTION_TABLES,
-        _rep.EXTRACTION_ORDER, _rep.EXTRACTION_REQUIRED, ("warnings", "deviations", "pedigree"),
-        _rep.EXTRACTION_GROUPS, _rep.SIGNED_IMAGES, _rep.EXTRACTION_OWN),
+                     "accreditation", "qc_qualifications", "remarks", "interpretation"),
+            # the sample block: a box grows with its text, in any layout
+            # issued (compile_document)
+            "grows": _coa.GROWING_FIELDS,
+            # fields the certificate has gained: a layout without one issues
+            # with a warning that names it
+            "expected": _coa.EXPECTED_FIELDS},
+    # the worksheet's record from receipt to release, printed by
+    # @@pfas-extraction-pdf and a report package's batch record part
+    "batch_record": _report_kind(
+        "Batch record", "batch-record", _rep.BATCH_RECORD_FIELDS, _rep.BATCH_RECORD_TABLES,
+        _rep.BATCH_RECORD_ORDER, _rep.BATCH_RECORD_REQUIRED, _rep.BATCH_RECORD_LONG,
+        _rep.BATCH_RECORD_GROUPS, _rep.SIGNED_IMAGES, _rep.BATCH_RECORD_OWN, controlled=True),
     "qc_review": _report_kind(
         "QC Review Report", "qc-review", _rep.QC_FIELDS, _rep.QC_TABLES, _rep.QC_ORDER,
         _rep.QC_REQUIRED, ("qc_overall", "spike_pending", "unresolved", "not_run", "unplanned"),
-        _rep.QC_GROUPS, _rep.SIGNED_IMAGES, _rep.QC_OWN),
+        _rep.QC_GROUPS, _rep.SIGNED_IMAGES, _rep.QC_OWN, controlled=True),
+    "preparation": _report_kind(
+        "Preparation record", "preparation", _rep.PREPARATION_FIELDS, _rep.PREPARATION_TABLES,
+        _rep.PREPARATION_ORDER, _rep.PREPARATION_REQUIRED,
+        ("expiry_note", "equipment", "expired_parents", "extension"),
+        _rep.PREPARATION_GROUPS, _rep.SIGNED_IMAGES, _rep.PREPARATION_OWN, controlled=True),
     # after published examples: a CoC from the sample records, an SOP cover per EPA QA/G-6
     "coc": {"title": "Chain of Custody", "fields": _cus.COC_FIELDS + _df.LAB_FIELDS,
             "sizes": PAGE_SIZES, "tables": _cus.COC_TABLES, "single": "chain-of-custody",
@@ -158,6 +214,7 @@ KINDS = {
                                  "field_qc": (), "transfers": ("relinquished_by", "relinquished_at",
                                                                "received_by", "received_at")},
             "page_numbers": True, "long": _cus.COC_LONG, "groups": _cus.COC_GROUPS,
+            "control_footer": (_rep.CONTROL_FIELD[0],), "zone_in_control": True,
             "images": _df.LAB_IMAGES, "starter": _cus.coc_starter},
     "sop_cover": {"title": "Controlled document cover", "fields": _cus.SOP_FIELDS + _df.LAB_FIELDS,
                   "sizes": PAGE_SIZES, "tables": _cus.SOP_TABLES, "single": "controlled-document-cover",
@@ -168,15 +225,24 @@ KINDS = {
                   "images": _df.LAB_IMAGES, "starter": _cus.sop_starter},
     "settings_report": _report_kind(
         "Settings Report", "settings-report", _rep.SETTINGS_FIELDS, _rep.SETTINGS_TABLES,
-        _rep.SETTINGS_ORDER, _rep.SETTINGS_REQUIRED, ("methods", "unread_switches", "stale"),
-        _rep.SETTINGS_GROUPS),
+        _rep.SETTINGS_ORDER, _rep.SETTINGS_REQUIRED, ("methods", "unread_switches", "stale", "value_sources"),
+        _rep.SETTINGS_GROUPS, controlled=True),
 }
+KINDS["settings_report"]["expected"] = _rep.SETTINGS_EXPECTED
+# tables the batch record gained after designs were issued: a design issued
+# before them still prints (missing_tables), and the next issue places them
+KINDS["batch_record"]["later_tables"] = _rep.BATCH_RECORD_LATER_TABLES
 
 # A field the designer marks "on every page" (letterhead, report number,
 # "Page {currentPage} of {totalPages}") is moved into pdfme's repeating area
 # when a document is compiled (compile_document).
 EVERY_PAGE = "pfasEveryPage"
 COLUMNS = "pfasColumns"
+# A field placed beside a data-bound image (the laboratory's name beside its
+# logo) names that image here: when the image prints empty, every field
+# beside it moves left by one distance, so the leftmost takes the image's
+# place and the block keeps its own arrangement (compile_document).
+BESIDE = "pfasBeside"
 
 # Field types the vendored bundle offers (tools/pdfme/entry.js).
 PLUGIN_TYPES = ("text", "multiVariableText", "image", "svg", "table", "line",
@@ -185,6 +251,8 @@ PLUGIN_TYPES = ("text", "multiVariableText", "image", "svg", "table", "line",
 # Types whose value can come from a data field; anything else is fixed content.
 # Not GS1 DataMatrix: it needs GS1 element strings ("(01)..."), and a plain lot
 # number draws an empty square without any error.
+# The types that draw a value as a code a scanner reads.
+CODE_TYPES = ("qrcode", "code128", "code39", "pdf417")
 BINDABLE = ("text", "multiVariableText", "qrcode", "code128", "code39", "pdf417", "table")
 MAX_BYTES = 2 * 1024 * 1024          # images are embedded; keep a template small
 
@@ -240,6 +308,17 @@ def size_of(kind, size_id):
         if sid == size_id:
             return {"id": sid, "title": title, "width": w, "height": h}
     return None
+
+
+def offered_sizes(kind):
+    """The sizes a kind is offered on: every size of the kind, less those
+    where the layout drawn for that size (the kind's starter) cannot carry
+    the fields the kind requires. A kind with no starter is offered all."""
+    spec = KINDS[kind]
+    starter = spec.get("starter")
+    if starter is None or not (spec.get("required") or spec.get("required_codes")):
+        return list(spec["sizes"])
+    return [z for z in spec["sizes"] if not _required_problems(kind, starter(z[2], z[3]))]
 
 
 def blank(kind, size_id):
@@ -338,17 +417,53 @@ def validate(kind, template):
         elif base_key(name) not in keys:
             out.append("%s is not a %s data field (fixed text must be marked fixed)."
                        % (name, KINDS[kind]["title"].lower()))
-    if KINDS[kind].get("required") or KINDS[kind].get("page_numbers"):
+    if (KINDS[kind].get("required") or KINDS[kind].get("required_codes")
+            or KINDS[kind].get("page_numbers")):
         out.extend(_required_problems(kind, template))
     return out
+
+
+def _bound_tables(template):
+    """{table: the columns placed} of a template's data-bound tables."""
+    columns = {}
+    for f in _fields(template):
+        if f.get("type") == "table" and not f.get("readOnly"):
+            columns.setdefault(base_key(f.get("name")), set()).update(f.get(COLUMNS) or [])
+    return columns
+
+
+def missing_tables(kind, template):
+    """The tables a kind requires (its required_columns, the tables the
+    designer lists as required) that the template does not place, sorted:
+    a design drawn before the kind had them. A table the kind gained after
+    its designs were issued (its later_tables) is required at the next
+    issue, never of a design already issued: that design prints without
+    it."""
+    placed = _bound_tables(template)
+    later = KINDS[kind].get("later_tables") or ()
+    return sorted(t for t in (KINDS[kind].get("required_columns") or {})
+                  if t not in placed and t not in OPTIONAL_TABLES and t not in later)
+
+
+def unplaced_optional(kind, template):
+    """The optional tables of a kind (OPTIONAL_TABLES) the template does
+    not place, sorted."""
+    placed = _bound_tables(template)
+    return sorted(t for t in tables(kind) if t in OPTIONAL_TABLES and t not in placed)
 
 
 def _required_problems(kind, template):
     """What a kind must show before it may be issued (a certificate states
     everything today's certificate states, disclosures included)."""
     spec = KINDS[kind]
-    bound, columns, numbered = set(), {}, False
+    bound, coded, numbered = set(), set(), False
+    columns = _bound_tables(template)
     for f in _fields(template):
+        if f.get("type") in CODE_TYPES and not f.get("readOnly"):
+            # a code is read by a scanner, not by the person holding the
+            # container: it does not stand for the value shown as text
+            coded.add(base_key(f.get("name")))
+            continue
         if f.get("readOnly"):
             c = f.get("content") or ""
             if f.get(EVERY_PAGE) and "{currentPage}" in c and "{totalPages}" in c:
@@ -359,7 +474,7 @@ def _required_problems(kind, template):
         elif f.get("type") == "image" and base_key(f.get("name")) not in images(kind):
             continue
         elif f.get("type") == "table":
-            columns.setdefault(base_key(f.get("name")), set()).update(f.get(COLUMNS) or [])
+            continue
         else:
             bound.add(base_key(f.get("name")))
     titles = dict((k, t) for k, t, _e in spec["fields"])
@@ -369,6 +484,9 @@ def _required_problems(kind, template):
         either = k if isinstance(k, tuple) else (k,)
         if not any(x in bound for x in either):
             out.append("The %s must show %s." % (spec["title"], " or ".join(titles.get(x, x) for x in either)))
+    for k in spec.get("required_codes") or ():
+        if k not in coded:
+            out.append("The %s must show a barcode or QR code of %s." % (spec["title"], titles.get(k, k)))
     for table, cols in sorted((spec.get("required_columns") or {}).items()):
         if table not in columns:
             out.append("The %s must have the %s table." % (spec["title"], table))
@@ -545,7 +663,25 @@ def warnings(kind, template):
             key, title = headings[content.strip()]
             out.append("%s reads %s as fixed text: replace it with the %s field, which "
                        "follows who signed." % (name, content.strip(), title.lower()))
+    # a field the kind has gained since: the document is short of it until
+    # the layout places it
+    placed = set(base_key(f.get("name")) for f in _fields(template) if not f.get("readOnly"))
+    placed |= set(v for f in _fields(template) if f.get("type") == "multiVariableText"
+                  for v in _variables(f))
+    titles = dict((k, t) for k, t, _e in spec.get("fields") or [])
+    for key in spec.get("expected") or ():
+        if key not in placed:
+            out.append("The %s does not print %s: place the %s field."
+                       % (spec.get("title") or kind, titles.get(key) or key, titles.get(key) or key))
     return out
+
+
+def _field_text(value):
+    """A bound value as the field's text; a byte string (a title read from
+    core) decoded as UTF-8, never left to stop the document."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return "%s" % (value,)
 
 
 def inputs_for(kind, template, data):
@@ -563,19 +699,27 @@ def inputs_for(kind, template, data):
         if f.get("type") not in BINDABLE:
             continue
         if f.get("type") == "multiVariableText":
-            out[name] = json.dumps(dict((v, "%s" % (data.get(v) or "")) for v in _variables(f)))
+            out[name] = json.dumps(dict((v, _field_text(data.get(v) or "")) for v in _variables(f)))
         elif f.get("type") == "table":
             keys = f.get(COLUMNS) or []
             rows = data.get(base_key(name)) or []
-            out[name] = json.dumps([["%s" % (r.get(k) if r.get(k) is not None else "") for k in keys]
-                                    for r in rows])
+            cells = [[_field_text(r.get(k) if r.get(k) is not None else "") for k in keys] for r in rows]
+            if not cells and keys:
+                # a table with no rows says so under its heading, never a
+                # heading row alone
+                cells = [[NONE_RECORDED] + [""] * (len(keys) - 1)]
+            out[name] = json.dumps(cells)
         else:
             value = data.get(base_key(name)) or ""
             if isinstance(value, (list, tuple)):
                 # a list of lines (a certificate's dilution notes): one per line
-                value = "\n".join("%s" % v for v in value)
-            out[name] = "%s" % value
+                value = "\n".join(_field_text(v) for v in value)
+            out[name] = _field_text(value)
     return out
+
+
+# what an empty table prints under its heading (report_documents)
+NONE_RECORDED = _rep.NONE_RECORDED
 
 
 # pdfme 6.2.2's table defaults (its table plugin's defaultSchema). The designer
@@ -645,6 +789,246 @@ def _with_footnote_marks(template, data):
     return data
 
 
+# a fixed text that names a data field: its label, or a table's heading
+_NAMING = ("label_", "heading_")
+
+
+def subset_design(template, omit):
+    """`template` without what shows the data fields in `omit`: a field
+    bound to one, its label (label_<key>) and its heading (heading_<key>),
+    and a text with fields when every field it uses is omitted. What shows
+    no data field (the title, rules, page numbers, signatures) stays; a page
+    the omission leaves with nothing but what prints on every page is
+    dropped, its
+    every-page fields moved to the first page kept. A copy: `template` is
+    not changed."""
+    omit = set(omit)
+
+    def shows_omitted(f):
+        name = f.get("name") or ""
+        if f.get("readOnly"):
+            for prefix in _NAMING:
+                if name.startswith(prefix):
+                    return base_key(name[len(prefix):]) in omit
+            return False
+        if f.get("type") == "multiVariableText":
+            used = _variables(f)
+            return bool(used) and all(v in omit for v in used)
+        return base_key(name) in omit
+
+    t = copy.deepcopy(template)
+    pages, header = [], []
+    for page in t.get("schemas") or []:
+        kept = [f for f in page or [] if not shows_omitted(f)]
+        if len(kept) < len(page or []) and all(f.get(EVERY_PAGE) for f in kept):
+            # nothing of its own is left: the page goes, and what prints on
+            # every page moves to the first page that keeps content
+            header += kept
+            continue
+        pages.append(kept)
+    if pages:
+        pages[0] = header + pages[0]
+    else:
+        pages = [header]
+    t["schemas"] = pages
+    base = t.get("basePdf")
+    if isinstance(base, dict) and base.get("staticSchema"):
+        base["staticSchema"] = [f for f in base["staticSchema"] if not shows_omitted(f)]
+    return t
+
+
+def _fit_unbroken(kind, template, inputs):
+    """Each column a kind keeps unbroken (KINDS[kind]["unbroken"]: {table:
+    column keys}) made as wide as its longest value, in place
+    (pdf_layout.unbroken_widths)."""
+    unbroken = (KINDS.get(kind) or {}).get("unbroken") or {}
+    for f in _fields(template):
+        keys = f.get(COLUMNS) or []
+        want = unbroken.get(base_key(f.get("name"))) if f.get("type") == "table" else None
+        if not want or f.get("name") not in inputs:
+            continue
+        cols = [keys.index(k) for k in want if k in keys]
+        try:
+            rows = json.loads(inputs[f["name"]])
+        except ValueError:
+            continue
+        widths = _pl.unbroken_widths(f, rows, cols)
+        if widths:
+            f["headWidthPercentages"] = widths
+
+
+def _close_empty_images(kind, template, inputs):
+    """The fields marked BESIDE an image of this kind moved left, in place,
+    when that image is bound to data and prints empty: each by the distance
+    from the image's left edge to the leftmost field beside it. A fixed
+    image, a filled one, or one the template does not place moves nothing,
+    and a field not marked never moves."""
+    pics = images(kind)
+    placed = dict((f.get("name"), f) for f in _fields(template)
+                  if f.get("type") == "image" and not f.get("readOnly") and base_key(f.get("name")) in pics)
+    beside = {}
+    for f in _fields(template):
+        ref = f.get(BESIDE)
+        if ref and ref in placed and f.get("position"):
+            beside.setdefault(ref, []).append(f)
+    for ref, fields in beside.items():
+        if inputs.get(ref):
+            continue
+        shift = min(f["position"]["x"] for f in fields) - placed[ref]["position"]["x"]
+        if shift <= 0:
+            continue
+        for f in fields:
+            f["position"] = dict(f["position"], x=f["position"]["x"] - shift)
+
+
+# ── black and white ──────────────────────────────────────────────────────────
+
+# a pdfme field's colours: its text, its fill, its rules (a table's styles
+# carry the same keys per part)
+TEXT_COLOURS = ("fontColor",)
+FILL_COLOURS = ("backgroundColor", "alternateBackgroundColor")
+RULE_COLOURS = ("borderColor",)
+# the types whose "color" fills a shape, and the one whose "color" draws it
+FILLED_SHAPES = ("rectangle", "ellipse")
+INK, PAPER = _P["print-ink"], _P["print-paper"]
+
+
+def _luminance(colour):
+    """Relative luminance (0 black, 1 white) of a #rrggbb colour, None for
+    anything else (an empty colour, a name pdfme does not read)."""
+    c = (colour or "").strip()
+    if len(c) != 7 or not c.startswith("#"):
+        return None
+    try:
+        rgb = [int(c[i:i + 2], 16) / 255.0 for i in (1, 3, 5)]
+    except ValueError:
+        return None
+    lin = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in rgb]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _ink_or_paper(colour, kind):
+    """The colour drawn in black and white. Text and a dark fill are ink, a
+    light text (white on a band) and a light fill are paper, a rule is ink:
+    the band stays a solid bar, a tint becomes white between its rules."""
+    lum = _luminance(colour)
+    if lum is None:
+        return colour
+    if kind == "rule":
+        return INK
+    return PAPER if lum > 0.5 else INK
+
+
+def _recolour(node, kind_of_color):
+    if isinstance(node, list):
+        return [_recolour(v, kind_of_color) for v in node]
+    if not isinstance(node, dict):
+        return node
+    out = {}
+    for k, v in node.items():
+        if k in TEXT_COLOURS:
+            out[k] = _ink_or_paper(v, "text")
+        elif k in FILL_COLOURS:
+            out[k] = _ink_or_paper(v, "fill")
+        elif k in RULE_COLOURS:
+            out[k] = _ink_or_paper(v, "rule")
+        elif k == "color":
+            out[k] = _ink_or_paper(v, kind_of_color(node))
+        else:
+            out[k] = _recolour(v, kind_of_color)
+    return out
+
+
+def monochrome(template):
+    """A compiled document in black and white, for a client who takes its
+    certificates so (Client reporting), and every designed document of its
+    report package: the same fields in the same places with the same words,
+    every colour ink or paper. Applied to the compiled template, so the
+    design's fields, its repeating area and the footers the compiler adds
+    all print alike; the issued design itself is never changed. Images are
+    data, not layout: monochrome_document inks the signatures and greys the logo."""
+    def kind_of_color(field):
+        return "fill" if field.get("type") in FILLED_SHAPES else "rule"
+    return _recolour(template, kind_of_color)
+
+
+def _redrawn(uri, tone):
+    """A PNG or JPEG data URI redrawn as a PNG data URI by tone(grey, alpha),
+    which returns the grey levels to print; its transparency is kept.
+    Anything else (empty, not a picture, an image the imaging library cannot
+    read) comes back unchanged."""
+    import base64
+    import io
+    head, sep, body = ("%s" % (uri or "")).partition(",")
+    if not sep or not head.startswith("data:image/") or ";base64" not in head:
+        return uri
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(base64.b64decode(body)))
+        img.load()
+        rgba = img.convert("RGBA")
+        alpha = rgba.split()[3]
+        grey = tone(rgba.convert("L"), alpha)
+        out = Image.merge("LA", (grey, alpha)) if alpha.getextrema()[0] < 255 else grey
+        buf = io.BytesIO()
+        out.save(buf, "PNG")
+    except Exception:                                       # noqa: BLE001
+        return uri
+    b64 = base64.b64encode(buf.getvalue())
+    if not isinstance(b64, type(u"")):
+        b64 = b64.decode("ascii")
+    return "data:image/png;base64,%s" % b64
+
+
+def ink_image(uri):
+    """A picture redrawn in ink: grey levels only, the darkest stroke black,
+    the paper white, soft edges the greys between, its transparency kept.
+    Drawn for the print only: the stored image is never changed."""
+    def tone(grey, alpha):
+        from PIL import Image
+        # the darkest mark the reader sees becomes black; white stays white
+        seen = Image.composite(grey, Image.new("L", grey.size, 255), alpha.point(lambda a: 255 if a else 0))
+        lo = seen.getextrema()[0]
+        if lo < 255:
+            grey = grey.point(lambda v: 0 if v <= lo else int(round(255.0 * (v - lo) / (255 - lo))))
+        return grey
+    return _redrawn(uri, tone)
+
+
+def grey_image(uri):
+    """A picture redrawn in greyscale: each colour as the grey of the same
+    lightness, its tones and its transparency kept (ink_image stretches the
+    tones to black and white). Drawn for the print only: the stored image
+    is never changed."""
+    return _redrawn(uri, lambda grey, alpha: grey)
+
+
+def monochrome_document(kind, template, inputs):
+    """(template, inputs) of a compiled document in black and white: the
+    layout recoloured (monochrome), every signature image it prints in ink
+    (ink_image) and the laboratory's logo in greyscale (grey_image). The
+    inputs are a copy."""
+    inked = dict(inputs or {})
+    signatures = set(images(kind)) - set(_df.LAB_IMAGES)
+    for name, value in inked.items():
+        if not value:
+            continue
+        if base_key(name) in signatures:
+            inked[name] = ink_image(value)
+        elif base_key(name) in _df.LAB_IMAGES:
+            inked[name] = grey_image(value)
+    mono = monochrome(template)
+    base = mono.get("basePdf")
+    if isinstance(base, dict) and base.get("staticSchema"):
+        # a logo set on every page is fixed content of the repeating area,
+        # its picture written into the field
+        fixed = [dict(f, content=grey_image(f["content"]))
+                 if f.get("type") == "image" and base_key(f.get("name")) in _df.LAB_IMAGES and f.get("content")
+                 else f for f in base["staticSchema"]]
+        mono = dict(mono, basePdf=dict(base, staticSchema=fixed))
+    return mono, inked
+
+
 def compile_document(kind, template, data):
     """The template and input for ONE document: fields marked "on every page"
     move into pdfme's repeating area (basePdf.staticSchema) as fixed content,
@@ -652,13 +1036,19 @@ def compile_document(kind, template, data):
     placeholder ({currentPage}, {totalPages}), so a VALUE containing braces is
     refused rather than evaluated. Returns (template, input)."""
     t = copy.deepcopy(template)
+    floor = (KINDS.get(kind) or {}).get("min_table_pt")
     for f in _fields(t):
         if f.get("type") == "table":
             _fill(f, TABLE_DEFAULTS)
+            if floor:
+                _readable_table(f, floor)
     _drop_hidden_columns(t, (data or {}).get("_hidden_columns") or {})
     fill_headings(kind, t, data)
     data = _with_footnote_marks(t, data)
     inputs = inputs_for(kind, t, data)
+    placed_note = _fill_times_note(t, inputs)
+    _fit_unbroken(kind, t, inputs)
+    _close_empty_images(kind, t, inputs)
     static = list((t.get("basePdf") or {}).get("staticSchema") or [])
     pages = []
     for page in t.get("schemas") or []:
@@ -686,8 +1076,15 @@ def compile_document(kind, template, data):
             f["readOnly"] = True
             static.append(f)
         pages.append(keep)
+    # a kind's short fields that must hold a long value (a certificate's
+    # method name, a client's sample ID) grow with it, on a flowing page
+    grows = (KINDS.get(kind) or {}).get("grows") or ()
+    if grows and isinstance(t.get("basePdf"), dict):
+        pages = [_pl.grow_text(page, inputs, lambda name: base_key(name) in grows) for page in pages]
     t["schemas"] = pages
-    static += _times_footer(t, inputs, static)
+    static += _control_footer(kind, t, data, static)
+    if not (KINDS.get(kind) or {}).get("zone_in_control") and not placed_note:
+        static += _times_footer(t, inputs, static)
     if static:
         t["basePdf"] = dict(t["basePdf"], staticSchema=static)
     # a table that breaks across pages takes the room its repeated heading
@@ -696,13 +1093,116 @@ def compile_document(kind, template, data):
 
 
 TIMES_FIELD = "times_zone"
+# a data field a design places to say the zone once, where it chooses (a
+# certificate's end); a design that places it prints no line on every page
+TIMES_NOTE = "times_note"
+CONTROL_FOOTER_FIELD = "control_footer"
+# the smallest text a foot line prints
+FOOT_PT = 7
+# a control footer's line height (mm), the room it leaves the page number on
+# its right, and the bottom margin a design must keep for it to fit
+_FOOT_LINE, _FOOT_RIGHT, _FOOT_ROOM = 3.0, 55.0, 17.0
+
+
+def _readable_table(field, floor):
+    """A table's heading and body text raised to `floor` points when its
+    design drew them smaller, and its heading repeated on every page it
+    runs onto unless the design says otherwise. Text at or above the floor
+    is left as drawn."""
+    for part in ("headStyles", "bodyStyles"):
+        style = field.get(part)
+        if isinstance(style, dict):
+            try:
+                small = float(style.get("fontSize")) < floor
+            except (TypeError, ValueError):
+                small = False
+            if small:
+                style["fontSize"] = floor
+    field.setdefault("repeatHead", True)
+
+
+def _shown_keys(template, static):
+    """The data fields a template shows anywhere: bound fields, the fields
+    of a text with fields, and what is already in the repeating area."""
+    shown = set()
+    for f in list(_fields(template)) + list(static or []):
+        if f.get("type") == "multiVariableText":
+            shown.update(_variables(f))
+        shown.add(base_key(f.get("name")))
+    return shown
+
+
+def shows(template, key):
+    """True when a template shows the data field `key` somewhere."""
+    return key in _shown_keys(template, (template.get("basePdf") or {}).get("staticSchema")
+                              if isinstance((template or {}).get("basePdf"), dict) else ())
+
+
+def _control_footer(kind, template, data, static):
+    """[the control footer] of a controlled record (KINDS[kind]
+    "control_footer": the laboratory's name and address, the document
+    control block) whose design does not place those fields: they print as
+    fixed text at the foot of every page, left of the page number and above
+    the line that names the time zone, so a design issued before the record
+    had them still carries them. A field the design places is left to the
+    design; a design whose bottom margin has no room for the lines prints
+    without them (it is refused at its next issue until it places them)."""
+    keys = (KINDS.get(kind) or {}).get("control_footer") or ()
+    base = template.get("basePdf")
+    if not keys or not isinstance(base, dict):
+        return []
+    shown = _shown_keys(template, static)
+    data = data or {}
+    missing = [k for k in keys if k not in shown and ("%s" % (data.get(k) or "")).strip()]
+    if not missing:
+        return []
+    lines = []
+    lab = ", ".join(("%s" % data[k]).strip() for k in missing if k in _rep.BANNER)
+    if lab:
+        lines.append(lab)
+    for k in missing:
+        if k not in _rep.BANNER:
+            lines.extend(l for l in ("%s" % data[k]).split("\n") if l.strip())
+    pad = list(base.get("padding") or [0, 10, 0, 10]) + [10, 10, 10, 10]
+    width, height = float(base.get("width") or 210.0), float(base.get("height") or 297.0)
+    left, right, bottom = float(pad[3]), float(pad[1]), float(pad[2])
+    if bottom < _FOOT_ROOM:
+        return []
+    text = "\n".join(lines)
+    if "{" in text or "}" in text:
+        raise ValueError("%s: its value contains { or }" % CONTROL_FOOTER_FIELD)
+    tall = _FOOT_LINE * len(lines)
+    return [{"name": CONTROL_FOOTER_FIELD, "type": "text",
+             "position": {"x": left, "y": height - 7.0 - tall},
+             "width": width - left - right - _FOOT_RIGHT, "height": tall, "fontSize": FOOT_PT,
+             "lineHeight": 1, "alignment": "left", "verticalAlignment": "bottom", "readOnly": True,
+             "content": text}]
+
+
+def _fill_times_note(template, inputs):
+    """Write the "Times are <zone>." line (print_doc.times_line, over every
+    other value and fixed text the document prints) into each times_note
+    field the design places, in place; True when it places one."""
+    from senaite.pfas import print_doc
+    notes = [n for n in inputs if base_key(n) == TIMES_NOTE]
+    if not notes:
+        return False
+    base = template.get("basePdf")
+    fixed = [f.get("content") for f in list(_fields(template)) + list(
+        (base.get("staticSchema") if isinstance(base, dict) else None) or []) if f.get("readOnly")]
+    line = print_doc.times_line(*([v for k, v in inputs.items() if base_key(k) != TIMES_NOTE] + fixed))
+    for n in notes:
+        inputs[n] = line
+    return True
 
 
 def _times_footer(template, inputs, static):
     """[the "Times are <zone>." line] for a document that prints a clock time
     (print_doc.times_line, over every value it prints), else []. It is fixed
     text on every page, in the bottom margin between the side margins, so it
-    sits under whatever the design places; no field of the design moves."""
+    sits under whatever the design places; no field of the design moves. A
+    kind whose control block names the zone (KINDS "zone_in_control", the
+    custody documents) prints no such line."""
     from senaite.pfas import print_doc
     base = template.get("basePdf")
     if not isinstance(base, dict):
@@ -715,7 +1215,7 @@ def _times_footer(template, inputs, static):
     width, height = float(base.get("width") or 210.0), float(base.get("height") or 297.0)
     left, right = float(pad[3]), float(pad[1])
     return [{"name": TIMES_FIELD, "type": "text", "position": {"x": left, "y": height - 6.5},
-             "width": width - left - right, "height": 3.5, "fontSize": 6, "alignment": "left",
+             "width": width - left - right, "height": 3.5, "fontSize": FOOT_PT, "alignment": "left",
              "readOnly": True, "content": line}]
 
 
@@ -762,6 +1262,8 @@ def new(store, kind, title, size_id, who, when):
     title = (title or "").strip()
     if not title:
         raise ValueError("A template needs a name.")
+    if size_id not in [z[0] for z in offered_sizes(kind)]:
+        raise ValueError("The %s is not offered on this size." % KINDS[kind]["title"])
     single = KINDS[kind].get("single")
     if single and single in store:
         raise ValueError("There is already a %s design." % KINDS[kind]["title"])
@@ -790,6 +1292,7 @@ def status(entry):
     cur = current(entry)
     return {"rev": cur["rev"] if cur else None,
             "issued_at": (cur or {}).get("issued_at") or "",
+            "issued_by": (cur or {}).get("issued_by") or "",
             "none_issued": cur is None,
             "unissued": cur is None or cur.get("fingerprint") != fingerprint(entry.get("draft"))}
 
@@ -803,11 +1306,11 @@ def issue(store, tid, who, when, note):
     note = (note or "").strip()
     if not note:
         return None, ["Say what this revision changes."]
+    if not [f for f in _fields(entry.get("draft"))]:
+        return None, ["The template is empty."]
     problems = validate(entry["kind"], entry.get("draft"))
     if problems:
         return None, problems
-    if not [f for f in _fields(entry.get("draft"))]:
-        return None, ["The template is empty."]
     cur = current(entry)
     fp = fingerprint(entry.get("draft"))
     if cur and cur.get("fingerprint") == fp:
@@ -839,6 +1342,20 @@ def issued(store, kind):
         if e.get("kind") == kind and not e.get("archived") and cur:
             out.append((e, cur))
     return out
+
+
+def choose(designs, design_id=None, size_id=None):
+    """The one design to print from, of a kind that keeps several (a label
+    for each stock size): `designs` as issued() lists them. The design
+    asked for by id; else the only one of the size asked for; else the only
+    one issued. None when the person has to choose, or nothing is issued."""
+    for entry, rev in designs:
+        if design_id and entry.get("id") == design_id:
+            return entry, rev
+    sized = [d for d in designs if size_id and d[0].get("size") == size_id]
+    if len(sized) == 1:
+        return sized[0]
+    return designs[0] if len(designs) == 1 else None
 
 
 # ── storage shell (portal annotations, JSON) ───────────────────────────────

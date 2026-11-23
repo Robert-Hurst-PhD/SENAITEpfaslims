@@ -15,7 +15,7 @@ methods read as unconfigured until the lab enters theirs from its method copy.
 
 The two dates: each sample's collection date (core Date Sampled, which the
 certificate, the EDD and the CoC print; core_fields.py) and `extraction_date`
-from FM-ENV-003. The methods define the holding time as collection ->
+from the extraction record. The methods define the holding time as collection ->
 EXTRACTION, so the receipt date is not used. Samples are judged one by one
 and combined: the worst verdict wins.
 
@@ -169,7 +169,7 @@ def evaluate(collected, extracted, limit_days):
         result["status"] = NO_DATES
         missing = []
         if start is None:
-            missing.append(u"the sample's Date Sampled")
+            missing.append(u"the sample's Sampled date")
         if end is None:
             missing.append(u"extraction date (Extraction Log)")
         result["message"] = (
@@ -182,8 +182,8 @@ def evaluate(collected, extracted, limit_days):
     if elapsed < 0:
         result["status"] = INVALID
         result["message"] = (
-            u"Extraction is recorded {0} day(s) BEFORE collection "
-            u"({1} extracted, {2} collected). One of the two records is "
+            u"Extraction is recorded {0} day(s) BEFORE sampling "
+            u"({1} extracted, {2} sampled). One of the two records is "
             u"wrong.".format(abs(elapsed), end, start))
         return result
 
@@ -248,10 +248,18 @@ def evaluate_processed(homogenised, extracted, limit_days):
 PROCESSED = u"processed:"
 
 
-def evaluate_extract(extracted, analysed, limit_days):
-    """Judge an extract's holding time, extraction to analysis: the same
-    statuses as evaluate(), its own wording."""
+#: The mark of an extract clock (and a run line) that fell back to the run's
+#: date because no reported result has an analysis date.
+BY_RUN_DATE = u"by run date"
+
+
+def evaluate_extract(extracted, analysed, limit_days, by_run_date=False):
+    """Judge an extract's holding time, extraction to analysis (the last
+    result's analysis date, as the certificate reads it; `by_run_date` when
+    that is the run's date because no result has one): the same statuses as
+    evaluate(), its own wording."""
     r = evaluate(extracted, analysed, limit_days)
+    r["by_run_date"] = bool(by_run_date)
     days = r.get("elapsed_days")
     if r["status"] == EXCEEDED:
         r["message"] = (u"Extract holding time EXCEEDED: analysed {0} day(s) after "
@@ -260,10 +268,12 @@ def evaluate_extract(extracted, analysed, limit_days):
         r["message"] = (u"Analysed {0} day(s) after extraction, within the {1} day "
                         u"extract holding time.".format(days, _fmt_days(limit_days)))
     elif r["status"] == INVALID:
-        r["message"] = (u"The run is dated {0} day(s) BEFORE the extraction. One of "
+        r["message"] = (u"The analysis is dated {0} day(s) BEFORE the extraction. One of "
                         u"the two records is wrong.".format(abs(days or 0)))
     elif r["status"] == NO_DATES:
-        r["message"] = u"Extract holding time cannot be calculated: no extraction or run date."
+        r["message"] = u"Extract holding time cannot be calculated: no extraction or analysis date."
+    if by_run_date and r["status"] != NO_DATES:
+        r["message"] += u" Judged %s: no reported result has an analysis date yet." % BY_RUN_DATE
     return r
 
 
@@ -343,7 +353,7 @@ def clock_rows(verdict):
     "due", "end", "end_word", "elapsed_days", "ok", "status", "note"}."""
     by = (verdict or {}).get("by_sample", {}) or {}
     samples = sorted(sid for sid in by if sid != u"extract" and not (u"%s" % sid).startswith(PROCESSED))
-    rows = [dict(r, clock=u"sample", samples=r["samples"], start=r["collected"], start_word=u"collected",
+    rows = [dict(r, clock=u"sample", samples=r["samples"], start=r["collected"], start_word=u"sampled",
                  due=r["extract_by"], end=r["extracted"], end_word=u"extracted", note=u"")
             for r in table_rows(verdict)]
     groups = {}
@@ -354,10 +364,11 @@ def clock_rows(verdict):
     proc = [_clock_row(u"processed", m, u"homogenised", u"extracted")
             for _k, m in sorted(groups.items(), key=lambda kv: (u"%s" % kv[0][0], u"%s" % kv[0][1]))]
     rows += proc or [{"clock": u"processed", "samples": [], "note":
-                      u"Not applicable: no sample in this batch was homogenised."}]
+                      u"Not applicable: no sample in this worksheet was homogenised."}]
     ext = by.get(u"extract")
     if ext:
-        rows.append(_clock_row(u"extract", [(None, ext)], u"extracted", u"analysed"))
+        rows.append(_clock_row(u"extract", [(None, ext)], u"extracted",
+                               u"analysed, " + BY_RUN_DATE if ext.get("by_run_date") else u"analysed"))
         rows[-1]["samples"] = samples
     else:
         rows.append({"clock": u"extract", "samples": [], "note": u"No extract holding time is set for this matrix."})

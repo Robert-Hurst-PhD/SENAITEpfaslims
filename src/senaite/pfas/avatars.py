@@ -41,6 +41,13 @@ def get(portal, userid):
     return chosen if chosen in IDS else default_for(userid)
 
 
+def chosen(portal, userid):
+    """The picture a person chose, or None until they do: the top bar shows
+    a chosen picture and the person's initials before it."""
+    mine = (IAnnotations(portal).get(KEY) or {}).get(userid)
+    return mine if mine in IDS else None
+
+
 def choose(portal, userid, avatar_id):
     if avatar_id not in IDS:
         raise ValueError("unknown picture %s" % avatar_id)

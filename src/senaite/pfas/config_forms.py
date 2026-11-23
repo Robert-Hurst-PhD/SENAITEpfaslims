@@ -55,11 +55,13 @@ NUMBER, INT, BOOL, TEXT, TEXTAREA, CHOICE, MULTI = (
 # level collection (spk_<QC type>) holds levels.
 COLLECTION_KIND = {"tiers": "tier", "tiers_lfb": "tier", "lfsmd": "tier", "dup": "tier",
                    "cal_levels": "level", "mtx": "matrix", "ls": "standard", "eis_grid": "cell",
-                   "lbl": "label"}
+                   "lbl": "label", "qc_cells": "cell setting", "cmp": "composite",
+                   "flags_qc": "flag", "flags_std": "flag"}
 SPIKE_PREFIX = "spk_"
 # every kind, in the order a note lists them (the method profile editor's
 # footer script lists the same, in this order)
-CHANGE_KINDS = ("cell", "flag", "tier", "level", "row", "rule", "setting", "standard", "matrix", "label")
+CHANGE_KINDS = ("cell", "cell setting", "flag", "tier", "level", "row", "rule", "setting", "standard", "matrix", "label",
+                "composite")
 
 
 def change_kind(name):
@@ -145,12 +147,16 @@ class Field(object):
                  choices=None, blank=u"unset", greater_than=None,
                  range_hi=None, scale=None, step=None, widget=None, options=None,
                  empty=None, show_if=None, rule=None, decimals=None, default=None, noun=None, words=None,
-                 choice_help=None, align=None, resolved=None, range_label=None):
+                 choice_help=None, state_help=None, align=None, resolved=None, range_label=None, kept_if_absent=False,
+                 states=None):
         self.path = (tuple(int(x) if x.isdigit() else x for x in path.split("."))
                      if isinstance(path, _STR) else tuple(path))
         self.name = u"f__" + u"__".join(u"%s" % p for p in self.path)
         self.label = label
         self.kind = kind
+        # a field the page may leave undrawn: a save that does not post it
+        # leaves the stored value as it is (never clears it)
+        self.kept_if_absent = kept_if_absent
         self.unit = unit
         self.help = help
         self.placeholder = placeholder
@@ -183,6 +189,9 @@ class Field(object):
         #   widget    "picker" on a MULTI: the search picker (is_picker)
         #   choice_help  {value: a line} explaining each choice of a CHOICE, drawn
         #             under it, one line per choice
+        #   state_help  {value: a line}: the help line for the value the field
+        #             holds, each drawn for its value alone and shown as the
+        #             choice changes (data-show-if), never all at once
         #   words     the words a NUMBER may hold instead of a number ("none"),
         #             stored as the word; a table's check says where one applies.
         #             The config-form macros draw it as a text box (a number
@@ -195,9 +204,10 @@ class Field(object):
         #             is stored
         #   decimals  a number shown rounded to this many places; posted
         #             back unchanged, the stored value is kept
-        #   rule      a rule switch key (Rule Toggles & QC Run): while the
-        #             method has it off the field reads N/A, greyed and
-        #             read-only, so its value still posts and is kept
+        #   rule      the key of the rule whose limit the field is: while the
+        #             method has that rule Off the field is greyed with a
+        #             note, and stays editable (Off is not enforced, never
+        #             locked); its value posts and is kept
         #   align     a table or collection column's alignment, "left" or
         #             "right"; its heading is aligned as its cells are. By
         #             default a number ends at the right, anything else
@@ -219,6 +229,9 @@ class Field(object):
         self.scale = tuple(scale) if scale else None
         self.step = step
         self.widget = widget
+        #   states    on a CHOICE drawn as a placard (widget "placard"): its
+        #             [(state, posted value)] in menu order
+        self.states = list(states or ())
         self.options = options if callable(options) else (list(options) if options is not None else None)
         self.empty = empty
         self.decimals = decimals
@@ -226,6 +239,7 @@ class Field(object):
         self.noun = noun
         self.words = tuple(w.lower() for w in words or ())
         self.choice_help = dict(choice_help or {})
+        self.state_help = dict(state_help or {})
         if align not in (None, u"left", u"right"):
             raise ValueError("unknown alignment: {0}".format(align))
         self.align = align or (u"right" if kind in (NUMBER, INT) else u"left")
@@ -368,13 +382,14 @@ def _pair_ends(fields):
 
 
 def na_text(f, env):
-    """The N/A note of a field whose governing rule switch is off, else "".
+    """The note of a field whose rule the method has Off, else "": the
+    field is greyed and stays editable, its value kept and not judged.
     env["rules"] = {rule key: on}, env["rule_labels"] = {rule key: label}."""
     rules = (env or {}).get("rules") if isinstance(env, dict) else None
     if not f.rule or not rules or rules.get(f.rule, True):
         return u""
     label = ((env or {}).get("rule_labels") or {}).get(f.rule, f.rule)
-    return u"N/A: %s is off on Rule Toggles & QC Run" % label
+    return u"%s is Off: kept, not judged" % label
 
 
 def render(section, stored, env=None):
@@ -410,6 +425,7 @@ def render(section, stored, env=None):
             "name": f.name, "label": f.label, "kind": f.kind, "unit": f.unit,
             "options": options,
             "help": f.help, "choice_help": [(c[1], f.choice_help[c[0]]) for c in choices if c[0] in f.choice_help],
+            "state_help": [(c[0], f.state_help[c[0]]) for c in choices if c[0] in f.state_help],
             "placeholder": f.placeholder, "required": f.required,
             "min": f.minimum, "max": f.maximum, "choices": choices, "words": list(f.words),
             "step": step_text(f), "scale": scale_text(f),
@@ -536,6 +552,8 @@ def parse(section, form, stored, env=None):
     updates, errors = {}, []
     saved = current(section, stored)
     for f in section.fields():
+        if f.kept_if_absent and form.get(f.name) is None:
+            continue                    # not drawn: unchanged
         if is_picker(f):
             if form.get(f.name) is None:
                 continue                # not drawn: unchanged
@@ -650,8 +668,12 @@ class Table(object):
 
     def __init__(self, id, title, base, columns, rows, check=None, intro=u"",
                  read=None, write=None, rows_take_env=False, row_heading=u"Analyte",
-                 info=None):
+                 info=None, store=None):
         self.id = id
+        # store(stored, row, column, value) -> the value a parsed cell is
+        # saved as (e.g. a reported value rounded as it prints); None keeps
+        # the value as parsed
+        self.store = store
         # [(id, heading)]: read-only columns after the inputs, showing what
         # another owner holds (e.g. the regulatory limits beside an RL). A
         # row gives {id: [{"text", "warn", "off"}]}; nothing here is saved.
@@ -767,7 +789,15 @@ def render_table(table, stored, env=None):
                                  if c.kind == TEXT else (None, u""))
             if c.kind == CHOICE and c.widget in (u"seg", "seg"):
                 widget = u"seg"           # a choice drawn as a segmented control
-            cells.append({"name": cell_name(table, r["key"], c), "kind": c.kind, "words": list(c.words),
+            placard = u""
+            if c.kind == CHOICE and c.widget in (u"placard", "placard"):
+                # a choice of states drawn as a placard, set by a right click
+                from senaite.pfas import limit_placard
+                widget = u"placard"
+                placard = limit_placard.choice_box(cell_name(table, r["key"], c), r.get("label") or u"",
+                                                   u"" if v is None else _shown(v, c.decimals), c.states,
+                                                   cls=u"is-inline")
+            cells.append({"placard": placard,"name": cell_name(table, r["key"], c), "kind": c.kind, "words": list(c.words),
                           "resolves": c.resolved is not None, "resolved": resolved_by_col[c.name],
                           "label": c.label, "min": c.minimum, "max": c.maximum,
                           "step": step_text(c), "widget": widget, "options_json": opts_json,
@@ -837,6 +867,8 @@ def parse_table(table, form, stored, env=None):
         saved = _cells(table, stored, r["key"])
         vals, ok = {}, True
         for c in table.columns:
+            if c.kept_if_absent and form.get(cell_name(table, r["key"], c)) is None:
+                continue                # not drawn: the stored value stays
             value, error = _value(c, form.get(cell_name(table, r["key"], c)),
                                   saved[c.name], u"%s %s" % (r.get("label"), c.label),
                                   choices=_choices(c, stored, env))
@@ -848,6 +880,8 @@ def parse_table(table, form, stored, env=None):
                 errors.append(error)
                 ok = False
             elif value is not _SKIP:
+                if table.store is not None:
+                    value = table.store(stored, r, c, value)
                 vals[c.path] = value
         if ok and table.check is not None:
             error = table.check(r, dict((c.name, vals.get(c.path)) for c in table.columns))
@@ -932,6 +966,15 @@ NEW_INDEX = u"NEW"   # alphanumeric: the page swaps "__NEW__" for "__<n>__"
 # a parsed row's stored key before this save (a renamed row's old name), for a
 # collection that asks for it (carry_stored_key); never written
 STORED_KEY = u"_stored_key"
+# a renamed row posted to start afresh (its collection carries its stored
+# key; the page posts FRESH_PREFIX<collection>__<index> = 1): set on the
+# parsed row, never written
+FRESH_KEY = u"_fresh"
+FRESH_PREFIX = u"cfresh__"
+
+
+def fresh_name(coll_id, index):
+    return u"%s%s__%d" % (FRESH_PREFIX, _enc(coll_id), index)
 
 
 # what an empty collection says when it declares nothing of its own
@@ -1063,6 +1106,8 @@ def parse_collection(coll, form, stored, env=None):
         row = {coll.key.path[0]: name}
         if coll.carry_stored_key and i < len(before):
             row[STORED_KEY] = old.get(coll.key.path[0])
+            if _text(form.get(fresh_name(coll.id, i))) == u"1":
+                row[FRESH_KEY] = True
         for c in coll.columns[1:]:
             if is_picker(c):
                 raw = form.get(collection_name(coll, i, c))

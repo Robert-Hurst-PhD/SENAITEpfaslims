@@ -18,18 +18,18 @@
   <div class="page-body">
 
     <div class="pfas-filterbar pfas-map-tools">
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label for="map-find">Find</label>
         <input id="map-find" class="pfas-input is-find" type="search" placeholder="Worksheet, sample, lot" />
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label>Worksheets from</label>
         <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Worksheets from">
           <a class="pfas-seg-item" tal:repeat="w view/period_links"
              tal:attributes="href w/url; aria-selected python:'true' if w['on'] else 'false'" tal:content="w/label">30 days</a>
         </nav>
       </div>
-      <div class="pfas-field">
+      <div class="pfas-form-field">
         <label>Group by</label>
         <nav class="pfas-seg pfas-seg-sm is-fit" aria-label="Group worksheets by">
           <a class="pfas-seg-item" tal:repeat="w view/group_links"

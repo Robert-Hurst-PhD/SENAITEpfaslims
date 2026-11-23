@@ -10,6 +10,10 @@
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-lab-settings">Lab Settings</a>
   </tal:r>
 
+  <!-- the form's Save, pinned at the foot of the window -->
+  <tal:ab metal:fill-slot="action-bar"><tal:sb tal:condition="python:view.list_name() and view.can_configure()" tal:define="sb_form string:vocab-form"><div
+      metal:use-macro="context/@@pfas-macros/macros/save-bar"></div></tal:sb></tal:ab>
+
   <div metal:fill-slot="content">
   <div class="page-body page-body-narrow" tal:define="purl view/portal_url; name view/list_name">
 
@@ -23,13 +27,14 @@
          tal:content="python:l[1]">Deviation event types</a></tal:l>
     </nav>
 
-    <form method="post" tal:condition="name"
+    <form method="post" id="vocab-form" tal:condition="name"
           tal:attributes="action string:${purl}/@@pfas-vocabularies?list=${name}">
       <input type="hidden" name="list" tal:attributes="value name" />
       <fieldset class="pfas-ro" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
       <div class="section-group-hdr" tal:content="view/title">List</div>
       <table class="pfas-table pfas-table-form" data-col-resize="vocab-editor-1">
-        <thead><tr><th>Term</th><th>Offered for new records</th></tr></thead>
+        <thead><tr><th>Term</th><th>Offered for new records</th>
+          <th tal:repeat="fl view/flags" tal:content="python:fl[1]">No expiry</th></tr></thead>
         <tbody>
           <tr tal:repeat="t view/terms">
             <td><input type="hidden" tal:attributes="name string:t__${repeat/t/index}__key; value t/key" />
@@ -39,13 +44,19 @@
                        tal:attributes="name string:t__${repeat/t/index}__active;
                                        aria-label string:Offer ${t/label};
                                        checked python:'checked' if t['active'] else None" /><span class="pfas-switch-track"></span></label></td>
+            <!-- the list's own switches (vocab_store.FLAGS), e.g. No expiry -->
+            <td tal:repeat="fl view/flags"><label class="pfas-switch"><input type="checkbox" value="on"
+                       tal:define="fk python:fl[0]"
+                       tal:attributes="name string:t__${repeat/t/index}__${fk};
+                                       aria-label python:u'%s: %s' % (fl[1], t['label']);
+                                       checked python:'checked' if t.get(fk) else None;
+                                       disabled python:'disabled' if view.locked_off(t['key'], fk) else None" /><span class="pfas-switch-track"></span></label></td>
           </tr>
         </tbody>
       </table>
-      <div class="field-grid">
-        <label>Add a term <input type="text" name="new_label" /></label>
+      <div class="pfas-form-row">
+        <label class="pfas-form-field">Add a term <input type="text" name="new_label" /></label>
       </div>
-      <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
       </fieldset>
     </form>
   </div>

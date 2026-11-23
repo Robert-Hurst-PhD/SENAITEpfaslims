@@ -54,10 +54,32 @@ ITEM_FIELDS = ("sensor_id", "temp_min", "temp_max", "humidity_min", "humidity_ma
                # the method profiles whose samples a monitored unit stores
                # (their storage range joins its own on the Monitoring page)
                "profiles_json",
+               # per method, the matrices it holds them for (none listed: all)
+               "held_matrices_json",
                # a multi-point thermometer's working temperatures (temp_calibration)
-               "working_temps_json")
+               "working_temps_json",
+               # an SPE manifold's ports, offered where an extraction records them
+               "spe_ports_json",
+               # an analytical instrument's raw data folder (raw_share.py)
+               "raw_folder")
 STATUS_LABEL = {"ok": u"OK", "due_soon": u"Due soon", "overdue": u"Overdue",
                 "missing": u"No record", "not_set": u"Not set"}
+STATUS_CLS = {"ok": "badge-active", "due_soon": "badge-quarantine", "overdue": "badge-expired",
+              "missing": "badge-expired"}
+# a unit's state on the Daily Checklist, as that page words it
+DAILY_LABEL = {"ok": u"OK today", "pending": u"Due today", "due": u"Due", "overdue": u"Overdue",
+               "out_of_range": u"Out of range", "no_data": u"No record"}
+DAILY_CLS = {"ok": "badge-active", "pending": "badge-quarantine", "due": "badge-quarantine",
+             "overdue": "badge-expired", "out_of_range": "badge-expired", "no_data": "badge-expired"}
+
+
+def status_of(due, daily):
+    """(label, badge class) of a unit's Status: what its type owes; a unit
+    that owes nothing by date but is checked daily reads as the Daily
+    Checklist reads it, so the two pages agree."""
+    if due == "not_set" and daily:
+        return DAILY_LABEL.get(daily, daily), DAILY_CLS.get(daily, "badge-archived")
+    return STATUS_LABEL.get(due, due), STATUS_CLS.get(due, "badge-archived")
 
 
 def _ann_json(obj, key):
@@ -102,7 +124,7 @@ def save_type_requirements(itype, req):
         from senaite.pfas import config_history
         config_history.track(None, "equipment_type", api.get_uid(itype),
                              lambda: _ann_json(itype, TYPE_KEY),
-                             label=u"Equipment type %s" % api.get_title(itype))
+                             label=u"Equipment type %s" % api.safe_unicode(api.get_title(itype)))
     except Exception:                                       # noqa: BLE001
         logger.warning("equipment type change not tracked", exc_info=True)
     _set_ann_json(itype, TYPE_KEY, dict((k, req.get(k)) for k in et.FIELDS))
@@ -147,11 +169,15 @@ def unit_for(inst):
         loc = _by_uid(raw[0] if isinstance(raw, (list, tuple)) and raw else raw)
     except Exception:                                       # noqa: BLE001
         pass
-    unit = {"id": api.get_uid(inst), "unit_type": req["kind"], "name": api.get_title(inst),
-            "serial_number": (inst.getSerialNo() or u"").strip(),
-            "location": api.get_title(loc) if loc else u"",
+    # text as unicode: core returns titles as UTF-8 bytes, and a name with a
+    # non-ASCII character (a subscript two, a degree sign) breaks every
+    # u"..." % name that shows it
+    text = api.safe_unicode
+    unit = {"id": api.get_uid(inst), "unit_type": req["kind"], "name": text(api.get_title(inst)),
+            "serial_number": text(inst.getSerialNo() or u"").strip(),
+            "location": text(api.get_title(loc)) if loc else u"",
             "active": 1 if api.is_active(inst) else 0,
-            "type_title": api.get_title(itype) if itype else u"",
+            "type_title": text(api.get_title(itype)) if itype else u"",
             "type_uid": api.get_uid(itype) if itype else u"",
             "tolerance_pct": req.get("tolerance_pct"), "requirements": req,
             "url": api.get_url(inst)}
@@ -167,6 +193,27 @@ def _instruments(active_only=True):
     if active_only:
         q["is_active"] = True
     return [b._unrestrictedGetObject() for b in _setup_catalog().unrestrictedSearchResults(**q)]
+
+
+def release_matrices(method_id, matrices):
+    """Take removed matrices off every unit that names them among what it
+    holds for the method (matrix_temperature.release), each change recorded
+    in the configuration history. Returns the units' names."""
+    from senaite.pfas import config_history
+    from senaite.pfas import matrix_temperature as mt
+    names = []
+    for inst in _instruments(active_only=False):
+        item = _ann_json(inst, ITEM_KEY) or {}
+        new, changed = mt.release(item, method_id, matrices)
+        if not changed:
+            continue
+        name = api.safe_unicode(api.get_title(inst))
+        config_history.track(None, "equipment", api.get_uid(inst), lambda inst=inst: _ann_json(inst, ITEM_KEY),
+                             label=u"Equipment %s" % name,
+                             action=u"%s removed from %s" % (u", ".join(matrices), method_id))
+        _set_ann_json(inst, ITEM_KEY, new)
+        names.append(name)
+    return names
 
 
 def list_units(active_only=True):
@@ -285,17 +332,37 @@ class PFASEquipmentView(ViewHelpers, BrowserView):
                 "nitrogen_evaporator": "pfas-temperature-log",
                 "eyewash": "pfas-eyewash-log", "water_system": "pfas-water-log"}
 
+    def _daily(self):
+        """{unit id: its Daily Checklist status} for the units checked daily,
+        read as the Daily Checklist reads them; {} when it cannot be read."""
+        try:
+            return dict((r["id"], r.get("status")) for r in db.dashboard_summary())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("equipment: the daily checklist could not be read: %s", exc)
+            return {}
+
     def rows(self):
         out = []
+        daily = self._daily()
         for inst in _instruments(active_only=False):
             u = unit_for(inst)
             d = due_status(u, inst)
             page = self._RECORDS.get(u["unit_type"])
-            out.append(dict(u, due=d, status_label=STATUS_LABEL.get(d["status"], d["status"]),
+            day = daily.get(u["id"])
+            label, cls = status_of(d["status"], day)
+            out.append(dict(u, due=d, status_label=label, status_cls=cls,
+                            daily=day, daily_label=DAILY_LABEL.get(day, day) if day else u"",
                             records_url=("%s/@@%s?unit_id=%s" % (self.portal_url(), page, u["id"])
                                          if page else None),
                             kind_label=dict(et.KINDS).get(u["unit_type"], u["unit_type"])))
         return sorted(out, key=lambda r: (r["type_title"].lower(), r["name"].lower()))
+
+    def types_url(self):
+        """Where a type's check frequency is set."""
+        return self.portal_url() + "/@@pfas-equipment-types"
+
+    def checklist_url(self):
+        return self.portal_url() + "/@@pfas-facility-qc"
 
     def add_url(self):
         return self.portal_url() + "/bika_setup/bika_instruments/createObject?type_name=Instrument"
@@ -345,7 +412,7 @@ class PFASEquipmentTypesView(ViewHelpers, GateMixin, BrowserView):
         out = []
         for b in brains:
             t = api.get_object(b)
-            out.append({"uid": api.get_uid(t), "title": api.get_title(t),
+            out.append({"uid": api.get_uid(t), "title": api.safe_unicode(api.get_title(t)),
                         "req": type_requirements(t), "url": api.get_url(t)})
         return out
 
@@ -411,10 +478,12 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
             denied = deny_gated_action(self.context, req, action, ITEM_GATES)
             if denied is not None:
                 return denied
+            flag = "saved=1"
             if action == "save":
-                self._save()
-            req.response.redirect("%s/@@pfas-equipment-settings?uid=%s&saved=1"
-                                  % (api.get_portal().absolute_url(), api.get_uid(self.inst)))
+                if self._save() is False:
+                    flag = "error=raw_folder"
+            req.response.redirect("%s/@@pfas-equipment-settings?uid=%s&%s"
+                                  % (api.get_portal().absolute_url(), api.get_uid(self.inst), flag))
             return ""
         return self.template()
 
@@ -432,6 +501,7 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
         return db.get_facility_defaults(api.get_portal())["balance_points"].get(u["unit_type"], [])
 
     def _save(self):
+        """False when the raw data folder is refused: nothing is saved."""
         f = self.request.form
         data = {}
         for k in ("sensor_id",):
@@ -450,6 +520,15 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
             mids += ["%s:%s" % (m, k) for m in self.method_ids() for k in ("processed", "extract")
                      if f.get("profile.%s:%s" % (m, k))]
             data["profiles_json"] = json.dumps(mids) if mids else None
+            # the matrices held, per method: every one ticked (or none) is all
+            held = {}
+            from senaite.pfas import matrix_temperature as mt
+            for m in self.method_ids():
+                every = self._matrices(m)
+                chosen = mt.held_from_ticks(every, [x for i, x in enumerate(every) if f.get("held.%s.%d" % (m, i))])
+                if chosen:
+                    held[m] = chosen
+            data["held_matrices_json"] = json.dumps(held, sort_keys=True) if held else None
         if u["unit_type"] in et.BALANCE_KINDS:
             pts = []
             for i in range(20):
@@ -466,6 +545,21 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
             data["working_temps_json"] = json.dumps(temps) if temps else None
         else:
             data["working_temps_json"] = u.get("working_temps_json")
+        # an SPE manifold's ports (kept when not on the form)
+        if "spe_ports" in f:
+            ports = et.spe_ports(f.get("spe_ports") or u"")
+            data["spe_ports_json"] = json.dumps(ports) if ports else None
+        else:
+            data["spe_ports_json"] = u.get("spe_ports_json")
+        # an analytical instrument's raw data folder (kept when not on the form)
+        if u["unit_type"] == "analytical" and "raw_folder" in f:
+            from senaite.pfas import raw_share
+            folder = (f.get("raw_folder") or u"").strip()
+            if raw_share.folder_error(folder):
+                return False
+            data["raw_folder"] = folder or None
+        else:
+            data["raw_folder"] = u.get("raw_folder")
         if u["unit_type"] == "water_system":
             extra = {}
             for k in ("conductivity_max", "toc_max"):
@@ -479,12 +573,19 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
         except Exception:                                   # noqa: BLE001
             pass
         _set_ann_json(self.inst, ITEM_KEY, data)
+        if u["unit_type"] == "analytical":
+            from senaite.pfas import raw_share
+            raw_share.export_again(api.get_portal())
+        return True
 
     def multi_point(self):
         """The unit is calibrated over its working temperatures (its type's
         correction option)."""
         u = self.unit()
         return bool(u) and db._requires_correction(u) and db._model(u) == db.tc.MULTI
+
+    def spe_ports_text(self):
+        return u", ".join(et.spe_ports(self.unit().get("spe_ports_json")))
 
     def working_temps_text(self):
         return u", ".join(u"%g" % t for t in db.unit_working_temps(self.unit()))
@@ -493,37 +594,53 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
         from senaite.pfas.method_profile_store import list_method_ids
         return list_method_ids(api.get_portal())
 
+    def _judgement(self):
+        """What the unit is judged against: the narrowest of its own range
+        and each held matrix's storage range (matrix_temperature)."""
+        from senaite.pfas import matrix_temperature as mt
+        from senaite.pfas.method_profile_store import raw_profile
+        from senaite.pfas import homogenisation as hg
+        portal = api.get_portal()
+        return mt.unit_judgement(self.unit() or {}, lambda mid: raw_profile(portal, mid), hg.homogenised_titles())
+
     def hold_conflict(self):
         """Why what the unit holds cannot all be kept at once (ranges that do
-        not overlap), or u"" (facility_qc.range_conflict)."""
-        from senaite.pfas import facility_qc as fq
-        from senaite.pfas import method_profile_sections as mps
-        from senaite.pfas.method_profile_store import raw_profile
-        u = self.unit() or {}
-        portal = api.get_portal()
-        ranges = mps.kept_ranges(self.stored_profiles(), lambda mid: raw_profile(portal, mid))
-        def num(v):
-            try:
-                return float(v) if v not in (None, u"") else None
-            except (TypeError, ValueError):
-                return None
-        lo, hi = fq.effective_range(num(u.get("temp_min")), num(u.get("temp_max")), [(r[1], r[2]) for r in ranges])
-        if not fq.range_conflict(lo, hi):
+        not overlap), or u"" (matrix_temperature.conflict)."""
+        got = self._judgement()
+        if not got["conflict"]:
             return u""
-        return u"These ranges do not overlap: %s. No temperature meets them all." % u"; ".join(
-            u"%s %s to %s \u00b0C" % (r[0], u"%g" % r[1] if r[1] is not None else u"?",
-                                       u"%g" % r[2] if r[2] is not None else u"?") for r in ranges)
+        return u"These ranges do not overlap: %s. No temperature meets them all." % got["clash"]
+
+    def hold_range(self):
+        """The range the unit is judged against and how it was reached
+        ("-20 to -10 \u00b0C, narrowest of Tissue, Solid"), or u"" when
+        nothing sets one or the ranges clash."""
+        got = self._judgement()
+        if got["conflict"] or (got["lo"] is None and got["hi"] is None):
+            return u""
+        span = u"%s to %s \u00b0C" % (u"%g" % got["lo"] if got["lo"] is not None else u"?",
+                                       u"%g" % got["hi"] if got["hi"] is not None else u"?")
+        return u"Judged at %s%s" % (span, (u", " + got["why"][0].lower() + got["why"][1:]) if got["why"] else u"")
+
+    def _matrices(self, mid):
+        from senaite.pfas.method_profile_store import raw_profile
+        return list(raw_profile(api.get_portal(), mid).get("supported_matrices") or [])
 
     def kept_choices(self):
-        """Per method, a switch for each kept item the unit may hold."""
+        """Per method, a switch for each kept item the unit may hold, and one
+        for each matrix it holds them for (all on while none is chosen)."""
+        from senaite.pfas import matrix_temperature as mt
         mine = set(self.stored_profiles())
+        held = mt.held_of(self.unit() or {})
         out = []
         for m in self.method_ids():
             items = []
             for key, label in (("", u"Samples"), (":processed", u"Processed samples"), (":extract", u"Extracts")):
                 entry = m + key
                 items.append({"name": "profile.%s" % entry, "label": label, "on": entry in mine})
-            out.append({"mid": m, "items": items})
+            matrices = [{"name": "held.%s.%d" % (m, i), "label": x, "on": on}
+                        for i, (x, on) in enumerate(mt.held_switches(self._matrices(m), held.get(m)))]
+            out.append({"mid": m, "items": items, "matrices": matrices})
         return out
 
     def stored_profiles(self):
@@ -540,6 +657,9 @@ class PFASEquipmentSettingsView(ViewHelpers, GateMixin, BrowserView):
 
     def saved(self):
         return self.request.form.get("saved") == "1"
+
+    def folder_refused(self):
+        return self.request.form.get("error") == "raw_folder"
 
 class PFASReferenceThermometersView(ViewHelpers, BrowserView):
     """Equipment Checks > Reference Thermometers: the registered references

@@ -108,7 +108,7 @@
       </table>
       <p class="form-note" tal:condition="not:recs">None listed.</p>
 
-      <div class="field-row" tal:condition="d/file">
+      <div class="pfas-form-field" tal:condition="d/file">
         <label for="mi-heading-pages" tal:content="string:Pages headed &quot;${d/heading}&quot;">Pages headed</label>
         <input type="text" id="mi-heading-pages" name="heading_pages" placeholder="e.g. 2, 3, 5, or none"
                tal:attributes="value d/scan_text;
@@ -145,9 +145,9 @@
       <h2 class="bench-h">Edited on the Raw Data tab</h2>
       <table class="pfas-table" data-col-resize="manual-integration-raw">
         <thead><tr><th>Injection</th><th>Analyte</th><th>Transition</th><th>Change</th>
-                   <th>Automatic</th><th>Now</th><th>Reason</th><th>Initials</th><th>Countersigned</th><th></th></tr></thead>
+                   <th>Automatic</th><th>Now</th><th>Reason</th><th>Initials</th><th>Countersigned</th></tr></thead>
         <tbody>
-          <tr tal:repeat="r raw" tal:attributes="data-mi r/id">
+          <tr tal:repeat="r raw" tal:attributes="data-mi r/id; data-row-open r/href">
             <td tal:content="r/injection">S-1</td>
             <td tal:content="r/analyte">PFOA</td>
             <td tal:content="r/transition">quantifier</td>
@@ -157,7 +157,6 @@
             <td tal:content="python:r['reason'] or 'not given'">reason</td>
             <td tal:content="python:r['analyst'] or 'not initialled'">AN1</td>
             <td tal:content="python:r['verifier'] or 'not countersigned'">AN2</td>
-            <td><a class="btn-sm btn-secondary" tal:attributes="href r/href">Open in Raw Data</a></td>
           </tr>
         </tbody>
       </table>

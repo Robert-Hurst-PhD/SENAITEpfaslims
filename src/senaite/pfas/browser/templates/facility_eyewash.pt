@@ -36,22 +36,18 @@
         <div class="pfas-form-field">
           <span class="pfas-label">Working order</span>
           <div class="pfas-radios">
-            <label class="pfas-check"><input type="radio" name="working" value="yes" checked="checked" /> &#10003; Operational</label>
-            <label class="pfas-check"><input type="radio" name="working" value="no" /> &#10007; Fault noted</label>
+            <label class="pfas-check"><input type="radio" name="working" value="yes" checked="checked" /> <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('pass', hidden=True)" />Operational</label>
+            <label class="pfas-check"><input type="radio" name="working" value="no" /> <tal:m tal:define="ic context/@@pfas-icons" tal:replace="structure python:ic.svg('fail', hidden=True)" />Fault noted</label>
           </div>
         </div>
-        <div class="pfas-form-field is-centered">
+        <div class="pfas-form-field">
           <label for="ew-temp">Flush water temp (&deg;C)</label>
-          <div class="pfas-inline">
-            <input type="number" step="0.1" name="temperature" id="ew-temp" class="is-short"
-                   required="required"/>
-            <a class="btn btn-secondary is-range" tal:content="view/required_range"
-               tal:attributes="href string:${purl}/@@pfas-equipment-types#et-defaults">Required 15-25 &deg;C</a>
-          </div>
+          <input type="number" step="0.1" name="temperature" id="ew-temp" required="required"/>
+          <span class="pfas-hint" tal:content="view/required_range">Required 15-25 &deg;C</span>
         </div>
       </div>
       <div class="pfas-form-row">
-        <div class="pfas-form-field is-grow"><label>Notes</label>
+        <div class="pfas-form-field is-full"><label>Notes</label>
           <input type="text" name="notes"/></div>
       </div>
       <button type="submit" class="btn btn-primary">

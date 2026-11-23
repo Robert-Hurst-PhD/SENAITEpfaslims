@@ -7,9 +7,9 @@ analysis services and instruments the New Method Wizard linked to it, the
 core Analysis Profiles generated from its Analyte x Matrix table, and the
 wizard's records. Those go with it. Anything else that names the method is
 a USE, and a use refuses the deletion: samples and analyses, worksheets and
-batches (their analyses, extraction record, logbooks, run manifest), core
+batches (their analyses, extraction record, earlier record annotations, run manifest), core
 worksheet templates, QC results in the QC database, method studies and
-study templates, logbook definitions scoped to it, SOPs, project
+study templates, SOPs, recipes that list it (active or draft), project
 specifications, EDD method codes, chain-of-custody rows, issued method
 revisions and the Reference Definitions' method. A store that cannot be read
 refuses too: "not checked" is never "not used".
@@ -124,12 +124,10 @@ def references(method_id, src):
                             for r in src.get("studies") or [] if r.get("method") == method_id])
     add(u"Study templates", [u"{0} {1}".format(_u(t.get("id")), _u(t.get("name"))).strip()
                              for t in src.get("study_templates") or [] if t.get("method") == method_id])
-    add(u"Logbook definitions scoped to it",
-        [u"{0} {1}".format(_u(d.get("form_num")), _u(d.get("title"))).strip()
-         for d in src.get("logbook_defs") or [] if d.get("method") == method_id])
     add(u"SOPs and controlled documents",
         [u"{0} {1}".format(_u(e.get("sop_id")), _u(e.get("title"))).strip()
          for e in src.get("sops") or [] if e.get("method") == method_id])
+    add(u"Recipes that list it", _recipes_listing(src.get("recipes"), method_id))
     add(u"Project specifications",
         [p.get("title") for p in src.get("projects") or [] if (p.get("specs") or {}).get(method_id)])
     add(u"EDD profile method codes",
@@ -148,6 +146,19 @@ def references(method_id, src):
     for name, err in src.get("problems") or []:
         rows.append((u"Could not be checked", u"{0}: {1}".format(name, err)))
     return rows
+
+
+def _recipes_listing(store, method_id):
+    """Each recipe whose active or draft revision lists the method, by its
+    code and name: a recipe names its methods, so the method is in use."""
+    out = []
+    for rid in sorted(store or {}):
+        revs = [r for r in store[rid] or [] if r.get("status") in (u"active", u"draft")]
+        hit = [r for r in revs if method_id in (r.get("methods") or [])]
+        if hit:
+            r = hit[-1]
+            out.append(u"{0} {1}".format(_u(r.get("code")), _u(r.get("name"))).strip() or _u(rid))
+    return out
 
 
 def removals(src):
@@ -432,17 +443,18 @@ def collect(portal, method_id):
         return study_templates.load(portal)
     src["study_templates"] = guarded("study templates", templates, [])
 
-    def logbook_defs():
-        from senaite.pfas.logbook_store import get_logbook_defs, method_key
-        key = method_key(method_id)
-        return [dict(d, method=method_id if d.get("method_slug") and method_key(d["method_slug"]) == key
-                     else u"") for d in get_logbook_defs(portal)]
-    src["logbook_defs"] = guarded("logbook definitions", logbook_defs, [])
-
     def sops():
         from senaite.pfas.browser.sop_documents import _get_registry, method_key
         return [dict(e, method=method_key(e.get("method_slug"))) for e in _get_registry(portal)]
     src["sops"] = guarded("SOPs", sops, [])
+
+    def recipes():
+        # read here, not by recipes.load: an unreadable store must refuse
+        from zope.annotation.interfaces import IAnnotations
+        from senaite.pfas import recipes as rc
+        raw = IAnnotations(portal).get(rc.KEY)
+        return json.loads(raw) if raw else {}
+    src["recipes"] = guarded("recipes", recipes, {})
 
     def projects():
         from senaite.pfas.project_specs import get_specs

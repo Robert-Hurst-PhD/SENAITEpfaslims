@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Sample receipt</title>
+  <metal:fill fill-slot="header-title">Sample receipt</metal:fill>
+  <tal:r metal:fill-slot="header-right" tal:define="coc view/coc_receipt">
+    <a class="btn-sm btn-secondary" tal:condition="coc"
+       tal:attributes="href string:${view/portal_url}/@@pfas-coc?coc=${coc/number}">Back to CoC</a>
+    <button type="button" class="btn-sm btn-secondary" tal:condition="coc/received|nothing"
+            onclick="window.print()">Print receipt</button>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <!-- one receipt per chain of custody: each sample by its lab number and
+       client ID, with the tracking code the client tracker takes and its
+       QR code -->
+  <div class="page-body" id="receipt-coc" tal:define="purl view/portal_url; state view/coc_state; coc view/coc_receipt">
+
+    <div class="pfas-banner" tal:condition="python:state == 'none'">
+      <span>A receipt is printed for one received CoC: open the CoC and choose Receipt.</span>
+      <span class="pfas-banner-end"><a class="btn-sm btn-secondary"
+            tal:attributes="href string:${purl}/@@pfas-coc">All CoCs</a></span>
+    </div>
+    <div class="pfas-banner" tal:condition="python:state == 'missing'">
+      <span>No such CoC.</span>
+      <span class="pfas-banner-end"><a class="btn-sm btn-secondary"
+            tal:attributes="href string:${purl}/@@pfas-coc">All CoCs</a></span>
+    </div>
+    <div class="pfas-banner is-warn" tal:condition="python:state == 'not_received'">
+      <span><strong tal:content="coc/number">COC-2026-0001</strong> is not received yet: its receipt is
+        printed once the laboratory receives it.</span>
+    </div>
+
+    <tal:ok condition="python:state == 'ok'">
+      <p class="pfas-lead">
+        <strong tal:content="view/lab_name"></strong> &#183;
+        Samples received on <strong tal:content="coc/number"></strong>
+        <tal:c condition="coc/client">&#183; <span tal:replace="coc/client"></span></tal:c>
+        <tal:w condition="coc/received_at">&#183; <span tal:replace="python:u' '.join(x for x in (coc['received_at'], coc['received_by']) if x)"></span></tal:w>
+      </p>
+      <table class="pfas-table" data-col-resize="receipt-coc-1">
+        <thead><tr><th>Sample</th><th>Client sample ID</th><th>Tracking code</th><th>QR code</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="s coc/samples">
+            <td tal:content="s/id">DW-0001</td>
+            <td tal:content="s/csid">C-1</td>
+            <td><span class="pfas-id" tal:condition="s/tracking" tal:content="s/tracking">PF-260611-A3K9</span>
+                <span class="pfas-muted" tal:condition="not:s/tracking">No tracking code yet</span></td>
+            <td><tal:q condition="s/qr"><div tal:replace="structure s/qr">QR</div>
+                  <div class="pfas-muted">Scan to track your sample</div></tal:q>
+                <span class="pfas-muted" tal:condition="not:s/qr">&#8212;</span></td>
+          </tr>
+          <tr tal:condition="not:coc/samples"><td colspan="4">No samples on this CoC.</td></tr>
+        </tbody>
+      </table>
+    </tal:ok>
+
+  </div>
+  </div>
+</html>

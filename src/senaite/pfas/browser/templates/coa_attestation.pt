@@ -4,7 +4,7 @@
        context, so all styling is inline/scoped here (the PFAS macro stylesheet
        is not loaded on published reports). Actors are the live workflow
        actors resolved in coa_attestation.py. -->
-  <div class="pfas-coa-attestation">
+  <div tal:attributes="class string:pfas-coa-attestation ${view/variant}">
     <style type="text/css" tal:content="structure view/print_css">/* the lab print stylesheet */</style>
 
     <div class="coa-att-title">
@@ -56,9 +56,10 @@
               <div class="dt" tal:content="p/date"></div>
             </div>
           </tal:has>
+          <!-- an interim certificate is issued before the run is verified -->
           <div class="person" tal:condition="not:sig/verified">
             <div class="sigline"></div>
-            <div class="nm">&mdash;</div>
+            <div class="nm">Not yet verified</div>
           </div>
         </td>
       </tr>
@@ -67,7 +68,7 @@
       <tr tal:define="a sig/authorized">
         <td class="role" i18n:translate="">Authorized by</td>
         <td>
-          <div class="person">
+          <div class="person" tal:condition="a/fullname">
             <img class="sig" tal:condition="a/signature_url"
                  tal:attributes="src a/signature_url"/>
             <div class="sigline" tal:condition="not:a/signature_url"></div>
@@ -78,6 +79,10 @@
                  i18n:translate="">Authorized signatory</div>
             <div class="dt" tal:content="a/date"></div>
           </div>
+          <div class="person" tal:condition="not:a/fullname">
+            <div class="sigline"></div>
+            <div class="nm">&mdash;</div>
+          </div>
         </td>
       </tr>
     </table>
@@ -87,14 +92,14 @@
          empty signature space otherwise. -->
     <table class="coa-att-compact" tal:condition="python:view.style() != 'full'">
       <tr>
-        <td tal:repeat="tier python:[('Prepared by', sig['prepared']), ('Verified by', sig['verified']), ('Authorized by', [sig['authorized']] if sig['authorized'] else [])]">
+        <td tal:repeat="tier python:[('Prepared by', sig['prepared']), ('Verified by', sig['verified']), ('Authorized by', [sig['authorized']] if sig['authorized'] and sig['authorized']['fullname'] else [])]">
           <div class="role" tal:content="python:tier[0]">Prepared by</div>
           <tal:p repeat="p python:tier[1]">
             <img class="sig-sm" tal:condition="p/signature_url" tal:attributes="src p/signature_url"/>
             <div><span class="nm" tal:content="p/fullname"></span>
                  <span class="dt" tal:content="p/date"></span></div>
           </tal:p>
-          <div tal:condition="not:python:tier[1]">&mdash;</div>
+          <div tal:condition="not:python:tier[1]" tal:content="python:'Not yet verified' if tier[0] == 'Verified by' else u'\u2014'">&mdash;</div>
         </td>
       </tr>
     </table>

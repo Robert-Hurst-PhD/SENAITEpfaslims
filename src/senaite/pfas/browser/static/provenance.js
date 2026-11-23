@@ -14,7 +14,6 @@
     SUR: "Surrogate recovery", LFSM: "Matrix spike recovery", LFSMD: "Matrix spike duplicate RPD",
     LFSMD_REC: "Matrix spike duplicate recovery", BLANK: "Blank", LFB: "Fortified blank recovery",
     LCS: "Laboratory control sample recovery", DUP: "Duplicate RPD", RESULT: "Reported result", RUN: "Run file" };
-  var SERIES = 6;
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function num(v) {
@@ -22,7 +21,7 @@
     if (typeof v === "number") { return Math.abs(v) >= 100 ? v.toFixed(1) : (Math.abs(v) >= 1 ? v.toPrecision(4) : v.toPrecision(3)).replace(/\.?0+$/, ""); }
     return String(v);
   }
-  function colour(i) { return "var(--series-" + ((i % SERIES) + 1) + ")"; }
+  function colour(i) { return eqApi().colour(i); }
   function batchId() {
     var m = doc.querySelector('meta[name="pfas-batch-id"]');
     return (m && m.getAttribute("content")) || "";
@@ -44,25 +43,18 @@
     return "";
   }
 
-  function formulaHtml(formula, terms) {
-    var text = esc(formula || "");
-    var order = terms.map(function (t, i) { return { s: t.symbol, i: i }; })
-      .filter(function (x) { return x.s; })
-      .sort(function (a, b) { return b.s.length - a.s.length; });
-    // replace longest symbols first; a placeholder keeps a symbol inside another from matching twice
-    var marks = [];
-    order.forEach(function (x) {
-      var sym = esc(x.s);
-      var idx = text.indexOf(sym);
-      while (idx >= 0) {
-        var ph = "\u0001" + marks.length + "\u0002";
-        marks.push('<span class="pv-term" data-term="' + x.i + '" style="color:' + colour(x.i) + '">' + sym + "</span>");
-        text = text.slice(0, idx) + ph + text.slice(idx + sym.length);
-        idx = text.indexOf(sym);
-      }
-    });
-    return text.replace(/\u0001(\d+)\u0002/g, function (_m, n) { return marks[+n]; });
+  /* The one drawing of an equation is the shared component's
+     (pfas-components.js, PFAS.equation): read when used, so the order the
+     two scripts load in does not matter; in node, required beside this file. */
+  function eqApi() {
+    if (typeof window !== "undefined" && window.PFAS && window.PFAS.equation) { return window.PFAS.equation; }
+    return require("./pfas-components.js").equation;
   }
+  function formulaHtml(formula, terms) { return eqApi().html(formula, terms); }
+
+  /* the equation with each term coloured: the one drawing of a formula, used
+     by the value drawer, a column's card and the salt factor calculator */
+  function formulaBlock(formula, terms) { return eqApi().block(formula, terms); }
 
   /* one block per imported line: the line's heading, the row's filled
      fields only (the cited term's cell outlined in its colour), and one line on
@@ -115,21 +107,27 @@
     var badge = r.verdict === "within" ? "badge-active" : r.verdict === "outside" ? "badge-expired" : "badge-archived";
     var h = '<div class="pv-head"><span class="pv-value">' + esc(num(r.value_text || r.value)) + (r.unit ? ' <small>' + esc(r.unit) + "</small>" : "") + "</span>" +
       '<span class="badge ' + badge + '">' + esc(r.verdict || "recorded") + "</span></div>";
-    h += '<div class="pv-formula">' + formulaHtml(r.formula, terms) + "</div>";
+    h += formulaBlock(r.formula, terms);
     if (rule.text) { h += '<p class="pv-rule">' + esc(rule.text) + "</p>"; }
     if (rule.lo != null || rule.hi != null) { h += '<p class="pv-rule">Window ' + esc(num(rule.lo)) + " – " + esc(num(rule.hi)) + (rule.basis ? " · " + esc(rule.basis) : "") + "</p>"; }
     h += '<table class="pfas-table pv-terms" data-col-resize="pv-terms"><thead><tr><th></th><th>Term</th><th>Means</th><th class="num">Value</th><th>Source</th></tr></thead><tbody>';
+    /* a term with a record of its own: the whole row opens it (data-prov),
+       and its menu says so; no button stands in the row */
+    var opens = JSON.stringify([{ label: "Open its record", event: "pv-open" }]);
     terms.forEach(function (t, i) {
-      var src = t.source || {}, link = "";
-      if (src.record) { link = ' <button type="button" class="btn-sm btn-secondary pv-open" data-prov="' + esc(src.record) + '">Open</button>'; }
-      h += '<tr class="pv-term-row" data-term="' + i + '"><td><span class="pv-dot" style="background:' + colour(i) + '"></span></td>' +
+      var src = t.source || {}, rec = "";
+      if (src.record) { rec = ' data-prov="' + esc(src.record) + '" tabindex="0" data-row-actions="' + esc(opens) + '"'; }
+      h += '<tr class="pv-term-row" data-term="' + i + '"' + rec + '><td><span class="pv-dot" style="background:' + colour(i) + '"></span></td>' +
         '<td class="pv-sym" style="color:' + colour(i) + '">' + esc(t.symbol) + "</td><td>" + esc(t.label) + "</td>" +
-        '<td class="num">' + esc(num(t.value)) + (t.unit ? " " + esc(t.unit) : "") + "</td><td>" + esc(sourceText(src)) + link + "</td></tr>";
+        '<td class="num">' + esc(num(t.value)) + (t.unit ? " " + esc(t.unit) : "") + "</td><td>" + esc(sourceText(src)) + "</td></tr>";
     });
     h += "</tbody></table>";
     if (steps.length) {
       h += '<h3 class="pv-h">Step by step</h3><ol class="pv-steps">';
-      steps.forEach(function (s) { h += "<li><span>" + esc(s.label) + '</span><code>' + esc(s.expression) + "</code><b>" + esc(num(s.value)) + "</b></li>"; });
+      steps.forEach(function (s) {
+        h += "<li><span>" + esc(s.label) + '</span><span class="pv-step-eq">' + formulaHtml(s.expression, terms) +
+          "</span><b>" + esc(num(s.value)) + "</b></li>";
+      });
       h += "</ol>";
     }
     if (rule.qualifier || (rule.flags && rule.flags.length)) {
@@ -153,19 +151,76 @@
     return { title: title, html: h };
   }
 
-  function linkHover(root) {
-    root.addEventListener("mouseover", function (e) {
-      var el = e.target.closest("[data-term]");
-      if (!el) { return; }
-      var i = el.getAttribute("data-term");
-      var all = root.querySelectorAll("[data-term]");
-      for (var k = 0; k < all.length; k++) { all[k].classList.toggle("pv-hot", all[k].getAttribute("data-term") === i); }
+  function linkHover(root) { eqApi().hover(root); }
+
+  /* A column header holding data-eq='{"formula":..,"terms":[{"symbol","label"}]}'
+     shows how the column is worked out on hover or focus: the equation, then
+     each term with what it means, lit together as in the drawer. */
+  function equationCard(formula, terms) {
+    var h = formulaBlock(formula, terms) + '<ul class="pv-card-terms">';
+    terms.forEach(function (t, i) {
+      h += '<li data-term="' + i + '"><span class="pv-dot" style="background:' + colour(i) + '"></span> ' +
+        '<span class="pv-sym" style="color:' + colour(i) + '">' + esc(t.symbol) + "</span> " + esc(t.label) + "</li>";
     });
-    root.addEventListener("mouseout", function (e) {
-      if (e.target.closest("[data-term]")) {
-        var all = root.querySelectorAll(".pv-hot");
-        for (var k = 0; k < all.length; k++) { all[k].classList.remove("pv-hot"); }
+    return h + "</ul>";
+  }
+  function wireCards() {
+    var card = null, owner = null;
+    function hide() {
+      if (card) { card.parentNode.removeChild(card); card = null; }
+      if (owner) { owner.removeAttribute("aria-describedby"); owner = null; }
+    }
+    function show(th) {
+      if (owner === th) { return; }
+      hide();
+      var eq;
+      try { eq = JSON.parse(th.getAttribute("data-eq")); } catch (e) { return; }
+      card = doc.createElement("div");
+      card.className = "pv-card";
+      card.id = "pv-card";
+      card.setAttribute("role", "tooltip");
+      card.innerHTML = equationCard(eq.formula, eq.terms || []);
+      linkHover(card);
+      th.appendChild(card);
+      /* fixed, set from the header's box: a scrolling table wrapper never clips it */
+      var box = th.getBoundingClientRect(), w = card.offsetWidth;
+      card.style.top = box.bottom + "px";
+      card.style.left = Math.max(8, Math.min(box.right - w, window.innerWidth - w - 8)) + "px";
+      owner = th;
+      th.setAttribute("aria-describedby", "pv-card");
+    }
+    doc.addEventListener("mouseover", function (e) {
+      var th = e.target.closest && e.target.closest("[data-eq]");
+      if (th) { show(th); } else if (card && !card.contains(e.target)) { hide(); }
+    });
+    doc.addEventListener("focusin", function (e) {
+      var th = e.target.closest && e.target.closest("[data-eq]");
+      if (th) { show(th); } else { hide(); }
+    });
+    doc.addEventListener("focusout", function (e) { if (e.target === owner) { hide(); } });
+    doc.addEventListener("keydown", function (e) { if (e.key === "Escape") { hide(); } });
+    /* a click (or Enter) on the header opens the same content in the shared centred dialog */
+    function openFull(th) {
+      var d = window.PFAS && window.PFAS.components && window.PFAS.components.drawer, eq;
+      if (!d) { return; }
+      try { eq = JSON.parse(th.getAttribute("data-eq")); } catch (e) { return; }
+      hide();
+      var title = "", n;
+      for (n = th.firstChild; n && !title; n = n.nextSibling) {
+        if (n.nodeType === 3) { title = n.nodeValue.replace(/\s+/g, " ").trim(); }
       }
+      d.open(title || "How it is worked out", equationCard(eq.formula, eq.terms || []), { cls: "is-dialog" });
+      var body = d.el && d.el.querySelector(".pfas-drawer-body");
+      if (body) { linkHover(body); }
+    }
+    doc.addEventListener("click", function (e) {
+      var th = e.target.closest && e.target.closest("[data-eq]");
+      if (th) { openFull(th); }
+    });
+    doc.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") { return; }
+      var th = doc.activeElement && doc.activeElement.closest && doc.activeElement.closest("[data-eq]");
+      if (th && doc.activeElement === th) { e.preventDefault(); openFull(th); }
     });
   }
 
@@ -183,16 +238,26 @@
         d.open(out.title, out.html, { cls: "is-dialog" });
         var body = d.el.querySelector(".pfas-drawer-body");
         linkHover(body);
+        var comps = window.PFAS && window.PFAS.components;
+        if (body && comps && comps.rows) { comps.rows.init(body); }
       })
       .catch(function (err) { d.open("Where does this number come from?", '<p class="pv-rule">The record could not be loaded (' + esc(err) + ").</p>", { cls: "is-dialog" }); });
   }
 
   if (doc) {
+    wireCards();
     doc.addEventListener("click", function (e) {
+      if (e.target.closest(".pfas-rowmenu")) { return; }   /* a term row's dots open its menu, not the record */
       var el = e.target.closest("[data-prov]");
       if (!el) { return; }
       e.preventDefault();
       open(el.getAttribute("data-prov"));
+    });
+    /* a term row's menu: Open its record */
+    doc.addEventListener("pfas:row-action", function (e) {
+      var row = e.detail && e.detail.row;
+      if (!row || e.detail.name !== "pv-open" || !row.getAttribute("data-prov")) { return; }
+      open(row.getAttribute("data-prov"));
     });
     doc.addEventListener("keydown", function (e) {
       if (e.key !== "Enter" && e.key !== " ") { return; }
@@ -207,7 +272,7 @@
     };
     if (doc.readyState === "loading") { doc.addEventListener("DOMContentLoaded", fromHash); } else { fromHash(); }
   }
-  var api = { open: open, render: render, formulaHtml: formulaHtml, lineBlock: lineBlock };
+  var api = { open: open, render: render, formulaHtml: formulaHtml, formulaBlock: formulaBlock, equationCard: equationCard, lineBlock: lineBlock };
   if (typeof window !== "undefined") { window.PFAS = window.PFAS || {}; window.PFAS.provenance = api; }
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
 })();

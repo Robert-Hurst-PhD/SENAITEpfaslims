@@ -53,16 +53,13 @@ def is_summed(profile, keyword):
 
 
 def full_name(profile, keyword, names):
-    """The analyte's full name as reported in this method. The
-    reference names the PFOS / PFHxS keyword after its LINEAR isomer; a
-    method that sums the isomers reports the total, so the name says so
-    instead of "(linear)". `names`: {keyword: full name}."""
-    name = (names.get(keyword) or u"").strip()
-    if not name or not is_summed(profile, keyword):
-        return name
-    if name.lower().endswith(u"(linear)"):
-        name = name[:-len(u"(linear)")].rstrip()
-    return u"%s (total of linear and branched isomers)" % name
+    """The analyte's full name as the certificate prints it: the library's
+    name without a trailing bracketed remark, by the one rule the Analytes
+    tab uses (profile_grids.chemical_name). A summed analyte loses the
+    reference's "(linear)", the linear peak its keyword stands for; the
+    stored name is not changed. `names`: {keyword: full name}."""
+    from senaite.pfas import profile_grids
+    return profile_grids.chemical_name(names.get(keyword), summed=is_summed(profile, keyword))
 
 
 def labels(profile, keywords, titles):
@@ -174,3 +171,11 @@ def check(profile, titles, library=None):
         else:
             shown[name.lower()] = kw
     return errors
+
+
+def total(values):
+    """The reported value of an isomer sum: its quantified peaks added, None
+    when no peak has a number or the peaks add to zero, as the worker reports
+    a sum. Reporting and the method studies both use it."""
+    added = sum(v for v in values or [] if v is not None)
+    return added if added != 0 else None

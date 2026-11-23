@@ -6,13 +6,20 @@ Clients enter their PF-YYMMDD-XXXX tracking number to see their sample's
 progress through the five PFAS lab stages, along with a 16-bit scientist
 animation and a per-stage time estimate from historical averages.
 
+Three pages in one view: staff get the framed search (tracker.pt); a visitor
+who is not staff gets the standalone page (tracker_public.pt), and a
+signed-in client sees their own samples and issued certificates on it,
+above the tracking box (client_page.py).
+
 Security model
 --------------
 This view is registered with zope2.Public so unauthenticated clients can
-access it.  All SENAITE object reads (AR, Worksheet) are done under an
-elevated security context (UnrestrictedUser) so anonymous requests don't
-hit Unauthorized.  Only a minimal public-safe dict is returned to the
-template — no analyst names, sample IDs, internal IDs, or QC data.
+access it.  A look-up BY TRACKING NUMBER reads the sample (AR, Worksheet)
+under an elevated security context (UnrestrictedUser) so anonymous requests
+don't hit Unauthorized; only a minimal public-safe dict is returned to the
+template — no analyst names, sample IDs, internal IDs, or QC data.  The
+client's own lists never take that context: they are searched as the
+signed-in user, and SENAITE's own permissions decide what they hold.
 
 Python 2.7 compatible.
 """
@@ -31,15 +38,16 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from ..tracking_store import get_ar_uid_by_tracking
 from .sample_status import (
-    STAGE_PUBLISHED, STAGES, _build_stage_steps, _compute_stage,
+    STAGE_EXTRACTION, STAGE_PUBLISHED, STAGES, _build_stage_steps, _compute_stage,
     _get_method_name, _workflow_state,
 )
 from .stage_estimates import format_estimate, get_stage_estimates
+from .client_page import ClientLists
 from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger('senaite.pfas.browser.tracker')
 
-_TRACKING_RE = re.compile(r'^PF-\d{6}-(?:[A-Z0-9]{8}|[A-Z0-9]{4})$')
+_TRACKING_RE = re.compile(r'^PF-\d{6}-[A-Z0-9]{8}$')
 _COC_RE = re.compile(r'^COC-\d{4}-\d{4,}$')
 
 # Failed look-ups allowed per visitor address per hour; past it the page
@@ -70,15 +78,18 @@ def _record_failure(who, now):
         _FAILED.setdefault(who, []).append(now)
 
 # ── Stage SVG animations (16-bit pixel-art style) ────────────────────────────
-# Each is a standalone SVG embedded directly in the tracker page.
+# Each is a standalone SVG embedded directly in the tracker page. Each
+# animation plays once and the figure rests (a loop that never ends is
+# motion a client cannot stop); with reduced motion asked for, none plays
+# (static/pfas-tracker.css).
 # Characters and props use blocky shapes with a limited palette to evoke
 # a 16-bit look.  CSS keyframe animations run entirely in the browser.
 
 _SVG_STAGE1 = u"""\
 <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <style>
-.sci{animation:bob 1.4s ease-in-out infinite;}
-.box{animation:slide 1.4s ease-in-out infinite;}
+.sci{animation:bob 1.4s ease-in-out 1;}
+.box{animation:slide 1.4s ease-in-out 1;}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes slide{0%,100%{transform:translateX(0)}50%{transform:translateX(4px)}}
 </style>
@@ -114,9 +125,9 @@ _SVG_STAGE1 = u"""\
 _SVG_STAGE2 = u"""\
 <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <style>
-.sci{animation:bob 1.2s ease-in-out infinite;}
-.flask{animation:swirl 2s ease-in-out infinite;}
-.bub{animation:bubble 1.6s ease-in-out infinite;}
+.sci{animation:bob 1.2s ease-in-out 1;}
+.flask{animation:swirl 2s ease-in-out 1;}
+.bub{animation:bubble 1.6s ease-in-out 1;}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes swirl{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
 @keyframes bubble{0%,100%{opacity:1;transform:translateY(0)}50%{opacity:0.4;transform:translateY(-4px)}}
@@ -157,9 +168,9 @@ _SVG_STAGE2 = u"""\
 _SVG_STAGE3 = u"""\
 <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <style>
-.sci{animation:bob 1.6s ease-in-out infinite;}
-.screen{animation:blink 1.8s step-start infinite;}
-.led{animation:blink 0.9s step-start infinite;}
+.sci{animation:bob 1.6s ease-in-out 1;}
+.screen{animation:blink 1.8s step-start 1;}
+.led{animation:blink 0.9s step-start 1;}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @keyframes blink{0%,60%{opacity:1}61%,100%{opacity:0.3}}
 </style>
@@ -207,8 +218,8 @@ _SVG_STAGE3 = u"""\
 _SVG_STAGE4 = u"""\
 <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <style>
-.sci{animation:lean 2s ease-in-out infinite;}
-.cursor{animation:blink 1s step-start infinite;}
+.sci{animation:lean 2s ease-in-out 1;}
+.cursor{animation:blink 1s step-start 1;}
 @keyframes lean{0%,100%{transform:translateX(0)}50%{transform:translateX(3px)}}
 @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
 </style>
@@ -247,11 +258,11 @@ _SVG_STAGE4 = u"""\
 _SVG_STAGE5 = u"""\
 <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <style>
-.sci{animation:jump 1.4s ease-in-out infinite;}
-.doc{animation:wave 1.4s ease-in-out infinite;}
-.star{animation:twinkle 1s ease-in-out infinite;}
-.star2{animation:twinkle 1s ease-in-out infinite;animation-delay:0.3s;}
-.star3{animation:twinkle 1s ease-in-out infinite;animation-delay:0.6s;}
+.sci{animation:jump 1.4s ease-in-out 1;}
+.doc{animation:wave 1.4s ease-in-out 1;}
+.star{animation:twinkle 1s ease-in-out 1;}
+.star2{animation:twinkle 1s ease-in-out 1;animation-delay:0.3s;}
+.star3{animation:twinkle 1s ease-in-out 1;animation-delay:0.6s;}
 @keyframes jump{0%,100%{transform:translateY(0)}40%{transform:translateY(-10px)}60%{transform:translateY(-10px)}}
 @keyframes wave{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
 @keyframes twinkle{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.2;transform:scale(0.5)}}
@@ -320,26 +331,78 @@ def _get_analyses_for_ar(portal, ar_uid):
     return []
 
 
-def _get_worksheet_for_ar(portal, ar_uid):
-    """Return first Worksheet for the given AR UID, or None.
+def _placement(analyses, state_of, worksheet_uid_of, actions_of):
+    """(the worksheet uid a sample's analyses stand on, or None; whether
+    they were taken off a worksheet to be extracted again). Only an
+    analysis still to be reported places the sample: a retracted or
+    rejected one stays on the worksheet it left. Analyses that stand on no
+    worksheet were taken off one when one of them was unassigned from a
+    worksheet, or a retracted one still sits on it (its retest taken off
+    for re-extraction)."""
+    gone = ('retracted', 'rejected', 'cancelled', 'invalid')
+    live, ws_uid, taken_off = [], None, False
+    for analysis in analyses or ():
+        if state_of(analysis) in gone:
+            if worksheet_uid_of(analysis):
+                taken_off = True
+            continue
+        live.append(analysis)
+        if 'unassign' in (actions_of(analysis) or ()):
+            taken_off = True
+        if ws_uid is None and worksheet_uid_of(analysis):
+            ws_uid = worksheet_uid_of(analysis)
+    return ws_uid, bool(taken_off and live)
+
+
+def _history_actions(obj):
+    """The workflow actions taken on an object, every workflow's."""
+    out = []
+    for entries in (getattr(obj, 'workflow_history', None) or {}).values():
+        out.extend((e or {}).get('action') for e in entries or ())
+    return out
+
+
+def _safe(fn, default=None):
+    def call(obj):
+        try:
+            return fn(obj)
+        except Exception:
+            return default
+    return call
+
+
+def _get_placement_for_ar(portal, ar_uid):
+    """(the Worksheet the sample's analyses stand on, or None; whether they
+    were taken off a worksheet to be extracted again), _placement.
 
     Uses unrestricted catalog queries so this works for anonymous callers
     under the elevated security context.
     """
-    for analysis in _get_analyses_for_ar(portal, ar_uid):
-        try:
-            ws_uid = analysis.getWorksheetUID()
-            if ws_uid:
-                uid_cat = getToolByName(portal, 'uid_catalog')
-                try:
-                    ws_brains = uid_cat.unrestrictedSearchResults(UID=ws_uid)
-                except AttributeError:
-                    ws_brains = uid_cat(UID=ws_uid)
-                if ws_brains:
-                    return ws_brains[0].getObject()
-        except Exception:
-            pass
-    return None
+    ws_uid, taken_off = _placement(_get_analyses_for_ar(portal, ar_uid), _safe(_workflow_state, ''),
+                                   _safe(lambda a: a.getWorksheetUID(), ''), _safe(_history_actions, []))
+    if not ws_uid:
+        return None, taken_off
+    uid_cat = getToolByName(portal, 'uid_catalog')
+    try:
+        ws_brains = uid_cat.unrestrictedSearchResults(UID=ws_uid)
+    except AttributeError:
+        ws_brains = uid_cat(UID=ws_uid)
+    return (ws_brains[0].getObject() if ws_brains else None), taken_off
+
+
+def _get_worksheet_for_ar(portal, ar_uid):
+    """Return the Worksheet the sample's analyses stand on, or None
+    (_get_placement_for_ar)."""
+    return _get_placement_for_ar(portal, ar_uid)[0]
+
+
+def _stage_with(stage, taken_off):
+    """A sample taken off a worksheet to be extracted again reads
+    Extraction until its new batch moves on: never Received again, and no
+    reason is shown."""
+    if taken_off and stage < STAGE_EXTRACTION:
+        return STAGE_EXTRACTION
+    return stage
 
 
 def _get_method_name_for_ar(portal, ar_uid):
@@ -348,7 +411,8 @@ def _get_method_name_for_ar(portal, ar_uid):
         try:
             method = analysis.getMethod()
             if method:
-                return method.Title() or method.getId()
+                from senaite.pfas.browser.view_helpers import core_method_name
+                return core_method_name(method)
         except Exception:
             pass
     return u''
@@ -392,10 +456,13 @@ def _build_public_status(portal, ar_uid):
         stage = STAGE_PUBLISHED
         method_name = _get_method_name_for_ar(portal, ar_uid) or u''
     else:
-        ws = _get_worksheet_for_ar(portal, ar_uid)
+        ws, taken_off = _get_placement_for_ar(portal, ar_uid)
         if ws is not None:
             stage, _responsible = _compute_stage(ws)
             method_name = _get_method_name(ws) or u''
+        stage = _stage_with(stage, taken_off)
+        if not method_name and taken_off:
+            method_name = _get_method_name_for_ar(portal, ar_uid) or u''
 
     stage_label = dict(STAGES).get(stage, u'')
     steps = _build_stage_steps(stage)
@@ -420,12 +487,13 @@ def _build_public_status(portal, ar_uid):
 
 # ── View ──────────────────────────────────────────────────────────────────────
 
-class PFASClientTrackerView(ViewHelpers, BrowserView):
+class PFASClientTrackerView(ClientLists, ViewHelpers, BrowserView):
     """
     @@pfas-track — public no-login client tracking page.
     Permission: zope2.Public (see configure.zcml).
     """
     template = ViewPageTemplateFile('templates/tracker.pt')
+    public_template = ViewPageTemplateFile('templates/tracker_public.pt')
 
     def __call__(self):
         flatten_form(self.request)
@@ -434,7 +502,13 @@ class PFASClientTrackerView(ViewHelpers, BrowserView):
             if url:
                 self.request.response.redirect(url)
                 return u""
-        return self.template()
+            return self.template()
+        # a signed-in client's own samples are on this page: never kept by
+        # a proxy or the browser, and never served to another visitor
+        resp = self.request.response
+        resp.setHeader(str("Cache-Control"), str("private, no-store"))
+        resp.setHeader(str("Vary"), str("Cookie"))
+        return self.public_template()
 
     def is_staff(self):
         """Signed-in staff get one search instead of the public form."""
@@ -468,13 +542,20 @@ class PFASClientTrackerView(ViewHelpers, BrowserView):
         return u"%s/@@pfas-search?q=%s" % (base, urllib.quote(q.encode("utf-8") if isinstance(q, unicode) else q))
 
     def signed_in_client(self):
-        """A signed-in client contact: they enter their samples on a CoC
-        (@@pfas-coc)."""
-        try:
-            from bika.lims import api
-            return api.get_current_client() is not None
-        except Exception:                                   # noqa: BLE001
-            return False
+        """A signed-in client contact: they see their own samples and
+        certificates, and enter new samples on a CoC (@@pfas-coc)."""
+        return self.client() is not None
+
+    def signed_in(self):
+        """Anyone signed in: the page offers Sign out, not the staff
+        sign-in."""
+        from senaite.pfas.browser import perms
+        return not perms._is_anonymous()
+
+    def lab_name(self):
+        """The laboratory's name, as every screen and printout shows it."""
+        from senaite.pfas import lab_identity
+        return lab_identity.lab_name()
 
     def tracking_number(self):
         return self.request.form.get('t', u'').strip().upper()

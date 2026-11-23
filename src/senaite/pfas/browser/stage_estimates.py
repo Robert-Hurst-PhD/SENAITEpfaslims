@@ -126,7 +126,8 @@ def _get_method_title(ws):
         for analysis in ws.getAnalyses():
             method = analysis.getMethod()
             if method:
-                return method.Title() or method.getId()
+                from senaite.pfas.browser.view_helpers import core_method_name
+                return core_method_name(method)
     except Exception:
         pass
     return ''

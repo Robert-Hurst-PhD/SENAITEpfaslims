@@ -31,11 +31,13 @@ def surrogate_added(entry) -> bool:
     return entry.get("route") == "respike" or entry.get("sur_handling") in ADDED
 
 
-def dilution_rule(rule, settings):
+def dilution_rule(rule, settings, floor_on=True):
     """The method's surrogate window for a diluted injection: its low end the
-    lowest EIS recovery in a diluted extract when the method sets one."""
+    lowest EIS recovery in a diluted extract when the method sets one and
+    its limit box is not Off (`floor_on`); Off, the method's window as it
+    is."""
     floor = (settings or {}).get("eis_floor_pct")
-    if rule is None or floor in (None, ""):
+    if rule is None or floor in (None, "") or not floor_on:
         return rule
     return dataclasses.replace(rule, recovery_min=float(floor))
 
@@ -53,6 +55,31 @@ def qualifies_respike(entry, settings) -> bool:
     method says so (the qualifier's code and wording are the QAO's, in QC
     Qualifiers)."""
     return (entry or {}).get("route") == "respike" and bool((settings or {}).get("qualify_respike"))
+
+
+def fold_power(entry, settings, role, linked=False) -> int:
+    """How many times a dilution's reading is multiplied by its fold: 1 under
+    the method's default (always); under "only when added", the number of
+    the reading's standards that the dilution changed. A native and its
+    surrogate diluted together keep their ratio (0); the surrogate added
+    back reads the native once diluted (1). Under the linked response ratio
+    the reading is A x A_IS / A_sur, so the internal standard counts too: it
+    goes in after the dilution (as the IS-response check takes it) and
+    changes nothing, unless the dilution records it "not added", which
+    dilutes it with the extract and adds one more fold (an extract dilution
+    with neither standard added back reads once diluted; a re-spike with
+    the internal standard not added, twice). `role`: the quantifying
+    standard's role ("injection_is", else a surrogate / extracted
+    standard)."""
+    if (settings or {}).get("fold_rule") != "added":
+        return 1
+    entry = entry or {}
+    if role == "injection_is":
+        return 1 if entry.get("is_handling") in ADDED else 0
+    power = 1 if surrogate_added(entry) else 0
+    if linked and entry.get("is_handling") == "not_added":
+        power += 1
+    return power
 
 
 def fold_applies(entry, settings, role) -> bool:

@@ -183,7 +183,7 @@ def _validate_row(row_values, row_number, is_qc):
             "field": "CAS_NO",
             "message": (
                 "CAS_NO is PLACEHOLDER — assign a real CAS or DEP##### code "
-                "in the EDD export settings before submitting"
+                "in EDD settings before submitting"
             ),
             "type": "BLOCKING",
         })
@@ -192,7 +192,7 @@ def _validate_row(row_values, row_number, is_qc):
         errors.append({
             "row": row_number,
             "field": "CAS_NO",
-            "message": "CAS_NO is empty for {0} — enter it in the EDD export settings".format(param),
+            "message": "CAS_NO is empty for {0} — enter it in EDD settings".format(param),
             "type": "BLOCKING",
         })
 
@@ -334,6 +334,8 @@ QUALIFIER_MAP = [
     # and "M" is not a valid EGAD LAB_QUALIFIER.
     {"our_qualifier": "M",      "code": "*",    "description": "Matrix effect — QC outside control limits"},
     {"our_qualifier": "P",      "code": "*",    "description": "Precision (RPD) outside control limits"},
+    {"our_qualifier": "BH",     "code": "*",    "description": "Recovery biased high — QC outside control limits"},
+    {"our_qualifier": "CE",     "code": "J",    "description": "Co-eluting peaks split: estimated"},
 ]
 
 QC_TYPE_MAP = [

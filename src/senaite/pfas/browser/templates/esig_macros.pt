@@ -1,0 +1,143 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  The sign dialog: what is signed, with which meaning, by whom; a note; Sign.
+
+  The caller defines `esig` ON A WRAPPING ELEMENT (Chameleon does not pass a
+  tal:define on the metal:use-macro element into the macro):
+
+      esig = {"record": record id, "revision": revision,
+              "hash_prefix": the first characters of the content hash,
+              "meaning_label": signing.meaning_label(meaning),
+              "signer_name": the signer's full name,
+              "action": the step's action, which names the dialog esig-<action>,
+              "form_id": the id of the step's form,
+              "content_text": optional, said in place of the hash when the
+                              content does not exist yet (a certificate is
+                              bound to its PDF as it is issued)}
+
+  The step's opener must be a <button type="button" data-modal-open="esig-<action>">,
+  never a submit button, so the step posts only from this dialog. Sign is
+  then the form's default button: Enter in one of the step's text fields
+  would post through it unseen, so the step keeps Enter from submitting
+  and tests that it does not sign. The dialog
+  sits outside the step's form; its fields and its Sign button name that
+  form, so Sign posts the form with sign=1 and the note. Sign has no
+  name or value: the step carries its action in a hidden field.
+-->
+<metal:dialog define-macro="sign_dialog">
+  <div class="pfas-modal" tal:attributes="id string:esig-${esig/action}">
+    <div class="pfas-modal-box is-narrow">
+      <h2>Sign</h2>
+      <div class="pfas-meta-row"><span class="pfas-muted">Record</span>
+        <strong tal:content="string:${esig/record} revision ${esig/revision}">DEMO-PREP-1 revision 1</strong></div>
+      <div class="pfas-meta-row"><span class="pfas-muted">Content</span>
+        <code tal:condition="python:not esig.get('content_text')" tal:content="esig/hash_prefix">3f9c2a1b7e0d</code>
+        <span tal:condition="python:esig.get('content_text')" tal:content="python:esig.get('content_text')">The certificate PDF as issued</span></div>
+      <div class="pfas-meta-row"><span class="pfas-muted">Meaning</span>
+        <strong data-esig-meaning="data-esig-meaning" tal:content="esig/meaning_label">Prepared by</strong></div>
+      <div class="pfas-meta-row"><span class="pfas-muted">Signer</span>
+        <strong tal:content="esig/signer_name">A. Analyst</strong></div>
+      <input type="hidden" name="sign" value="1" tal:attributes="form esig/form_id" />
+      <div class="pfas-form-field is-full">
+        <label tal:attributes="for string:esig-note-${esig/action}">Note</label>
+        <textarea name="sign_note" rows="2" class="pfas-textarea"
+                  tal:attributes="id string:esig-note-${esig/action}; form esig/form_id"></textarea>
+      </div>
+      <tal:s define="sign_form esig/form_id; sign_id string:esig-secret-${esig/action}"><metal:s
+          use-macro="context/@@pfas-esig-macros/macros/sign_secret" /></tal:s>
+      <p class="fld-help">Signing records your name, this meaning and the time against the content shown.</p>
+      <div class="form-actions is-end">
+        <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+        <button type="submit" class="btn btn-primary" tal:attributes="form esig/form_id">Sign</button>
+      </div>
+    </div>
+  </div>
+</metal:dialog>
+
+<!--
+  What a person types to sign, asked again for every signature: their
+  password, or the PIN they made their default on My profile. The caller
+  defines ON A WRAPPING ELEMENT sign_id (the field's id) and, when the
+  field sits outside its form, sign_form (that form's id).
+-->
+<metal:secret define-macro="sign_secret"><tal:s
+    define="ckind context/@@pfas-esig-macros/credential_kind | string:password; sform sign_form|nothing">
+  <div class="pfas-form-field is-full">
+    <label tal:attributes="for sign_id" tal:content="python:u'Your PIN' if ckind == 'pin' else u'Your password'">Your password</label>
+    <input type="password" name="sign_password" required="required"
+           tal:attributes="id sign_id; form sform;
+                           autocomplete python:'off' if ckind == 'pin' else 'current-password';
+                           inputmode python:'numeric' if ckind == 'pin' else None" />
+  </div>
+</tal:s></metal:secret>
+
+<!--
+  A record's signatures, the one way every page draws them: Meaning, Name,
+  Date and time, the content each signed (Record) and its State, read from
+  the ledger. The caller defines ON A WRAPPING ELEMENT:
+
+      sig_rows     the rows (report_documents.signature_row: meaning, name,
+                   at, hash, image "on file" for a signature valid on the
+                   content now, else what happened to it); None when the
+                   ledger could not be read; an optional "doc" on each row
+                   names the document it signs, in a first column
+      sig_doc      the heading of that first column, where rows carry "doc"
+      sig_resize   the table's data-col-resize key
+      sig_verify   optional {"url", "title"}: Verify signatures, in each
+                   row's menu, which recomputes the record's content hashes
+                   and checks every signature in the ledger against them
+  A signer's own standing row also offers Withdraw my signature, which
+  opens the reason and password dialog.
+-->
+<metal:list define-macro="signature_list"><tal:sl
+    define="sig_doc sig_doc|nothing; sig_verify sig_verify|nothing; sig_resize sig_resize|string:esig-signatures;
+            em context/@@pfas-esig-macros | nothing; rm context/@@pfas-row-menu;
+            mine python:[s.get('seq') for s in (sig_rows or []) if em is not None and em.may_withdraw_row(s.get('seq'))]">
+  <p class="pfas-muted" tal:condition="python:sig_rows is None">The signatures could not be read.</p>
+  <p class="pfas-muted" tal:condition="python:sig_rows == []">Not signed.</p>
+  <table class="pfas-table" data-col-resize="esig-signatures" tal:condition="sig_rows" tal:attributes="data-col-resize sig_resize">
+    <thead><tr><th tal:condition="sig_doc" tal:content="sig_doc">Certificate</th><th>Meaning</th><th>Name</th><th>Date and time</th><th>Record</th><th>State</th></tr></thead>
+    <tbody><tr tal:repeat="s sig_rows"
+               tal:attributes="data-row-actions python:rm.actions(
+                   (u'Withdraw my signature', 'modal', u'esig-withdraw-%s' % s.get('seq')) if s.get('seq') in mine else None,
+                   (u'Verify signatures', 'href', sig_verify['url'], {'note': sig_verify.get('title')}) if sig_verify else None)">
+      <td tal:condition="sig_doc" tal:content="s/doc|nothing">DEMO-0001-R1</td>
+      <td tal:content="s/meaning">Prepared by</td>
+      <td tal:content="s/name">DEMO analyst</td>
+      <td class="cell-nowrap" tal:content="s/at">2026-11-06 09:12</td>
+      <td class="pfas-mono" tal:content="s/hash">3f9c2a1b7e0d</td>
+      <td tal:content="python:u'Valid' if s['image'] == u'on file' else s['image']">Valid</td>
+    </tr></tbody>
+  </table>
+  <!-- the signer withdraws their own standing signature here -->
+  <tal:w repeat="s python:[r for r in (sig_rows or []) if r.get('seq') in mine]">
+    <div class="pfas-modal" tal:attributes="id string:esig-withdraw-${s/seq}">
+      <div class="pfas-modal-box is-narrow">
+        <h2>Withdraw signature</h2>
+        <form method="post" tal:attributes="action string:${em/portal_url}/@@pfas-signature-withdraw">
+          <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+          <input type="hidden" name="seq" tal:attributes="value s/seq" />
+          <input type="hidden" name="came_from" tal:attributes="value em/came_from" />
+          <div class="pfas-meta-row"><span class="pfas-muted">Signature</span>
+            <strong tal:content="string:${s/meaning} ${s/name}">Prepared by AN1 DEMO</strong></div>
+          <div class="pfas-form-field is-full">
+            <label tal:attributes="for string:esig-withdraw-reason-${s/seq}">Reason</label>
+            <textarea name="reason" rows="2" class="pfas-textarea" required="required"
+                      tal:attributes="id string:esig-withdraw-reason-${s/seq}"></textarea>
+          </div>
+          <tal:s define="sign_id string:esig-withdraw-secret-${s/seq}"><metal:s
+              use-macro="context/@@pfas-esig-macros/macros/sign_secret" /></tal:s>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-warn">Withdraw</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </tal:w>
+</tal:sl></metal:list>
+</body>
+</html>

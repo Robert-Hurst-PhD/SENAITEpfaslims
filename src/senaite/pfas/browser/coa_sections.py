@@ -26,8 +26,10 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import coa_format
 from senaite.pfas import coa_qc_standards
+from senaite.pfas import configured_methods
 from senaite.pfas import lab_time
 from senaite.pfas import regulatory_limits
+from senaite.pfas import report_tiers
 from senaite.pfas.print_settings import logo_src
 from senaite.pfas import report_limits
 
@@ -35,6 +37,30 @@ logger = logging.getLogger("senaite.pfas.coa_sections")
 
 # Analyses in these states never appear on a certificate.
 _EXCLUDED_STATES = ("retracted", "rejected", "cancelled", "invalid")
+
+
+# the certificate's black-and-white variant: one stylesheet, this class on
+# each section (pfas-print.css)
+MONO_CLASS = "pfas-coa-mono"
+
+
+def certificate_mono(collection):
+    """True when the certificate prints in black and white: the client of
+    its primary sample, the one its register entry is kept on, asks for
+    it on Client reporting (edd_store.certificate_mono). A sample or client
+    that cannot be read prints in colour."""
+    from senaite.pfas.edd_store import certificate_mono as client_mono
+    for model in list(collection or [])[:1]:
+        try:
+            return client_mono(api.get_object(model).getClient())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("coa_sections: client print variant unread: %s", exc)
+    return False
+
+
+def variant_class(collection):
+    """The class each certificate section carries: the variant's, or none."""
+    return MONO_CLASS if certificate_mono(collection) else ""
 
 
 def _fmt_date(value):
@@ -52,20 +78,29 @@ def _fmt_date(value):
 
 
 def injection_rows(sample):
-    """(rows, client sample id): the injection rows the sub-table chooses
-    from, on the worksheets the sample's analyses were on (a replaced,
-    retested analysis's included: injection_results is keyed by worksheet id).
+    """(rows, names): the injection rows the sub-table chooses from, on the
+    worksheets the sample's analyses were on (a replaced, retested
+    analysis's included: injection_results is keyed by worksheet id), and
+    what the sample's injections go by (coa_qc_standards.sample_names): the
+    names the LIMS issued for it on those worksheets (the worker binds its
+    results by them), and its Client Sample ID.
     Also read by the publish guard (guards.QCStandardsGuard)."""
+    from senaite.pfas import extraction_batch
     from senaite.pfas.qc.store import DEFAULT_DB_PATH, QCResultStore
-    sid = (sample.getClientSampleID() or u"").strip()
-    worksheets = set()
+    worksheets = {}
     for an in sample.getAnalyses(full_objects=True):
         ws = an.getWorksheet() if hasattr(an, "getWorksheet") else None
         if ws is not None:
-            worksheets.add(ws.getId())
-    if not sid or not worksheets:
-        return [], sid
-    return QCResultStore(DEFAULT_DB_PATH).get_injection_rows(sorted(worksheets), [sid]), sid
+            worksheets[ws.getId()] = ws
+    issued = []
+    uid = api.get_uid(sample)
+    for ws_id in sorted(worksheets):
+        issued += extraction_batch.sample_injections(extraction_batch.load(worksheets[ws_id]), uid)
+    names = coa_qc_standards.sample_names(issued, api.safe_unicode(sample.getClientSampleID() or u""))
+    lookup = coa_qc_standards.lookup(names)
+    if not lookup or not worksheets:
+        return [], names
+    return QCResultStore(DEFAULT_DB_PATH).get_injection_rows(sorted(worksheets), lookup), names
 
 
 def qc_standards_state(sample):
@@ -93,9 +128,12 @@ def qc_standards_state(sample):
     src = ({report_format.KEY: (snap.get("report_formats") or {}).get(mid) or {}}
            if snap is not None else (profile_for_batch(portal, sample.getBatch(), mid, matrix) or bare))
     fmt = report_format.resolve(src, matrix)
-    rows, sid = injection_rows(sample)
-    return coa_qc_standards.build(rows, sid, int(fmt.get("coa_sig_figs") or 3),
-                                  fmt.get("coa_rounding") or u"epa", ROLE_LABELS)["state"]
+    rows, names = injection_rows(sample)
+    # the places recoveries were judged at are part of the rule a run is checked against
+    from senaite.pfas import method_engine
+    return coa_qc_standards.build(rows, names, int(fmt.get("coa_sig_figs") or 3),
+                                  fmt.get("coa_rounding") or u"epa", ROLE_LABELS,
+                                  method_engine.recovery_decimals(bare))["state"]
 
 
 def _sample_subtype(sample):
@@ -120,15 +158,23 @@ class PFASCoASectionsView(BrowserView):
     template = ViewPageTemplateFile("templates/coa_sections.pt")
 
     def print_css(self):
-        """The lab theme for this section (print_doc.certificate_css)."""
+        """The lab theme for this section (print_doc.certificate_css), the
+        page number in the centre of the foot of each page."""
         from senaite.pfas import print_doc
-        return print_doc.certificate_css(api.get_portal().absolute_url())
+        return (print_doc.certificate_css(api.get_portal().absolute_url()) + "\n"
+                + print_doc.CERTIFICATE_PAGE_CSS)
 
     def __call__(self, collection=None, report_view=None, section="samples"):
         self.collection = collection or []
         self.report_view = report_view
         self.section = section
         return self.template()
+
+    def variant(self):
+        """The black-and-white class when the client asks for it."""
+        if not hasattr(self, "_variant"):
+            self._variant = variant_class(self.collection)
+        return self._variant
 
     # ── settings / identity ───────────────────────────────────────────────
 
@@ -146,13 +192,14 @@ class PFASCoASectionsView(BrowserView):
         return self._template
 
     def settings(self):
+        """The Print Settings the certificate prints: the revision's, with
+        the laboratory's name, address, phone and e-mail from core's
+        Laboratory record (report_templates.printed_settings)."""
         if not hasattr(self, "_settings"):
+            from senaite.pfas.print_settings import get_print_settings
+            from senaite.pfas.report_templates import printed_settings
             snap, _rev = self.template_revision()
-            if snap is not None:
-                self._settings = dict(snap.get("print_settings") or {})
-            else:
-                from senaite.pfas.print_settings import get_print_settings
-                self._settings = get_print_settings(api.get_portal())
+            self._settings = printed_settings(snap, get_print_settings(api.get_portal()))
         return self._settings
 
     def show(self, key):
@@ -165,7 +212,20 @@ class PFASCoASectionsView(BrowserView):
         return {"name": s.get("lab_name") or u"",
                 "contact": u" · ".join(contact),
                 "accreditation": s.get("accreditation") or u"",
-                "logo": logo_src(s, api.get_portal().absolute_url())}
+                "logo": self._logo(s)}
+
+    def _logo(self, settings):
+        """The logo the header prints: the laboratory's as it is, or, on a
+        black-and-white certificate, the same picture in greyscale
+        (document_templates.grey_image), drawn for the print only. A logo
+        that cannot be read keeps its link."""
+        src = logo_src(settings, api.get_portal().absolute_url())
+        if src and certificate_mono(getattr(self, "collection", [])):
+            from senaite.pfas import document_templates as dt
+            from senaite.pfas.browser.coa_document import _logo_uri
+            uri = _logo_uri(settings)
+            return dt.grey_image(uri) if uri else src
+        return src
 
     def doc_meta(self):
         """Report ID (with its prospective revision) and issue date for the
@@ -258,24 +318,73 @@ class PFASCoASectionsView(BrowserView):
         cas = dict((kw, c if c and "PLACEHOLDER" not in c.upper() else u"\u2014")
                    for kw, c in compound_library.cas_by_keyword(compound_library_store.library(), dashed=True).items())
 
-        data, analysed, dates, times = [], [], {}, {}
+        data, analysed, dates, times, undated, early, early_at = [], [], {}, {}, [], [], []
+        # the codes the batch or report carries (a rule's flag placed there):
+        # one line for the report, never a row's
+        batch_items = []
+        # a flag's output: the codes only the EDD issues, those only the
+        # certificate prints, by analyte
+        edd_only, coa_only = {}, {}
+        received = sample.getDateReceived()
+        # when each result was analysed: its injection's acquisition, else
+        # its capture in SENAITE (analysed_at, shared with the EDD)
+        from senaite.pfas import analysed_at
+        acquired = analysed_at.acquired_by_uid([api.get_uid(an) for an in analyses])
         for an in analyses:
             kw = an.getKeyword()
             try:
-                codes = parse_remark_codes(an.getRemarks() or u"")
+                stamped = parse_remark_codes(an.getRemarks() or u"")
             except Exception:
-                codes = []
+                stamped = []
+            # the codes stamped at release and those the worksheet's quality
+            # control puts on the result now: one list for the row, the
+            # qualification text and the EDD; a code the plan places on the
+            # batch or report is the report's, never the row's
+            planned, batch = self._planned_places(an)
+            edd_only[kw], coa_only[kw] = self._edd_output(an)
+            for item in batch:
+                if item not in batch_items:
+                    batch_items.append(item)
+            whole = set(c for c, _s in batch) - set(c for c, _s in planned)
+            codes = coa_format.carried_codes([c for c in stamped if c not in whole], [c for c, _s in planned])
+            statements = {}
+            for code, statement in planned:
+                if statement and statement not in statements.setdefault(code, []):
+                    statements[code].append(statement)
+            for code in codes:
+                # stamped, and no longer in the summary: the library's wording
+                if not statements.get(code):
+                    statements[code] = [t for t in (self._library_statement(code),) if t]
             from senaite.pfas.browser.dilution_retests import dilution_fold
-            data.append({"keyword": kw, "title": titles.get(kw) or an.Title(),
-                         "result": an.getResult(), "codes": codes,
-                         "dilution": dilution_fold(an)})
-            when = an.getResultCaptureDate()
+            from senaite.pfas.above_range import of as above_range_of
+            from senaite.pfas import verified_rl
+            from senaite.pfas.browser.run_builder import analysis_acid_basis
+            data.append({"keyword": kw, "title": titles.get(kw) or api.safe_unicode(an.Title()),
+                         "result": an.getResult(), "codes": codes, "statements": statements,
+                         "frozen_rl": verified_rl.frozen_for(an),
+                         # above the calibration range with no dilution: its top
+                         "above": (above_range_of(an) or {}).get("limit"),
+                         # the high-bias note names its QC type: one line each
+                         "separate": self._high_bias_codes(),
+                         "dilution": dilution_fold(an),
+                         # its run's standards stated as the acid: no salt in its default RL
+                         "acid_basis": kw.upper() in [a.upper() for a in analysis_acid_basis(
+                             an, self.__dict__.setdefault("_acid_basis_cache", {}))]})
+            when = analysed_at.shown(acquired.get(api.get_uid(an)), an.getResultCaptureDate(), _fmt_date)
             if when:
                 analysed.append(when)
+                # analysed before the sample was received, on the laboratory's clock
+                if analysed_at.before_receipt(analysed_at.wall(acquired.get(api.get_uid(an)),
+                                                               an.getResultCaptureDate()), received):
+                    early.append(titles.get(kw) or api.safe_unicode(an.Title()) or kw)
+                    early_at.append((titles.get(kw) or api.safe_unicode(an.Title()) or kw, when))
+            elif (an.getResult() or u"").strip():
+                # a result that is reported (it holds a value) and has no date
+                undated.append(titles.get(kw) or api.safe_unicode(an.Title()) or kw)
             # a retest replaces its original in this list, so a diluted
             # result carries the retest's own date
-            dates[kw] = _fmt_date(when)[:10]            # the row shows the day
-            times[kw] = _fmt_date(when)                 # a dilution's footnote: day and time
+            dates[kw] = when[:10]                       # the row shows the day
+            times[kw] = when                            # a dilution's footnote: day and time
         # this sample's certificate format: its method x matrix (Reporting tab)
         # the format comes from the issued reporting-template revision
         # (report_templates.certificate_format, shared with Data Review)
@@ -283,6 +392,15 @@ class PFASCoASectionsView(BrowserView):
         snap, _rev = self.template_revision()
         merged, fmt = certificate_format(snap, method_id, profile, matrix, self.settings())
         rows = coa_format.build_rows(data, profile, matrix, merged, cas)
+        batch_codes = []
+        for code, _s in batch_items:
+            if code not in batch_codes:
+                batch_codes.append(code)
+        for r in rows:
+            # the EDD issues the report's codes on every row (one placement)
+            r["batch_codes"] = list(batch_codes)
+            r["edd_codes"] = list(edd_only.get(r["keyword"]) or [])
+            r["coa_only_codes"] = list(coa_only.get(r["keyword"]) or [])
         regulatory = (self._regulatory(sample, data, profile, matrix, rows, fmt)
                       if fmt.get("coa_show_regulatory") else None)
         # fields only a DESIGNED certificate prints: a failure here must never
@@ -298,19 +416,26 @@ class PFASCoASectionsView(BrowserView):
         # the standard certificate its sample; the designed one refuses
         qc_error = u""
         try:
-            qc_standards = self._qc_standards(sample, merged)
+            qc_standards = self._qc_standards(sample, merged, method_profile)
         except Exception as exc:                            # noqa: BLE001
             logger.exception("coa_sections: QC standards of %s", api.get_id(sample))
             qc_standards = {"state": "error", "rows": [], "injections": 0}
             qc_error = u"%s" % exc
+        # a QC type the method requires every run that the run did not hold,
+        # with the deviation that released it: never costs the standard
+        # certificate its sample; the designed one refuses unread
+        qc_not_run, not_run_error = self._qc_not_run(analyses)
         units = sorted(set(r["unit"] for r in rows if r["unit"]))
         # the method x matrix reporting unit: one per sample, the Result heading
         result_unit = ((profile or {}).get("unit_map") or {}).get(matrix) or u", ".join(units)
         contact = sample.getContact()
         batch = sample.getBatch()
+        # the tier the sample reports at: its own, else its client's default
+        # now; an id the issued catalogue lacks prints blank, never another tier
+        _tier, tier_id, tiers, _tiers_rev = report_tiers.resolve(sample, api.get_portal())
         return {
             "id": api.get_id(sample),
-            "client": sample.getClient().Title() if sample.getClient() else u"",
+            "client": api.safe_unicode(sample.getClient().Title()) if sample.getClient() else u"",
             "contact": contact.getFullname() if contact else u"",
             "client_sid": sample.getClientSampleID() or u"",
             "matrix": sample.getSampleTypeTitle() or u"",
@@ -322,25 +447,171 @@ class PFASCoASectionsView(BrowserView):
             "blank_subtracted": bool((method_profile or {}).get("blank_subtraction")),
             "batch": batch.getId() if batch else u"",
             "sampled": _fmt_date(sample.getDateSampled()),
-            "received": _fmt_date(sample.getDateReceived()),
-            "analysed": _fmt_date(max(analysed)) if analysed else u"",
-            "method": method.Title() if method is not None else u"",
+            "received": _fmt_date(received),
+            # the latest: "YYYY-MM-DD HH:MM" sorts as time
+            "analysed": max(analysed) if analysed else u"",
+            # the method's one name: its profile's display name
+            "method": configured_methods.method_label(method_profile, method_id),
+            "report_tier": report_tiers.label(tiers, tier_id),
             "units": u", ".join(units),
             "result_unit": result_unit,
             "rows": rows,
             "rule_codes": self._rule_codes(rows),
+            # the legend: a line per code on the page, in the lab's wording
+            "legend_codes": self._legend_codes(rows, batch_items),
+            # the codes the batch or report carries, beside the results heading
+            "batch_codes": batch_codes,
+            # the key on a page of its own: a rule of the issued revision
+            # (report_format.RULE_DEFAULTS; an older revision keeps it under the table)
+            "legend_page": merged.get("coa_legend_page") == "yes",
             "any_rl": any(r["rl"] for r in rows),
-            "codes": sorted(set(c for d in data for c in d["codes"])),
+            "codes": coa_format.qc_codes(rows),
+            # the qualification text, read from the rows that print the codes
+            "qualifications": coa_format.qualifications(rows),
             "regulatory": regulatory,
             "fmt": fmt,
             "qs": self._quality_system(batch),
             "departures": loosened,
             "project_label": self._project_label(batch) if loosened else u"",
+            # reported results with no analysis date: the certificate is refused
+            # (coa_document.data); the EDD does not read this
+            "undated": undated,
+            # results analysed before the sample was received: refused there too
+            "early": early,
+            # each with its analysis time as printed, for the refusal page
+            "early_at": early_at,
             "enrich_error": enrich_error,
             "qc_standards": qc_standards,
             "qc_note": coa_qc_standards.note(merged, qc_standards["state"]),
             "qc_error": qc_error,
+            "qc_not_run": qc_not_run,
+            "qc_not_run_error": not_run_error,
         }
+
+    def _review_of(self, ws):
+        """The worksheet's Data Review view, one per worksheet and
+        certificate: its QC summary is built once for every reading."""
+        reviews = self.__dict__.setdefault("_reviews", {})
+        key = api.get_uid(ws)
+        if key not in reviews:
+            reviews[key] = ws.restrictedTraverse(str("@@pfas-data-review"))
+        return reviews[key]
+
+    def _qc_not_run(self, analyses):
+        """([{"qc_type", "dev_id"}], error): the QC types required every run
+        that the runs of the reported analyses did not hold, once per
+        worksheet and certificate, each type once; error is u"" or why a
+        worksheet's gate could not be read. A worksheet's statement frozen
+        at verification (verified_rl) is printed as frozen; one verified
+        before the freeze is read live (PFASDataReviewView.qc_types_not_run)."""
+        from senaite.pfas import verified_rl
+        from senaite.pfas.qc_deviation import merge_not_run
+        found = self.__dict__.setdefault("_not_run", {})
+        lists, errors, seen = [], [], set()
+        for an in analyses:
+            try:
+                ws = an.getWorksheet()
+            except Exception:                               # noqa: BLE001
+                ws = None
+            if ws is None:
+                continue
+            key = api.get_uid(ws)
+            if key not in found:
+                frozen = verified_rl.frozen_not_run_for(ws)
+                if frozen is not None:
+                    found[key] = (frozen["not_run"], u"")
+                else:
+                    try:
+                        found[key] = (self._review_of(ws).qc_types_not_run(ws), u"")
+                    except Exception as exc:                # noqa: BLE001
+                        logger.exception("coa_sections: QC types not run of %s", api.get_id(ws))
+                        found[key] = ([], u"%s" % exc)
+            if key in seen:
+                continue
+            seen.add(key)
+            lines, error = found[key]
+            if error:
+                errors.append(error)
+            lists.append(lines)
+        return merge_not_run(lists), u"; ".join(errors)
+
+    def _planned_places(self, analysis):
+        """([(code, statement)] for the row, [(code, statement)] for the
+        batch or report): the worksheet's plan for the analysis split by
+        where each code prints (rule_flags place "batch" the report's)."""
+        from senaite.pfas.rule_flags import is_batch, on_certificate
+        row, batch = [], []
+        for e in self._plan_entries(analysis):
+            if not on_certificate(e):
+                continue                # an EDD-only flag's code: the EDD's alone
+            item = (e.get("code") or u"", e.get("statement") or u"")
+            into = batch if is_batch(e) else row
+            if item[0] and item not in into:
+                into.append(item)
+        return row, batch
+
+    def _edd_output(self, analysis):
+        """([codes only the EDD issues], [codes only the certificate
+        prints]) for the analysis: a flag's output (rule_flags). A code
+        another entry issues to both is neither."""
+        from senaite.pfas.rule_flags import on_certificate, on_edd
+        entries = [e for e in self._plan_entries(analysis) if e.get("code")]
+        cert = set(e["code"] for e in entries if on_certificate(e))
+        edd = set(e["code"] for e in entries if on_edd(e))
+        return sorted(edd - cert), sorted(cert - edd)
+
+    def _planned_qualifiers(self, analysis):
+        """[(code, statement)]: the codes the plan puts on the analysis's
+        own row (_planned_places)."""
+        return self._planned_places(analysis)[0]
+
+    def _plan_entries(self, analysis):
+        """[entry]: the qualifiers the analysis' worksheet puts on it now
+        (Data Review's plan, the one its release stamps), each with its code,
+        the lab's wording and, for a rule's flag, its place. The worksheet's plan is read once per
+        certificate. A plan that cannot be read is logged and leaves the
+        stamped codes."""
+        try:
+            ws = analysis.getWorksheet()
+        except Exception:                                   # noqa: BLE001
+            ws = None
+        if ws is None:
+            return []
+        plans = self.__dict__.setdefault("_qualifier_plans", {})
+        key = api.get_uid(ws)
+        if key not in plans:
+            try:
+                plans[key] = self._review_of(ws)._qualifier_entries(ws)
+            except Exception:                               # noqa: BLE001
+                logger.exception("coa_sections: qualifier plan of %s", api.get_id(ws))
+                plans[key] = None
+        entries_for = plans[key]
+        if entries_for is None:
+            return []
+        return list(entries_for(analysis))
+
+    def _high_bias_codes(self):
+        """[the QC Qualifiers library's high-bias code], [] while it has
+        none: its notes name their QC type, so each prints on its own line."""
+        code = ((self._library() or {}).get("high_bias") or {}).get("code") or u""
+        return [code] if code else []
+
+    def _library(self):
+        """The QC Qualifiers library, read once per view; the seed wording
+        when it cannot be read."""
+        if not hasattr(self, "_qualifier_library"):
+            from senaite.pfas import qc_qualification
+            try:
+                self._qualifier_library = qc_qualification.get_library(api.get_portal())
+            except Exception:                               # noqa: BLE001
+                logger.warning("coa_sections: qualifier library unreadable; seed wording", exc_info=True)
+                self._qualifier_library = qc_qualification.DEFAULT_LIBRARY
+        return self._qualifier_library
+
+    def _library_statement(self, code):
+        """The QC Qualifiers library's wording for a code it gives one
+        wording (coa_format.library_statement)."""
+        return coa_format.library_statement(self._library(), code)
 
     def _composite(self, sample):
         from senaite.pfas import homogenisation as hg
@@ -359,26 +630,42 @@ class PFASCoASectionsView(BrowserView):
             rc = (rec or {}).get("receipt") or {}
             if not rc.get("flags"):
                 return u""
-            return u"Received %s: %s. %s" % (rc.get("received_at") or u"", u"; ".join(rc["flags"]),
+            return u"Received %s: %s. %s" % (cr.received_in_force(rec), u"; ".join(rc["flags"]),
                                               rc.get("note") or u"")
         except Exception:                                   # noqa: BLE001
             logger.warning("receipt line for %s", api.get_id(sample), exc_info=True)
             return u""
 
-    def _qc_standards(self, sample, fmt):
+    def _qc_standards(self, sample, fmt, profile=None):
         """The sample's neat injection's surrogate recoveries and internal-
-        standard responses, as the worker judged them (coa_qc_standards).
+        standard responses, as the worker judged them (coa_qc_standards),
+        a recovery to the method's decimal places (method_engine).
         Its runs are the worksheets its analyses were on, a replaced
         (retested) analysis's included: injection_results is keyed by the
         worksheet id."""
         from senaite.pfas.labelled_standards import ROLE_LABELS
-        rows, sid = injection_rows(sample)
-        return coa_qc_standards.build(rows, sid, int(fmt.get("coa_sig_figs") or 3),
-                                      fmt.get("coa_rounding") or u"epa", ROLE_LABELS)
+        rows, names = injection_rows(sample)
+        from senaite.pfas import method_engine
+        return coa_qc_standards.build(rows, names, int(fmt.get("coa_sig_figs") or 3),
+                                      fmt.get("coa_rounding") or u"epa", ROLE_LABELS,
+                                      method_engine.recovery_decimals(profile))
+
+    def _legend_codes(self, rows, batch=None):
+        """The legend's lines (coa_format.legend_lines): every code on the
+        page in the QC Qualifiers library's wording."""
+        return coa_format.legend_lines(rows, self._rule_wording(), batch)
+
+    def _rule_wording(self):
+        """{J, D, N.Q., E: the reporting rule's wording in QC Qualifiers}."""
+        library = self._library() or {}
+        return {coa_format.J_CODE: (library.get("between_mdl_rl") or {}).get("statement"),
+                coa_format.D_CODE: (library.get("dilution") or {}).get("statement"),
+                coa_format.NQ_CODE: (library.get("not_quantified") or {}).get("statement"),
+                coa_format.E_CODE: (library.get("above_range") or {}).get("statement")}
 
     def _rule_codes(self, rows):
-        """The legend's J and D lines, in the QC Qualifiers library's wording,
-        for the codes the rows carry."""
+        """The legend's J, D, N.Q. and E lines, in the QC Qualifiers
+        library's wording, for the codes the rows carry."""
         from senaite.pfas import qc_qualification
         try:
             library = qc_qualification.get_library(api.get_portal())
@@ -386,7 +673,9 @@ class PFASCoASectionsView(BrowserView):
             logger.warning("coa_sections: qualifier library unreadable; seed wording", exc_info=True)
             library = qc_qualification.DEFAULT_LIBRARY
         wording = {coa_format.J_CODE: (library.get("between_mdl_rl") or {}).get("statement"),
-                   coa_format.D_CODE: (library.get("dilution") or {}).get("statement")}
+                   coa_format.D_CODE: (library.get("dilution") or {}).get("statement"),
+                   coa_format.NQ_CODE: (library.get("not_quantified") or {}).get("statement"),
+                   coa_format.E_CODE: (library.get("above_range") or {}).get("statement")}
         return coa_format.rule_codes(rows, wording)
 
     def _enrich_rows(self, sample, rows, data, profile, matrix, fmt, dates, times=None):
@@ -489,26 +778,32 @@ class PFASCoASectionsView(BrowserView):
             row = by_kw.get(d["keyword"])
             if row is None or row["detected"] is None:
                 continue                                    # unrecognised text: not compared
-            lim = report_limits.limits_for(profile, matrix, d["keyword"])
+            lim = report_limits.limits_with_frozen(
+                profile, matrix, d["keyword"], d.get("frozen_rl"),
+                acid_basis=[d["keyword"]] if d.get("acid_basis") else None)
             lim["rl"] = report_limits.scaled_rl(lim["rl"], d.get("dilution"))
-            # a J value (below the RL) is compared as a result below the RL,
-            # as before the J rule: the comparison is not changed by it
+            # a J value (below the RL) is detected: it counts at its value
             results[d["keyword"]] = {
-                "value": float(row["result"]) if row["detected"] and not row.get("estimated") else None,
+                "value": regulatory_limits.compared_value(row),
                 "rl": lim["rl"]}
         n = int((fmt or self.settings()).get("coa_sig_figs") or 3)
         rule = (fmt or self.settings()).get("coa_rounding") or u"epa"
         names = store.get("programs") or {}
-        findings, below, compared = [], 0, 0
+        findings, below, compared, test_data = [], 0, 0, False
         for l in limits:
             ev = regulatory_limits.evaluate(l, results, unit)
             if ev is None:
                 continue
             compared += 1
             prog = (names.get(l["program"]) or {}).get("name") or l["program"]
+            kind = l["kind"]
+            if regulatory_limits.is_test_data(l):
+                # test data is no programme's limit: it says so instead
+                test_data = True
+                prog, kind = regulatory_limits.TEST_DATA_MARK, u"limit"
             limit_txt = u"%s %s" % (coa_format.format_limit(l["value"]), l["unit"])
             item = {"label": l["label"], "status": ev["status"], "program": prog,
-                    "kind": l["kind"], "limit": limit_txt, "citation": l.get("citation") or u"",
+                    "kind": kind, "limit": limit_txt, "citation": l.get("citation") or u"",
                     "note": l.get("status_note") or u"", "sum": len(l.get("analytes") or []) > 1,
                     "total": u"" if ev["total"] is None else u"%s %s" % (coa_format.sig_figs(ev["total"], n, rule), unit)}
             if ev["status"] == "below":
@@ -519,6 +814,11 @@ class PFASCoASectionsView(BrowserView):
             return None
         links = []
         for pid in programs:
+            # a program's note is about what it regulates: only on its matrices
+            if not regulatory_limits.covers(store.get("limits"), pid, sample.getSampleTypeTitle(),
+                                            _sample_type_uid(sample)):
+                continue
             for link in (names.get(pid) or {}).get("links") or []:
                 links.append(link)
-        return {"findings": findings, "below": below, "compared": compared, "links": links}
+        return {"findings": findings, "below": below, "compared": compared, "links": links,
+                "test_data": test_data}

@@ -16,6 +16,11 @@ labels were issued before keeps its names.
               member's id), "level", "amount", "unit", "injection",
               "lot" (an MxB: the blank-matrix reagent lot's uid, whose
               assigned levels it is shown against; matrix_blank.py),
+              "spike_lot", "spike_volume_ul" (a spiked member: the lot
+              number of the spike it was made with, chosen from the
+              inventory, and the volume added in uL; only a member created
+              with them records them, see records_spike; an LFSMD follows
+              its LFSM's, see spike_of),
               "added_by", "added_at"}
 
 Pure (Python 2.7 and 3):
@@ -26,6 +31,11 @@ Pure (Python 2.7 and 3):
     problems(members, limit=None)           -> ["what is wrong", ...]
     batch_size(members, limit)              -> (counted, max) or None
     spike_map(members)                      -> {injection: {...}} for the worker
+    sample_injections(members, sample_uid)  -> the names issued for one sample
+    records_spike(member)                   -> whether it records its spike lot
+    spike_of(member, members)               -> (lot, volume uL): its own, an LFSMD's its LFSM's
+    set_spikes(members, {id: (lot, uL)})    -> members with their spike lots
+    spike_volume_problem(text)              -> "" | why the volume is refused
 
 Plone (the worksheet annotation):
 
@@ -44,6 +54,15 @@ KEY = "senaite.pfas.extraction_members"
 QC_ROLES = (u"MB", u"LRB", u"MxB", u"LFB", u"LCS", u"LFSM", u"LFSMD", u"Dup")
 NEEDS_PARENT = frozenset((u"LFSM", u"LFSMD", u"Dup", u"MxB"))
 SPIKED = frozenset((u"LFSM", u"LFSMD", u"LFB", u"LCS"))
+# what a spiked member records of its spike: the lot number and the volume
+# added (uL). The members are part of the extraction hash, so a member
+# created without them never takes them: its record hashes as signed.
+SPIKE_KEYS = ("spike_lot", "spike_volume_ul")
+# the LFSMD is its LFSM's duplicate: it follows its LFSM's spike lot and
+# volume (spike_of), and records none of its own. One created before that
+# keeps the keys it was created with, so its record hashes as signed.
+FOLLOWS_LFSM = u"LFSMD"
+RECORDS_OWN_SPIKE = SPIKED - frozenset((FOLLOWS_LFSM,))
 ROLE_TITLES = {u"MB": u"Method blank", u"LRB": u"Laboratory reagent blank",
                u"MxB": u"Matrix blank", u"LFB": u"Laboratory fortified blank",
                u"LCS": u"Laboratory control sample", u"LFSM": u"Matrix spike (LFSM)",
@@ -186,6 +205,8 @@ def populate(members, plan, ws_id, by=u"", at=u""):
                  "client_sid": u"", "matrix": u"", "parent": u"", "lfsm_of": u"",
                  "level": u"", "amount": u"", "unit": u"", "lot": u"",
                  "injection": _injection(ws_id, role, members), "added_by": by, "added_at": at}
+            if role in RECORDS_OWN_SPIKE:
+                m.update(dict((k, u"") for k in SPIKE_KEYS))
             if role in (u"LFSM", u"Dup", u"MxB") and samples:
                 m["parent"] = samples[i % len(samples)]["id"]
             if role == u"LFSMD":
@@ -197,6 +218,112 @@ def populate(members, plan, ws_id, by=u"", at=u""):
                     m["parent"], m["level"] = free[0].get("parent") or u"", free[0].get("level") or u""
             members.append(m)
     return default_subtraction_blank(members)
+
+
+def records_spike(member):
+    """True for a spiked member created with its spike keys (SPIKE_KEYS):
+    only such a member records its spike lot and volume. An LFSMD never
+    does: it follows its LFSM's (spike_of)."""
+    member = member or {}
+    return member.get("role") in RECORDS_OWN_SPIKE and all(k in member for k in SPIKE_KEYS)
+
+
+def _given(value):
+    return (u"%s" % (value if value is not None else u"")).strip() != u""
+
+
+def spike_of(member, members):
+    """(lot number, volume in uL) a spiked member was made with, u"" where
+    none is recorded. An LFSMD follows its LFSM (lfsm_of): the lot and
+    volume its LFSM recorded; one that recorded its own before it followed
+    keeps what it recorded, so an older record reads as it was."""
+    member = member or {}
+    own = tuple((u"%s" % (member.get(k) or u"")).strip() for k in SPIKE_KEYS)
+    if member.get("role") != FOLLOWS_LFSM or any(_given(v) for v in own):
+        return own
+    lfsm = [m for m in members or [] if m.get("id") == member.get("lfsm_of")
+            and m.get("role") == u"LFSM"]
+    if not lfsm:
+        return own
+    return tuple((u"%s" % (lfsm[0].get(k) or u"")).strip() for k in SPIKE_KEYS)
+
+
+def set_spikes(members, values):
+    """Members with each spike's lot and volume from `values` = {member id:
+    (lot number, volume in uL)}, written only onto members that record them
+    (records_spike); every other member is left exactly as it is."""
+    members = [dict(m) for m in members or []]
+    for m in members:
+        if m.get("id") in (values or {}) and records_spike(m):
+            lot, volume = values[m["id"]]
+            m["spike_lot"] = (lot or u"").strip()
+            m["spike_volume_ul"] = (volume or u"").strip()
+    return members
+
+
+def spike_volume_problem(text):
+    """"" when `text` is blank or a volume greater than 0 (uL), else why not."""
+    text = (text or u"").strip()
+    if not text:
+        return u""
+    try:
+        ok = float(text) > 0
+    except (TypeError, ValueError):
+        ok = False
+    return u"" if ok else u"A spike volume is a number of \u00b5L greater than 0."
+
+
+def lfsmd_spike_cells(member, members):
+    """An LFSMD's spike lot and volume cells, [lot, volume]: its LFSM's, each
+    said to be its LFSM's; one that recorded its own before it followed
+    shows its own. None for any other member."""
+    if (member or {}).get("role") != FOLLOWS_LFSM:
+        return None
+    lot, volume = spike_of(member, members)
+    if any(_given(member.get(k)) for k in SPIKE_KEYS):
+        return [lot or u"Not recorded", volume or u"Not recorded"]
+    return [u"Its LFSM: %s" % (v or u"not recorded") for v in (lot, volume)]
+
+
+# What a member records at the bench, posted as "<member id>.<fact>" by the
+# extraction batch page: read only once the extraction is finalised (the
+# finaliser signed over them); the subtraction blank is a review choice and
+# stays open.
+MEMBER_FACTS = ("parent", "lfsm_of", "level", "lot", "amount", "spike_lot", "spike_volume_ul")
+# the page's actions that add, remove or populate members
+MEMBER_ACTIONS = ("populate", "add", "remove")
+FINALISED_REFUSED = u"The extraction is finalised: its members are read only. Nothing was saved."
+
+
+def finalised_refusal(action, members, form, finalised):
+    """Why a POST to the extraction batch page is refused because the
+    extraction is finalised, or "": once finalised, no member is added,
+    removed or populated, and a save that posts any member fact other than
+    the one stored is refused whole. A fact posted as stored is no change;
+    marking a request made and issuing labels are judged elsewhere."""
+    if not finalised:
+        return u""
+    if action in MEMBER_ACTIONS:
+        return FINALISED_REFUSED
+    if action == u"save":
+        form = form or {}
+        for m in members or ():
+            for fact in MEMBER_FACTS:
+                key = u"%s.%s" % (m.get("id"), fact)
+                if key in form and _fact(form.get(key)) != _fact(m.get(fact)):
+                    return FINALISED_REFUSED
+    return u""
+
+
+def _fact(value):
+    return (u"%s" % (value if value is not None else u"")).strip()
+
+
+def renamed(before, after):
+    """True when `after` gives any member another injection name than
+    `before` does (a name issued once, never changed after Finalise)."""
+    names = dict((m.get("id"), m.get("injection")) for m in before or ())
+    return any(names.get(m.get("id")) != m.get("injection") for m in after or ())
 
 
 def default_subtraction_blank(members):
@@ -213,7 +340,7 @@ def mark_subtraction_blank(members, member_id):
     why not."""
     target = [m for m in members if m.get("id") == member_id]
     if not target or target[0].get("role") != u"MB":
-        return u"Choose one of the batch's method blanks."
+        return u"Choose one of the worksheet's method blanks."
     for m in members:
         if m.get("role") == u"MB":
             m["subtract"] = m is target[0]
@@ -241,8 +368,11 @@ def batch_size(members, limit):
     """(members counted, the method's maximum) or None when the method sets
     no maximum. `limit` is the method profile's extraction_batch section:
     max_size, and count_qc (QC members count towards it; otherwise samples
-    only). "X samples total including QC or excluding qc"."""
+    only), with `state`, its Worksheet size box's state (limit_states):
+    Off sets no maximum. "X samples total including QC or excluding qc"."""
     limit = limit or {}
+    if limit.get("state") == "off":
+        return None
     try:
         top = int(limit.get("max_size") or 0)
     except (TypeError, ValueError):
@@ -253,6 +383,21 @@ def batch_size(members, limit):
     return len(counted), top
 
 
+def over_size_words(size, limit):
+    return (u"The worksheet holds %d %s; the method allows %d. Move %d to another worksheet."
+            % (size[0], u"members" if (limit or {}).get("count_qc") else u"samples",
+               size[1], size[0] - size[1]))
+
+
+def size_advisory(members, limit=None):
+    """The worksheet over its maximum while the Worksheet size box is in the
+    state Evaluate: what is said, holding nothing; else u''."""
+    size = batch_size(members, limit)
+    if size and size[0] > size[1] and (limit or {}).get("state") == "evaluate":
+        return over_size_words(size, limit)
+    return u""
+
+
 def problems(members, limit=None):
     """What stops the batch going to labels: more members than the method
     allows, a QC without its parent, a parent that is not one of the batch's
@@ -260,10 +405,15 @@ def problems(members, limit=None):
     without a unit, a name used twice."""
     out = []
     size = batch_size(members, limit)
-    if size and size[0] > size[1]:
-        out.append(u"The batch holds %d %s; the method allows %d. Move %d to another batch."
-                   % (size[0], u"members" if (limit or {}).get("count_qc") else u"samples",
-                      size[1], size[0] - size[1]))
+    state = (limit or {}).get("state") or "enforced"
+    # the Worksheet size box: Enforced holds the worksheet over its maximum,
+    # and one with no maximum set; Evaluate says so without holding it
+    # (size_advisory); Off is not judged
+    if size and size[0] > size[1] and state == "enforced":
+        out.append(over_size_words(size, limit))
+    elif state == "enforced" and "state" in (limit or {}) and size is None:
+        out.append(u"The method's Worksheet size is Enforced with no limit set. Set the most per "
+                   u"worksheet on its Run & reporting tab, or set the box Off.")
     by_id = dict((m["id"], m) for m in members)
     names = {}
     for m in members:
@@ -349,7 +499,7 @@ def new_request(requests, members, injection, kind, fold, reason, by, at):
     if kind not in REQUEST_KINDS:
         return requests, u"Ask for a dilution or a re-injection."
     if injection not in names:
-        return requests, u"Choose one of the batch's injections."
+        return requests, u"Choose one of the worksheet's injections."
     if not (reason or u"").strip():
         return requests, u"Say why."
     fold_v = None
@@ -486,6 +636,18 @@ def mark_made(requests, rid, by, at, prep=None):
     if prep is not None:
         req["prep"] = dict(prep, given=dilution_given(prep), matches=matches_fold(prep, req.get("fold")))
     return requests, req, u""
+
+
+def sample_injections(members, sample_uid):
+    """The injection names the LIMS issued for one sample on a worksheet:
+    its sample members' names, the names the worker binds its results by."""
+    out = []
+    for m in members or []:
+        if m.get("role") == u"Sample" and sample_uid and m.get("sample_uid") == sample_uid:
+            name = (m.get("injection") or u"").strip()
+            if name and name not in out:
+                out.append(name)
+    return out
 
 
 def reinjection_aliases(requests, members):
@@ -665,7 +827,10 @@ def samples_on(ws):
         brains = api.get_tool("senaite_catalog_analysis")(getWorksheetUID=api.get_uid(ws))
         # a byte-string path: traversal finds nothing by a unicode one
         paths = sorted(set(str(b.getPath().rsplit(str("/"), 1)[0]) for b in brains))
-        return [s for s in (api.get_object_by_path(p, None) for p in paths) if s is not None]
+        # samples only: a duplicate analysis lives in the worksheet and a
+        # reference analysis in its reference sample
+        return [s for s in (api.get_object_by_path(p, None) for p in paths)
+                if getattr(s, "portal_type", None) == "AnalysisRequest"]
     except Exception:                                       # noqa: BLE001
         return samples_of(ws)
 
@@ -680,3 +845,102 @@ def linked_batch(ws):
     if not counts:
         return None
     return sorted(counts.values(), key=lambda c: -c[0])[0][1]
+
+
+# ── the record in force ───────────────────────────────────────────────────
+# A finalised extraction record is corrected only by entries in one log
+# (extraction_amendments); the stored members and rows are never edited.
+# What judges and files reads the record in force.
+
+def amendments_state(ws):
+    """The worksheet's extraction corrections (extraction_amendments.KEY),
+    read without writing: a page or the worker's endpoint stores nothing."""
+    from senaite.pfas import extraction_amendments as ea
+    from zope.annotation.interfaces import IAnnotations
+    return ea.load(IAnnotations(ws).get(ea.KEY))
+
+
+def members_in_force(ws):
+    """The worksheet's members with the amendments in force applied."""
+    from senaite.pfas import extraction_amendments as ea
+    return ea.members_in_force(load(ws), amendments_state(ws))
+
+
+def samples_in_force(ws, rows):
+    """The extraction table's sample rows (keyed as rekey_rows keys them)
+    with the amendments in force applied."""
+    from senaite.pfas import extraction_amendments as ea
+    return ea.samples_in_force(rows, amendments_state(ws))
+
+
+def relevelled(members, state):
+    """The names in force of the members whose level an amendment in force
+    changed (`members` as stored): their amount is the one the amendment
+    gave, never an amount entered for the level as recorded."""
+    from senaite.pfas import extraction_amendments as ea
+    ids = set(mid for (mid, field) in ea.amendments_in_force(state, members) if field == ea.LEVEL)
+    return set(m.get("injection") for m in ea.members_in_force(members, state) if m.get("id") in ids)
+
+
+def by_alias(entries, members):
+    """`entries` ({name: info}) with each issued name an amendment renamed
+    (a member in force's "aliases") keyed to its name in force's info,
+    marked "alias_of": a file acquired under the issued name still matches
+    its member, as a re-injection matches its original. A name already
+    keyed keeps its own entry."""
+    entries = entries or {}
+    out = dict(entries)
+    for m in members or ():
+        name = m.get("injection")
+        if name not in entries:
+            continue
+        for old in m.get("aliases") or ():
+            if old and old not in out:
+                out[old] = dict(entries[name], alias_of=name)
+    return out
+
+
+def answering_members(members):
+    """The members, and each again under every issued name an amendment
+    renamed, for a lookup by the name on the vial (a re-injection request
+    names it). A name another member answers to is not taken."""
+    members = list(members or ())
+    names = set(m.get("injection") for m in members)
+    out = list(members)
+    for m in members:
+        for old in m.get("aliases") or ():
+            if old and old not in names:
+                names.add(old)
+                out.append(dict(m, injection=old))
+    return out
+
+
+def _held(members):
+    """{name, in force or issued: the re-extract entry id} for every member
+    withheld for re-extraction."""
+    out = {}
+    for m in members or ():
+        if not m.get("withheld"):
+            continue
+        for n in [m.get("injection")] + list(m.get("aliases") or ()):
+            if n:
+                out[n] = m["withheld"]
+    return out
+
+
+def withheld_names(members):
+    """The names, in force and issued, of the members withheld for
+    re-extraction (members in force)."""
+    return sorted(_held(members))
+
+
+def mark_withheld(entries, members):
+    """`entries` with each withheld member's, and each re-injection of one
+    ("replaces"), marked "withheld" (the re-extract entry id): the worker
+    judges, files and pushes nothing of theirs."""
+    held = _held(members)
+    out = {}
+    for k, v in (entries or {}).items():
+        e = held.get(k) or held.get((v or {}).get("replaces"))
+        out[k] = dict(v, withheld=e) if e else v
+    return out
