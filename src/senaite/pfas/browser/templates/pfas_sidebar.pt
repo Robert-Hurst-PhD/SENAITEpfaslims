@@ -13,7 +13,8 @@
      there, and this template decides none of them. The rail is Home and the
      person's sections; the panel holds one set of tiles per rail button, the
      current section's shown: each group a heading over a list of links, one
-     icon tile a page (pfas-sidebar.css). -->
+     page each. A row of one line on a computer, a tile in the phone's sheet
+     (pfas-sidebar.css). -->
 
 <!-- SVG icon sprite (Lucide, MIT) -->
 <svg xmlns="http://www.w3.org/2000/svg" class="pfas-sprite" aria-hidden="true">

@@ -31,10 +31,20 @@
    the dark switch (html[data-theme=dark]) left them light. Each Bootstrap
    surface takes the semantic tokens; in light these are the same whites. ── */
 body:not(.pfas-app) { background: var(--surface); color: var(--text); }
+/* wider than the phone: the wash behind the floating frame, fixed to the window */
+@media not all and (max-width: 768px) {
+  body:not(.pfas-app) { background: var(--glass-wash), var(--surface); background-attachment: fixed; }
+}
+@media print { body:not(.pfas-app) { background: var(--surface); } }   /* paper takes no wash */
+/* the content stays solid, as on PFAS pages: the wash shows only in the
+   gutters and behind the floating frame */
+@media not all and (max-width: 768px) {
+  body:not(.pfas-app) .wrapper > .container-fluid { background: var(--surface); }
+}
 body:not(.pfas-app) .bg-white,
 body:not(.pfas-app) .card,
 body:not(.pfas-app) .modal-content,
-body:not(.pfas-app) .dropdown-menu,
+body:not(.pfas-app) .dropdown-menu:not(.pfas-topbar .dropdown-menu),
 body:not(.pfas-app) .popover,
 body:not(.pfas-app) .list-group-item { background-color: var(--surface-raised) !important; color: var(--text); }
 body:not(.pfas-app) .bg-light,
@@ -79,10 +89,14 @@ body:not(.pfas-app) .progress { background-color: var(--surface-2); }
    navigation tiles' classes, and core's "transition: all" would animate the
    fold and the opening. The frame, the tiles' own values and no motion. */
 body:not(.pfas-app) #sidebar.pfas-nav { background: var(--frame) !important; transition: none; }
+/* wider than the phone the rail and the panel float as glass: the nav paints no ground */
+@media not all and (max-width: 768px) {
+  body:not(.pfas-app) #sidebar.pfas-nav { background: transparent !important; }
+}
 /* core fixes #sidebar at 200 px with hidden overflow: the rail and the panel take the width the panel holds */
 body:not(.pfas-app) #sidebar.pfas-nav { min-width: 0; max-width: none; overflow: visible; }
 body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-navtile {
-  display: flex; flex-direction: column; padding: 9px 3px 6px; color: var(--on-frame-muted); text-decoration: none; }
+  display: flex; flex-direction: var(--navtile-dir); padding: var(--navtile-pad); color: var(--on-frame-muted); text-decoration: none; }
 body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-navtile:hover,
 body:not(.pfas-app) #sidebar.pfas-nav ul li a.pfas-navtile[aria-current="page"] { color: var(--on-frame); }
 /* icons core draws as black SVG images (the Samples filter's assigned / late) */

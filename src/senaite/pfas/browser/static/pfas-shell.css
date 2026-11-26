@@ -37,6 +37,11 @@
       height: 100vh;
       overflow: hidden;
     }
+    /* wider than the phone: a faint wash behind the floating frame, fixed to
+       the window; the content area over it stays solid */
+    @media not all and (max-width: 768px) {
+      body.pfas-app { background: var(--glass-wash), var(--s-light); background-attachment: fixed; }
+    }
 
     /* Context badge */
 

@@ -235,6 +235,7 @@
   --surface-raised: #ffffff;              /* a card or menu above surface (with --shadow-card) */
   --text:           var(--s-body);
   --text-muted:     var(--s-secondary);
+  --text-muted-glass: var(--text-muted);   /* muted text on a floating menu: darker on the light glass (below) */
   --line:           var(--s-border);
   --line-strong:    var(--s-input-border);
   --accent:         var(--s-primary);     /* fills only: pill, underline, selected edge, switch track */
@@ -243,7 +244,36 @@
   --on-accent:      #ffffff;
   --frame:          var(--s-dark);
   --on-frame:       #ffffff;
-  --on-frame-muted: rgba(255,255,255,.72);
+  --on-frame-muted: rgba(255,255,255,.80);   /* tested as text, 4.5:1 on the glass (tests/test_nav_glass.py) */
+  --on-frame-field: rgba(255,255,255,.88);   /* text on the bar's search field: 4.5:1 over its fill on the glass */
+  /* Glass (decided 2026-11-25): the navigation's slight glass finish. A deep teal
+     tint over a blur, with a bright edge and a faint sheen; solid where the
+     browser has no backdrop-filter or the person asks for less transparency
+     (the paint tokens below; the cascade is at the end of this file). */
+  --glass-tint:        rgba(22, 60, 54, .84);
+  --glass-blur:        18px;
+  --glass-saturate:    160%;
+  --glass-filter:      blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  --glass-edge:        inset 0 1px 0 rgba(255,255,255,.28);
+  --glass-sheen:       linear-gradient(140deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 38%, rgba(255,255,255,0) 70%, rgba(255,255,255,.05) 100%);
+  --glass-lift:        0 10px 30px rgba(10,40,34,.22);
+  --glass-gap:         8px;
+  --glass-radius:      14px;
+  --pfas-panel-width:  230px;   /* the computer panel: one-line rows */
+  --pfas-row-h:        36px;
+  --glass-mark:        rgba(255,255,255,.15);
+  --glass-mark-edge:   inset 0 0 0 1px rgba(255,255,255,.38);
+  --accent-on-glass:   #9ae4cd;   /* the mint edge: 3:1 on the glass and on the marker pill, both themes */
+  --glass-light-tint:  rgba(255,255,255,.85);
+  --glass-wash:        radial-gradient(60% 80% at 0% 0%, rgba(47,168,138,.16), rgba(47,168,138,0) 70%),
+                       radial-gradient(50% 60% at 0% 0%, rgba(44,122,114,.12), rgba(44,122,114,0) 70%);
+  /* what a frame part or a floating menu paints with: solid by default. A frame
+     paint is a background shorthand value (gradient plus colour), so it goes in
+     `background:` and never in `background-color:` */
+  --frame-paint:       var(--frame);
+  --frame-filter:      none;
+  --menu-paint:        var(--surface-raised);
+  --menu-filter:       none;
   --focus:          var(--s-focus-ring);
   /* a certificate's black-and-white variant: ink and paper, no hue */
   --print-ink:      #000000;
@@ -265,6 +295,7 @@
   --t-quick: 120ms; --t-fast: 160ms; --t-pill: 180ms; --t-reveal: 200ms;
   --t-step: 15ms;   /* the gap between two rows that arrive one after the other */
   --ease: cubic-bezier(.2,.7,.2,1);
+  --ease-give: cubic-bezier(.34, 1.4, .64, 1);   /* a small overshoot: a part that gives way and settles */
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --t-quick: 0ms; --t-fast: 0ms; --t-pill: 0ms; --t-reveal: 0ms; --t-step: 0ms; }
@@ -297,7 +328,37 @@ html[data-theme="dark"] {
   --tier-c1: #5f9bd0; --tier-c2: #a583d8; --tier-c3: #5f9a90; --tier-c4: #d59a3f; --tier-c5: #94a3b3;
   --series-1: #3dbb8f; --series-2: #5f9bd0; --series-3: #a583d8; --series-4: #5f9a90; --series-5: #7fc0e3; --series-6: #94a3b3;
   --surface-raised: #1c2825; --on-accent: #0f1a18; --on-frame: #e6efec; --on-frame-muted: rgba(230,239,236,.70);
+  --on-frame-field: rgba(230,239,236,.84);
+  --glass-tint: rgba(15, 26, 24, .82); --glass-light-tint: rgba(28, 40, 37, .85);
+  --glass-wash: radial-gradient(60% 80% at 0% 0%, rgba(61,187,143,.10), rgba(61,187,143,0) 70%),
+                radial-gradient(50% 60% at 0% 0%, rgba(79,163,154,.08), rgba(79,163,154,0) 70%);
   --shadow-card: 0 1px 3px rgba(0,0,0,.5); --shadow-card-hover: 0 4px 12px rgba(0,0,0,.6); --shadow-pill: 0 1px 2px rgba(0,0,0,.6);
   color-scheme: dark;
 }
+}
+
+/* The glass, last on purpose (cascade order decides): the solid frame defaults
+   above come first, then the glass where the browser can blur what is behind it,
+   above the phone only (the phone keeps its solid bar and sheet), then solid
+   again for a person who asked for less transparency. */
+@media not all and (max-width: 768px) {
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    :root {
+      --frame-paint:  var(--glass-sheen), var(--glass-tint);
+      --frame-filter: var(--glass-filter);
+      --menu-paint:   var(--glass-light-tint);
+      --menu-filter:  var(--glass-filter);
+      --text-muted-glass: #56655f;   /* 4.5:1 over the light glass on the worst ground; --text-muted is 3.77 */
+    }
+    html[data-theme="dark"] { --text-muted-glass: #adbdb8; }   /* 4.5:1 on the dark theme's light glass; --text-muted is 4.14 */
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --frame-paint:  var(--frame);
+    --frame-filter: none;
+    --menu-paint:   var(--surface-raised);
+    --menu-filter:  none;
+  }
+  :root, html[data-theme="dark"] { --text-muted-glass: var(--text-muted); }
 }

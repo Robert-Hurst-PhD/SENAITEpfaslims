@@ -15,6 +15,20 @@
   position: relative;
   z-index: 1035;
 }
+/* wider than the phone the bar floats 8 px in, rounded, its glass a layer
+   behind it (pfas-components.css, Glass); its z-index keeps that layer and
+   its menus inside it, so it takes no isolation */
+@media not all and (max-width: 768px) {
+  .pfas-topbar.main-header {
+    margin: var(--glass-gap) var(--glass-gap) 0;
+    border-radius: var(--glass-radius);
+    background: transparent;
+  }
+  /* a menu open in the bar must draw over the open panel (z 1040) at compact
+     width. The bar's own stacking context holds the menu, so the bar rises, and
+     only while a menu or the search results are open */
+  .pfas-topbar.main-header:has(.dropdown-menu.show, .pfas-search-results:not([hidden])) { z-index: 1045; }
+}
 .pfas-topbar .navbar-nav { align-items: center; flex-direction: row; }
 .pfas-topbar .ml-auto { margin-left: auto; }
 .pfas-topbar-left { min-width: 0; flex: 0 1 auto; }
@@ -98,7 +112,7 @@
   font: inherit;
   font-size: var(--fs-sm);
 }
-.pfas-topbar-search input::placeholder { color: rgba(255, 255, 255, .6); }
+.pfas-topbar-search input::placeholder { color: var(--on-frame-field); }
 .pfas-topbar-search input:focus {
   outline: none;
   background: var(--s-bg);
@@ -107,7 +121,7 @@
 }
 .pfas-topbar-search input:focus::placeholder { color: var(--s-secondary); }
 .pfas-search-icon {
-  position: absolute; left: 10px; color: rgba(255, 255, 255, .6);
+  position: absolute; left: 10px; color: var(--on-frame-muted);
   font-size: var(--fs-sm); pointer-events: none;
 }
 .pfas-topbar-search input:focus ~ .pfas-search-kbd { display: none; }
@@ -115,32 +129,31 @@
 .pfas-search-kbd {
   position: absolute; right: 8px;
   font-family: var(--font-mono); font-size: var(--fs-xs);
-  color: rgba(255, 255, 255, .7);
-  border: 1px solid rgba(255, 255, 255, .35); border-radius: 4px; padding: 0 5px;
+  color: var(--on-frame-field);
+  border: 1px solid var(--on-frame-muted); border-radius: 4px; padding: 0 5px;
 }
 .pfas-search-results {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0;
   max-height: 70vh; overflow-y: auto; z-index: 9100;
-  background: var(--s-bg); color: var(--s-body);
+  color: var(--s-body);
   border: 1px solid var(--s-border); border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
   padding: 6px 0;
 }
 .pfas-search-group {
   padding: 8px 14px 4px; font-size: var(--fs-xs); font-weight: 600;
-  text-transform: uppercase; letter-spacing: .03em; color: var(--s-secondary);
+  text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted-glass);
 }
 a.pfas-search-hit {
   display: block; padding: 6px 14px; color: var(--s-body); text-decoration: none;
 }
 a.pfas-search-hit:hover, a.pfas-search-hit.active { background: var(--s-primary-lt); }
 .pfas-search-title { display: block; font-size: var(--fs-sm); font-weight: 600; }
-.pfas-search-sub { display: block; font-size: var(--fs-xs); color: var(--s-secondary); }
+.pfas-search-sub { display: block; font-size: var(--fs-xs); color: var(--text-muted-glass); }
 a.pfas-search-all {
   border-top: 1px solid var(--s-border); margin-top: 6px; padding-top: 8px;
-  font-size: var(--fs-sm); color: var(--s-primary-dk);
+  font-size: var(--fs-sm); color: var(--s-primary-xdk);
 }
-.pfas-search-empty { padding: 10px 14px; font-size: var(--fs-sm); color: var(--s-secondary); }
+.pfas-search-empty { padding: 10px 14px; font-size: var(--fs-sm); color: var(--text-muted-glass); }
 .pfas-topbar-search-toggle { display: none; }
 
 /* ── "+" create menu and avatar ────────────────────────────────────────── */
@@ -152,7 +165,7 @@ a.pfas-search-all {
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em;
 }
 .pfas-avatar > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; image-rendering: pixelated; }
-.pfas-topbar .dropdown-header { font-size: var(--fs-xs); color: var(--s-secondary); }
+.pfas-topbar .dropdown-header { font-size: var(--fs-xs); color: var(--text-muted-glass); }
 
 /* the core page's H1 now lives in the bar (pfas-topbar.js) */
 .pfas-h1-in-topbar { display: none !important; }
@@ -270,7 +283,7 @@ body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item.active > a.text-secondary {
   border-left: 3px solid var(--s-warn-bd); }
 .pfas-bell-item.is-bad { border-left-color: var(--s-danger); }
 .pfas-bell-text { flex: 1 0 100%; display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: normal; }
-.pfas-bell-detail, .pfas-bell-at { font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-bell-detail, .pfas-bell-at { font-size: var(--fs-sm); color: var(--text-muted-glass); }
 .pfas-bell-foot { padding: 8px 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
 
 /* Accessibility ------- */
@@ -290,17 +303,32 @@ body:not(.pfas-app) ol.breadcrumb > .breadcrumb-item.active > a.text-secondary {
 
 /* the theme switch in the user menu (pfas-components.js [data-theme-switch]) */
 .pfas-topbar .dropdown-item.pfas-theme-switch { cursor: pointer; font-weight: var(--fw-body); }
-.pfas-topbar .dropdown-menu { background: var(--surface-raised); color: var(--text); border-color: var(--line); }
+.pfas-topbar .dropdown-menu { color: var(--text); border-color: var(--line); }
+/* the phone keeps the solid ground of the bar's menus and of the search results;
+   above it they are glass (pfas-components.css, Glass) */
+@media (max-width: 768px) {
+  .pfas-topbar .dropdown-menu { background: var(--surface-raised); }
+  .pfas-search-results { background: var(--s-bg); box-shadow: 0 8px 24px rgba(0, 0, 0, .2); }
+}
 .pfas-topbar .dropdown-item { color: var(--text); }
 .pfas-topbar .dropdown-item:hover { background: var(--surface-2); color: var(--text); }
-.pfas-topbar .dropdown-header { color: var(--text-muted); }
+.pfas-topbar .dropdown-header { color: var(--text-muted-glass); }
 
 /* the slow-page line (pfas-topbar.js): under the top bar, stepped on by
    transform when the next page has not painted 300 ms after the click */
-.pfas-progress { position: fixed; top: var(--pfas-header-h, 52px); left: 0; right: 0; z-index: 1060; height: 2px;
+.pfas-progress { --progress-h: 2px; position: fixed; top: var(--pfas-header-h, 52px); left: 0; right: 0; z-index: 1060; height: var(--progress-h);
   background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); opacity: 0; pointer-events: none;
   transition: transform var(--t-reveal) var(--ease); }
 .pfas-progress.is-on { opacity: 1; }
+/* wider than the phone the bar floats: the line runs inside it along its
+   bottom edge, clear of its rounded corners, never across the gutters */
+@media not all and (max-width: 768px) {
+  .pfas-progress {
+    top: calc(var(--glass-gap) + var(--pfas-header-h) - var(--progress-h));
+    left: calc(var(--glass-gap) + var(--glass-radius));
+    right: calc(var(--glass-gap) + var(--glass-radius));
+  }
+}
 @media print { .pfas-progress { display: none; } }
 /* the bar's icons (icons.py) on the frame: its own colour, a 20 px picture */
 .pfas-topbar .nav-link svg.pfas-icon { color: inherit; display: block; }

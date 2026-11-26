@@ -280,6 +280,7 @@ svg.pfas-type.is-na { color: #000000; opacity: 0.35; }
 # takes hex values in its templates): the seeds read them here, so a token change
 # is one regeneration away from every printed document
 PALETTE = {
+    "accent-on-glass": "#9ae4cd",
     "on-accent": "#ffffff",
     "on-frame": "#ffffff",
     "on-success": "#0f1a18",

@@ -3,12 +3,12 @@
 
    One dark frame with the top bar: the rail holds Home and the person's
    sections, an icon over a short label, each button 48 px or more; the
-   panel beside it shows one section as groups of icon tiles like the rail's
-   (one list of links per group, a heading over it), the others hidden until
-   their rail button is pressed (pfas-sidebar.js PFAS.nav). On a computer the
-   panel is one tile wide and the tiles stack down its full height; the
-   phone's sheet draws groups of tiles across. How it folds, opens over the page and becomes a phone's bar and
-   sheet is at the end. Colour only from the frame tokens. */
+   panel beside it shows one section as groups of pages (one list of links
+   per group, a heading over it), the others hidden until their rail button
+   is pressed (pfas-sidebar.js PFAS.nav). Above the phone each page is a
+   one-line row and the frame floats as glass; the phone's sheet draws the
+   same lists as tiles across. How it folds, opens over the page and becomes
+   a phone's bar and sheet is at the end. Colour only from the frame tokens. */
 
 #sidebar.pfas-nav {
   --tile-w: 80px;
@@ -127,15 +127,17 @@
 .pfas-navtile {
   flex: 1 1 auto;
   min-width: 0;
+  --navtile-dir: column;
+  --navtile-pad: 9px 3px 6px;
   display: flex;
-  flex-direction: column;
+  flex-direction: var(--navtile-dir);
   align-items: center;
   justify-content: flex-start;
   /* the label and icon as the rail's buttons draw theirs: one size, one
      colour, one spacing, white on hover and on the current page */
   gap: 4px;
   min-height: 66px;
-  padding: 9px 3px 6px;
+  padding: var(--navtile-pad);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--on-frame) 6%, transparent);
   color: var(--on-frame-muted);
@@ -164,36 +166,58 @@
   background: color-mix(in srgb, var(--on-frame) 18%, transparent);
   box-shadow: inset 0 -3px 0 var(--accent);
 }
-.pfas-navtile[aria-current="page"] svg { color: var(--accent); }
+/* the phone's sheet keeps its mint icon on the current tile */
+@media (max-width: 768px) {
+  .pfas-navtile[aria-current="page"] svg { color: var(--accent); }
+}
 .pfas-navtile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* a pin's place, under its label, where another pin has the same label */
 .pfas-navtile-place { color: var(--on-frame-muted); font-size: var(--fs-xs); font-weight: var(--fw-body); }
 
-/* ── Computer panel, wider than the phone: one column of tiles ────────────────
-   The panel is one tile wide and the shown section stacks down its full
-   height. The groups and their lists draw no box of their own (their
-   headings and tiles are the section's flex items), so every tile shares the
-   height left after the headings, between a minimum and a maximum; below the
-   minimum the panel scrolls. A heading wraps inside the tile width. The
-   phone's sheet below keeps its own tiles across. */
+/* ── Computer panel, wider than the phone: one-line rows ──────────────────────
+   The panel is a fixed width; the shown section is its scroller and holds each
+   group's heading over a column of rows. A row is one line: the icon, the
+   label (cut with an ellipsis; PFAS.nav.tipLong gives the full name on hover
+   and focus), a pin's place, and the row menu at the right. The phone's sheet
+   below keeps its tiles across. */
 @media not all and (max-width: 768px) {
-  #sidebar.pfas-nav { --tile-w: 88px; }
   .pfas-panel {
     display: flex;
     flex-direction: column;
-    width: calc(var(--tile-w) + 2 * var(--sp-2));
+    width: var(--pfas-panel-width);
   }
   .pfas-panel-section:not([hidden]) {
     flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--tile-gap);
+    min-height: 0;
+    overflow-y: auto;
+    position: relative;
   }
-  .pfas-navtile-group, .pfas-nav-tiles:not([hidden]) { display: contents; }
-  .pfas-panel-title, .pfas-navtile-heading { white-space: normal; }
-  .pfas-navtile-heading { margin-bottom: 0; }
-  .pfas-nav-tiles > li { flex: 1 1 66px; min-height: 66px; max-height: 96px; }
-  .pfas-navtile { justify-content: center; }
+  .pfas-nav-tiles:not([hidden]) { display: flex; flex-direction: column; gap: 2px; }
+  .pfas-panel-title, .pfas-navtile-heading { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pfas-navtile {
+    --navtile-dir: row;
+    --navtile-pad: 0 28px 0 var(--sp-2);
+    height: var(--pfas-row-h);
+    min-height: 0;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+    text-align: left;
+    white-space: nowrap;
+    background: none;
+  }
+  .pfas-navtile-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pfas-navtile-place { flex: none; }
+  .pfas-nav-tiles > li > .pfas-nav-more { top: 50%; transform: translateY(-50%); }
+  /* the static pill, until the moving mark takes over (.has-mark, below) */
+  .pfas-navtile[aria-current="page"] {
+    color: var(--on-frame);
+    font-weight: var(--fw-strong);
+    border-radius: var(--radius-card);
+    background: var(--glass-mark);
+    box-shadow: var(--glass-mark-edge), inset 3px 0 0 var(--accent-on-glass);
+  }
 }
 
 /* Home: the pins under Dashboard, a rule between */
@@ -206,6 +230,46 @@
    empty, the line takes no room and stays a live region */
 .pfas-nav-status { margin: 0; padding: 0; color: var(--on-frame); font-size: var(--fs-sm); }
 .pfas-nav-status:not(:empty) { margin-bottom: var(--sp-2); padding: var(--sp-1) var(--sp-2); border-left: 3px solid var(--s-danger); }
+
+/* ── Floating glass, wider than the phone ────────────────────────────────
+   The rail and the panel stand 8 px in from the window, the bar and each
+   other, rounded; their glass is a layer behind them (pfas-components.css,
+   Glass), so each paints no ground of its own and lets the layer's lift show
+   past its edge. The rail is isolated, so its layer stays behind its
+   buttons; the panel is not, because it holds the row menu (the layer
+   rule says how it stays behind). The shown section is the panel's
+   scroller; the rail scrolls only in a window too short for its buttons. */
+@media not all and (max-width: 768px) {
+  #sidebar.pfas-nav { background: transparent; padding: var(--glass-gap); gap: var(--glass-gap); }
+  #sidebar.pfas-nav .pfas-rail, #sidebar.pfas-nav .pfas-panel {
+    border-radius: var(--glass-radius);
+    background: transparent;
+    overflow: visible;
+  }
+  #sidebar.pfas-nav .pfas-rail { isolation: isolate; border-right: 0; }
+  #sidebar.pfas-nav .pfas-panel { position: relative; }
+  /* opened over the page: beside the rail at the same gap, top and bottom */
+  #sidebar.pfas-nav.is-open .pfas-panel, #sidebar.pfas-nav.is-closing .pfas-panel {
+    top: var(--glass-gap);
+    bottom: var(--glass-gap);
+    left: calc(var(--glass-gap) + var(--pfas-rail-width) + var(--glass-gap));
+  }
+  /* A window too short for the rail's buttons: the rail scrolls, so the last
+     section stays in reach. A scroller would clip its layer's lift and carry
+     the layer away with the buttons, so here the rail paints its own glass;
+     it holds no menu, so the filter contains nothing fixed. */
+  @media (max-height: 640px) {
+    #sidebar.pfas-nav .pfas-rail {
+      overflow-x: hidden;
+      overflow-y: auto;
+      background: var(--frame-paint);
+      -webkit-backdrop-filter: var(--frame-filter);
+      backdrop-filter: var(--frame-filter);
+      box-shadow: var(--glass-edge), var(--glass-lift);
+    }
+    #sidebar.pfas-nav .pfas-rail::before { content: none; }
+  }
+}
 
 /* ── Folded, and open over the page (pfas-sidebar.js PFAS.nav) ─────────
    The widths are pfas-sidebar.js's own queries, so the script and the
@@ -229,12 +293,6 @@
 #sidebar.pfas-nav.is-open, #sidebar.pfas-nav.is-closing { position: relative; z-index: 1040; }
 #sidebar.pfas-nav.is-open .pfas-panel, #sidebar.pfas-nav.is-closing .pfas-panel {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--pfas-rail-width);
-  background: var(--frame);
-  border-radius: 0 var(--radius-card) var(--radius-card) 0;
-  box-shadow: var(--shadow-card-hover);
 }
 html:not(.pfas-panel-folded) #sidebar.pfas-nav.is-open .pfas-panel,
 html:not(.pfas-panel-folded) #sidebar.pfas-nav.is-closing .pfas-panel { box-shadow: none; }
@@ -351,9 +409,10 @@ html:not(.pfas-panel-folded) #sidebar.pfas-nav.is-closing .pfas-panel { box-shad
    back); the nav keeps is-closing while the panel fades out on --t-quick,
    drawn where an open one is, so the page takes its width at once and never
    waits. On a phone the sheet rises 16 px from the bar and its backdrop
-   fades. A section shown, or a page newly pinned, rises 4 px. The pressed
-   fill is one mark behind the rail's buttons that glides by transform to the
-   pressed one. Only transform and opacity move; reduced motion zeroes the
+   fades. A section shown, or a page newly pinned, rises 4 px. The pill is
+   one mark behind the rail's buttons and one behind the shown section's
+   rows, each gliding by transform to the pressed button or the current
+   page's row, with a slight give. Only transform and opacity move; reduced motion zeroes the
    tokens, so all of it is at once. Nothing here transforms the nav itself:
    the phone's sheet and backdrop are fixed to the window. */
 @keyframes pfas-panel-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
@@ -375,10 +434,41 @@ html:not(.pfas-panel-folded) #sidebar.pfas-nav.is-closing .pfas-panel { box-shad
 }
 .pfas-rail { position: relative; }
 .pfas-rail-btn { position: relative; z-index: 1; }
-.pfas-rail-mark { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
-  background: color-mix(in srgb, var(--on-frame) 16%, transparent); transition: transform var(--t-pill) var(--ease); }
+/* the one pill (pfas-sidebar.js placeMark): the first child of the rail and of
+   the shown section, so the rows, positioned and later in the section, draw
+   over it; a row's own z-index would put it over its row menu's button */
+.pfas-nav-mark {
+  position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
+  border-radius: var(--radius-card);
+  background: var(--glass-mark); box-shadow: var(--glass-mark-edge);
+  transition: transform var(--t-pill) var(--ease-give);
+}
+.pfas-panel-section > .pfas-nav-mark { box-shadow: var(--glass-mark-edge), inset 3px 0 0 var(--accent-on-glass); }
+.pfas-nav-mark[hidden] { display: none; }
 .pfas-rail.has-mark .pfas-rail-btn[aria-pressed="true"] { background: none; }
-.pfas-rail-mark[hidden] { display: none; }
+@media not all and (max-width: 768px) {
+  /* before the script draws the moving pill, the pressed button paints its
+     fill, edge and corners, as the current row does */
+  .pfas-rail-btn[aria-pressed="true"] {
+    background: var(--glass-mark);
+    box-shadow: var(--glass-mark-edge);
+    border-radius: var(--radius-card);
+  }
+  .has-mark .pfas-rail-btn[aria-pressed="true"], .has-mark .pfas-navtile[aria-current="page"] { background: none; box-shadow: none; }
+  /* the current page's section keeps its edge, with the static pill or over the moving one */
+  #sidebar.pfas-nav .pfas-rail-btn[aria-current] { box-shadow: inset 3px 0 0 var(--accent-on-glass); }
+  #sidebar.pfas-nav .pfas-rail-btn[aria-pressed="true"][aria-current] { box-shadow: var(--glass-mark-edge), inset 3px 0 0 var(--accent-on-glass); }
+  #sidebar.pfas-nav .has-mark .pfas-rail-btn[aria-current] { box-shadow: inset 3px 0 0 var(--accent-on-glass); }
+}
+/* the phone's bar keeps its square fill, gliding as it did */
+@media (max-width: 768px) {
+  .pfas-rail > .pfas-nav-mark {
+    background: color-mix(in srgb, var(--on-frame) 16%, transparent);
+    box-shadow: none;
+    border-radius: 0;
+    transition-timing-function: var(--ease);
+  }
+}
 
 /* ── Print: no navigation on paper ─────────────────────────────────────── */
 @media print {

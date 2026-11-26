@@ -262,7 +262,7 @@ td .pfas-seg.is-fit { max-width: none; white-space: nowrap; flex-wrap: nowrap; }
 .pfas-nav-menu {
   position: fixed; top: var(--menu-y, 0); left: var(--menu-x, 0); z-index: 1060; display: flex; flex-direction: column;
   --nav-row-h: 36px; min-width: 168px; padding: var(--sp-1); border: 1px solid var(--line); border-radius: var(--radius-lg);
-  background: var(--surface-raised); color: var(--text); box-shadow: var(--shadow-card-hover);
+  color: var(--text); box-shadow: var(--shadow-card-hover);
 }
 .pfas-nav-menu-item {
   display: flex; align-items: center; height: var(--nav-row-h); padding: 0 var(--sp-3); border: 0;
@@ -282,7 +282,7 @@ td .pfas-seg.is-fit { max-width: none; white-space: nowrap; flex-wrap: nowrap; }
 .pfas-fab-items { position: absolute; right: 6px; bottom: calc(var(--fab-size) + 10px);
   display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 10px; }
 .pfas-fab-item { display: inline-flex; align-items: center; gap: 10px; height: var(--ctl-h-lg); padding: 0 16px 0 12px;
-  border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--surface-raised);
+  border-radius: var(--radius-pill); border: 1px solid var(--line-strong);
   color: var(--text); font-family: inherit; font-size: var(--fs-base); font-weight: var(--fw-strong);
   white-space: nowrap; box-shadow: var(--shadow-card); cursor: pointer; text-decoration: none;
   opacity: 0; transform: translateY(12px) scale(.9); pointer-events: none;
@@ -1660,7 +1660,7 @@ table th.is-col-set, table td.is-col-set { white-space: normal; overflow-wrap: b
    the viewport over the drawer and the page's dialogs; its entries are .pfas-menu-item, a
    disabled one muted with its reason on a line under it, a separator between groups */
 .pfas-menu { position: fixed; z-index: 1080; min-width: 220px; max-width: min(340px, calc(100vw - 16px));
-  padding: var(--sp-1); background: var(--surface-raised); color: var(--text); border: 1px solid var(--line);
+  padding: var(--sp-1); color: var(--text); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow-card-hover); font-size: var(--fs-sm);
   animation: pfas-menu-in var(--t-quick) var(--ease); }
 /* a menu fades in, 2 px up to its place */
@@ -1670,8 +1670,8 @@ table th.is-col-set, table td.is-col-set { white-space: normal; overflow-wrap: b
 @keyframes pfas-menu-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(2px); } }
 .pfas-menu .pfas-menu-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--sp-3); align-items: baseline; }
 .pfas-menu .pfas-menu-item:focus { outline: none; background: var(--surface-2); }
-.pfas-menu-key { color: var(--text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
-.pfas-menu-why, .pfas-menu-note { grid-column: 1 / -1; color: var(--text-muted); font-size: var(--fs-xs); }
+.pfas-menu-key { color: var(--text-muted-glass); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.pfas-menu-why, .pfas-menu-note { grid-column: 1 / -1; color: var(--text-muted-glass); font-size: var(--fs-xs); }
 .pfas-menu-item[aria-disabled="true"] { color: var(--text-muted); cursor: not-allowed; }
 .pfas-menu-item[aria-disabled="true"]:hover { background: none; }
 .pfas-menu-item[aria-checked="true"] .pfas-menu-label::before { content: ""; display: inline-block; width: 5px; height: 10px; margin: 0 var(--sp-2) 2px 2px;
@@ -1680,7 +1680,7 @@ table th.is-col-set, table td.is-col-set { white-space: normal; overflow-wrap: b
 .pfas-menu-item[aria-expanded="true"] { background: var(--surface-2); }
 .pfas-menu-sep { height: 1px; margin: var(--sp-1) 0; background: var(--line); }
 /* a group's heading (a limit box's State group: the box's name) */
-.pfas-menu-head { padding: var(--sp-1) var(--sp-2) 2px; color: var(--text-muted); font-size: var(--fs-xs);
+.pfas-menu-head { padding: var(--sp-1) var(--sp-2) 2px; color: var(--text-muted-glass); font-size: var(--fs-xs);
   font-weight: var(--fw-strong); letter-spacing: .04em; text-transform: uppercase; }
 /* a class cell marked None: not assessed, a muted ✗ (a decision, not a failure) */
 .pfas-sheet td.is-none .pfas-cell-txt { color: var(--text-muted); }
@@ -2020,7 +2020,7 @@ button.pfas-hier-chain-n:focus-visible { outline: none; box-shadow: 0 0 0 3px va
 /* ── .pfas-toast: what an action just did, under its grid, with its Undo ── */
 .pfas-toast { display: inline-flex; align-self: flex-start; align-items: center; gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); border-radius: var(--radius-card);
-  background: var(--frame); color: var(--on-frame); font-size: var(--fs-sm); box-shadow: var(--shadow-card-hover); }
+  color: var(--on-frame); font-size: var(--fs-sm); box-shadow: var(--shadow-card-hover); }
 .pfas-toast .pfas-toast-undo { border: 1px solid var(--on-frame-muted); background: none; color: inherit; }
 .pfas-toast .pfas-toast-undo:hover, .pfas-toast .pfas-toast-undo:focus-visible { background: var(--on-frame); color: var(--frame); }
 
@@ -2428,3 +2428,60 @@ td.state_title .pfas-state-word { display: none; }
 .pfas-unit-state { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); font-weight: var(--fw-strong); }
 /* core's listing image drawn as an icon (coreImages): the image stays, hidden */
 td img.pfas-core-img { display: none; }
+
+/* ── Glass: the frame floats ─────────────────────────────────────────────
+   The top bar, the rail and the panel draw their glass on a ::before layer
+   behind their content, never on the part itself: a backdrop-filter or filter
+   on a part would make it the containing block of the fixed menus it holds
+   (the row menu, the top bar's menus), placing and clipping them against it.
+   Behind the content: inside the bar, whose z-index makes it a stacking
+   context, and inside the rail, which is isolated, the layer is at -1. The
+   panel holds the row menu and forms no stacking context, which would keep
+   the menu under the top bar: its layer stays first in it at z-index auto,
+   and the panel's children are positioned, so they paint over it. Above the
+   phone only; the phone's frame stays solid. */
+@media not all and (max-width: 768px) {
+  .pfas-topbar.main-header::before,
+  #sidebar.pfas-nav .pfas-rail::before,
+  #sidebar.pfas-nav .pfas-panel::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    background: var(--frame-paint);
+    -webkit-backdrop-filter: var(--frame-filter); backdrop-filter: var(--frame-filter);
+    box-shadow: var(--glass-edge), var(--glass-lift);
+  }
+  #sidebar.pfas-nav .pfas-panel::before { z-index: auto; }
+  :where(#sidebar.pfas-nav .pfas-panel) > * { position: relative; }   /* a child's own position wins */
+}
+
+/* The floating layers on glass, a closed list: the top bar's menus, the search
+   results, row menus (the navigation's too), the action menu and toasts. Above
+   the phone only (the phone keeps its solid menus, toasts and sheets, drawn by
+   the phone block below). Tooltips, dialogs, the cell editor, native selects and
+   core's own drop-downs in page content stay solid. None of these holds anything
+   fixed, so the filter may sit on the layer itself. The bar's menu names
+   .main-header to beat the vendored adminlte-topbar (.pfas-topbar .dropdown-menu,
+   0,2,0), which is not edited. */
+@media not all and (max-width: 768px) {
+  .pfas-topbar.main-header .dropdown-menu, .pfas-search-results, .pfas-menu, .pfas-nav-menu, .pfas-fab-item {
+    background: var(--menu-paint);
+    box-shadow: var(--glass-edge), var(--glass-lift);
+  }
+  /* the blur only while a layer is shown: the action menu's items stay in the
+     page, transparent, until it opens */
+  .pfas-topbar.main-header .dropdown-menu, .pfas-search-results, .pfas-menu, .pfas-nav-menu,
+  .pfas-fab[data-open="true"] .pfas-fab-item {
+    -webkit-backdrop-filter: var(--menu-filter); backdrop-filter: var(--menu-filter);
+  }
+  /* the toast is dark glass, the frame's */
+  .pfas-toast {
+    background: var(--frame-paint);
+    -webkit-backdrop-filter: var(--frame-filter); backdrop-filter: var(--frame-filter);
+    box-shadow: var(--glass-edge), var(--glass-lift);
+  }
+}
+/* the phone's menus, action items and toasts: their solid ground, as before
+   (the bar's menu and the search results are in pfas-topbar.css) */
+@media (max-width: 768px) {
+  .pfas-nav-menu, .pfas-menu, .pfas-fab-item { background: var(--surface-raised); }
+  .pfas-toast { background: var(--frame); }
+}

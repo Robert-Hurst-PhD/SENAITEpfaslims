@@ -8,9 +8,10 @@
    the page as it stands (it is a button, never a link); the mark of the
    current page's section (aria-current) stays where the page put it. The
    tiles and their row menu are the nav tiles component's
-   (pfas-components.js initNavTiles). Choosing a page folds the panel to the
-   rail (nav.choose): a plain click or Enter on a tile, not one that opens the
-   page in another tab or window.
+   (pfas-components.js initNavTiles). Choosing a page (nav.choose: a plain
+   click or Enter on a tile, not one that opens the page in another tab or
+   window) closes a panel open over the page; on a wide screen the panel
+   beside the page stays open, and only the top bar's menu button folds it.
 
    How the panel sits by the screen's width (pfas-sidebar.css draws each):
    - wide, 1280 px and more: the panel beside the rail. The top bar's menu
@@ -19,7 +20,8 @@
      section over the page.
    - compact, below 1280 px: the panel is folded. A rail button (or the menu
      button) opens it over the page, which stays where it is; a press
-     outside it, Escape or the same button closes it. Nothing is kept.
+     outside it, Escape or the same button closes it. Nothing is kept
+     but the pill's note for the next page, cleared when it is read.
    - phone, 768 px and less: the rail is a bar along the bottom and a button
      opens its section as a sheet over the page, holding the focus; Escape,
      the backdrop or the same button closes it, the focus going back to the
@@ -73,27 +75,39 @@
     function end() { if (sb.__pfasClosing === token) unsettle(sb); }
     anims[0].finished.then(end, end);
   }
-  /* the pressed fill: one mark behind the rail's buttons, moved by transform
-     to the pressed one (its size taken at once); the first place, and a
-     place after the rail changed size, is drawn there, not slid to */
-  function placeMark(sb, slide) {
-    var rail = sb.querySelector('.pfas-rail');
-    if (!rail) return;
-    var mark = rail.querySelector('.pfas-rail-mark');
-    if (!mark) {
-      mark = document.createElement('span');
-      mark.className = 'pfas-rail-mark';
-      mark.setAttribute('aria-hidden', 'true');
-      rail.insertBefore(mark, rail.firstChild);
+  /* ── The pill: one mark behind the pressed rail button and one behind the
+     current page's row in the shown section, each its box's own first child,
+     moved by transform (its size taken at once) through one code path. Its
+     place is the target's rect less the box's, plus the box's scroll, so it
+     scrolls with the rows. The first place, and a place not slid to (a new
+     width, the panel drawn again), is drawn there; a place the mark already
+     holds changes nothing, so the box observer's first callback never stops a
+     glide. No target, or one with no box, and the mark is hidden. The
+     phone's bar keeps its own mark, placed by the button's offset, and its
+     sheet draws no pill. */
+  function ownMark(box, make) {
+    var kids = box.children;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].classList.contains('pfas-nav-mark')) return kids[i];
     }
-    var on = rail.querySelector('.pfas-rail-btn[aria-pressed="true"]');
-    var drawn = !!(on && on.offsetWidth);
-    mark.hidden = !drawn;
-    rail.classList.toggle('has-mark', drawn);
-    if (!drawn) { mark.__pfasAt = null; return; }
-    var at = 'translate(' + on.offsetLeft + 'px, ' + on.offsetTop + 'px)';
-    mark.style.width = on.offsetWidth + 'px';
-    mark.style.height = on.offsetHeight + 'px';
+    if (!make) return null;
+    var mark = document.createElement('span');
+    mark.className = 'pfas-nav-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    box.insertBefore(mark, box.firstChild);
+    return mark;
+  }
+  function unmark(box) {
+    var mark = box && ownMark(box, false);
+    if (mark) { mark.hidden = true; mark.__pfasAt = null; mark.__pfasRect = null; }
+    if (box) box.classList.remove('has-mark');
+  }
+  /* the mark to the transform `at`, w x h: a place it already holds (`key`)
+     is left alone unless slid to; a first place, or one not slid to, is drawn */
+  function moveMark(mark, at, key, w, h, slide) {
+    if (!slide && mark.__pfasAt === key) return;
+    mark.style.width = w + 'px';
+    mark.style.height = h + 'px';
     if (slide && mark.__pfasAt) {
       mark.style.transform = at;
     } else {
@@ -102,9 +116,128 @@
       void mark.offsetWidth;               /* drawn there before the transition is back */
       mark.style.transition = '';
     }
-    mark.__pfasAt = at;
+    mark.__pfasAt = key;
   }
-  nav.placeMark = function () { var sb = el(); if (sb) placeMark(sb, false); };
+  function drawRect(mark, r, slide) {
+    moveMark(mark, 'translate(' + r[0] + 'px, ' + r[1] + 'px)', r.join(','), r[2], r[3], slide);
+    mark.__pfasRect = r.slice();
+  }
+  /* the target's box-local rect, [x, y, w, h]; null when it has no box */
+  function rectIn(box, target) {
+    var t = target && target.getBoundingClientRect();
+    if (!t || !t.width) return null;
+    var b = box.getBoundingClientRect();
+    return [t.left - b.left - (box.clientLeft || 0) + (box.scrollLeft || 0),
+            t.top - b.top - (box.clientTop || 0) + (box.scrollTop || 0), t.width, t.height];
+  }
+  /* `from`, a noted rect: the pill is first drawn there, then glides on */
+  function placeMark(box, target, slide, from) {
+    if (!box) return;
+    var r = rectIn(box, target);
+    if (!r) { unmark(box); return; }
+    var mark = ownMark(box, true);
+    if (from) drawRect(mark, from, false);
+    mark.hidden = false;
+    box.classList.add('has-mark');
+    drawRect(mark, r, slide || !!from);
+  }
+  /* the phone's bar: its mark placed by the button's offset, as it always was */
+  function placePhoneMark(rail, on, slide) {
+    var drawn = !!(on && on.offsetWidth);
+    if (!drawn) { unmark(rail); return; }
+    var mark = ownMark(rail, true);
+    mark.hidden = false;
+    rail.classList.add('has-mark');
+    var at = 'translate(' + on.offsetLeft + 'px, ' + on.offsetTop + 'px)';
+    moveMark(mark, at, at + ',' + on.offsetWidth + ',' + on.offsetHeight, on.offsetWidth, on.offsetHeight, slide);
+    mark.__pfasRect = null;
+  }
+  function pressedBtn(rail) { return rail.querySelector('.pfas-rail-btn[aria-pressed="true"]'); }
+  function currentRow(s) { return s && s.querySelector('a.pfas-navtile[aria-current="page"]'); }
+  /* both pills; `note` (readNote) first draws each at the place it had on the
+     page before, so it glides on from there */
+  function placeMarks(sb, slide, note) {
+    var rail = sb.querySelector('.pfas-rail'), s = shownSection(sb);
+    if (nav.mode() === 'phone') {
+      if (rail) placePhoneMark(rail, pressedBtn(rail), slide);
+      each(sb, '.pfas-panel-section', unmark);
+      return;
+    }
+    if (rail) placeMark(rail, pressedBtn(rail), slide, note && note.rail);
+    if (!s) return;
+    placeMark(s, currentRow(s), slide, note && note.section === s.getAttribute('data-section') ? note.panel : null);
+  }
+  nav.placeMark = function () { var sb = el(); if (sb) placeMarks(sb, false); };
+
+  /* ── The note: where the pills stood when a row was chosen, for the next
+     page (sessionStorage pfas_nav_from: {at, section, rail, panel}, the rects
+     box-local). It is kept in memory and written only as the page is left
+     (pagehide); a navigation that never leaves (a page that asks to stay)
+     puts the pills back on the current page after NOTE_TTL and writes
+     nothing. Read once, and gone whatever it held; none is used when it is
+     older than NOTE_TTL (a page reached by Back, or long after), when it is
+     not a note, when storage refuses, or with reduced motion. */
+  var NOTE = 'pfas_nav_from', NOTE_TTL = 5000;
+  function rectOk(r) {
+    if (!Array.isArray(r) || r.length !== 4) return null;
+    for (var i = 0; i < 4; i++) { if (typeof r[i] !== 'number' || !isFinite(r[i])) return null; }
+    return r;
+  }
+  function dropNote(sb) {
+    if (sb.__pfasRevert) window.clearTimeout(sb.__pfasRevert);
+    sb.__pfasRevert = null;
+    sb.__pfasNote = null;
+  }
+  function keepNote(sb) {
+    var rail = sb.querySelector('.pfas-rail'), s = shownSection(sb);
+    var rm = rail && ownMark(rail, false), pm = s && ownMark(s, false);
+    dropNote(sb);
+    sb.__pfasNote = { at: Date.now(), section: s ? s.getAttribute('data-section') : null,
+                      rail: rm && !rm.hidden ? rm.__pfasRect || null : null,
+                      panel: pm && !pm.hidden ? pm.__pfasRect || null : null };
+    sb.__pfasRevert = window.setTimeout(function () { dropNote(sb); placeMarks(sb, false); }, NOTE_TTL);
+  }
+  function writeNote(sb) {
+    var n = sb.__pfasNote;
+    dropNote(sb);
+    if (!n) return;
+    n.at = Date.now();
+    try { window.sessionStorage.setItem(NOTE, JSON.stringify(n)); } catch (e) {}
+  }
+  function forgetNote() { try { window.sessionStorage.removeItem(NOTE); } catch (e) {} }
+  function readNote() {
+    var raw = null, n = null;
+    try { raw = window.sessionStorage.getItem(NOTE); } catch (e) { return null; }
+    forgetNote();
+    if (!raw) return null;
+    try { n = JSON.parse(raw); } catch (e) { return null; }
+    if (!n || typeof n !== 'object' || Array.isArray(n)) return null;
+    if (typeof n.at !== 'number' || !isFinite(n.at)) return null;
+    var age = Date.now() - n.at;
+    if (age < 0 || age > NOTE_TTL) return null;
+    if (media('(prefers-reduced-motion: reduce)')) return null;
+    return { section: typeof n.section === 'string' ? n.section : null, rail: rectOk(n.rail), panel: rectOk(n.panel) };
+  }
+
+  /* a row whose label is cut by the one-line row carries its full text, label
+     then place, for the shared tooltip (hover, focus, long press); a row that
+     fits carries none, and so does every tile in the phone's sheet, whose
+     names wrap. A hidden panel has no width to measure, so this runs
+     again whenever the panel is shown: a section, an opening over the page,
+     an unfold, a new width, a redrawn pin list. */
+  nav.tipLong = function () {
+    var sb = el();
+    if (!sb) return;
+    var rows = nav.mode() !== 'phone';
+    each(sb, 'a.pfas-navtile', function (a) {
+      var label = a.querySelector('.pfas-navtile-label'), place = a.querySelector('.pfas-navtile-place');
+      if (rows && label && label.scrollWidth > label.clientWidth) {
+        a.setAttribute('data-pfas-tip', label.textContent + (place && place.textContent ? ', ' + place.textContent : ''));
+      } else {
+        a.removeAttribute('data-pfas-tip');
+      }
+    });
+  };
 
   /* 'wide', 'compact' or 'phone' */
   nav.mode = function () { return media(PHONE) ? 'phone' : (media(COMPACT) ? 'compact' : 'wide'); };
@@ -112,16 +245,10 @@
   nav.folded = function () {
     return nav.mode() !== 'wide' || root().classList.contains(FOLDED);
   };
-  /* a page was chosen: the panel folds, for the session on a wide screen, and
-     the page it leads to is drawn folded. */
+  /* a page was chosen: a panel open over the page closes; the panel beside
+     the page on a wide screen stays open, the session's fold as it was */
   nav.choose = function () {
-    var sb = el();
-    if (!sb) return;
-    if (nav.mode() === 'wide') {
-      root().classList.add(FOLDED);
-      store(true);
-    }
-    nav.close();
+    if (el()) nav.close();
   };
   nav.isOpen = function () { var sb = el(); return !!(sb && sb.classList.contains('is-open')); };
 
@@ -141,7 +268,8 @@
     if (sb.classList.contains('is-open') && nav.mode() === 'phone') sheet(sb, true);
     /* a section shown in a drawn panel rises; in a panel about to open, the panel does */
     if (fresh) arrive(target, 'is-arriving');
-    placeMark(sb, true);
+    placeMarks(sb, true);
+    nav.tipLong();
     return true;
   };
 
@@ -177,6 +305,8 @@
     sb.classList.remove('is-closing');
     unsettle(sb);
     sb.classList.add('is-open');
+    nav.tipLong();                         /* drawn now, so its rows have a width to measure */
+    placeMarks(sb, false);
     if (nav.mode() === 'phone') {
       sheet(sb, true);
       var first = stops(sb)[0];
@@ -212,6 +342,8 @@
       } else {
         unsettle(sb);
         arrive(panel(sb), 'is-arriving');
+        nav.tipLong();
+        placeMarks(sb, false);
       }
     } else if (nav.isOpen()) {
       nav.close();
@@ -225,6 +357,11 @@
     if (!a || !sb.contains(a) || e.defaultPrevented) return;
     /* a page opened in another tab or window leaves this one as it is */
     if (e.button > 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    /* the pill glides to the chosen row and the next page carries it on */
+    if (nav.mode() !== 'phone') {
+      placeMark(shownSection(sb), a, true);
+      keepNote(sb);
+    }
     nav.choose();
   }
   function railClick(sb, e) {
@@ -337,6 +474,8 @@
     if (pinRows(sb).length) box.removeAttribute('hidden'); else box.setAttribute('hidden', 'hidden');
     if (PFAS.components && PFAS.components.resetNavTiles) PFAS.components.resetNavTiles(box);
     fresh.forEach(function (a) { arrive(a, 'is-arriving'); });
+    nav.tipLong();
+    placeMarks(sb, false);                 /* a longer list can bring a scrollbar and narrow the rows */
     if (had === null) return;
     /* the focus was in the list: on the same pin, else the first, else Home's first tile */
     var home = box.closest('.pfas-panel-section');
@@ -398,12 +537,23 @@
     }
     watch();
     if (PFAS.components && PFAS.components.initNavTiles) PFAS.components.initNavTiles(sb);
-    placeMark(sb, false);
-    /* the rail's buttons change size with the width and the web font */
-    window.addEventListener('resize', function () { placeMark(sb, false); });
+    placeMarks(sb, false, readNote());
+    nav.tipLong();
+    /* the rail's buttons and the rows change size with the width and the web font */
+    window.addEventListener('resize', function () { placeMarks(sb, false); nav.tipLong(); });
+    /* the note is written as the page is left; a page brought back by Back
+       from the browser's cache runs no init: its note is dropped and its
+       pill drawn again on the current row, not the one chosen before */
+    window.addEventListener('pagehide', function () { writeNote(sb); });
+    window.addEventListener('pageshow', function (e) {
+      if (!e || !e.persisted) return;
+      dropNote(sb);
+      forgetNote();
+      placeMarks(sb, false);
+    });
     var rail = sb.querySelector('.pfas-rail');
     if (rail && window.ResizeObserver) {
-      try { new window.ResizeObserver(function () { placeMark(sb, false); }).observe(rail); } catch (e) {}
+      try { new window.ResizeObserver(function () { placeMarks(sb, false); }).observe(rail); } catch (e) {}
     }
   };
   nav.init();
