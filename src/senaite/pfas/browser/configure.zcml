@@ -86,21 +86,34 @@
       />
 
   <!-- QC qualifiers: what a certificate says when a QC criterion fails
-       (Reporting Setup, after Print Settings) -->
+       (Reporting Setup, after Print Settings). Signed-in users: the client
+       wall keeps it the manager's (perms.MANAGER_VIEWS) and lets the
+       read-only inspector read it by GET; core's Manage Bika is not the
+       inspector's. -->
   <browser:page
       name="pfas-qc-qualifiers"
       for="*"
       class=".print_settings.PFASQCQualifiersView"
-      permission="senaite.core.permissions.ManageBika"
+      permission="zope2.View"
       />
 
   <!-- Report tiers: the catalogue of what a report package holds
-       (Reporting Setup, after QC Qualifiers) -->
+       (Reporting Setup, after QC Qualifiers). Signed-in users: the client
+       wall keeps it the manager's and lets the inspector read it by GET. -->
   <browser:page
       name="pfas-report-tiers"
       for="*"
       class=".report_tiers_view.PFASReportTiersView"
-      permission="senaite.core.permissions.ManageBika"
+      permission="zope2.View"
+      />
+
+  <!-- The system tour: ten stops through the lab's work, for staff and the inspector -->
+  <browser:page
+      name="pfas-tour"
+      for="*"
+      class=".tour_view.PFASTourView"
+      permission="zope2.View"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />
 
   <!-- System map: the lab's live model as a tree (d3), one level per request -->
@@ -373,24 +386,27 @@
 
   <!-- Configuration change history (R1): who changed which setting, when,
        before and after. Viewing needs ManageBika (like Lab Settings): it shows
-       every client's EDD settings. Revert is gated at TIER_CONFIG. -->
+       every client's EDD settings; the read-only inspector reads it by GET.
+       The view checks both, as core's Manage Bika is not the inspector's.
+       Revert is gated at TIER_CONFIG. -->
   <browser:page
       name="pfas-config-history"
       for="*"
       class=".config_history_view.PFASConfigHistoryView"
-      permission="senaite.core.permissions.ManageBika"
+      permission="zope2.View"
       />
 
   <!-- The signature ledger for Managers: filters, the chain check, the CSV
        export, orphans, withdrawal and the seal worker's health. Viewing
-       needs ManageBika and the Manager role (perms.MANAGER_VIEWS); the
-       chain check is gated at TIER_CONFIG, a withdrawal to the signer or a
-       Manager. -->
+       needs the Manager role (perms.MANAGER_VIEWS), or the read-only
+       inspector by GET (perms.INSPECTOR_READ_VIEWS: core's Manage Bika is
+       not the inspector's); the chain check is gated at TIER_CONFIG, a
+       withdrawal to the signer or a Manager. -->
   <browser:page
       name="pfas-signatures"
       for="*"
       class=".signatures_page.PFASSignaturesView"
-      permission="senaite.core.permissions.ManageBika"
+      permission="zope2.View"
       />
 
   <!-- A signer withdraws their own signature from the record's Signatures
@@ -629,13 +645,15 @@
       permission="zope2.View"
       />
 
-  <!-- Controlled Publications register (D65 B): auditor-facing, read-only,
-       cross-client → manager/QAO permission (not client-accessible). -->
+  <!-- Controlled Publications register: auditor-facing, cross-client.
+       Signed-in users: the client wall keeps it the manager's
+       (perms.MANAGER_VIEWS) and lets the read-only inspector read it by
+       GET, which core's Manage Bika never let it do. -->
   <browser:page
       name="pfas-controlled-publications"
       for="*"
       class=".controlled_publications.PFASControlledPublicationsView"
-      permission="senaite.core.permissions.ManageBika"
+      permission="zope2.View"
       />
 
   <!-- The worker, after the site starts, asks it to work out every open

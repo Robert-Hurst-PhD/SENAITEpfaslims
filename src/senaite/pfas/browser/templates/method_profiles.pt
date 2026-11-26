@@ -46,7 +46,7 @@
                                 (u'Print draft', 'href', u'%s/@@pfas-settings-report?method_id=%s&format=pdf' % (view.portal_url(), m['method_id']),
                                  {'blank': True, 'note': u'No revision issued yet: a draft PDF of the current settings'}) if not m['revision']['rev'] else None,
                                 (u'SENAITE method', 'href', m['core_method_url'], {'note': u'The core SENAITE Method record'}),
-                                (u'Issue revision', 'modal', u'mp-issue-%s' % m['method_id']) if m['revision']['unissued'] else None)">
+                                (u'Issue revision', 'modal', u'mp-issue-%s' % m['method_id']) if m['revision']['unissued'] and not view.read_only() else None)">
           <td><strong tal:content="python:m['display_name'] or m['method_id']">FDA 32-PFAS in Food</strong></td>
           <td class="hide-mobile">
             <div class="pfas-sub" tal:content="m/description">...</div>
@@ -75,7 +75,7 @@
 
     <!-- Issue revision: a reason, in the shared dialog -->
     <tal:d tal:repeat="m view/methods">
-    <div class="pfas-modal" tal:condition="m/revision/unissued" tal:attributes="id string:mp-issue-${m/method_id}">
+    <div class="pfas-modal" tal:condition="python:m['revision']['unissued'] and not view.read_only()" tal:attributes="id string:mp-issue-${m/method_id}">
       <div class="pfas-modal-box is-narrow">
         <h2 tal:content="python:u'Issue revision: %s' % (m['display_name'] or m['method_id'])">Issue revision</h2>
         <form method="post" class="mp-issue-form"

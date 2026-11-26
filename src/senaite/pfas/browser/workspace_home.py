@@ -242,7 +242,7 @@ class PFASQCManagementView(ViewHelpers, BrowserView):
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
                 "icon":  u"ico-deviation",
-                "title": u"Deviations / CARs",
+                "title": u"CARs",
                 "desc":  u"Deviations, root cause and corrective actions",
             },
             {
@@ -257,7 +257,7 @@ class PFASQCManagementView(ViewHelpers, BrowserView):
                 "title": u"Controlled Documents",
                 "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
-        ]
+        ] + [tour_tile(base)]
 
 
 class PFASBenchHomeView(QueueList, ViewHelpers, BrowserView):
@@ -390,10 +390,16 @@ class PFASBenchHomeView(QueueList, ViewHelpers, BrowserView):
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
                 "icon":  u"ico-deviation",
-                "title": u"Deviations / CARs",
+                "title": u"CARs",
                 "desc":  u"Deviations, root cause and corrective actions",
             },
-        ]
+        ] + [tour_tile(base)]
+
+
+def tour_tile(base):
+    """The System tour tile every landing ends with."""
+    return {"url": u"{0}/@@pfas-tour".format(base), "icon": u"ico-tour", "title": u"System tour",
+            "desc": u"Ten stops through the lab\u2019s work, from sample intake to the client portal"}
 
 
 def waiting_for_review(rows, store):
@@ -449,7 +455,7 @@ class PFASDataReviewHomeView(ViewHelpers, BrowserView):
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
                 "icon":  u"ico-deviation",
-                "title": u"Deviations / CARs",
+                "title": u"CARs",
                 "desc":  u"Deviations, root cause and corrective actions",
             },
             {
@@ -464,4 +470,4 @@ class PFASDataReviewHomeView(ViewHelpers, BrowserView):
                 "title": u"Calibration Archive",
                 "desc":  u"Every run's curves; a run's curve is approved in Data Review",
             },
-        ]
+        ] + [tour_tile(base)]

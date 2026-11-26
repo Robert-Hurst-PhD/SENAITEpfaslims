@@ -9,7 +9,7 @@
 <body>
 <tal:t metal:fill-slot="header-title">EDD settings</tal:t>
 <tal:r metal:fill-slot="header-right">
-  <button type="button" class="btn-sm btn-primary" data-modal-open="edd-new">+ New profile</button>
+  <button type="button" class="btn-sm btn-primary" data-modal-open="edd-new" tal:condition="not:view/read_only">+ New profile</button>
 </tal:r>
 <!-- a tab of one form saves from the pinned bar; the files, columns and maps
      tabs keep Save first in their form, which Enter presses (their Add buttons
@@ -426,7 +426,7 @@
   </section>
 
   <!-- test export: a batch's checks without the file -->
-  <section class="bench-block" tal:condition="python:tab == 'test'">
+  <section class="bench-block" tal:condition="python:tab == 'test' and not view.read_only()">
     <form class="filter-row" onsubmit="eddPreview(this); return false;">
       <input type="text" name="batch_id" placeholder="Batch ID" />
       <button class="btn-sm btn-primary" type="submit">Check</button>

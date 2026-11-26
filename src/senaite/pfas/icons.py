@@ -120,6 +120,15 @@ DRAWINGS = {
     "sign-out": '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/>',
     "badge": ('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v3h6V3"/>'
               '<rect x="9.5" y="9" width="5" height="5" rx="2.5"/><path d="M8.5 17.5h7"/>'),
+    # the system tour: a signpost, a custody form, a thermometer, a table sent out
+    "tour": ('<path d="M12 3.5V21M8 21h8"/><path d="M12 5.25h6.5l2 2.5-2 2.5H12Z"/>'
+             '<path class="pfas-icon-a" d="M12 12.5H5.5l-2 2.5 2 2.5H12Z"/>'),
+    "custody": ('<rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.25h6V4.5"/>'
+                '<path d="M8.5 9.5h7M8.5 12.5h7"/><rect class="pfas-icon-a" x="8.5" y="15.25" width="7" height="2" rx=".6"/>'),
+    "temperature": ('<path d="M9.75 14.25V5.5a2.25 2.25 0 0 1 4.5 0v8.75a4 4 0 1 1-4.5 0Z"/>'
+                    '<rect class="pfas-icon-a" x="11.2" y="9" width="1.6" height="7.5" rx=".5"/>'),
+    "edd": ('<rect x="3.75" y="4.75" width="12.5" height="14.5" rx="1.5"/><path d="M3.75 9.5h12.5M3.75 14.25h12.5M9.9 4.75v14.5"/>'
+            '<path class="pfas-icon-w" d="M17.5 12h3.5M19.25 10.25 21 12l-1.75 1.75"/>'),
 }
 
 FAMILY = {}
@@ -153,7 +162,8 @@ WORDS = {"pass": "Pass", "warn": "Warning", "fail": "Failure", "unjudged": "Not 
          "issued": "Certificate issued",
          "sig-wait": "Waiting for a signature", "sig-signed": "Signed", "sig-withdrawn": "Signature withdrawn",
          "doc-draft": "Draft", "doc-issued": "Issued", "doc-superseded": "Superseded", "doc-revoked": "Revoked",
-         "lot": "In date", "lot-opened": "Opened", "lot-archived": "Archived"}
+         "lot": "In date", "lot-opened": "Opened", "lot-archived": "Archived",
+         "tour": "System tour", "custody": "Chain of custody", "temperature": "Temperature", "edd": "Data deliverable"}
 
 # Corner marks: a flag on a 24 px icon's lower right, over a halo of the
 # ground. At 16 px the flag stands as its own outcome mark instead.

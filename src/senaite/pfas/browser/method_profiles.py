@@ -11,7 +11,8 @@ PFAS Method Profile browser views.
     ...&delete=check lists what uses the method (method_delete.py) and,
     when nothing does, offers to delete it (POST action=delete_method).
 
-Both views require Manager, LabManager, or Owner role.
+A manager reads and writes both; the read-only inspector reads both by
+GET, drawn view-only (read_only), and posts nothing.
 Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
@@ -46,6 +47,13 @@ def _require_manager(context, request):
     # anything they had created passed it.
     from senaite.pfas.browser.perms import require_manager
     return require_manager(context, request)
+
+
+def _may_read(context, request):
+    """A manager in any way; the read-only inspector by GET or HEAD, the
+    pages drawn view-only for it (perms.may_read_config)."""
+    from senaite.pfas.browser.perms import may_read_config
+    return may_read_config(context, request)
 
 
 def _portal(context):
@@ -158,9 +166,13 @@ class PFASMethodProfilesView(ViewHelpers, BrowserView):
         """Managers start a new method here (the New Method Wizard)."""
         return _require_manager(self.context, self.request)
 
+    def read_only(self):
+        """The list drawn view-only: no new method, no Issue revision."""
+        return not self.is_manager()
+
     def __call__(self):
         flatten_form(self.request)
-        if not _require_manager(self.context, self.request):
+        if not _may_read(self.context, self.request):
             return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
         return self.template()
 
@@ -232,10 +244,20 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/method_profile_edit.pt")
 
+    def read_only(self):
+        """The editor drawn view-only (the inspector reading it): no Save,
+        no Delete, no edit window; every write is refused below."""
+        return not _require_manager(self.context, self.request)
+
     def __call__(self):
         flatten_form(self.request)
+        # a manager reads and writes; the read-only inspector reads by GET
+        # (the JSON reads below included) and posts nothing
         if not _require_manager(self.context, self.request):
-            return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
+            if not _may_read(self.context, self.request):
+                return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
+            if self.request.form.get("delete"):
+                return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
 
         if self.request.form.get("_preview") == "rt":
             return self._preview_recovery_grid()

@@ -14,7 +14,7 @@
 
   <tal:r metal:fill-slot="header-right">
     <form method="get" action="@@pfas-method-profile-edit"
-          tal:condition="python:view.method_id() and not view.delete_requested()">
+          tal:condition="python:view.method_id() and not view.delete_requested() and not view.read_only()">
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="delete" value="check" />
       <button type="submit" class="btn-sm btn-danger" id="method-delete-check">Delete method</button>
@@ -54,7 +54,7 @@
       Last changed by <strong tal:content="lc/who">user</strong>
       on <span tal:content="lc/at">date</span>
       (<span tal:content="python:len(lc['changes'])">1</span> setting(s))
-      &middot; <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">History</a>
+      <tal:h condition="not:view/read_only">&middot; <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">History</a></tal:h>
     </p>
     <div class="alert alert-error" tal:condition="view/error">
       <span tal:content="view/error">Error message</span>
@@ -310,7 +310,7 @@
               </div>
               <!-- the Table view holds the rule table and the flags, each
                    rule's region (its row's Edit opens it); after this
-                   section, in both views, the window grid's fold -->
+                   section, in the Table view too, the window grid's fold -->
               <div class="mp-rules-view" data-view-of="rules" data-view="table" hidden="hidden"
                    tal:define="sheet view/rules_table">
                 <metal:s use-macro="context/@@pfas-grid-macros/macros/sheet" />
@@ -328,11 +328,12 @@
               </div>
             </div>
           </details>
-          <!-- under the Rules section, in both views: the regions drawn as
-               sections of their own (the window per analyte and matrix),
-               each in its fold; what in it is the Table view's (the tier,
-               group, cell and spike level collections) shows with the rule
-               table -->
+          <!-- under the Rules section, in the Table view alone: the regions
+               drawn as sections of their own (the window per analyte and
+               matrix, its tier, group, cell and spike level collections),
+               each in its fold, shown and hidden with the rule table. The
+               List view draws the grid's values inside each tier's box -->
+          <div class="mp-rules-view" data-view-of="rules" data-view="table" hidden="hidden">
           <tal:ed repeat="ed eds">
           <details class="pfas-sec" tal:condition="ed/sec" tal:attributes="id ed/id; data-sec ed/sec">
             <summary><span class="pfas-sec-t" tal:content="ed/title">Window per analyte and matrix</span><span class="pfas-sec-s" tal:content="python:view.section_summary(ed['sec'])"></span><tal:h define="hid python:view.section_help(ed['sec'])"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></summary>
@@ -341,6 +342,7 @@
             </div>
           </details>
           </tal:ed>
+          </div>
           <!-- what one region draws: the window grid for the analyte
                recoveries, then each part (a section, table or collection
                drawn by its config-form macro, Required chips, the spike
@@ -361,10 +363,8 @@
               <p class="pane-intro">The window each analyte gets in each matrix, from the tiers; click a cell to see what sets it or to set it there.</p>
               <tal:g replace="structure view/windows_box" />
             </tal:w>
-            <!-- the window grid's own editors are the Table view's: its
-                 sheet tools and every collection the grid is drawn from -->
-            <div class="mp-rules-view" data-view-of="rules" data-view="table" hidden="hidden"
-                 tal:omit-tag="python:ed['id'] != 'qc-ed-windows'">
+            <!-- the window grid's own editors: its sheet tools and every
+                 collection the grid is drawn from -->
             <div class="pfas-sheet-tools" tal:define="others view/copy_tier_methods"
                  tal:condition="python:others and ed['id'] == 'qc-ed-windows'">
               <button type="button" class="btn-sm btn-secondary" data-copy-tiers="tiers-copy"
@@ -432,7 +432,6 @@
                 </div>
               </tal:k>
             </tal:p>
-            </div>
             </div>
           </metal:r>
           </tal:defs>

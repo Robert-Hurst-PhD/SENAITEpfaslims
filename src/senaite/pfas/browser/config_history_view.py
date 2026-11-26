@@ -35,9 +35,26 @@ class PFASConfigHistoryView(GateMixin, BrowserView):
 
     template = ViewPageTemplateFile("templates/config_history.pt")
 
+    def may_open(self):
+        """Who reads the history: whoever holds core's Manage Bika (the lab
+        manager, the lab clerk), and the read-only inspector by GET."""
+        from AccessControl import getSecurityManager
+        from senaite.core.permissions import ManageBika
+        from senaite.pfas.browser.perms import may_read_config
+        if getSecurityManager().checkPermission(ManageBika, api.get_portal()):
+            return True
+        return may_read_config(self.context, self.request)
+
+    def read_only(self):
+        """The page drawn view-only for whoever may not revert."""
+        return not self.can_configure()
+
     def __call__(self):
         flatten_form(self.request)
         self.message = None
+        if not self.may_open():
+            from senaite.pfas.browser.perms import refuse
+            return refuse(self.request, "Forbidden")
         if self.request.method == "POST":
             action = self.request.form.get("action", "")
             denied = deny_gated_action(self.context, self.request, action, HISTORY_GATES)

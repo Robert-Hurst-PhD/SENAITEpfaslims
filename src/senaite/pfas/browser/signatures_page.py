@@ -774,9 +774,13 @@ class PFASSignaturesView(GateMixin, BrowserView):
     def __call__(self):
         from senaite.pfas.browser.formutil import flatten_form
         from senaite.pfas.browser.perms import deny_gated_action, disable_csrf
+        from senaite.pfas.browser.perms import may_read_config, refuse
         flatten_form(self.request)
         self.message = None
         form = self.request.form
+        # the manager's ledger; the read-only inspector reads it by GET
+        if not may_read_config(self.context, self.request):
+            return refuse(self.request, "Forbidden")
         if self.request.method == "POST":
             action = form.get("action", "")
             denied = deny_gated_action(self.context, self.request, action, PAGE_GATES)
@@ -982,6 +986,11 @@ class PFASSignaturesView(GateMixin, BrowserView):
         done = dict((i["seq"], i) for i in self._resolve(
             [self._rows[i["seq"]] for i in sorted(shown, key=lambda i: i["seq"])]))
         return [done[i["seq"]] for i in shown]
+
+    def read_only(self):
+        """The ledger drawn view-only (the inspector reading it): no chain
+        check, no withdrawal."""
+        return not self.can_configure()
 
     def can_withdraw(self, item):
         if not item.get("withdrawable"):

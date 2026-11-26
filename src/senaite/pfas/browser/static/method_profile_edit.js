@@ -1977,7 +1977,11 @@
     prev.type = "button";
     next.type = "button";
     var mine = el("div");
-    on = { td: td, row: td.parentNode.getAttribute("data-row"), matrix: columnMatrices(td)[0], body: body,
+    /* a grid cell (found again by its row and column), or a tier box's
+       analyte tile's trigger (data-cell-open, the cell's own data; found
+       again by its key) */
+    var tile = td.hasAttribute("data-cell-open") ? td.getAttribute("data-cell-key") : "";
+    on = { td: td, row: td.parentNode.getAttribute("data-row"), matrix: columnMatrices(td)[0], body: body, tile: tile,
            top: top, own: mine, notes: notes, foot: foot, prev: prev, next: next, edit: edit || null };
     function step(by) {
       var list = cells(), to = list[list.indexOf(on.td) + by];
@@ -1998,8 +2002,19 @@
     /* stepping keeps the focus on the button pressed (the other where it is
        now off), so Enter steps on; Close returns to the cell shown */
     var keep = focus === "prev" ? (prev.disabled ? next : prev) : focus === "next" ? (next.disabled ? prev : next) : null;
-    drawer.open(get("title"), body, { cls: "is-cell", footer: foot, head: [prev, next], opener: td, focus: keep });
-    drawer.opener = td;
+    /* from a tier box: Close gives the focus back to the analyte's tile */
+    var back = on.tile ? tileOf(td) || td : td;
+    drawer.open(get("title"), body, { cls: "is-cell", footer: foot, head: [prev, next], opener: back, focus: keep });
+    drawer.opener = back;
+  }
+  /* the analyte tile whose menu offers trigger `b` (its block's) */
+  function tileOf(b) {
+    var block = b.closest ? b.closest("[data-analyte-tiles]") : null, key = b.getAttribute("data-act");
+    return block ? Array.prototype.filter.call(block.querySelectorAll("[data-analyte-tile]"), function (t) {
+      var menu = [];
+      try { menu = JSON.parse(t.getAttribute("data-tile-menu") || "[]"); } catch (e) { menu = []; }
+      return menu.indexOf(key) >= 0;
+    })[0] || null : null;
   }
   /* what the drawer shows of its cell, drawn again after a redraw */
   function draw() {
@@ -2091,17 +2106,24 @@
       on = null;
       return;
     }
-    var td = findCell(on.row, on.matrix);
+    /* opened from a tier box: its trigger again, drawn anew with the list */
+    var td = on.tile ? Array.prototype.filter.call(document.querySelectorAll("[data-cell-open]"), function (b) {
+      return b.getAttribute("data-cell-key") === on.tile;
+    })[0] || on.td : findCell(on.row, on.matrix);
     if (!td) { on = null; drawer.close(); return; }
     reveal(td);
     on.td = td;
-    drawer.opener = td;
+    drawer.opener = on.tile ? tileOf(td) || td : td;
     drawer.el.querySelector("h2").textContent = td.getAttribute("data-title") || "";
     draw();
   }
   document.addEventListener("click", function (e) {
     var td = e.target.closest ? e.target.closest("#qc-windows td[data-window]") : null;
     if (td) { openWindow(td); }
+    /* an analyte's tile in a tier's box (List view): the same window, from
+       the trigger its tile presses */
+    var b = e.target.closest ? e.target.closest("[data-cell-open]") : null;
+    if (b) { openWindow(b); }
   });
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Enter" && e.key !== " ") { return; }

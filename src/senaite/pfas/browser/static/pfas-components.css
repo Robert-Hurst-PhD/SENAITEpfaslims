@@ -1037,6 +1037,19 @@ summary .badge { margin-left: var(--sp-2); }
 .pfas-seq-add select { max-width: 280px; }
 .is-readonly .pfas-seqrow { cursor: default; }
 .is-readonly .pfas-seqrow .grip, .is-readonly .pfas-seqrow .del, .is-readonly .pfas-seq-add { display: none; }
+/* a page drawn view-only (main[data-readonly], the inspector reading a
+   configuration page): what would post or change a value is not offered;
+   pfas-components.js locks the fields themselves */
+main[data-readonly] form[method="post" i] [type="submit"],
+main[data-readonly] .pfas-sheet-add, main[data-readonly] .pfas-sheet-remove,
+main[data-readonly] .btn-add-row, main[data-readonly] [data-row-add], main[data-readonly] [data-row-remove],
+main[data-readonly] [data-copy-from], main[data-readonly] [data-copy-tiers], main[data-readonly] [data-fill-rl],
+main[data-readonly] [data-std-add], main[data-readonly] [data-cmp-add], main[data-readonly] [data-mx-add],
+main[data-readonly] [data-intg-add], main[data-readonly] [data-tier-add], main[data-readonly] [data-qc-add],
+main[data-readonly] [data-seq-add], main[data-readonly] [data-stage-add], main[data-readonly] [data-coll-add],
+main[data-readonly] .cf-add-row,
+main[data-readonly] #spk-use-rec { display: none; }
+.pfas-readonly-mark { display: inline-flex; align-items: center; color: var(--s-info-text); }
 .pfas-card > h3.is-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
 .pfas-card > h3 .pfas-muted { font-weight: var(--fw-body); }
 .pfas-card > h3 .btn.is-end { margin-left: auto; }
@@ -1941,6 +1954,14 @@ button.pfas-hier-chain-n:focus-visible { outline: none; box-shadow: 0 0 0 3px va
 .pfas-hier-tile-l { color: var(--text-muted); font-size: var(--fs-xs); }
 .pfas-hier-tile-v { font-variant-numeric: tabular-nums; font-weight: var(--fw-strong); }
 .pfas-hier-tile-s { color: var(--text-muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+/* an analyte's windows in a tier's box: a line per matrix set where they
+   differ, its matrices muted before the window, marked as the window grid
+   marks its cells (.pfas-legend-val) */
+.pfas-hier-tile-lines { display: flex; flex-direction: column; gap: var(--sp-1); }
+.pfas-hier-tile-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1); }
+.pfas-hier-tile-m { color: var(--text-muted); font-size: var(--fs-xs); font-weight: var(--fw-body); }
+.pfas-hier-tile-lines .pfas-legend-val { padding-left: 0; color: var(--text-muted); font-weight: var(--fw-body); }
+.pfas-hier-tile-lines .pfas-legend-val.is-set { padding-left: var(--sp-2); color: var(--text); font-weight: var(--fw-strong); }
 /* a rule's Flag tile, last on its card, the card's full width: its heading
    (text alone), then Code, Attaches to and Internal note as tiles; the
    window's wording beside Open QC Qualifiers */

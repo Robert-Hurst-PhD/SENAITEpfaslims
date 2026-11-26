@@ -4901,9 +4901,17 @@ RUN_LABELS = {"Dup": "SD"}
 # the rows whose limits are the window grid's
 QC_ROW_SUB = "Analyte recoveries"
 BLANK_SUB = "Blank limit"
-# the window grid's fold, under the Rules section in both views
+# the window grid's fold, under the Rules section in the Table view alone;
+# a rule whose limits are the grid's reads IN_THE_GRID in the rule table
+# (the grid is below it) and GRID_IN_TABLE in the List view
 WINDOWS_TITLE = "Window per analyte and matrix"
 IN_THE_GRID = "In the window grid below"
+GRID_IN_TABLE = "In the Table view"
+# the QC types whose tier boxes, in the List view, hold the window grid's
+# values: a Matrices tile and a tile per analyte the tier sets. LFB is left
+# out (it applies to drinking-water methods only); LFSMD's tiers follow
+# LFSM's
+GRID_TIER_TYPES = ("LFSM", "Dup")
 WINDOWS_REGION = "qc-ed-windows"
 BLANK_REGION = "qc-ed-blank"
 
@@ -6031,7 +6039,7 @@ def windows_sheet(profile, env=None, qc_type="LFSM", level="ordinary", posted=No
     if order == "quant":
         by = dict((r.get("analyte"), titles.get(r.get("surrogate_is"), r.get("surrogate_is")))
                   for r in profile.get("surrogate_map") or () if isinstance(r, dict))
-    groups, rows, box_keys = [], [], []
+    groups, rows, box_keys, tier_of = [], [], [], {}
     for g in grid["rows"]:
         gcells = {}
         for j, i, _label, _ms in firsts:
@@ -6052,6 +6060,12 @@ def windows_sheet(profile, env=None, qc_type="LFSM", level="ordinary", posted=No
                     continue
                 c = g["analytes"][kw][i]
                 cells["m-{0}".format(j)] = cell(c, kw, m, label, ms)
+                # the tier the cell falls to: the one that sets it, or under
+                # its own setting the tier it falls back to (tier_tree)
+                own_of = c.get("fallback_tier") if c.get("set_by") == "own" else None
+                tier_of[(kw, "m-{0}".format(j))] = (c["index"] if c.get("set_by") != "own" else
+                                                    next((x for x, t in enumerate(tiers)
+                                                          if own_of and t.get("name") == own_of), None))
                 off = off or (c["window"] is None and not c.get("off"))
                 said.append(words(c["window"], c))
                 row_keys.append(_box_key(mps, profile, qc_type, c, kw, m))
@@ -6075,6 +6089,9 @@ def windows_sheet(profile, env=None, qc_type="LFSM", level="ordinary", posted=No
                   fold=qc_type)
     # each group's cell keys, as merge_boxes drew them (merge_counts)
     sheet.box_keys = box_keys
+    # (analyte, column) -> the index of the tier the cell falls to, for the
+    # tier boxes of the List view (tier_analytes)
+    sheet.tier_of = tier_of
     return sheet
 
 
@@ -6501,6 +6518,12 @@ def tier_tree(profile, env=None, qc_type="LFSM", posted=None):
             "flag_tile": render_flag_tile(_owner(qc_type), stored, env,
                                           tier=(qc_type, rule_flags_name(t, i)),
                                           title="{0} {1}".format(dict(QC_TYPES)[qc_type], _tier_label(t.get("name"))))})
+    if qc_type in GRID_TIER_TYPES and qc_type in qca:
+        # the window grid as the Table view draws it, each cell under the
+        # tier it falls to: what the tier's box shows in the List view
+        sheet = windows_sheet(stored, env, qc_type, "ordinary", posted=posted, kept=True)
+        for t in out_tiers:
+            t["analytes"] = tier_analytes(sheet, t["index"], titles, t["matrices"])
     return {"qc": qc_type, "label": dict(QC_TYPES)[qc_type], "rpd": rpd, "held": qc_type in qca,
             "runs": _runs(stored, qc_type), "off": qc_is_off(stored, qc_type),
             "mute": mute_attrs(stored, env, qc_type), "tiers": out_tiers, "problems": problems,
@@ -6720,11 +6743,113 @@ def _scroll(table):
     return _tag("div", [("class", "pfas-scroll-x")], table)
 
 
+# what each mark of a window says, in words, as the grid's legend says it
+CELL_MARK_WORDS = {"is-set": "set on this cell", "is-inherited": "from its tier", "is-off": "no window"}
+LOCKED_WORDS = "fixed by a rule"
+# the one line above a tier's analyte tiles: how each mark is drawn
+ANALYTE_LEGEND = ('<p class="pfas-legend">'
+                  '<span class="pfas-legend-val is-set">40 \u2013 160</span> set on this cell \u00b7 '
+                  '<span class="pfas-legend-val is-inherited">40 \u2013 130</span> from its tier \u00b7 '
+                  '<span class="pfas-legend-val is-off">\u2014</span> no window \u00b7 '
+                  + LOCK_MARK + ' fixed by a rule</p>')
+NOT_REPORTED_IN = "Not reported in {0}"
+EDIT_WINDOW_WORDS = "Edit window"
+
+
+def tier_analytes(sheet, index, titles, tier_matrices):
+    """[{analyte, title, lines, absent}]: the analytes whose window grid
+    cell falls to the tier at `index` (sheet.tier_of), alphabetical, each
+    with its windows as the grid draws them: a line per window, naming its
+    matrices, the words and the mark of its cells (set on this cell, from
+    its tier, no window, fixed by a rule); each cell keeps the data the
+    grid cell opens its window with. `absent`: the tier's matrices the
+    analyte is not reported in. Plain data: no input names."""
+    cols = [c for c in sheet.columns if c.key.startswith("m-")]
+    rows = dict((r.key, r) for r in sheet.rows)
+    found = OrderedDict()
+    for (kw, ck), i in sorted(sheet.tier_of.items(), key=lambda x: x[0][0]):
+        if i == index and kw in rows:
+            found.setdefault(kw, set()).add(ck)
+    out = []
+    for kw in analyte_order(list(found), titles):
+        row = rows[kw]
+        lines = OrderedDict()
+        absent = []
+        for col in cols:
+            cell = row.cells.get(col.key)
+            if cell is None:
+                continue
+            if cell.state == "na":
+                absent += [m for m in col.matrices if m in tier_matrices]
+                continue
+            if col.key not in found[kw]:
+                continue
+            shown = _shown(col, cell)
+            mark = _state_class(col, cell, shown == "")
+            words = shown or EM_DASH
+            # the cell's own data, as the grid cell carries it, but its box
+            data = [(k, v) for k, v in _data_attrs(cell) if k[len("data-"):] not in BOX_KEYS]
+            line = lines.setdefault((words, mark, cell.state == "locked"),
+                                    {"words": words, "mark": mark, "locked": cell.state == "locked",
+                                     "matrices": [], "cells": []})
+            line["matrices"] += list(col.matrices)
+            line["cells"].append({"key": "{0}|{1}|{2}".format(sheet.fold, kw, col.key), "column": col.label,
+                                  "attrs": data})
+        if lines:
+            out.append({"analyte": kw, "title": _text(titles.get(kw, kw)), "lines": list(lines.values()),
+                        "absent": absent})
+    return out
+
+
+def _analyte_tiles(tree, t):
+    """A tier's analytes as tiles (tier_analytes), under the legend: each
+    tile its analyte's windows, a line per matrix set where they differ;
+    a click opens the grid cell's own window (data-cell-open, the cell's
+    data), its menu each of its cells' windows, then the tier's Edit."""
+    analytes = t.get("analytes") or []
+    if not analytes:
+        return _tag("p", [("class", "pfas-hier-empty")], _esc(NO_COVERS))
+    every = set(t["matrices"])
+    acts, tiles, n = [], [], 0
+    for a in analytes:
+        keys, body = [], []
+        reported = every - set(a["absent"])
+        lines = a["lines"]
+        cells = sum(len(l["cells"]) for l in lines)
+        for line in lines:
+            for c in line["cells"]:
+                key = "win{0}".format(n)
+                n += 1
+                keys.append(key)
+                words = EDIT_WINDOW_WORDS + (", " + c["column"] if cells > 1 else "")
+                acts.append(card_act(key, words, [("data-cell-open", True), ("data-cell-key", c["key"]),
+                                                  ("data-row", a["analyte"])] + c["attrs"]))
+            said = LOCKED_WORDS if line["locked"] else CELL_MARK_WORDS.get(line["mark"], "")
+            value = _tag("span", [("class", _cls("pfas-legend-val", line["mark"])), ("data-cell-word", True),
+                                  ("data-line-matrices", json.dumps(line["matrices"])),
+                                  ("title", said or None)], _esc(line["words"]))
+            value += (LOCK_MARK if line["locked"] else "")
+            value += _tag("span", [("class", "pfas-sr-hide")], _esc(", " + said)) if said else ""
+            named = len(lines) > 1 or set(line["matrices"]) != reported
+            head = _tag("span", [("class", "pfas-hier-tile-m")], _esc(", ".join(line["matrices"]))) + " " \
+                if named else ""
+            body.append(_tag("span", [("class", "pfas-hier-tile-line")], head + value))
+        note = NOT_REPORTED_IN.format(", ".join(a["absent"])) if a["absent"] else ""
+        menu = keys + (["edit"] if t["prefix"] else [])
+        tiles.append(_tag("div", [("class", "pfas-hier-tile pfas-hier-analyte"), ("data-analyte-tile", a["analyte"])] +
+                          tile_opens(keys[0], menu),
+                          _tag("span", [("class", "pfas-hier-tile-l")], _esc(a["title"])) +
+                          _tag("span", [("class", "pfas-hier-tile-v pfas-hier-tile-lines")], "".join(body)) +
+                          (_tag("span", [("class", "pfas-hier-tile-s")], _esc(note)) if note else "")))
+    return ANALYTE_LEGEND + _tag("div", [("class", "pfas-hier-tiles"), ("data-analyte-tiles", tree["qc"])],
+                                 "".join(tiles) + card_acts(*acts))
+
+
 def _covers_table(covers, empty, total=0):
     if not covers:
         return _tag("p", [("class", "pfas-hier-empty")], _esc(empty))
     head = _tag("thead", [], _tag("tr", [], _tag("th", [], "Analyte") + _tag("th", [], "Matrices")))
-    return _scroll(_tag("table", [("class", "pfas-table pfas-hier-table")],
+    return _scroll(_tag("table", [("class", "pfas-table pfas-hier-table"), ("data-covers-table", True)],
                         head + _tag("tbody", [], "".join(_fold_rows(covers, total)))))
 
 
@@ -6778,6 +6903,9 @@ def _tier_card(tree, t, key, total, first=False, attrs=(), muted=False):
         where = "No matrices listed"
     caption = " \u00b7 ".join(["Tier {0} of {1}".format(t["position"], total), t["group_label"], where])
     tiles = [_tile("RPD" if tree["rpd"] else "Recovery", t["text"], _band(t["ends"]))]
+    if "analytes" in t:
+        # the matrices the tier applies in, as the grid's tier box reads them
+        tiles.append(_tile("Matrices", where, attrs=[("data-tier-matrices", True)]))
     if not tree["rpd"]:
         tiles.append(_tile("Precision (RSD)", t["spread_text"] or "RSD " + NOT_SET))
     for p in t["pairs"]:
@@ -6796,7 +6924,8 @@ def _tier_card(tree, t, key, total, first=False, attrs=(), muted=False):
     opens = tile_opens("edit", ["edit", "spikes", "remove"]) if t["prefix"] else TILE_READ
     body = (_tag("div", [("class", "pfas-hier-tiles")] + opens, "".join(tiles)) + _core_note(tree, t) +
             _tag("h5", [("class", "pfas-hier-h")], "Analytes it covers") +
-            _covers_table(t["covers"], "No analyte takes this tier in any matrix.", tree.get("matrix_count", 0)))
+            (_analyte_tiles(tree, t) if "analytes" in t else
+             _covers_table(t["covers"], NO_COVERS, tree.get("matrix_count", 0))))
     if t["subs"]:
         n = sum(len(s["covers"]) for s in t["subs"])
         body += _tag("p", [("class", "pfas-hier-note")],
@@ -7490,6 +7619,11 @@ def _rule_entry(sheet, row, profile, trees, order=0, env=None):
         node_value = words if words not in (IN_THE_GRID, EM_DASH) else ""
     else:
         node_value = words if words != EM_DASH else ""
+    # the List view has no grid below: it says where the grid is
+    in_grid = words == IN_THE_GRID
+    if in_grid:
+        words = GRID_IN_TABLE
+        node_value = GRID_IN_TABLE if node_value == IN_THE_GRID else node_value
     m = WINDOW_WORDS.match(node_value or "")
     ends = (float(m.group(1)), float(m.group(2))) if m else None
     inherited = state.state == "inherited"
@@ -7586,7 +7720,7 @@ def _rule_entry(sheet, row, profile, trees, order=0, env=None):
     tiles = []
     if parts:
         tiles.append(parts["tile"])
-    elif words and not (code and not blank and words == IN_THE_GRID):
+    elif words and not (code and not blank and in_grid):
         tile = _tile("Effective limits", words, _band(ends),
                      attrs=tile_opens(limit_act, tile_menu) if limit_act else TILE_READ)
         tiles.append(limit_placard.boxed(tile, profile, own_box) if own_box else tile)

@@ -1,0 +1,30 @@
+/* The system tour (@@pfas-tour): a rail of ten steps and one stop at a time.
+   Tokens only; no motion beyond the shared quick transition, none when the
+   person asks for less. */
+.pfas-tour { max-width: 860px; }
+.pfas-tour-rail { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: var(--sp-2);
+  list-style: none; margin: 0 0 var(--sp-5); padding: 0; }
+a.pfas-tour-link { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-1); border: 1px solid var(--s-border); border-radius: 8px;
+  background: var(--s-bg); color: var(--s-body); text-decoration: none; min-height: 44px;
+  transition: border-color var(--t-quick), background-color var(--t-quick); }
+a.pfas-tour-link:hover { border-color: var(--s-primary); text-decoration: none; color: var(--s-body); }
+a.pfas-tour-link:focus-visible { outline: 2px solid var(--s-focus-ring); outline-offset: 2px; }
+.pfas-tour-step.is-now a.pfas-tour-link { border-color: var(--s-primary); background: var(--s-success-lt); font-weight: 600; }
+.pfas-tour-n { font-size: var(--fs-xs); }
+.pfas-tour-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pfas-tour-stop { padding: var(--sp-5); margin-bottom: var(--sp-4); }
+.pfas-tour-head { display: flex; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-3); }
+.pfas-tour-head .pfas-section-title { margin: 0; }
+.pfas-tour-count { font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-tour-caption { font-style: italic; }
+.pfas-tour-targets { display: flex; flex-wrap: wrap; gap: var(--sp-3); list-style: none; margin: var(--sp-4) 0 0; padding: 0; }
+.pfas-tour-targets li { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.pfas-tour-why { font-size: var(--fs-sm); color: var(--s-warn-text); }
+.pfas-tour-nav { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .pfas-tour-rail { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .pfas-tour-stop { padding: var(--sp-4); }
+  .pfas-tour-head { align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) { a.pfas-tour-link { transition: none; } }

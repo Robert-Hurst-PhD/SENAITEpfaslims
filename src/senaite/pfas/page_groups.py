@@ -203,9 +203,15 @@ def _pages():
 _BY_VIEW = dict((key, g) for g, key, _path in _pages())
 
 
-# What the read-only Regulatory Inspector may open of the manager's pages:
-# the certificate register (perms.INSPECTOR_READ_VIEWS), by key.
-INSPECTOR_KEYS = frozenset(("pfas-controlled-publications",))
+# What the read-only Regulatory Inspector may open of the manager's pages,
+# by key: the certificate register and the certificate settings
+# (perms.INSPECTOR_READ_VIEWS), the method profiles, the regulatory limits,
+# the signature ledger and the configuration history, each drawn view-only
+# for it; and the Configuration section that holds the last two.
+INSPECTOR_KEYS = frozenset(("pfas-controlled-publications", "pfas-method-profiles",
+                            "pfas-qc-qualifiers", "pfas-report-tiers",
+                            "pfas-regulatory-limits", "pfas-signatures",
+                            "pfas-config-history", "config"))
 
 
 def _allowed(who, roles, key=None):
@@ -340,11 +346,12 @@ def chain(group):
 
 SECTIONS = (
     {"id": "operations", "label": "Operations", "short": "Operations", "icon": "ico-batches",
-     "who": STAFF, "items": ["clients", "samples", "batches", "worksheets", "chain-of-custody", "projects"]},
+     "who": STAFF, "items": ["clients", "samples", "batches", "worksheets", "chain-of-custody"]},
     {"id": "qc", "label": "QC & Methods", "short": "QC & Methods", "icon": "ico-qc-rules",
-     "who": MGR_ANA, "items": ["data-review", "method-profiles"]},
+     "who": STAFF, "items": ["data-review", "method-profiles", "projects", "deviations",
+                             "controlled-documents"]},
     {"id": "bench", "label": "Bench", "short": "Bench", "icon": "ico-extraction",
-     "who": STAFF, "items": ["reagents", "extraction", "batch-records", "controlled-documents", "deviations"]},
+     "who": STAFF, "items": ["reagents", "extraction", "batch-records"]},
     {"id": "equipment", "label": "Equipment & Instruments", "short": "Equipment", "icon": "ico-instruments",
      "who": STAFF, "items": ["equipment", "instruments"]},
     {"id": "reporting", "label": "Reporting", "short": "Reporting", "icon": "ico-book",
@@ -361,12 +368,13 @@ ITEMS = {
     "batches": {"label": "Batches", "who": STAFF, "path": "batches"},
     "worksheets": {"label": "Worksheets", "who": STAFF, "path": "worksheets",
                    "also": ["pfas-worksheet-samples", "pfas-sample-status"]},
-    "chain-of-custody": {"label": "Chain of Custody", "who": STAFF, "path": "@@pfas-coc",
+    "chain-of-custody": {"label": "CoCs", "who": STAFF, "path": "@@pfas-coc",
                          "also": ["pfas-coc-receive", "pfas-receipt"]},
     "projects": {"label": "Projects", "who": STAFF, "path": "@@pfas-projects"},
+    "system-tour": {"label": "System tour", "who": STAFF, "path": "@@pfas-tour"},
     "batch-records": {"label": "Batch records", "who": STAFF, "path": "@@pfas-batch-records"},
-    "controlled-documents": {"label": "Controlled Documents", "who": STAFF, "path": "@@pfas-sop"},
-    "deviations": {"label": "Deviations / CARs", "who": STAFF, "path": "@@pfas-deviations"},
+    "controlled-documents": {"label": "Documents", "who": STAFF, "path": "@@pfas-sop"},
+    "deviations": {"label": "CARs", "who": STAFF, "path": "@@pfas-deviations"},
 }
 
 
@@ -430,7 +438,7 @@ def _section(section_id):
 def _items(section, roles):
     """The section's item rows this person sees, in order; none when the
     section itself is not theirs."""
-    if section is None or not _allowed(section["who"], roles):
+    if section is None or not _allowed(section["who"], roles, section["id"]):
         return []
     rows = (_visible(_spec(i), roles) for i in section["items"])
     return [r for r in rows if r is not None]
@@ -593,7 +601,7 @@ ICONS = {
     # Operations
     "clients": "ico-clients", "samples": "ico-samples", "pfas-track": "ico-tracker",
     "batches": "ico-batch", "worksheets": "ico-worksheets", "chain-of-custody": "ico-chain",
-    "projects": "ico-project",
+    "projects": "ico-project", "system-tour": "ico-tour",
     # QC and methods
     "pfas-data-review": "ico-data-review", "pfas-control-chart": "ico-control-charts",
     "pfas-method-profiles": "ico-method-profiles", "pfas-method-studies": "ico-method-setup",

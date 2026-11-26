@@ -376,7 +376,7 @@
               <span tal:condition="python:v in ('pass', 'qualified', 'fail', 'blocked')" class="cl-verdict"
                     tal:define="ic context/@@pfas-icons;
                                 kw python:{'pass': ('pass', u'Pass'), 'qualified': ('pass', u'Pass'), 'fail': ('fail', u'Fail'),
-                                           'blocked': ('unjudged', u'Not evaluated')}[v]"><tal:m
+                                           'blocked': ('unjudged', u'Not evaluated')}.get(v, ('unjudged', u''))"><tal:m
                     tal:replace="structure python:ic.svg(kw[0], hidden=True, size='md')" /><span tal:content="python:kw[1]">Pass</span></span><span
                     tal:condition="python:v not in ('pass', 'qualified', 'fail', 'blocked')" class="cl-verdict"
                     tal:define="ic context/@@pfas-icons"><tal:m

@@ -23,7 +23,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import print_doc
 from senaite.pfas import settings_report as sr
 from senaite.pfas.browser.formutil import quote_text
-from senaite.pfas.browser.perms import require_manager
+from senaite.pfas.browser.perms import may_read_config, require_manager
 from senaite.pfas.browser.perms import refuse
 from senaite.pfas.browser.view_helpers import send_pdf
 
@@ -54,9 +54,12 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
     body_template = ViewPageTemplateFile("templates/settings_report_body.pt")
 
     def __call__(self):
-        if not require_manager(self.context, self.request):
+        # a manager; the read-only inspector reads the revision PDFs by GET
+        if not may_read_config(self.context, self.request):
             return refuse(self.request, "Forbidden")
         form = self.request.form
+        if self.request.method == "POST" and not require_manager(self.context, self.request):
+            return refuse(self.request, "Forbidden")
         if self.request.method == "POST" and form.get("action") == "issue_revision":
             from senaite.pfas.browser.perms import disable_csrf
             disable_csrf(self.request)

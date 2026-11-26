@@ -184,6 +184,10 @@ class PFASRegulatoryLimitsView(ViewHelpers, GateMixin, BrowserView):
     def units(self):
         return ["ng/L", "ng/mL", "ug/L", "ng/kg", "ng/g", "ug/kg"]
 
+    def read_only(self):
+        """The page drawn view-only for whoever may not save it."""
+        return not self.can_configure()
+
     def saved(self):
         return bool(self.request.form.get("saved"))
 

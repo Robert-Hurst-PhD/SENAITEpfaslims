@@ -11,7 +11,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import effective_qc as eq
 from senaite.pfas import method_profile_store
-from senaite.pfas.browser.perms import refuse, require_manager
+from senaite.pfas.browser.perms import may_read_config, refuse
 
 
 class PFASEffectiveQCView(ViewHelpers, BrowserView):
@@ -19,7 +19,8 @@ class PFASEffectiveQCView(ViewHelpers, BrowserView):
     template = ViewPageTemplateFile("templates/effective_qc.pt")
 
     def __call__(self):
-        if not require_manager(self.context, self.request):
+        # a manager, or the read-only inspector by GET: the page posts nothing
+        if not may_read_config(self.context, self.request):
             return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
         return self.template()
 

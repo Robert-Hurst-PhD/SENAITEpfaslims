@@ -127,35 +127,24 @@
      type="submit" tal:attributes="class sb_class; form sb_form; name sb_name; value sb_value"
      tal:content="sb_label">Save</button><tal:more metal:define-slot="more" /></div></tal:defs>
 
-  <!-- A method chosen, the one way on every page: the methods by their
-       display names on a segmented control while there are six choices or
-       fewer, a drop-down beyond. Define mc_choices, a list of {"value",
-       "label"} (the label the method's display name; a choice of every
-       method has the value ""), with a "url" on each where a choice is a
-       link to the page showing it; mc_value (the value chosen) and mc_label
-       (its accessible name). A form field also defines mc_id and mc_name
-       (the hidden input or select the form posts; no mc_name: the field is
-       read by the page's script only); optional mc_submit (True: a choice
-       submits the form). -->
+  <!-- A method chosen, the one way on every page: a drop-down of the
+       methods by their display names, whatever their number, so a lab that
+       adds methods never meets a crowded row of buttons. Define mc_choices,
+       a list of {"value", "label"} (the label the method's display name; a
+       choice of every method has the value ""), with a "url" on each where a
+       choice is a link to the page showing it; mc_value (the value chosen)
+       and mc_label (its accessible name). A form field also defines mc_id
+       and mc_name (the select the form posts; no mc_name: the field is read
+       by the page's script only); optional mc_submit (True: a choice submits
+       the form). -->
   <tal:defs tal:condition="nothing"><tal:mc metal:define-macro="method-choice"
      tal:define="mc_name mc_name|nothing; mc_id mc_id|nothing; mc_submit mc_submit|nothing;
-                 mc_links python:bool(mc_choices) and all(c.get('url') for c in mc_choices);
-                 mc_seg python:6 >= len(mc_choices)"><nav
-     class="pfas-seg" tal:condition="python:mc_seg and mc_links" tal:attributes="aria-label mc_label"><a
-     class="pfas-seg-item" tal:repeat="c mc_choices"
-     tal:attributes="href c/url; aria-selected python:'true' if c['value'] == mc_value else 'false'"
-     tal:content="c/label">EPA 537.1 Drinking Water</a></nav><tal:f tal:condition="python:mc_seg and not mc_links"><input
-     type="hidden" tal:attributes="id mc_id; name mc_name; value mc_value;
-                                   onchange python:'this.form.submit()' if mc_submit else None" /><div
-     class="pfas-seg" role="group" data-field="data-field" tal:attributes="aria-label mc_label; data-input mc_id"><button
-     type="button" class="pfas-seg-item" tal:repeat="c mc_choices"
-     tal:attributes="data-value c/value; aria-pressed python:'true' if c['value'] == mc_value else 'false'"
-     tal:content="c/label">EPA 537.1 Drinking Water</button></div></tal:f><select
-     class="pfas-select" tal:condition="python:not mc_seg and mc_links" onchange="location.href = this.value"
+                 mc_links python:bool(mc_choices) and all(c.get('url') for c in mc_choices)"><select
+     class="pfas-select" tal:condition="mc_links" onchange="location.href = this.value"
      tal:attributes="aria-label mc_label"><option tal:repeat="c mc_choices"
      tal:attributes="value c/url; selected python:'selected' if c['value'] == mc_value else None"
      tal:content="c/label">EPA 537.1 Drinking Water</option></select><select
-     class="pfas-select" tal:condition="python:not mc_seg and not mc_links"
+     class="pfas-select" tal:condition="not:mc_links"
      tal:attributes="id mc_id; name mc_name; aria-label mc_label;
                      onchange python:'this.form.submit()' if mc_submit else None"><option tal:repeat="c mc_choices"
      tal:attributes="value c/value; selected python:'selected' if c['value'] == mc_value else None"
@@ -344,8 +333,11 @@
           tal:condition="python:not is_anon"
           tal:replace="structure context/@@pfas-macros/render_sidebar" />
 
-  <!-- Main: tabs + content + action bar -->
-  <div class="pfas-main">
+  <!-- Main: tabs + content + action bar. A page whose view says
+       read_only (a configuration page the read-only inspector reads) is
+       drawn view-only: a lock in the sub-bar, no action bar, and its post
+       forms locked (data-readonly, pfas-components.js) -->
+  <div class="pfas-main" tal:define="pfas_ro view/read_only|nothing">
 
     <!-- Sub-bar: breadcrumb + page actions, fixed above the tabs so neither
          scrolls away. The crumb is drawn on the server from the navigation
@@ -364,7 +356,8 @@
           ></li></tal:c>
         </ol>
       </nav>
-      <div class="pfas-subbar-actions"><tal:r metal:define-slot="header-right" /></div>
+      <div class="pfas-subbar-actions"><span class="pfas-readonly-mark" tal:condition="pfas_ro"
+          tal:content="structure python:context.restrictedTraverse('@@pfas-icons').tip('lock', u'Read only: this account changes nothing')">lock</span><tal:r metal:define-slot="header-right" /></div>
     </div>
 
     <!-- Top tabs: the page's own tabs slot. -->
@@ -377,7 +370,9 @@
     <!-- Stable content area; the Help panel docks at its right edge, beside
          the page and not over it (a section's "?" opens it, pfas-components.js) -->
     <div class="pfas-content-row">
-    <main class="pfas-content-area" id="pfas-content-area" tabindex="-1">
+    <main class="pfas-content-area" id="pfas-content-area" tabindex="-1"
+          tal:attributes="data-readonly python:'data-readonly' if pfas_ro else None;
+                          class python:'pfas-content-area is-readonly' if pfas_ro else 'pfas-content-area'">
       <tal:body metal:define-slot="content">
         <div class="page-body">
           <p>No content.</p>
@@ -397,9 +392,9 @@
 
     <!-- Pinned action bar (outside scroll area — always visible) -->
     <div class="pfas-action-bar-wrap">
-      <tal:ab metal:define-slot="action-bar">
+      <tal:rw condition="not:pfas_ro"><tal:ab metal:define-slot="action-bar">
         <!-- Default: empty; forms fill this slot with a .pfas-action-bar div -->
-      </tal:ab>
+      </tal:ab></tal:rw>
     </div>
 
   </div><!-- /pfas-main -->

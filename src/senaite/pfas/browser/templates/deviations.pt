@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Deviations / CARs</title>
+  <title metal:fill-slot="title">CARs</title>
   <metal:extra metal:fill-slot="head-extra">
   <style>
     /* ── Layout ─────────────────────────────────────────────── */
@@ -121,7 +121,7 @@
 </head>
 <body>
 
-<tal:t metal:fill-slot="header-title">Deviations / CARs</tal:t>
+<tal:t metal:fill-slot="header-title">CARs</tal:t>
 
 <!-- the root-cause tab's Save, pinned at the foot of the window -->
 <tal:ab metal:fill-slot="action-bar"><tal:sb tal:define="dev python:view.current_deviation() if view.is_detail_view() else None"
@@ -155,7 +155,7 @@
     <tal:found tal:condition="dev">
       <!-- Breadcrumb -->
       <nav class="pfas-crumb is-inline" aria-label="Record">
-        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-deviations">Deviations / CARs</a>
+        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-deviations">CARs</a>
         <span class="pfas-crumb-sep">&#8250;</span>
         <span class="pfas-crumb-here" tal:content="dev/dev_id">DEV-001</span>
       </nav>

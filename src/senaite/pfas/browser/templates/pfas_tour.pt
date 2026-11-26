@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">System tour</title>
+  <tal:extras metal:fill-slot="head-extra">
+  <link rel="stylesheet" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tour.css?v=${context/@@pfas-macros/asset_version}" />
+  </tal:extras>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">System tour</tal:t>
+
+  <tal:r metal:fill-slot="header-right"><tal:h define="hid string:system-tour"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body pfas-tour" tal:define="ic context/@@pfas-icons; nb view/neighbours; stop view/current">
+
+    <nav aria-label="Tour stops">
+      <ol class="pfas-tour-rail">
+        <li tal:repeat="r view/rail" tal:attributes="class string:pfas-tour-step is-${r/state}">
+          <a class="btn-sm btn-secondary pfas-tour-link"
+             tal:attributes="href r/url; aria-current python:'step' if r['state'] == 'now' else None;
+                             aria-label string:Stop ${r/n}, ${r/title}, ${r/state}">
+            <tal:i replace="structure python:ic.svg(r['icon'], r['title'], state=r['state'], size='lg', hidden=True)" />
+            <span class="pfas-tour-n" tal:content="r/n">1</span>
+            <span class="pfas-tour-name" tal:content="r/title">Chain of custody</span>
+          </a>
+        </li>
+      </ol>
+    </nav>
+
+    <article class="pfas-card pfas-tour-stop" aria-labelledby="pfas-tour-title">
+      <div class="pfas-tour-head">
+        <tal:i replace="structure python:ic.svg(stop['icon'], stop['title'], size='xl', hidden=True)" />
+        <div>
+          <div class="pfas-tour-count" tal:content="string:Stop ${nb/n} of ${nb/of}">Stop 1 of 10</div>
+          <h2 class="pfas-section-title" id="pfas-tour-title" tal:content="stop/title">Chain of custody</h2>
+        </div>
+      </div>
+      <p tal:repeat="line stop/lines" tal:content="line"></p>
+      <p class="pfas-tour-caption" tal:condition="stop/caption" tal:content="stop/caption"></p>
+
+      <ul class="pfas-tour-targets">
+        <li tal:repeat="t stop/targets">
+          <a class="btn-sm btn-secondary" tal:condition="t/ok"
+             tal:attributes="href t/url" tal:content="t/label">Destination</a>
+          <tal:u condition="not:t/ok">
+            <button type="button" class="btn-sm btn-secondary" disabled="disabled"
+                    tal:attributes="aria-describedby t/dom" tal:content="t/label">Destination</button>
+            <span class="pfas-tour-why" tal:attributes="id t/dom"
+                  tal:content="string:Unavailable. ${t/why}">Unavailable.</span>
+          </tal:u>
+        </li>
+      </ul>
+    </article>
+
+    <div class="pfas-tour-nav">
+      <a class="btn-sm btn-secondary" tal:condition="nb/prev" tal:attributes="href nb/prev">Previous stop</a>
+      <a class="btn-sm btn-secondary" tal:condition="nb/next" tal:attributes="href nb/next">Next stop</a>
+    </div>
+
+  </div>
+  </div>
+</body>
+</html>

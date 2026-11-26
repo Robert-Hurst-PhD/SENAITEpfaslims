@@ -15,7 +15,7 @@ from zExceptions import Forbidden
 from senaite.pfas.print_settings import (
     DEFAULTS, get_print_settings, logo_src, save_print_settings)
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action, refuse
+from senaite.pfas.browser.perms import TIER_CONFIG, config_read_only, deny_gated_action, refuse
 
 logger = logging.getLogger("senaite.pfas.browser.print_settings")
 
@@ -83,6 +83,11 @@ class PFASPrintSettingsView(ViewHelpers, BrowserView):
         """Lab staff pool for the QAO selector (initials + name)."""
         from senaite.pfas.staff import list_staff
         return list_staff(self._portal(), active_with_login=True)
+
+    def read_only(self):
+        """The page drawn view-only (the inspector reading QC Qualifiers):
+        no Save."""
+        return config_read_only(self.context)
 
     def saved(self):
         return self.request.form.get("saved", "") == "1"

@@ -644,7 +644,10 @@ class PFASControlledPublicationsView(BrowserView, LabTime):
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
-            from senaite.pfas.browser.perms import disable_csrf
+            from senaite.pfas.browser.perms import disable_csrf, refuse
+            # the register is the manager's to change; the inspector reads it
+            if not self.may_change():
+                return refuse(self.request, "Forbidden")
             disable_csrf(self.request)
             return self._handle_post()
         if self.request.form.get("format") == "csv":
@@ -671,6 +674,10 @@ class PFASControlledPublicationsView(BrowserView, LabTime):
             from senaite.pfas.browser.perms import require_manager
             self._may_change = require_manager(api.get_portal())
         return self._may_change
+
+    def read_only(self):
+        """The register drawn view-only: the inspector reads it."""
+        return not self.may_change()
 
     def _handle_post(self):
         """QAO fills in an amendment reason on a flagged issuance entry."""

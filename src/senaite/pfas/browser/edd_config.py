@@ -126,11 +126,20 @@ class PFASEDDConfigView(ViewHelpers, BrowserView):
 
     def __call__(self):
         flatten_form(self.request)
-        if not _require_manager(self.context, self.request):
+        from senaite.pfas.browser.perms import may_read_config
+        # a manager reads and writes; the read-only inspector reads by GET,
+        # the page drawn view-only (read_only)
+        if not may_read_config(self.context, self.request):
             return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
         if self.request.method == "POST":
+            if not _require_manager(self.context, self.request):
+                return refuse(self.request, "Forbidden: Manager, LabManager, or Owner role required")
             return self._handle_post()
         return self.template()
+
+    def read_only(self):
+        """The page drawn view-only: no save, upload or import."""
+        return not _require_manager(self.context, self.request)
 
     # selection
     def profiles(self):
@@ -275,7 +284,9 @@ class PFASEDDConfigView(ViewHelpers, BrowserView):
         return bool(getattr(self.fmt(), "TABS", None))
 
     def tabs(self):
-        return [{"id": t, "label": l} for t, l in (getattr(self.fmt(), "TABS", None) or self.DEFAULT_TABS)]
+        # the test export runs the export, which is the manager's
+        return [{"id": t, "label": l} for t, l in (getattr(self.fmt(), "TABS", None) or self.DEFAULT_TABS)
+                if not (t == "test" and self.read_only())]
 
     def new_types(self):
         """The formats a new profile can be made of from nothing (a

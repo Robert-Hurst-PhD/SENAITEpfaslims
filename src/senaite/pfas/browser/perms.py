@@ -110,6 +110,29 @@ def has_role_at_portal(context, roles):
     return _has_any_role(context, frozenset(roles))
 
 
+def is_inspector_only(context):
+    """True when the user holds the inspector's role and no role that may
+    change anything."""
+    return _has_any_role(context, READ_ONLY_STAFF_ROLES) and not may_write(context)
+
+
+def may_read_config(context, request):
+    """Whether the user may open a configuration page the manager edits: a
+    manager in any way, the read-only inspector by GET or HEAD only. Every
+    write on such a page still asks require_manager."""
+    if require_manager(context, request):
+        return True
+    getter = getattr(request, "get", None)
+    method = ((getter("REQUEST_METHOD") if getter else None) or "GET").upper()
+    return method in ("GET", "HEAD") and _has_any_role(context, READ_ONLY_STAFF_ROLES)
+
+
+def config_read_only(context):
+    """Whether a configuration page is drawn view-only: the user is no
+    manager (the inspector reading it)."""
+    return not require_manager(context)
+
+
 def require_site_admin(context, request=None):
     """True if the current user may change structural settings. Never raises."""
     return _has_any_role(context, SITE_ADMIN_ROLES)
@@ -240,8 +263,14 @@ MANAGER_VIEWS = frozenset((
 
 
 # Of those, what the read-only inspector may open, by GET only: the
-# certificate register, to read and download it.
-INSPECTOR_READ_VIEWS = frozenset(("pfas-controlled-publications",))
+# certificate register, to read and download it, the certificate settings
+# a director reads beside the method profiles, and the signature ledger.
+INSPECTOR_READ_VIEWS = frozenset(("pfas-controlled-publications", "pfas-qc-qualifiers",
+                                  "pfas-report-tiers", "pfas-signatures"))
+
+# Pages any staff role may read that an inspector-only account may not:
+# the lab terminals (who signed in where, and the terminal register).
+INSPECTOR_REFUSED_VIEWS = frozenset(("pfas-terminals",))
 
 # Who may download a stored certificate's PDF: the roles core's own download
 # gives it to (senaite.core: Manage Analysis Requests, held at the portal),
@@ -431,6 +460,9 @@ def keep_clients_out(event):
                 and not inspector_reads(name, request, portal)):
             from zExceptions import Forbidden
             raise Forbidden("This configuration page is for lab managers.")
+        if name in INSPECTOR_REFUSED_VIEWS and is_inspector_only(portal):
+            from zExceptions import Forbidden
+            raise Forbidden("This page is not open to a read-only account.")
         # recording or reviewing data needs a Lab Contact, initials and a
         # signature (entry_rights.py); no override
         if (request.get("REQUEST_METHOD") or "").upper() == "POST" and not read_post(name, request):

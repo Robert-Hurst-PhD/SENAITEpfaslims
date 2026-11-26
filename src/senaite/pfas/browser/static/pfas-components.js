@@ -967,6 +967,51 @@
     }).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-invalid"] });
   }
 
+  /* A page drawn view-only (main[data-readonly]: a configuration page the
+     read-only inspector reads). What a post form would send is locked, its
+     submit buttons hidden (pfas-components.css hides the editors' add, copy
+     and remove buttons too); a tile opens the window that reads it, a window
+     opens locked and without its footer, and the menus offer what reads:
+     links, Copy value, a row's card. The server refuses every post
+     regardless: this is presentation. */
+  function readOnlyPage() { return !!doc.querySelector("main[data-readonly]"); }
+  function postForm(f) { return !!(f && String(f.getAttribute("method") || "").toLowerCase() === "post"); }
+  /* a field a view-only page keeps locked: one a post form would send */
+  function locked(c) { return !!(c && c.type !== "hidden" && postForm(c.form) && readOnlyPage()); }
+  function lockReadOnly(root) {
+    if (!readOnlyPage()) { return; }
+    var scope = root && root.querySelectorAll ? root : doc;
+    Array.prototype.forEach.call(scope.querySelectorAll("input, select, textarea"), function (c) {
+      if (locked(c)) { c.disabled = true; }
+    });
+    Array.prototype.forEach.call(scope.querySelectorAll("button, input[type=submit]"), function (b) {
+      if (b.type === "submit" && postForm(b.form)) { b.disabled = true; b.hidden = true; }
+    });
+    /* a card's nameless switch writes a posted field: locked too */
+    Array.prototype.forEach.call(scope.querySelectorAll("input[data-switch-for], input[data-switch-input]"), function (c) {
+      c.disabled = true;
+    });
+    /* a segment or a flag that writes a field is no control here */
+    Array.prototype.forEach.call(scope.querySelectorAll(".pfas-seg[data-input]"), function (seg) {
+      var inp = doc.getElementById(seg.getAttribute("data-input"));
+      if (inp && postForm(inp.form)) {
+        Array.prototype.forEach.call(seg.querySelectorAll(".pfas-seg-item"), function (b) { b.disabled = true; });
+      }
+    });
+    Array.prototype.forEach.call(scope.querySelectorAll("button.pfas-flag"), function (b) {
+      if (b.closest("main[data-readonly]")) { b.disabled = true; }
+    });
+  }
+  /* a window on a view-only page: its fields locked, no footer (Done, Apply) */
+  function lockWindow(d) {
+    Array.prototype.forEach.call(d.querySelectorAll(".pfas-drawer-body input, .pfas-drawer-body select, .pfas-drawer-body textarea"),
+      function (c) { if (c.type !== "hidden") { c.disabled = true; } });
+    Array.prototype.forEach.call(d.querySelectorAll(".pfas-drawer-body button[type=submit], .pfas-drawer-body .pfas-flag"),
+      function (b) { b.disabled = true; });
+    var foot = d.querySelector(".pfas-drawer-foot");
+    if (foot) { foot.hidden = true; }
+  }
+
   /* a control that listens outside itself (a picker on its form field, a
      slider's release on the window) stops when its content is replaced: the
      drawer calls this on its old body before drawing the next */
@@ -1029,6 +1074,7 @@
       initTables(body);
       /* every box in it is the house field */
       houseFields(body);
+      if (readOnlyPage()) { lockWindow(d); }
       if (d.getAttribute("data-open") !== "true") { windowFrom(d, opts.opener); }
       d.setAttribute("data-open", "true");
       (opts.focus || d.querySelector(".pfas-drawer-close")).focus();
@@ -2339,6 +2385,7 @@
     return null;
   }
   function openCell(td) {
+    if (readOnlyPage()) { return; }
     var c = td.__pfasCell, p = c.pair, title = cellTitle(td);
     var body = el("div", "pfas-cell-form"), copies = [], first, noneBox = null;
     if (p) {
@@ -2707,7 +2754,7 @@
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       if (!shown && !el.disabled) { el.disabled = true; el.setAttribute("data-sif-off", "1"); }
-      else if (shown && el.getAttribute("data-sif-off")) { el.disabled = false; el.removeAttribute("data-sif-off"); }
+      else if (shown && el.getAttribute("data-sif-off")) { el.disabled = locked(el); el.removeAttribute("data-sif-off"); }
     }
   }
   function applyShowIf(root) {
@@ -2756,7 +2803,10 @@
       if (r.tagName === "BUTTON") { r.disabled = !on; }
       lockMark(r, !on);
       var ins = r.querySelectorAll("input, select, textarea");
-      for (var j = 0; j < ins.length; j++) { ins[j].disabled = !on; }
+      for (var j = 0; j < ins.length; j++) {
+        ins[j].disabled = !on;
+        if (!ins[j].disabled && locked(ins[j])) { ins[j].disabled = true; }
+      }
     }
   }
   /* What a rule set Off no longer judges (a QC type's tiers and windows):
@@ -2905,6 +2955,7 @@
     var area = doc.querySelector(".pfas-content-area");
     var scope = !root || root === doc ? area : (area && area.contains(root) ? root : null);
     if (!scope) { return; }
+    lockReadOnly(scope);
     initRanges(scope);
     initNums(scope);
     initCells(scope);
@@ -3648,7 +3699,8 @@
                    reason: natives.length ? "Refused: it quantifies " + nativesWords(natives) + ". Change their Quantified by first."
                      : held.length ? "Refused: it is a member of " + nativesWords(held) + ". Edit or remove that composite first." : "" });
     }
-    return items;
+    /* view-only: what reads (its card, what it quantifies) */
+    return readOnlyPage() ? items.filter(function (it) { return it.id === "card" || it.id === "quantifies"; }) : items;
   }
   /* what a row quantifies, in a window that reads it */
   function showQuantifies(tr, names) {
@@ -3885,6 +3937,7 @@
   /* one row's drawer; `col` names the field it opens on (its pressed
      segment item, else its first control) */
   function openSheetRow(root, key, col, group) {
+    if (readOnlyPage()) { return; }
     var box = sheetBox(root);
     var tr = box && (group ? byAttr(box.querySelectorAll("tr.pfas-sheet-grouprow"), "data-group", key)[0] : sheetRowOf(box, key));
     var form = tr && sheetForm(box, key, group);
@@ -4933,7 +4986,9 @@
   function rowActions(tr) {
     var list = [];
     try { list = JSON.parse(tr.getAttribute("data-row-actions") || "[]"); } catch (e) { list = []; }
-    return Array.isArray(list) ? list : [];
+    list = Array.isArray(list) ? list : [];
+    /* view-only: a row's menu offers its links alone */
+    return readOnlyPage() ? list.filter(function (a) { return !!(a && a.href); }) : list;
   }
   function openModal(m) { m.classList.add("open"); }
   function submitForm(f) {
@@ -5379,13 +5434,14 @@
     if (node) { rowItems(node).forEach(group); }
     var tile = tileFor(target);
     if (tile) { tileItems(tile, tileSpec(tile).menu).forEach(group); }
-    var head = target.closest(".pfas-hier-card-t"), hcard = head ? head.closest("[data-hier-card]") : null;
+    var ro = readOnlyPage();
+    var head = target.closest(".pfas-hier-card-t"), hcard = head && !ro ? head.closest("[data-hier-card]") : null;
     if (hcard) { headItems(hcard).forEach(group); }
     var tr = target.closest("tbody tr"), declared = !!(tr && tr.matches(ROW));
     if (declared) { rowItems(tr).forEach(group); }
     var cell = target.closest("td, tbody th"), value = [];
     var edit = cell && cell.querySelector(".pfas-cell-btn, .pfas-flag");
-    if (edit) { value.push(pressItem("Edit", edit)); }
+    if (edit && !ro) { value.push(pressItem("Edit", edit)); }
     var prov = target.closest("[data-prov]");
     if (prov) { value.push(pressItem("Where does this number come from?", prov)); }
     /* what the cell shows, never a button's spoken label; a cell one types
@@ -5397,7 +5453,7 @@
     if (tr && !declared) {
       var row = [], rm = tr.querySelector(".pfas-rowmenu");
       if (rm) { row = row.concat(rowMenuItems(rm)); }
-      row = row.concat(rowButtons(tr));
+      if (!ro) { row = row.concat(rowButtons(tr)); }
       var first = Array.prototype.filter.call(tr.querySelectorAll("a[href]"), followable)[0];
       if (first && !target.closest("a[href]") && !first.closest(".row-more-menu, .row-actions, .row-actions-cell")) {
         row.unshift({ label: "Open " + clipped(said(first), 40), act: function () { first.click(); } });
@@ -5466,6 +5522,8 @@
      and always offers what the tile opens */
   function tileSpec(tile) {
     if (!tile || !tile.matches || !tile.matches(TILE)) { return null; }
+    /* view-only: every tile opens the window that reads it */
+    if (readOnlyPage()) { return { open: "", read: true, menu: [] }; }
     var o = tileUp(tile, ["data-tile-open", "data-tile-read"]), m = tileUp(tile, ["data-tile-menu"]), menu = [];
     var open = o && o[0] === "data-tile-open" ? o[1] : "";
     if (m && !(open && tileDepth(tile, "data-tile-menu") > tileDepth(tile, "data-tile-open"))) {
@@ -5967,6 +6025,7 @@
 
   function init(root) {
     root = root || doc;
+    lockReadOnly(root);
     initUnsaved();
     var multis = root.querySelectorAll(".pfas-multi"); for (var mi = 0; mi < multis.length; mi++) { initMulti(multis[mi]); }
     var pickers = root.querySelectorAll(".pfas-picker"); for (var pi = 0; pi < pickers.length; pi++) { initPicker(pickers[pi]); }
@@ -6174,7 +6233,7 @@
   }
   window.PFAS = window.PFAS || {};
   /* range, picker, num: one control drawn where init() does not reach (a drawer, outside the content area) */
-  window.PFAS.components = { muteIf: applyMuteIf, esc: esc, labToday: labToday, labelListSearch: labelListSearch, stripCue: stripCue, init: init, enhance: enhance, theme: theme, drawer: drawer, placePill: placePill, seg: initSeg, wrapTables: wrapTables, sheet: sheet,
+  window.PFAS.components = { readOnly: { page: readOnlyPage, lock: lockReadOnly, rowActions: rowActions, tile: tileSpec }, muteIf: applyMuteIf, esc: esc, labToday: labToday, labelListSearch: labelListSearch, stripCue: stripCue, init: init, enhance: enhance, theme: theme, drawer: drawer, placePill: placePill, seg: initSeg, wrapTables: wrapTables, sheet: sheet,
                              range: initRange, picker: initPicker, num: makeNum, fields: houseFields, initNavTiles: initNavTiles, resetNavTiles: resetNavTiles,
                              tables: initTables, initColResize: initColResize, initScrollCue: initScrollCue, switchWord: switchWord,
                              hscroll: { init: initHScroll, railBox: railBox, autoSpeed: autoSpeed, scroller: scroller,

@@ -13,7 +13,7 @@ from zExceptions import Forbidden
 
 from senaite.pfas import report_tiers as rt
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action, refuse
+from senaite.pfas.browser.perms import TIER_CONFIG, config_read_only, deny_gated_action, refuse
 from senaite.pfas.browser.view_helpers import ViewHelpers
 
 logger = logging.getLogger("senaite.pfas.browser.report_tiers")
@@ -43,6 +43,11 @@ class PFASReportTiersView(ViewHelpers, BrowserView):
             if action in ("save", "remove", "add"):
                 return self._handle_post(action)
         return self.template()
+
+    def read_only(self):
+        """The page drawn view-only (the inspector reading it): no Save, no
+        Add or Remove."""
+        return config_read_only(self.context)
 
     def saved(self):
         return self.request.form.get("saved", "") == "1"

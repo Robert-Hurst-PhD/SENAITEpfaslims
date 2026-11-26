@@ -101,7 +101,7 @@ _TAB = {
     "Signatures and access": ("sign-rights", "lab-director", "laboratory-page", "people-roles",
                               "time-language", "system-page", "badges", "backups",
                               "signatures", "signature-ledger"),
-    "Pages and grids": ("navigation", "column-chips", "folded-groups", "help-panel"),
+    "Pages and grids": ("navigation", "column-chips", "folded-groups", "help-panel", "system-tour"),
 }
 TAB_OF = dict((eid, tab) for tab, ids in _TAB.items() for eid in ids)
 
@@ -304,7 +304,7 @@ ENTRIES = [
      ]},
     {"id": "recovery-grid", "term": "Recovery window grid",
      "text": "The window each analyte is judged by in each matrix, for one QC type "
-             "(Show) and one spike level at a time. Matrices whose windows agree for "
+             "(Show) and one spike level at a time, in the Table view. Matrices whose windows agree for "
              "every analyte share a column headed by their names. Each analyte group "
              "opens folded to one row with its count and windows; open it to see "
              "each analyte, and the page remembers it. An analyte a matrix does not "
@@ -322,7 +322,10 @@ ENTRIES = [
              "low-level window that may replace it, the tiers of other QC types stored "
              "under the same name and what they store alike, the cells set on their "
              "own under the tier they fall back to, and the spike levels of its "
-             "matrices. A click on a tile opens the window that edits it; a right "
+             "matrices. An LFSM or SD tier's box shows the grid's values too: the "
+             "matrices it applies in and a tile per analyte with its window, per "
+             "matrix where it differs, marked as the grid marks it; the tile opens "
+             "the cell's window. LFB tiers keep their list. A click on a tile opens the window that edits it; a right "
              "click gives its actions.",
      "where": [("QC criteria tab", "@@pfas-method-profiles")],
      "who": "config",
@@ -1644,6 +1647,23 @@ ENTRIES = [
          ("The panel, drawn once by the page frame", P + "browser/templates/pfas_macros.pt",
           "<aside class=\"pfas-help-panel\""),
          ("The button every section's header ends in", P + "help_dictionary.py", "def help_button(entry_id)"),
+     ]},
+    {"id": "system-tour", "term": "The system tour",
+     "text": "The tour walks a visitor through the lab's work in ten stops: chain of custody, "
+             "receipt and temperatures, the worksheet and extraction log, run import and peak "
+             "review, the QC and Data Review gates, method profiles, the certificate and its "
+             "report levels, the EDD, data integrity and the client portal. Each stop says in "
+             "two lines what it shows and opens the page for it. A stop whose page your role "
+             "cannot open is shown as unavailable with the reason. The pages a stop opens can "
+             "be pointed at one worksheet, sample or certificate by the tour script, so a demo "
+             "shows real records. The tour is for laboratory staff and the read-only inspector, "
+             "never for clients; it changes nothing.",
+     "where": [("System tour", "@@pfas-tour")],
+     "who": "bench",
+     "effects": [
+         ("Who is shown the tour", P + "tour.py", "def visible_to(roles)"),
+         ("A path under the site only", P + "tour.py", "def clean_path(text)"),
+         ("An unavailable stop and its reason", P + "tour.py", "def availability("),
      ]},
     # ── Review: the warnings ──────────────────────────────────────────────
     {"id": "warnings-strip", "term": "The warnings strip",
