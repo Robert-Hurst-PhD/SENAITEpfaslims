@@ -8,8 +8,8 @@ A slot's key: "CAL-1" ... "CAL-n", "ICV", "CCV", "LC:<channel>",
 "SPE:<channel>". A chosen lot is named by its inventory key "kind:uid"
 (bench_inventory items).
 
-A lot is in date on day D when its expiry is on or after D (a lot expiring
-on the run date is usable, as bench_queue.is_usable has it); a lot pending
+A lot is expired on its expiry date, so it is in date on day D when its
+expiry is after D (lot_expiry.expired_on, as bench_queue.is_usable has it); a lot pending
 verification may be chosen (the parentage review flags it).
 
     slots(n_levels, channels, qc_names=None, new_curve=True, prefix="LC")
@@ -275,7 +275,7 @@ def late_injections(last_acquired, solvents):
         exp = _d(lot.get("expiry"))
         if expired_on(exp, last):
             out.append({"channel": ch, "lot": lot.get("lot") or u"", "expiry": exp,
-                        "reason": u"injected after %s lot %s expired (%s)" % (ch, lot.get("lot") or u"", exp)})
+                        "reason": u"injected on or after %s lot %s expired (%s)" % (ch, lot.get("lot") or u"", exp)})
     return out
 
 

@@ -3,8 +3,8 @@
 depth, as the nodes prepared_standards.build_parentage returns.
 
 A node is flagged when it is
-    - expired by the run date (a lot expiring on the run date is in date,
-      as bench_queue.is_usable has it), or has no expiry date at all;
+    - expired by the run date (a lot is expired on its expiry date, as
+      lot_expiry.expired_on has it), or has no expiry date at all;
     - made from a parent that was out of date on the day it was prepared,
       unless the preparation kept a reason on that parent;
     - set to expire after one of its parents;

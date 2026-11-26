@@ -10,7 +10,7 @@ manufacturer_expiry) are never overwritten.
 
 The date in force is the latest approved extension's new expiry, counted
 from the laboratory day it was approved ("approved_on"): a use on that day
-or later is in date until the new expiry; a use before it is judged
+or later is in date until the day before the new expiry; a use before it is judged
 against the date then in force. A withdrawn extension counted from its
 approval up to its withdrawal ("withdrawn_on", the laboratory day of the
 ledger's withdrawal row): a use in that window stays in date, a later one

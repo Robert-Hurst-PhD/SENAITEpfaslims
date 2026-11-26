@@ -2,8 +2,9 @@
 """When a lot is out of date: the one date comparison, and the gate on a
 preparation that consumes lots.
 
-A lot is in date on day D when its expiry is on or after D: a lot expiring
-on the day it is used is still in date. An unknown expiry or an unknown day
+A lot is expired ON its expiry date (the owner, 2026-11-25: "good until the
+date"): it is in date on day D when its expiry is after D, so the last day
+it can be used is the day before. An unknown expiry or an unknown day
 is not evidence of expiry, so it answers False here; each caller says
 separately what an undated lot means for it.
 
@@ -11,7 +12,7 @@ A preparation may use a lot that was out of date on the day it was made
 only with a reason. The reason is kept on that parent in the record's
 parents (so the preparer signs it with the record) and printed on it:
 
-    expired_on(expiry, day)                -> True when expiry < day
+    expired_on(expiry, day)                -> True when expiry <= day
     shown_expiry(expiry, no_expiry)        -> the printed expiry, "No expiry"
                                               for a lot whose category has none
     source_after_save(old, new, old_source, assigned_now)
@@ -113,14 +114,15 @@ def _day(value):
 
 
 def expired_on(expiry, day):
-    """True when a lot with this expiry is out of date on `day`. Both may be
+    """True when a lot with this expiry is out of date on `day`: it expires
+    on its expiry date, so that day counts. Both may be
     dates or ISO strings; either unknown answers False."""
     exp, on = _day(expiry), _day(day)
-    return exp is not None and on is not None and exp < on
+    return exp is not None and on is not None and exp <= on
 
 
 def refusal(parent, expiry, day):
-    return (u"Lot %s of %s expired on %s, before the preparation date %s. Enter the reason it is used, "
+    return (u"Lot %s of %s expired on %s; the preparation date is %s. Enter the reason it is used, "
             u"or choose another lot." % (parent.get("lot") or u"?", parent.get("name") or u"the parent",
                                          (u"%s" % expiry)[:10], (u"%s" % day)[:10]))
 

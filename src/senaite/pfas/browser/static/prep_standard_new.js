@@ -32,10 +32,10 @@
     return cap && cap.localeCompare(own) === -1 ? cap : own;
   }
 
-  /* A lot is out of date on `day` when its expiry is before it (one expiring
-     that day is in date); the server judges it again (lot_expiry.py). */
+  /* A lot is out of date on `day` when its expiry is that day or before it
+     (a lot is good until its expiry date); the server judges it again (lot_expiry.py). */
   function expiredOn(expiry, day) {
-    return !!(expiry && day) && expiry.localeCompare(day) === -1;
+    return !!(expiry && day) && expiry.localeCompare(day) <= 0;
   }
 
   /* The text of a lot's option on the prep date: its label, marked when the

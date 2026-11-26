@@ -765,7 +765,23 @@
               <h2>Send back to the analyst</h2>
               <div class="pfas-form-field is-full">
                 <label for="dr-send-back-reason">Reason</label>
+                <select id="dr-send-back-pick" class="pfas-select" aria-label="Prefilled reasons"
+                        tal:define="rs view/send_back_reasons" tal:condition="rs">
+                  <option value="">Choose a reason or type one</option>
+                  <option tal:repeat="r rs" tal:attributes="value r" tal:content="r">Integration to correct</option>
+                </select>
                 <textarea id="dr-send-back-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
+                <script>
+                  (function () {
+                    var pick = document.getElementById("dr-send-back-pick"),
+                        box = document.getElementById("dr-send-back-reason");
+                    if (pick && box) {
+                      pick.addEventListener("change", function () {
+                        if (pick.value) { box.value = pick.value; box.focus(); }
+                      });
+                    }
+                  })();
+                </script>
               </div>
               <div class="form-actions is-end">
                 <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>

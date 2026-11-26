@@ -38,6 +38,14 @@ LISTS = {
         (u"reagent_issue", u"Reagent / Standard Issue"),
         (u"data_entry_error", u"Data Entry Error"),
         (u"other", u"Other")]),
+    # the reasons Send back offers (Data Review); the reviewer may edit one or
+    # type their own, so the code never branches on a key
+    "send_back_reasons": (u"Send back reasons", [
+        (u"integration", u"Integration to correct"),
+        (u"sample_identity", u"Wrong sample identity"),
+        (u"qc_failure", u"QC failure to investigate"),
+        (u"calculation", u"Calculation to check"),
+        (u"documentation", u"Missing documentation")]),
     "regulatory_limit_kinds": (u"Regulatory limit kinds", [
         (k, k) for k in (u"MCL", u"Interim standard", u"Action level", u"Advisory")]),
     # stored as the string on each lot; three of them the code branches on

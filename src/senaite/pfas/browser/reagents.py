@@ -747,7 +747,7 @@ def _expiry_class(rec):
     except (ValueError, TypeError):
         return ""
     today = lab_time.today()
-    if exp_date < today:
+    if exp_date <= today:
         return "exp-expired"
     if (exp_date - today).days <= 30:
         return "exp-warning"
@@ -1170,7 +1170,7 @@ class PFASReagentsView(ViewHelpers, GateMixin, BrowserView):
             if exp:
                 try:
                     d = datetime.strptime(exp, "%Y-%m-%d").date()
-                    if today <= d <= today + timedelta(days=30):
+                    if today < d <= today + timedelta(days=30):
                         cnt += 1
                 except (ValueError, TypeError):
                     pass

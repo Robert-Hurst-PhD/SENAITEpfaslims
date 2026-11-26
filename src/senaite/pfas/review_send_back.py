@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Verify sends a submitted worksheet back to the analyst.
 
-The verifier gives a reason; the worksheet goes back to open by core's own
+The verifier gives a reason, typed or chosen from the lab's list (vocab_store
+"send_back_reasons") and edited; the worksheet goes back to open by core's own
 worksheet "retract" (to_be_verified -> open: every analysis is retracted,
 keeping its value, and a retest without a result is added to the same
 worksheet). The analyst corrects what is wrong and submits again. Unlike
@@ -19,8 +20,11 @@ send back marked superseded by the next certificate
 send back cleared (the identity
 correction's reset rule, injection_identity.reset_signoffs: the results
 and the run are filed and judged again); "retracted" how many analyses
-core retracted. The e-signature ledger is not written: a signature made
-before stays as it is, and the send back is its own event.
+core retracted. The record is minimal by the owner's decision (2026-11-25): when, why and
+who (the audit trail, not a signature). The e-signature ledger is not
+written: a signature made before stays as it is, and the send back is its
+own event. A worksheet with no run file is sent back too: it reopens, the
+retests stay empty until a run is uploaded.
 
 Release waits (pending) until the run is filed again after the latest send
 back: the retests hold no result before then.
@@ -49,7 +53,6 @@ NO_REASON = "A send back needs a reason. Nothing was changed."
 NOT_VERIFIER = "Only a Lab Manager sends a worksheet back."
 AUTOMATED = "An automated account does not send a worksheet back."
 NOT_SUBMITTED = "Only a worksheet waiting for verification is sent back."
-NO_RUN = "This worksheet has no run file to file its results again."
 
 # the checklist items by their labels, for the history
 ITEM_LABELS = {"coc": "Chain of Custody", "final_data": "Final Data Summary",
@@ -85,7 +88,7 @@ def dump(state):
     return json.dumps(load(state), sort_keys=True)
 
 
-def refusal(reason, ws_state, is_manager, actor_kind, can_requeue=True):
+def refusal(reason, ws_state, is_manager, actor_kind):
     """Why the worksheet is not sent back, or None."""
     if actor_kind == "automated":
         return AUTOMATED
@@ -95,8 +98,6 @@ def refusal(reason, ws_state, is_manager, actor_kind, can_requeue=True):
         return NOT_SUBMITTED
     if not _text(reason):
         return NO_REASON
-    if not can_requeue:
-        return NO_RUN
     return None
 
 

@@ -36,6 +36,8 @@ from __future__ import absolute_import, unicode_literals
 
 import json
 
+from senaite.pfas.lot_expiry import expired_on
+
 STUDY_RUN_KEY = "senaite.pfas.study_run"
 RECEIPT_KEY = "senaite.pfas.reagent.receipt"
 # the Data Review checklist's annotation key (browser/data_review imports it
@@ -363,8 +365,8 @@ def source_problems(source, lot, receipt, coa, water_check, use_date):
     if not lot:
         return [u"the lot is not in the inventory"]
     exp = lot.get("expiry") or u""
-    if exp and use_date and exp < use_date:
-        out.append(u"lot %s expired %s, before it was used on %s" % (lot.get("lot_number") or u"", exp, use_date))
+    if expired_on(exp, use_date):
+        out.append(u"lot %s expired on %s; it was used on %s" % (lot.get("lot_number") or u"", exp, use_date))
     if kind == REFERENCE_LOT:
         if not receipt:
             out.append(u"the reference sample's receipt is not recorded")

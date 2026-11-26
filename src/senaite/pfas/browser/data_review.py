@@ -567,7 +567,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "identity_refused":        u"Not done:",
         "identity_confirmed":      u"Correction confirmed.",
         "identity_pending_signoff": u"Not signed: the run is not yet judged again.",
-        "review_sent_back":        u"Sent back to the analyst. The run is filed again; the cleared sign-offs are made again before it is submitted.",
+        "review_sent_back":        u"Sent back to the analyst. Any run on file is filed again; the cleared sign-offs are made again before it is submitted.",
         "send_back_refused":       u"Not sent back:",
         "extraction_corrected":    u"Extraction record:",
         "extraction_refused":      u"Not done:",
@@ -6656,6 +6656,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 filed = None
         return sb.pending(state, filed)
 
+    def send_back_reasons(self):
+        """The lab's prefilled reasons (vocab_store "send_back_reasons"),
+        edited in the Lists editor: the active labels, in order."""
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return [l for _k, l in vs.choices(vs.get(api.get_portal()), "send_back_reasons")]
+
     def send_back_history(self):
         from senaite.pfas import review_send_back as sb
         return [dict(e, when=lab_time.show(e.get("at")) if e.get("at") else u"")
@@ -6699,7 +6706,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         with a reason: core's worksheet retract (every analysis retracted,
         its retest on the same worksheet, the worksheet open again), the
         sign-offs the reset rule names cleared, the submission cleared, the
-        entry appended and the run queued again to file the retests. Any
+        entry appended and the run, when there is one, queued again to file the
+        retests (a worksheet with no run file is sent back all the same). Any
         refusal keeps nothing. The e-signature ledger is not written."""
         from senaite.pfas import after_commit, records
         from senaite.pfas import injection_identity as ii
@@ -6712,8 +6720,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         user = getSecurityManager().getUser()
         reason = (self.request.form.get("reason") or u"").strip()
         upload_dir, stem, files = self._identity_requeue_args(ws)
-        why = sb.refusal(reason, self.ws_state(), self.is_manager(), _actor_kind(user),
-                         can_requeue=ii.requeue_target(upload_dir, stem, files) is not None)
+        why = sb.refusal(reason, self.ws_state(), self.is_manager(), _actor_kind(user))
         if why:
             return self._redirect_with_msg("send_back_refused", "error", detail=why)
         before = [a for a in (ws.getAnalyses() or []) if _bapi.get_review_status(a) == "to_be_verified"]

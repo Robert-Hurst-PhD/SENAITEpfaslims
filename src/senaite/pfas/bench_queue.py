@@ -144,7 +144,7 @@ def _expired(it, today):
 
 def is_usable(item, today):
     """Not used up, archived, quarantined or expired. A lot expiring TODAY is
-    still usable (the Bench lists it as expiring, not expired)."""
+    expired (a lot is good until its expiry date, not on it)."""
     status = (item.get("status") or u"").lower()
     if status in _UNUSABLE or status in _BLOCKED or item.get("is_archived"):
         return False

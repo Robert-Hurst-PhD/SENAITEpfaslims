@@ -767,17 +767,17 @@
     return (Date.parse(d + 'T00:00:00Z') - Date.parse(t + 'T00:00:00Z')) / 864e5;
   }
   function todayISO() { return PFAS.components.labToday() || new Date().toISOString().slice(0,10); }
-  /* out of date when its expiry is before the lab's day: a lot expiring
-     today is still in date (lot_expiry.py judges it again) */
+  /* out of date when its expiry is the lab's day or before: a lot is
+     expired on its expiry date (lot_expiry.py judges it again) */
   function isExpired(d) {
     var n = daysFromLabToday(d);
-    if (n !== null) return n < 0;
-    return !!d && DAY_RE.test(d) && d < todayISO();
+    if (n !== null) return n <= 0;
+    return !!d && DAY_RE.test(d) && d <= todayISO();
   }
   function expClass(d) {
     if (!d) return '';
     var n = daysFromLabToday(d);
-    if (n !== null) return n < 0 ? 'exp-expired' : (n <= 30 ? 'exp-warn' : '');
+    if (n !== null) return n <= 0 ? 'exp-expired' : (n <= 30 ? 'exp-warn' : '');
     return '';
   }
 

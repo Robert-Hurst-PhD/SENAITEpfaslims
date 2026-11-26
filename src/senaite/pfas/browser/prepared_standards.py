@@ -1718,7 +1718,7 @@ class PFASPrepStandardsView(ViewHelpers, PrepTypesMixin, BrowserView):
         try:
             d = datetime.strptime(exp, "%Y-%m-%d").date()
             today = lab_time.today()
-            if d < today:
+            if d <= today:
                 return "exp-expired"
             if (d - today).days <= 30:
                 return "exp-warning"
