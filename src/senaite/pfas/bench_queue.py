@@ -401,6 +401,34 @@ def units_for(label, units):
             and u.get("active", 1)]
 
 
+
+def stage_equipment(labels, units, status_of):
+    """[{label, family, units}] for a stage's equipment labels: every
+    registered unit of the label's family, each {serial, name, ok, note}
+    from status_of(family, unit) -> (ok, note), and an SPE manifold's ports.
+    A label with no registered unit lists none, so the stage keeps a serial
+    field for it; an SPE manifold with none registered is offered as plain
+    equipment."""
+    from senaite.pfas import equipment_types as et
+    out = []
+    for label in labels or []:
+        fam = equipment_family(label)
+        found = units_for(label, units)
+        if fam == SPE_MANIFOLD and not found:
+            fam = u""
+        opts = []
+        for u in found:
+            ok, note = status_of(fam, u)
+            opt = {"serial": u.get("serial_number") or u"",
+                   "name": u.get("name") or u"", "ok": ok, "note": note}
+            if fam == SPE_MANIFOLD:
+                # its ports, offered where the stage records each member's port
+                opt["ports"] = et.spe_ports(u.get("spe_ports_json"))
+                opt["note"] = u"%d ports" % len(opt["ports"]) if opt["ports"] else u"no ports listed"
+            opts.append(opt)
+        out.append({"label": label, "family": fam, "units": opts})
+    return out
+
 def manifold_ports(equipment_maps, units):
     """(manifold name, its ports) for the SPE manifold an extraction
     recorded, or (u"", []): `equipment_maps` are the stages' equipment

@@ -970,9 +970,8 @@ class PFASExtractionGuideView(QueueList, ViewHelpers, BrowserView):
         be (balances, pipettes) with today's status, so the chemist picks the
         unit instead of typing its serial. Other equipment keeps a serial
         field. The stored shape (label -> serial) is unchanged."""
-        from senaite.pfas import equipment_types as et
         from senaite.pfas import lab_time
-        from senaite.pfas.bench_queue import SPE_MANIFOLD, equipment_family, units_for
+        from senaite.pfas.bench_queue import stage_equipment
         try:
             from senaite.pfas import facility_qc as fq
             units = fq.list_units()
@@ -980,31 +979,19 @@ class PFASExtractionGuideView(QueueList, ViewHelpers, BrowserView):
             logger.warning("stage equipment: %s", exc)
             fq, units = None, []
         today = lab_time.today().isoformat()
-        out = []
-        for label in self.current_stage().get("equipment") or []:
-            fam = equipment_family(label)
-            opts = []
-            found = units_for(label, units)
-            if fam == SPE_MANIFOLD and not found:
-                fam = u""              # none registered: a serial field, as for any other equipment
-            for u in found:
-                ok, note = True, u""
-                try:
-                    if fam == u"balance":
-                        ok, note = fq.balance_verified_on(u["id"], today)
-                    elif fam == u"pipette":
-                        ok = bool(fq.get_pipette_calibration_in_force(u["id"], today))
-                        note = u"calibration in force" if ok else u"calibration NOT in force"
-                except Exception as exc:                    # noqa: BLE001
-                    logger.warning("unit status %s: %s", u.get("id"), exc)
-                opt = {"serial": u.get("serial_number") or u"",
-                   "name": u.get("name") or u"", "ok": ok, "note": note}
-            if fam == SPE_MANIFOLD:
-                # its ports, offered where the stage records each member's port
-                opt["ports"] = et.spe_ports(u.get("spe_ports_json"))
-                opt["note"] = u"%d ports" % len(opt["ports"]) if opt["ports"] else u"no ports listed"
-            opts.append(opt)
-            out.append({"label": label, "family": fam, "units": opts})
+
+        def status(fam, u):
+            ok, note = True, u""
+            try:
+                if fam == u"balance":
+                    ok, note = fq.balance_verified_on(u["id"], today)
+                elif fam == u"pipette":
+                    ok = bool(fq.get_pipette_calibration_in_force(u["id"], today))
+                    note = u"calibration in force" if ok else u"calibration NOT in force"
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("unit status %s: %s", u.get("id"), exc)
+            return ok, note
+        out = stage_equipment(self.current_stage().get("equipment") or [], units, status)
         return script_json(out)
 
     # ── Per-sample table and dilution log (the extraction record's samples rows) ─
