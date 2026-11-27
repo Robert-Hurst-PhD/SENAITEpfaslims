@@ -13,8 +13,8 @@ addresses (certificate_delivery.sample_recipients).
 
 Before anything is issued every sample is asked what Send asks: its newest
 certificate exists and is not issued, its package is built and sealed,
-and the pending signature is the signed-in person's and still good
-(edd_email.report_refusal, sample_hold, signature_hold). A certificate
+and the pending signature is the signed-in person's and still good, and
+no QC hold applies (edd_email.report_refusal, sample_hold, signature_hold). A certificate
 holding samples of more than one client is refused. Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals

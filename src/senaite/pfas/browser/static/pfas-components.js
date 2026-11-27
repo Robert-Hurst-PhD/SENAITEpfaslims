@@ -845,16 +845,30 @@
       if (u.origin === location.origin && u.pathname === location.pathname) { vtSet(u.pathname + u.search); }
     } catch (err) {}
   });
+  /* a transition that is skipped (or that the browser cannot start) rejects
+     its promises; nobody reads them, so each gets a handler that does nothing
+     and the console stays clean */
+  function quiet(vt) {
+    if (vt.ready) { vt.ready.catch(function () {}); }
+    if (vt.finished) { vt.finished.catch(function () {}); }
+    if (vt.updateCallbackDone) { vt.updateCallbackDone.catch(function () {}); }
+  }
+  function skipQuietly(vt) {
+    quiet(vt);
+    vt.skipTransition();
+  }
   window.addEventListener("pageswap", function (e) {
     if (!e.viewTransition) { return; }
+    quiet(e.viewTransition);
     var to = e.activation && e.activation.entry ? e.activation.entry.url : "", want = vtGet();
-    if (reduced() || !want || !to || !sameUrl(to, want) || !nameTabs(to)) { e.viewTransition.skipTransition(); }
+    if (reduced() || !want || !to || !sameUrl(to, want) || !nameTabs(to)) { skipQuietly(e.viewTransition); }
   });
   window.addEventListener("pagereveal", function (e) {
     var want = vtGet();
     vtSet(null);
     if (!e.viewTransition) { return; }
-    if (reduced() || !want || !sameUrl(location.href, want) || !nameTabs(location.href)) { e.viewTransition.skipTransition(); return; }
+    quiet(e.viewTransition);
+    if (reduced() || !want || !sameUrl(location.href, want) || !nameTabs(location.href)) { skipQuietly(e.viewTransition); return; }
     e.viewTransition.finished.then(unnameTabs, unnameTabs);
   });
   /* the page a link tab opens holds its first paint until its content is
@@ -976,8 +990,14 @@
      regardless: this is presentation. */
   function readOnlyPage() { return !!doc.querySelector("main[data-readonly]"); }
   function postForm(f) { return !!(f && String(f.getAttribute("method") || "").toLowerCase() === "post"); }
+  /* a form or a table marked data-readonly-live holds the one act the
+     reader has a right to on a view-only page (a QA approver's countersign
+     of a proposed change): it stays live, and the server still decides */
+  function liveOnReadOnly(el) { return !!(el && el.closest && el.closest("[data-readonly-live]")); }
   /* a field a view-only page keeps locked: one a post form would send */
-  function locked(c) { return !!(c && c.type !== "hidden" && postForm(c.form) && readOnlyPage()); }
+  function locked(c) {
+    return !!(c && c.type !== "hidden" && postForm(c.form) && !liveOnReadOnly(c.form) && readOnlyPage());
+  }
   function lockReadOnly(root) {
     if (!readOnlyPage()) { return; }
     var scope = root && root.querySelectorAll ? root : doc;
@@ -985,7 +1005,7 @@
       if (locked(c)) { c.disabled = true; }
     });
     Array.prototype.forEach.call(scope.querySelectorAll("button, input[type=submit]"), function (b) {
-      if (b.type === "submit" && postForm(b.form)) { b.disabled = true; b.hidden = true; }
+      if (b.type === "submit" && postForm(b.form) && !liveOnReadOnly(b.form)) { b.disabled = true; b.hidden = true; }
     });
     /* a card's nameless switch writes a posted field: locked too */
     Array.prototype.forEach.call(scope.querySelectorAll("input[data-switch-for], input[data-switch-input]"), function (c) {
@@ -4987,8 +5007,8 @@
     var list = [];
     try { list = JSON.parse(tr.getAttribute("data-row-actions") || "[]"); } catch (e) { list = []; }
     list = Array.isArray(list) ? list : [];
-    /* view-only: a row's menu offers its links alone */
-    return readOnlyPage() ? list.filter(function (a) { return !!(a && a.href); }) : list;
+    /* view-only: a row's menu offers its links alone, but in a live table */
+    return readOnlyPage() && !liveOnReadOnly(tr) ? list.filter(function (a) { return !!(a && a.href); }) : list;
   }
   function openModal(m) { m.classList.add("open"); }
   function submitForm(f) {

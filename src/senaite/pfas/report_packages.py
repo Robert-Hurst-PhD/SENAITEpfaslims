@@ -217,7 +217,7 @@ def register_fields(rec):
 
 
 def latest_countersign(state):
-    """The newest countersign time of the run's Raw Data changes, u"" when
+    """The newest countersign time of the run's Integration Review changes, u"" when
     none is countersigned (ISO times compare as text)."""
     found = [(r.get("verifier") or {}).get("at") or u""
              for r in (state or {}).get("raw_changes") or []]

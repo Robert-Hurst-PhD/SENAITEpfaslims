@@ -333,6 +333,10 @@ FAILURE_TYPES = [
     # (the worker's COELUTION mark): an estimate, qualified for matrix bias
     # or co-elution; the code is a draft the QAO approves
     ("coelution",    u"Co-eluting peaks split",              QUALIFY, u"CE"),
+    # a result whose quantifier peak was separated from a matrix
+    # interference by curve fitting, on one injection or on all (the
+    # worker's FITTED mark): an estimate; the code is a draft the QAO approves
+    ("fitted",       u"Fitted estimate",                     QUALIFY, u"CF"),
     # reporting rules, not QC failures: the certificate applies them to the
     # result itself (coa_format J_CODE, D_CODE). The lab edits the wording;
     # the code and the disposition are the rule's own.
@@ -376,10 +380,15 @@ def marked_qualifier_rows(items, qual, mark, qc_type, reason):
     return out
 
 
+# the worker's mark on a result reported from a re-spiked dilution the
+# method qualifies (pfas_pipeline dilution_routes.RESPIKE_FLAG)
+RESPIKE_MARK = u"RESPIKE"
+
+
 def respike_qualifier_rows(items, qual):
     """The rows for results the worker marked RESPIKE (reported from a
     re-spiked dilution the method qualifies)."""
-    return marked_qualifier_rows(items, qual, u"RESPIKE", u"Re-spiked dilution",
+    return marked_qualifier_rows(items, qual, RESPIKE_MARK, u"Re-spiked dilution",
                                  u"reported from a re-spiked dilution")
 
 
@@ -394,6 +403,79 @@ def coelution_qualifier_rows(items, qual):
     failed, or drawn on a drop or skim, so an estimate."""
     return marked_qualifier_rows(items, qual, COELUTION_MARK, u"Co-eluting peaks split",
                                  u"peak split from a co-eluting neighbour")
+
+
+# the worker's mark on a result whose quantifier peak was separated by curve
+# fitting (pfas_pipeline qc_engine.FITTED_FLAG, fitted_estimate)
+FITTED_MARK = u"FITTED"
+
+
+def fitted_qualifier_rows(items, qual):
+    """The rows for results the worker marked FITTED: a detected quantifier
+    peak measured by a curve fit, on one injection or on all, so an
+    estimate."""
+    return marked_qualifier_rows(items, qual, FITTED_MARK, u"Fitted estimate",
+                                 u"peak separated by curve fitting")
+
+
+# The worker's marks the library qualifies: (library key, mark, the rows).
+# A marked result is released only under its entry's code and wording.
+MARKED_QUALIFIERS = (
+    ("respike", RESPIKE_MARK, respike_qualifier_rows),
+    ("coelution", COELUTION_MARK, coelution_qualifier_rows),
+    ("fitted", FITTED_MARK, fitted_qualifier_rows),
+)
+# why a marked result is held by the release gate
+MARK_HELD_BLOCK = u"{analyte}: {label} is set to block by the QC Qualifiers library"
+MARK_HELD_UNSET = u"{analyte}: {code} has no reporting setting: set it in QC Qualifiers"
+MARK_HELD_UNREAD = u"{analyte}: the {label} qualifier could not be read"
+# the analyses could not be read, so no result is known to be unmarked
+MARKS_UNREAD = u"The results' qualifier marks could not be read"
+
+
+def marked_analytes(items, mark):
+    """The analytes, each once in the order met, whose remarks carry the
+    worker's `mark`."""
+    out = []
+    for it in items or []:
+        if mark in (u"%s" % (it.get("remarks") or u"")).split() and it.get("analyte") not in out:
+            out.append(it.get("analyte"))
+    return out
+
+
+def marked_qualifiers(items, read_qualifier, code_of):
+    """(rows, holds) for every result the worker marked for a library entry
+    (MARKED_QUALIFIERS). Fails closed: a marked result is qualified only
+    under its entry's code and wording, and otherwise held by the release
+    gate with why, one line per analyte: the entry set to block
+    (`read_qualifier(key)` None), set with no wording or no code (needs
+    configuration, named by its code, `code_of(key)`, else its label), or
+    not read at all (`read_qualifier` raising). Nothing is held where no
+    result carries the mark."""
+    rows, holds = [], []
+    for key, mark, rows_for in MARKED_QUALIFIERS:
+        analytes = marked_analytes(items, mark)
+        if not analytes:
+            continue
+        label = FAILURE_LABELS.get(key, key)
+        try:
+            qual = read_qualifier(key)
+        except Exception:                                   # noqa: BLE001
+            logger.exception("qualifier %s could not be read", key)
+            holds += [MARK_HELD_UNREAD.format(analyte=a, label=label) for a in analytes]
+            continue
+        if qual is None:
+            holds += [MARK_HELD_BLOCK.format(analyte=a, label=label) for a in analytes]
+            continue
+        if qual.get("needs_config") or not (qual.get("code") or u"").strip():
+            try:
+                code = (code_of(key) or u"").strip()
+            except Exception:                               # noqa: BLE001
+                code = u""
+            holds += [MARK_HELD_UNSET.format(analyte=a, code=code or label) for a in analytes]
+            continue
+        rows += rows_for(items, qual)
+    return rows, holds
 
 
 def disposition_for(failure_type, injection_role=u"", library=None):
@@ -518,6 +600,10 @@ DEFAULT_LIBRARY = {
                      u"drop or a tangent skim. The results are estimates and "
                      u"may be biased by the sample matrix or the co-eluting "
                      u"compound.",
+    },
+    "fitted": {
+        "statement": u"Estimate: separated from a matrix interference by "
+                     u"curve fitting",
     },
     # Held, never issued. The text is for the analyst.
     "calibration": {

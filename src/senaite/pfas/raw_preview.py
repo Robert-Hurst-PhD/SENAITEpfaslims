@@ -601,6 +601,16 @@ def area_change_pct(auto_area, manual_area):
     return abs(manual_area - auto_area) / auto_area * 100.0
 
 
+def _above(value, limit):
+    """`value` with the fewest decimals (one at least) that still reads
+    above `limit`, so a near miss never prints as the limit itself."""
+    for places in range(1, 10):
+        text = "%.*f" % (places, value)
+        if float(text) > limit:
+            return text
+    return "%r" % value
+
+
 def _below(value, limit):
     """`value` with the fewest decimals (one at least) that still reads
     below `limit`, so a near miss never prints as the limit itself."""
@@ -611,9 +621,9 @@ def _below(value, limit):
     return "%r" % value
 
 
-# an edit the limits judge: a re-integration or another apex; a deletion
-# and an undo are never refused
-JUDGED = ("integrate", "apex")
+# an edit the limits judge: a re-integration, another apex or a fit (judged
+# by the worker, which fits); a deletion and an undo are never refused
+JUDGED = ("integrate", "apex", "fit")
 
 
 def edit_problem(kind, auto_area, manual_area, sn_value, min_change_pct, min_sn):

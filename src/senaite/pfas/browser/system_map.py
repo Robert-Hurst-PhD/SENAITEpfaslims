@@ -71,7 +71,7 @@ class _MapData(object):
                 p = get_profile(self.portal, mid) or {}
                 try:
                     recs = mr.records(self.portal, mid)
-                    rev = (u"issued r%s" % max(r.get("rev", 0) for r in recs)) if recs else u"not issued"
+                    rev = (u"issued r%s" % mr.label(mr.last_record(recs))) if recs else u"not issued"
                 except Exception:                           # noqa: BLE001
                     rev = u""
                 name = p.get("display_name") or mid

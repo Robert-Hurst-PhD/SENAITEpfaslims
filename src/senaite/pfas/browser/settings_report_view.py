@@ -31,21 +31,77 @@ logger = logging.getLogger("senaite.pfas.settings_report")
 
 
 def _shown_revision(rec):
-    """A revision record (or status) as the report shows it: its issue
-    stamp, stored on the server's clock (UTC), on the laboratory's; the
-    record itself while no zone converts."""
+    """A revision record (or status) as the report shows it: its number
+    major.sub (`label`), and its issue stamp, stored on the server's clock
+    (UTC), on the laboratory's; the stamp as stored while no zone
+    converts."""
+    from senaite.pfas import method_revisions as mr
+    rec = dict(rec, label=rec.get("label") or mr.label(rec))
     at = rec.get("issued_at")
     return dict(rec, issued_at=print_doc.lab_or(at, at)) if at else rec
 
 
-def issuing_revision(method, rev, at, by, reason):
+def issuing_revision(method, rev, label, at, by, reason):
     """The method as the revision being issued prints it: its revision line
     names that revision, issued now, and its issued revisions begin with
     it (the records hold it only once it is issued, after the print)."""
-    issued = {"rev": rev, "issued_at": at, "issued_by": by, "reason": reason or u""}
+    issued = {"rev": rev, "label": label, "issued_at": at, "issued_by": by, "reason": reason or u""}
     out = dict(method, revision=dict(method.get("revision") or {}, unissued=False, **issued))
     out["revisions"] = [issued] + [r for r in method.get("revisions") or [] if r.get("rev") != rev]
     return out
+
+
+class UnknownMethod(ValueError):
+    """No profile is stored for the method: nothing to issue."""
+
+
+class NothingToIssue(ValueError):
+    """Nothing changed since the last revision, `label`."""
+
+    def __init__(self, label):
+        ValueError.__init__(self, u"nothing changed since Revision %s" % label)
+        self.label = label
+
+
+def issue_revision(portal, mid, who, reason, source=None):
+    """Freeze `mid`'s settings report as its next revision, issued by `who`
+    (the name the PDF and the record print) for `reason`; `source` names
+    the run's processing change it came from (method_proposals), else None.
+    The level follows from what changed since the last revision, never from
+    the person issuing. Returns the record. Refused before anything is
+    written: UnknownMethod, NothingToIssue, ImportError (WeasyPrint is not
+    installed) and DesignedReportError (the issued design cannot print it);
+    the caller aborts its transaction on any."""
+    from senaite.pfas import method_revisions as mr
+    from senaite.pfas.method_profile_store import raw_profile
+    from senaite.pfas.qc.rules import method_toggles
+    profile = raw_profile(portal, mid) if mid else {}
+    if not mid or not profile:
+        raise UnknownMethod(mid)
+    recs = mr.records(portal, mid)
+    toggles = method_toggles(profile, mid)
+    fp = mr.fingerprint(profile, toggles)
+    both = mr.fingerprints(profile, toggles)
+    if recs and mr.status(recs, both)["unissued"] is False:
+        raise NothingToIssue(mr.status(recs, both)["label"])
+    when = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rev = mr.next_number(recs)
+    nxt = mr.next_issue(mid, recs, profile, toggles)
+    label = nxt["label"]
+    reason = reason or u""
+    shown_at = print_doc.lab_or(when, when)
+    # the method's settings report, as the Issue button prints it
+    view = PFASSettingsReportView(portal, portal.REQUEST)
+    view.method_id = lambda: mid
+    rep = view.report()
+    rep["revision_label"] = view._label(None, {"label": label, "at": shown_at, "by": who}) + (
+        u" \u2014 %s" % reason if reason else u"")
+    rep["methods"] = [issuing_revision(m, rev, label, shown_at, who, reason) for m in rep["methods"]]
+    pdf = view._render_pdf()
+    rec = mr.issue(portal, mid, pdf, fp, who, when, reason, rev=rev, major=nxt["major"], sub=nxt["sub"],
+                   snapshot=nxt["snapshot"], level=nxt["level"], changed=nxt["groups"], source=source)
+    logger.info("method %s: revision %s (%s, %s) issued by %s", mid, label, rev, nxt["level"], who)
+    return rec
 
 
 class PFASSettingsReportView(ViewHelpers, BrowserView):
@@ -86,7 +142,7 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         if label.startswith(u"DRAFT"):
             rev = u"DRAFT"
         else:
-            found = re.search(r"Revision (\d+)", label)
+            found = re.search(r"Revision (\d+(?:\.\d+)?)", label)
             rev = found.group(1) if found else u""
         return {"doc_id": rep["title"], "revision": rev, "generated": rep["generated"],
                 "user": rep["user"], "fingerprint": rep["fingerprint"]}
@@ -279,15 +335,16 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         return out
 
     def _label(self, st, issuing=None):
-        """What the PDF says about its own status."""
+        """What the PDF says about its own status. `issuing` {"label",
+        "at", "by"}: the revision being issued."""
         if issuing:
-            return u"Revision %(rev)s \u2014 issued %(at)s by %(by)s" % issuing
+            return u"Revision %(label)s \u2014 issued %(at)s by %(by)s" % issuing
         if st["rev"] is None:
             return u"DRAFT \u2014 no revision has been issued"
         if st["unissued"]:
-            return u"DRAFT \u2014 changed since Revision %s (issued %s)" % (st["rev"], st["issued_at"])
+            return u"DRAFT \u2014 changed since Revision %s (issued %s)" % (st["label"], st["issued_at"])
         return u"Current settings = Revision %s (issued %s by %s)" % (
-            st["rev"], st["issued_at"], st["issued_by"])
+            st["label"], st["issued_at"], st["issued_by"])
 
     def _render_pdf(self):
         # an issued design (Document Templates) is the settings report from then on
@@ -310,57 +367,50 @@ class PFASSettingsReportView(ViewHelpers, BrowserView):
         return send_pdf(self.request.response, pdf, name, inline=False)
 
     def _issued_pdf(self):
+        """The frozen PDF of the revision `?rev=` names by its issue number:
+        the file its record names, sent under its major.sub number."""
         from senaite.pfas import method_revisions as mr
         mid, rev = self.method_id(), self.request.form.get("rev")
+        recs = mr.records(api.get_portal(), mid)
         try:
-            rev = int(rev)
-            pdf = mr.read_pdf(mid, rev)
-        except (ValueError, IOError, OSError):
+            rec = [r for r in recs if r.get("rev") == int(rev)][0]
+            pdf = mr.read_pdf(mid, rec)
+        except (ValueError, TypeError, IndexError, IOError, OSError):
             self.request.response.setStatus(404)
-            return "No issued revision %s of %s." % (rev, self.method_name(mid))
-        return self._send(pdf, "%s-settings-rev%d.pdf" % (mid, rev))
+            return "No issued revision %s of %s." % (mr.revision_named(recs, rev), self.method_name(mid))
+        return self._send(pdf, "%s-settings-rev%s.pdf" % (mid, mr.label(rec)))
 
     def _issue(self):
         """Freeze this method's settings report as its next revision."""
-        from senaite.pfas import method_revisions as mr
-        from senaite.pfas.method_profile_store import raw_profile
-        portal = api.get_portal()
         mid = self.method_id()
         back = "%s/@@pfas-method-profiles" % self.portal_url()
-        profile = raw_profile(portal, mid)
-        if not mid or not profile:
-            self.request.response.redirect(back + "?error=Unknown+method")
-            return ""
-        from senaite.pfas.qc.rules import method_toggles
-        recs = mr.records(portal, mid)
-        fp = mr.fingerprint(profile, method_toggles(profile, mid))
-        both = mr.fingerprints(profile, method_toggles(profile, mid))
-        if recs and mr.status(recs, both)["unissued"] is False:
-            self.request.response.redirect(back + "?error=%s" % quote_text(
-                u"%s: nothing changed since Revision %s" % (self.method_name(mid), mr.status(recs, both)["rev"])))
-            return ""
         user = api.get_current_user()
         who = (user.getProperty("fullname") or user.getId()) if user else u""
-        when = datetime.now().strftime("%Y-%m-%d %H:%M")
-        rev = mr.next_number(recs)
         reason = (self.request.form.get("reason") or u"").strip()
-        shown_at = print_doc.lab_or(when, when)
-        rep = self.report()
-        rep["revision_label"] = self._label(None, {"rev": rev, "at": shown_at, "by": who}) + (
-            u" \u2014 %s" % reason if reason else u"")
-        rep["methods"] = [issuing_revision(m, rev, shown_at, who, reason) for m in rep["methods"]]
+        from senaite.pfas import method_revisions as mr
+        from senaite.pfas import revision_level
         from senaite.pfas.browser.report_designs import DesignedReportError
         try:
-            pdf = self._render_pdf()
+            rec = issue_revision(api.get_portal(), mid, who, reason)
+        except UnknownMethod:
+            self.request.response.redirect(back + "?error=Unknown+method")
+            return ""
+        except NothingToIssue as exc:
+            self.request.response.redirect(back + "?error=%s" % quote_text(
+                u"%s: nothing changed since Revision %s" % (self.method_name(mid), exc.label)))
+            return ""
         except ImportError:
             self.request.response.setStatus(501)
             return "PDF rendering (WeasyPrint) is not installed on this server."
-        except DesignedReportError as exc:
+        except (DesignedReportError, ValueError) as exc:
+            # a ValueError: the revision's files refused (another issue of
+            # the method in flight, or one issued already), said as the
+            # proposal's countersign says it
             self.request.response.redirect(back + "?error=%s" % quote_text(u"%s: not issued. %s" % (mid, exc)))
             return ""
-        mr.issue(portal, mid, pdf, fp, who, when, reason, rev=rev)
-        logger.info("method %s: revision %s issued by %s", mid, rev, who)
-        self.request.response.redirect(back + "?ok=%s" % quote_text(u"%s Revision %s issued." % (mid, rev)))
+        why = revision_level.why(rec["changed"])
+        self.request.response.redirect(back + "?ok=%s" % quote_text(
+            u"%s Revision %s issued%s." % (mid, mr.label(rec), u": %s" % why if why else u"")))
         return ""
 
     def _pdf(self):

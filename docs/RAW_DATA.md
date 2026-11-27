@@ -226,7 +226,7 @@ time. The change log records who chose it, and when.
 
 ## Reviewing a raw run
 
-- **Raw Data tab** (Data Review): every chromatogram of the run as a small
+- **Integration Review tab** (Data Review): every chromatogram of the run as a small
   thumbnail. A switch picks the overview: By compound (one analyte across
   every injection, a compound chosen from the list) or By injection (every
   analyte of one injection). A thumbnail shows its edit: Automatic, Edited,
@@ -234,9 +234,27 @@ time. The change log records who chose it, and when.
   Under By compound a note names the calibrators taken off the curve by a
   deleted peak. Rows are paired with their traces through the compound
   library (a row carries the display name, a trace and an edit the keyword);
-  the tab shows the display name.
+  the tab shows the display name. Each thumbnail has a status icon at its
+  top right, from the one icon helper: passed, failed a check (the
+  diamond), a manual integration (in the warning colour), waiting for the
+  run to be processed, or not detected; with several, the most serious in
+  that order. Its foot line gives the retention time and the result, or the
+  failed check's name.
+- **The injection list.** By injection draws the run's injections in a list
+  beside the grid, in the order they were acquired, ties kept in sequence
+  order and a missing time last: each row gives the sequence position, the
+  acquisition time, the injection's name, its sample-type icon and short
+  word (CAL, CCV, MB, Sample...) and the most serious state of its cards,
+  a failure with its number of failed checks, named on hover or keyboard
+  focus ("Ion ratio: PFHxS · Recovery: PFOS"). Where the clock order
+  disagrees with the run's sequence the list keeps the clock order and says
+  "Acquired out of sequence order", naming the injections: in a lab it
+  means a mislabelled or re-run injection. The list folds to numbers and
+  icons. By compound keeps its compound list, with the same failed-check
+  count and names.
 - **The card.** A click on a thumbnail opens the full card in a dialog,
-  laid out as a result is read: the Quantifier / Qualifier switch; the
+  zoomed to the peak and one peak width either side (W or 0 shows the whole
+  window), laid out as a result is read: the Quantifier / Qualifier switch; the
   trace alone (the isotope standard is named under Details), with zoom
   tools above it: zoom in, zoom out, zoom to a box dragged on the chart, and
   back to the whole window, the counts fitting the view once zoomed; a
@@ -340,8 +358,132 @@ time. The change log records who chose it, and when.
 
   The card previews the new peak with the same arithmetic as the worker. An
   edge can go only as far as the stored full-resolution region; to go
-  further, widen the method's window and process the run again. An edit
-  needs no reason when it is made.
+  further, widen the method's window and process the run again. The zoom
+  eases over about 200 ms and the shaded area follows a handle on every
+  frame; reduced motion turns both off.
+- **Applying to one injection.** The card's foot has two buttons, Apply to
+  this injection and Apply to all N injections. Apply to this injection
+  (Ctrl+S, or Enter) opens a box beside the buttons: the reason, from the
+  lab's list, and a comment, both required; the comment is the record's
+  detail. The edit is sent without leaving the page: the card stays open,
+  says "Saved. Processing the run again" and updates itself, and the
+  thumbnail behind it, when the worker has processed the run. After 60 s it
+  says "Still processing the run" and keeps waiting while the dialog is
+  open; closed, the page takes over the wait. A failed processing shows the
+  run's failure. If the session ended, the card keeps the drawn edit and
+  says "Your session ended: sign in again, then apply."; nothing is sent
+  twice. Edits made while the run is processed are written one at a time
+  and the card shows waiting until the worker has caught up. Such a peak is
+  a manual integration: filled in amber (`--s-manual-fill`), the automatic
+  peak's edges and line kept as a dashed grey outline, on the card, the
+  thumbnail and as a swatch in the Manual changes list; initialled at the
+  end of review and countersigned at release.
+- **Apply to all.** Apply to all N injections makes the change the
+  compound's processing for this run, for calibrators, QC and samples
+  alike, and the curve is fitted again. It asks no comment and is drawn as
+  an automatic peak, teal, with no outline. What carries is the baseline
+  and the edges as offsets from each injection's own apex, never the same
+  clock times, to the same trace (the quantifier, or that qualifier) in
+  every injection; an injection with no detected apex is skipped. Levels
+  set by hand belong to one injection, so a change with them offers Apply
+  to this injection only ("Levels set by hand apply to this injection
+  only."). Another apex and a delete are never applied to all, and a summed
+  or paired trace is refused ("Apply to all is for a single peak"). Before
+  applying, the card says which injections cannot take the change and why
+  ("Applies to 15 of 17: DW-0960 has no peak, CAL-1 too few points"); the
+  manual-change limits do not apply, the hard ones (fewest points, the
+  full-resolution reach) do. A peak already changed by hand keeps its edit,
+  and the confirmation says how many are kept. On an isotope standard the
+  change asks the delete's confirmation, naming the natives. The change is
+  kept in `<run>.processing.json` beside the overrides file (the overrides
+  file holds only per-trace edits) and recorded under **Processing changes**
+  on the Overview tab: who, when, compound, before and after, and the
+  injections skipped. The analyst may undo it there while the worksheet is
+  open. Only a fit applied to all injections is a major change: the person
+  who releases the worksheet countersigns it, and may not be its maker.
+  Moving edges or changing the baseline is not countersigned. A change in
+  the processing file with no record, or a record whose change the file no
+  longer holds, holds submit and release ("Processing changes on the
+  Overview tab").
+- **Propose for the method.** A listed processing change's row menu offers
+  a manager "Propose for the method": the change becomes a proposal for that
+  analyte's Integration row on the method (per method and analyte; the
+  Integration settings have no matrix dimension). It waits on the method's
+  Integration section under "Proposed from a run", and the profile is
+  unchanged until a different manager or QA officer countersigns it; a QA
+  officer without the manager role opens the method view-only with
+  Countersign and Refuse live. The countersign saves the change as the
+  compound's `processing` entry, through Config History, and issues the sub
+  revision in the same step, naming the run and the change. The maker may
+  withdraw it, the countersigner refuse it, each with a reason; a
+  countersign is refused while the method holds other changes not yet
+  issued. Saved entries are listed under "Processing from runs", each with
+  a row-menu Remove. The worker applies a method's entry to every run of
+  it; one that no longer fits a run (its trace or transition changed) is
+  skipped with a Data Review warning and never refuses the run.
+- **Fitting overlapping peaks.** "Fit overlapping peaks", in the card's
+  menu, separates a peak from an overlapping interference. Click each apex,
+  two or three, between the edges, choose Gaussian or EMG, and apply. The
+  peaks are fitted together by iterative least squares over the clicked
+  span on one straight baseline (O'Haver, "Curve fitting C"). The card
+  previews the fit in the browser: each component dashed, the reported one
+  filled, the residual under the chart, and the area with an "approximate
+  95 % interval" from the fit's covariance; a span longer than 400 samples
+  is not previewed ("Too long to preview: the fit is checked when the run
+  is processed.") and Apply stays on. The reported component is the one
+  nearest the expected retention time to begin with; a click picks another.
+  The worker's fit is the reported value: it fits each start under two
+  solvers and keeps the lower cost, then refits about 200 times with the
+  fit's own residuals shuffled back onto the model (a residual bootstrap)
+  and reports the middle 95 % of the areas. The fit is refused, kept with
+  no effect and the reason, when it does not converge, a component
+  collapses (its area at or below zero, its centre or width on a bound, or
+  its tail on its upper bound), too few refits converge, the interval is
+  wider than the area, or the residual's RMS over the span is more than the
+  method's limit times the trace's baseline noise. The limit is the
+  Integration setting "Largest fit residual, times the baseline noise"
+  (`fit_noise_multiple`), with no default: until it is set the card says
+  "Set the fit limit on the method's Integration tab." and no fit is
+  allowed. A reported component under the method's detection S/N reads not
+  detected. An isotope standard's peak is never fitted. A fit on one
+  injection is a manual change (amber, commented); a fit applied to all
+  injections is placed from each injection's expected retention time, after
+  any relative-retention shift, and is the one major processing change the
+  card can make. A result whose quantifier was fitted and detected carries
+  the Fitted estimate qualifier: draft code CF in the QC Qualifiers library,
+  "Estimate: separated from a matrix interference by curve fitting", on the
+  certificate legend and in the EDD (seeded to J, as CE is), for the QA
+  officer to approve. A qualifier fitted alone is named in the value's
+  record, not marked. The fit's components, interval and residual are kept
+  in the edit's record and the value's provenance.
+- **The browser preview and the worker differ in three known ways.** The
+  preview omits the manual-change limits (Smallest manual change, Smallest
+  S/N for a manual peak) and the compound's fewest points in a peak; on the
+  sweep of 44 seeded blanks it passes 2 the worker refuses, where the two
+  solvers land in different minima; and past 400 samples no preview is
+  drawn and Apply stays on. The worker's result is the one reported.
+- **Ion ratios on the card.** Under the readout each qualifier has a line:
+  the observed ratio against the expected one, where the expected one comes
+  from and the difference, with a pass or fail icon, for example "0.214
+  against 0.208 expected from 7 calibrators · +3 %". While a handle is
+  dragged the ratio previews with the area and S/N, from the previewed area
+  of the trace dragged and the stored area of the other. Where the
+  quantifier is fitted and a qualifier is not, the card says so. Before an
+  edit to an on-curve calibrator whose ratio feeds the expected value (the
+  method sets no fixed ratio), the card warns: "This calibrator's ratio
+  feeds the expected ion ratio: N samples will be checked again.", also for
+  Apply to all where it would touch one; no warning when no sample would be
+  checked again. After the run is processed, the Manual changes list notes
+  which samples changed verdict, the edit's own note compared against the
+  run as it stood just before that edit.
+- **Keys.** `?` lists every key in a panel. Ctrl+Z steps back through the
+  card's drawing and Ctrl+Y or Ctrl+Shift+Z forward; U still undoes the
+  saved edit. Ctrl+S applies to this injection. `+`, `-` and `0` zoom in,
+  out and to the whole window. Ctrl+Left and Ctrl+Right go to the previous
+  and next injection, Ctrl+Up and Ctrl+Down to the previous and next
+  compound, skipping a pair with no trace. Cmd works for Ctrl on a Mac, and
+  no key acts while a text box has the focus. The single letters, the
+  arrows, Delete, Enter, Escape and Page Up and Down are kept.
 - **The expected retention time.** The quantifier chart draws the compound's
   expected retention time on the method as a dashed line. The analyst drags
   it to the peak and releases: the time (the nearest stored sample, inside
@@ -431,16 +573,18 @@ time. The change log records who chose it, and when.
   the fewest points and from levels), so it replays with the numbers it had. Rows integrated from raw data are not read as
   export detections.
 - **Manual changes.** At the end of review a Manual changes panel lists
-  every edit of the run, with what the peak was and is. The analyst gives a
-  reason for each and initials once; submit is blocked until that is done.
+  every edit of the run, with what the peak was and is, and the reason and
+  comment given when it was made. The analyst initials once; submit is
+  blocked until that is done.
   At verify the verifier's Approve Release countersigns them all; the
   countersign is saved only once the worksheet is verified, so it names the
   person who released it. Initials need the preparer sign right in Lab
   Staff, and the countersign the reviewer sign right, as for the instrument
   report's records. The countersigner is neither the analyst who initialled
   nor anyone who edited the record since its last undo. An edit that is
-  undone, a peak left automatic, or an edit with no effect needs neither a
-  reason nor a signature; the panel lists the last as "No effect" with why,
+  undone or a peak left automatic needs no signature; an edit with no effect
+  keeps the reason and comment it was given when applied, and needs no
+  initials or countersign; the panel lists it as "No effect" with why,
   and the history keeps them all. An edit in the run's file that no change
   lists holds submit and release ("an edit has no record; undo it on the Raw
   Data tab"); an undo retried after its edit was already removed completes
@@ -470,6 +614,51 @@ time. The change log records who chose it, and when.
   reads "flat", the area method reads "trapezoid, manual line") without
   changing a number, except that on a method with a Gaussian or EMG area a
   stored manual edit's area becomes the trapezoid above its line.
+- **Deploying the second peak review round.** Back up first
+  (`python3 tools/backup/pfasbackup.py run --level quarterly`), and count
+  the results marked re-spiked or co-eluting whose qualifier entry would
+  now hold them. Merge it all the way to the
+  branch the live stack's checkout runs, first, running the full suite on
+  the merged sp-integration before it goes into review-fixes; stop the
+  worker in the main checkout, `~/Downloads/senaite_pfas` (`docker compose
+  stop pfas-worker`), before sp-integration goes into review-fixes: the live
+  stack mounts the review-fixes worktree, so from that merge on the worker
+  would read the new code with its old image. Right after that merge,
+  restart senaite, then nginx, in the main checkout, so the site's Python
+  matches the pages it serves. Then, in the live stack's
+  checkout,
+  rebuild the worker's image and start it (`docker compose build
+  pfas-worker`, then `docker compose up -d pfas-worker`; it is ready when its
+  log reads "Watching"): the round adds `threadpoolctl` to requirements.txt,
+  which the fit imports, and the build reads requirements.txt from that
+  checkout, so it must already hold the merge. Senaite and nginx were
+  restarted after the review-fixes merge (`docker compose restart senaite`,
+  then `docker compose restart nginx`). Run three migrations in the senaite container (the senaite
+  container runs the review-fixes worktree the override mounts
+  (`docker-compose.override.yml`), identical to main after the merge), each
+  a dry run first, read, then applied:
+  `src/senaite/pfas/migrations/method_revision_numbers.py` (dry unless
+  `--apply`; every existing revision then reads N.0 and opens its own PDF),
+  `integration_processing_entry.py` (dry unless `--apply`; no method then
+  shows unissued changes because of it) and `edd_estimate_codes.py`
+  (`--dry-run` first: it writes without the flag; each saved EDD profile's
+  qualifier map then lists CE and CF as J, a mapping the lab set unchanged).
+  A saved delimited EDD profile maps codes on its own Code maps: add CE and
+  CF there by hand. A result marked re-spiked is held at release until the
+  QA officer gives the re-spike qualifier a code. For the DEMO runs, enter
+  the DEMO fit limit with `tools/synth/demo_fit_limit.py --method <method>`
+  (dry, then `--confirm`; `--remove` takes it out). The supplied DEMO set's
+  stamps stay as they are: `tools/synth/demo_restamp.py` is not run for this
+  deploy (owner, 2026-11-26). Then process the raw runs again (above),
+  run `tools/ui_audit.py`, and walk the card as `tools/e2e/raw_capture.py`
+  does; check: on a submitted worksheet, the Manual changes, Processing
+  changes and Manual integration lines read "Ready to verify" once the
+  changes are initialled and listed, and "Not ready to verify: …" naming
+  what the reviewer must do first otherwise; Send refused with "The QC
+  Summary of worksheet … does not pass: …" while a qualifier entry is set to
+  block, and issued once it is set back; a republish of an older DEMO
+  certificate: issued, or refused with its QC Summary's reason if that fails
+  today.
 - **Instrument Report**: the raw folders, their files' checksums, what each
   injection was read as (the MassLynx folder, or an mzML) and how: read from
   the MassLynx folder, converted with msconvert, or both, with the number of

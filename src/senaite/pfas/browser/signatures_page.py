@@ -41,6 +41,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas.browser.perms import GateMixin, TIER_CONFIG
 from senaite.pfas.esig import canonical, ledger, signing
+from senaite.pfas.method_revisions import revision_text
 
 logger = logging.getLogger("senaite.pfas.browser.signatures_page")
 
@@ -403,6 +404,15 @@ def orphans(rows, portal, found=None, marks=None):
     return out
 
 
+def shown_revision(entry):
+    """The revision a ledger row names, as the register prints it: a batch
+    record's is its method revision, major.sub (an integer signed before
+    major.sub reads "N.0"); another record's as signed. The row keeps
+    the value as signed."""
+    rev = entry.get("revision")
+    return revision_text(rev) if entry.get("kind") == "batch_record" and rev is not None else rev
+
+
 def build_items(rows, marks, found, orphan_seqs, shown):
     """The rows as the page and the CSV show them. state is one word, the
     most telling: withdrawn, superseded, orphan, else sealed or unsealed;
@@ -424,7 +434,7 @@ def build_items(rows, marks, found, orphan_seqs, shown):
         rec = found.get((e.get("kind"), e.get("record_id"))) or {}
         out.append({
             "seq": r["seq"], "signed_at": _u(e.get("signed_at")), "kind": _u(e.get("kind")),
-            "record_id": _u(e.get("record_id")), "revision": e.get("revision"),
+            "record_id": _u(e.get("record_id")), "revision": shown_revision(e),
             "meaning": _u(e.get("meaning")), "signer": _u(signer.get("userid")),
             "fullname": _u(signer.get("fullname")), "record_hash": _u(e.get("record_hash")),
             "state": state, "sealed_at": _u(r.get("sealed_at")), "cert": _u(r.get("seal_cert")),

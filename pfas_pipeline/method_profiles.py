@@ -1709,7 +1709,8 @@ _REVISION_KEYS_WHEN_SET = ("engine", "mz_tolerance", "sensitivity", "shoulder_pc
                            "fit_max_dev_pct", "rt_anchor", "min_manual_change_pct", "min_manual_sn",
                            "edge_points", "min_peak_points", "edge_sigma", "drop_valley_max_pct",
                            "skim_ratio_pct", "search_slope", "search_amp_sn", "search_smooth_pct",
-                           "candidate_min_points", "candidate_min_fwhm_pct")
+                           "candidate_min_points", "candidate_min_fwhm_pct", "fit_noise_multiple",
+                           "fit_accept_score")
 # the limits on an analyst's manual change: not the engine's, a refusal of
 # the edit when it is made (raw_preview.edit_problem)
 _MANUAL_LIMITS = (("min_manual_change_pct", "a smallest manual change"),
@@ -1820,7 +1821,11 @@ def get_integration(method_id: str) -> dict:
     "partner", "expected_ion_ratio", "labelled", "panel": a native or isomer
     peak of the method's panel, "settings": the compound's
     own smooth_points, area, min_sn, sensitivity, min_qual_sn, rt_anchor,
-    min_manual_change_pct and min_manual_sn, those entered}}, "mode",
+    min_manual_change_pct and min_manual_sn, those entered, "processing":
+    the compound's processing entry, {"quant": change, "quals": {transition
+    label: change}} countersigned from a run (method_proposals), less
+    what the compound can no longer take (fitting_entry), {} for none}},
+    "mode",
     "revision", "mz_tolerance", "sn_confirm_min": the method's
     confirmation-ion limit, a qualifier's floor where its compound sets none
     (None when unset), "min_manual_change_pct", "min_manual_sn": the
@@ -1831,7 +1836,10 @@ def get_integration(method_id: str) -> dict:
     min_peak_points, edge_sigma, drop_valley_max_pct, skim_ratio_pct,
     search_slope, search_amp_sn, search_smooth_pct, candidate_min_points and
     candidate_min_fwhm_pct, each its default where unset; a compound's own,
-    entered, are in its "settings")}. Nothing is seeded
+    entered, are in its "settings")}, "fit_noise_multiple": the largest
+    residual of a fit of overlapping peaks, its RMS as a multiple of the
+    trace's baseline noise (None when unset: no fit is made; it has no
+    default). Nothing is seeded
     but the m/z tolerance and relative retention, unset meaning fixed: an unset setting of the engine, a fitted area
     under either engine without its largest fit deviation, or an analyte or labelled standard of
     the method with no transition, time and window, is refused, naming
@@ -1916,13 +1924,44 @@ def get_integration(method_id: str) -> dict:
                        "mode": row.get("mode") or "single", "partner": row.get("partner") or None,
                        "expected_ion_ratio": None if ratio in (None, "") else float(ratio),
                        "labelled": k in grid, "panel": k in on_panel,
-                       "settings": _compound_settings(k, row)}
+                       "settings": _compound_settings(k, row),
+                       # the processing changes countersigned from a run as the
+                       # method's own: applied where a run has none of its own;
+                       # one the compound can no longer take is left out, never
+                       # refusing the run (Data Review says so)
+                       "processing": load("method_proposals").fitting_entry(data, k)}
         # an isomer peak's partner comes from the Isomers tab; a branched
         # peak is the sum of the peaks in its window
         if k in partners:
             analytes[k]["partner"] = partners[k]
         if k in branched:
             analytes[k]["mode"] = "summed"
+    # the largest residual of a fit of overlapping peaks, in times the
+    # trace's baseline noise: the lab's, never a default
+    fit_limit = intg.get("fit_noise_multiple")
+    if _unset(fit_limit):
+        fit_limit = None
+    else:
+        try:
+            fit_limit = float(fit_limit)
+            if isinstance(intg["fit_noise_multiple"], bool) or not fit_limit > 0 or fit_limit == float("inf"):
+                raise ValueError(fit_limit)
+        except (TypeError, ValueError):
+            raise UnconfiguredCriterion(
+                "{0}: Integration has the largest fit residual {1!r}, which is not a number above 0.".format(
+                    method_id, intg.get("fit_noise_multiple")))
+    # the score a fit must reach to be accepted: whole, 1 to 100, or blank
+    # for the lab's. It only colours the review's badge and gates nothing, so
+    # a value that is not one reads as unset and is logged, never stopping
+    # the run
+    accept = intg.get("fit_accept_score")
+    if _unset(accept):
+        accept = None
+    else:
+        accept = load("fit_accept").whole(accept)
+        if accept is None:
+            logger.warning("%s: Integration has the score to accept a fit %r, which is not a whole number from 1 "
+                           "to 100: the lab's is used", method_id, intg.get("fit_accept_score"))
     # the rules for a dropped baseline, the method's and each compound's own
     review = load("raw_preview").review_limits
     try:
@@ -1952,7 +1991,8 @@ def get_integration(method_id: str) -> dict:
     stored = data.get("integration") or {}
     kept = dict((k, stored.get(k)) for k in _REVISION_KEYS)
     kept.update((k, stored[k]) for k in _REVISION_KEYS_WHEN_SET if not _unset(stored.get(k)))
-    kept["analytes"] = rows
+    # an empty processing entry is no setting: in the revision only when set
+    kept["analytes"] = load("method_proposals").without_empty_processing(rows)
     # the tolerance, as it reads, only when set: an unset method keeps its revision
     if tol is not None:
         kept["rt_window"] = list(tol)
@@ -1969,7 +2009,8 @@ def get_integration(method_id: str) -> dict:
     revision = hashlib.sha1(_json.dumps(kept, sort_keys=True).encode("utf-8")).hexdigest()[:8]
     return {"engine": engine, "method": settings, "analytes": analytes, "mode": intg.get("mode") or "vendor",
             "revision": revision, "mz_tolerance": float(intg["mz_tolerance"]), "sn_confirm_min": confirm,
-            "min_manual_change_pct": manual_change, "min_manual_sn": manual_sn, "review_rules": review_rules}
+            "min_manual_change_pct": manual_change, "min_manual_sn": manual_sn, "review_rules": review_rules,
+            "fit_noise_multiple": fit_limit, "fit_accept_score": accept}
 
 
 def integration_mode(method_id: str) -> str:

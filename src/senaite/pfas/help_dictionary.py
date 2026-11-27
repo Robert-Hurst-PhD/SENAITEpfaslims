@@ -93,7 +93,7 @@ _TAB = {
                         "reprocess"),
     "Review and release": ("data-review", "warnings-strip", "qc-standards-table", "publishing-holds", "above-range",
                            "no-number", "value-sources",
-                           "method-identified", "raw-review", "peak-asymmetry"),
+                           "method-identified", "raw-review", "processing-changes", "peak-fitting", "peak-asymmetry"),
     "Reporting": ("rounding", "rl", "non-detect", "qualifier-j", "qualifier-d", "reporting-format", "action-level",
                   "sample-subtypes", "reporting-template", "document-designs", "settings-report",
                   "report-tiers"),
@@ -277,7 +277,21 @@ ENTRIES = [
              "which you opened. A section's ? opens its Help entry in a panel beside "
              "the page, which stays open while you edit. The bar at the foot says what is unsaved on the tab, "
              "counted by kind (cells, tiers, rows, rules, settings), with Discard and "
-             "Save; the tab's name carries a dot until it is saved.",
+             "Save; the tab's name carries a dot until it is saved. "
+             "Issue revision, in a method's row menu on Method Profiles, freezes the method's "
+             "settings as a numbered revision with its PDF. Every revision is numbered major.sub, "
+             "and issuing chooses the level by comparing the settings with the last issued "
+             "revision. A change is major, 4.1 to 5.0, when it touches the analytes and panels: "
+             "the analyte set, the Method x Matrix inclusion, surrogate and isotope standard "
+             "links, transitions; the QC types and criteria: which types run, how often, every "
+             "acceptance limit or window, the studies required; or the calculation and reporting: "
+             "calibration model, factors, units, MDL and RL, regulatory comparisons, qualifier "
+             "rules. Anything else is sub, 4.0 to 4.1, the integration settings included: "
+             "engine, area, baseline, smoothing, windows, S/N, the fit limit and a compound's "
+             "processing from runs. A setting not classified is major. The issue dialog says "
+             "which level it will be and why. A revision issued before numbering reads N.0 and "
+             "keeps its PDF; where its settings cannot be rebuilt from the change history, the "
+             "next issue is major. The number reads major.sub wherever a revision is printed.",
      "where": [("Method Profiles", "@@pfas-method-profiles")],
      "who": "config",
      "effects": [
@@ -285,6 +299,9 @@ ENTRIES = [
          ("The sections you opened, kept per method and tab", P + "browser/static/method_profile_edit.js", "pfas.mp.sec."),
          ("The foot bar names what is unsaved", P + "browser/templates/method_profile_edit.pt", "'Unsaved changes in '"),
          ("A section's Help opens beside the page", P + "browser/static/pfas-components.js", "function openHelp(btn)"),
+         ("What makes a revision major", P + "revision_level.py", "MAJOR = dict("),
+         ("What makes a revision sub", P + "revision_level.py", "SUB = {"),
+         ("A revision reads major.sub", P + "method_revisions.py", "def label(rec):"),
      ]},
     {"id": "recovery-tiers", "term": "Recovery tiers",
      "text": "The recovery windows per QC type, by analyte group (regulated analytes, "
@@ -391,19 +408,23 @@ ENTRIES = [
              "Manual Changes, read with the import profile's markers) or from the "
              "report, justified with a reason, signed by the analyst and then a "
              "different reviewer, and its before and after pages are stamped. That is the "
-             "vendor flow and it is unchanged. An edit made on the Raw Data tab is signed "
-             "differently: it needs no reason when it is made, and its reasons and the "
-             "analyst's initials are given once, in the Manual changes panel at the end of "
+             "vendor flow and it is unchanged. An edit made on the Integration Review tab is signed "
+             "differently: its reason and a comment are given when it is made, the analyst's "
+             "initials once, in the Manual changes panel at the end of "
              "review, then a different person countersigns at verify; the panel names the line each "
              "edit used, valley to valley, perpendicular drop, flat baseline or tangent skim, and "
-             "any levels set by hand. Every page "
+             "any levels set by hand. Once the worksheet is submitted, the lines above the Manual "
+             "changes and Processing changes lists and on the Manual integration page judge the "
+             "release: they read Ready to verify, or Not ready to verify and the first thing the "
+             "reviewer must still do; the countersignature is given by approving the release. Every page "
              "of the report carrying the lab's heading (found by scanning the report on "
              "upload) must be listed or dismissed with a reason, countersigned. Never to make QC pass (a state accreditation programme's manual-integration guidance).",
      "where": [("Import Studio", "@@pfas-import-studio"), ("Data Review", "@@pfas-data-review"),
                ("Reasons", "@@pfas-mi-reasons")],
      "who": "bench",
      "effects": [
-         ("Raw Data edits are initialled once at the end of review", P + "manual_integration.py", "the analyst's initials"),
+         ("Integration Review edits are initialled once at the end of review", P + "manual_integration.py", "the analyst's initials"),
+         ("Once submitted, the lines judge the release", P + "manual_integration.py", "def readiness_phase("),
          ("Blocks the Instrument Report gate until complete", P + "browser/data_review.py", "if not self.mi_gate()[0]:"),
          ("Reviewer must not be the analyst; an edit clears signatures", P + "manual_integration.py", "the reviewer must not be the analyst"),
          ("The stamp never covers the report", "tools/pdfme/server.mjs", "page.translateContent(0, strip);"),
@@ -415,6 +436,76 @@ ENTRIES = [
          ("Decided once, with the import profile's markers", W + "importer.py", "_mi.is_manual(r.get(\"manual_changes\"), _mi_markers)"),
          ("Stored per result", W + "injection_store.py", "manual_raw,manual_integration"),
      ]},
+    {"id": "processing-changes", "term": "Apply to all and processing changes",
+     "text": "Apply to all N injections, beside Apply to this injection on the peak card, makes "
+             "the change the compound's processing for this run: calibrators, QC and samples "
+             "alike, the curve fitted again. It asks no comment and marks no chromatogram: the "
+             "peak stays an automatic one, teal. What carries to the other injections is the "
+             "baseline and the edges as distances from each injection's own apex, never the same "
+             "clock times; levels set by hand stay with the injection they were set on, so a "
+             "change with them offers Apply to this injection only. Before applying, the card "
+             "says which injections cannot take the change and why, for example one with no peak "
+             "or too few points, and those stay automatic. A peak already changed by hand keeps "
+             "its manual change, and the card says how many. Another apex and a delete are never "
+             "applied to all, and Apply to all is for a single peak. On an isotope standard it "
+             "asks the same confirmation as a delete, naming the natives it quantifies. Every "
+             "such change is listed under Processing changes on the Overview tab, with who, when, "
+             "before and after; the analyst may undo it while the worksheet is open. A fit "
+             "applied to all injections is a major change: the person who releases the "
+             "worksheet countersigns it and may not be the one who made it. Moving edges or "
+             "changing the baseline is not countersigned. Submit and release wait while a change "
+             "in the run's processing file has no record, or a record's change is missing from "
+             "it. A manager may propose a listed change for the method, from its row menu: the "
+             "proposal waits on the method's Integration section, under Proposed from a run, and "
+             "the profile is unchanged until a different manager or QA officer countersigns it, "
+             "which saves it as the compound's own processing and issues a sub revision naming "
+             "the run. The maker may withdraw it and the countersigner refuse it, each with a "
+             "reason. A countersign is refused while the method has other changes not yet issued.",
+     "where": [("Data Review", "@@pfas-data-review"), ("Method Profiles", "@@pfas-method-profiles")],
+     "who": "bench",
+     "effects": [
+         ('Listed under Processing changes', P + 'browser/data_review.py', 'Processing changes on the Overview tab.'),
+         ('Levels set by hand stay with one injection', P + 'browser/static/raw_data.js', 'Levels set by hand apply to this injection only.'),
+         ('An injection that cannot take the change is skipped and named', P + 'raw_review.py', 'SKIP_NO_APEX = '),
+         ('A major change is countersigned at release', P + 'manual_integration.py', 'def countersign_processing('),
+         ('Proposed for the method', P + 'browser/data_review.py', 'Propose for the method'),
+         ('Refused while other changes wait to be issued', P + 'method_proposals.py', 'The method has changes not yet issued: issue them first.'),
+     ]},
+    {"id": "peak-fitting", "term": "Fitting overlapping peaks",
+     "text": "Fit overlapping peaks, in the peak card's menu, separates a peak from a matrix "
+             "interference that overlaps it. The analyst clicks each apex, two or three, between "
+             "the edges, chooses Gaussian or EMG and applies; the peak nearest the compound's "
+             "expected retention time is reported to begin with, and a click picks another. The "
+             "peaks are fitted together by iterative least squares over the span, on one straight "
+             "baseline. The card previews the fit in the browser, each peak dashed, the reported "
+             "one filled, the leftover under the chart, with an approximate 95 % interval; a span "
+             "of more than 400 samples is not previewed and is checked when the run is processed. "
+             "The worker's fit is the reported value: it fits again about 200 times with the "
+             "fit's own leftovers shuffled back onto it and reports the middle 95 % of the areas. "
+             "A fit is refused when it does not converge, a fitted peak collapses, too few of the "
+             "refits converge, the interval is wider than the area, or the leftover's RMS over "
+             "the span is more than the method's Largest fit residual, times the baseline noise, "
+             "a setting on its Integration tab with no default: until it is set the card says to "
+             "set it and nothing is fitted. A reported peak under the method's detection S/N "
+             "reads not detected. An isotope standard's peak is never fitted. A fit on one "
+             "injection is a manual change, amber and commented; a fit applied to all injections "
+             "is a major processing change, placed from each injection's expected time and "
+             "countersigned at release. A result whose quantifier was fitted carries the Fitted "
+             "estimate qualifier, a draft code CF in QC Qualifiers for the QA officer to approve, "
+             "on the certificate legend and in the EDD; a qualifier alone fitted is named in the "
+             "value's record, not on the certificate. The fit's peaks, interval and leftover are "
+             "kept in the edit's record, so the value can be reproduced.",
+     "where": [("Data Review", "@@pfas-data-review"), ("Integration tab", "@@pfas-method-profiles")],
+     "who": "bench",
+     "effects": [
+         ('The menu entry', P + 'browser/static/raw_data.js', 'Fit overlapping peaks'),
+         ("The card's preview is approximate", P + 'browser/static/raw_data.js', 'approximate 95 % interval'),
+         ('A long span is checked when the run is processed', P + 'browser/static/raw_data.js', 'Too long to preview: the fit is checked when the run is processed.'),
+         ('The reported interval is resampled', W + 'raw_integrate.py', 'FIT_RESAMPLES = 200'),
+         ('The limit is a multiple of the noise', P + 'raw_review.py', 'FIT_RESIDUAL = '),
+         ('No default: the lab sets the limit', P + 'method_profile_sections.py', 'Largest fit residual, times the baseline noise'),
+         ('The Fitted estimate qualifier', P + 'qc_qualification.py', 'u"Fitted estimate",                     QUALIFY, u"CF"'),
+     ]},
     {"id": "adaptive-integration", "term": "Adaptive integration and the raw peak card",
      "text": "The Adaptive engine follows the peak-finding method published by Nagura Lab "
              "(naguralab.com/integration), re-implemented from its description. The noise is "
@@ -425,7 +516,7 @@ ENTRIES = [
              "baseline split by drop lines. Each peak is measured for its width at half height, "
              "its tailing and its plates. Every peak, under either engine, is measured for its "
              "asymmetry factor at 10 % of its height above its baseline, the back half's width "
-             "over the front half's (EPA 537.1 §9.3.9). On Data Review's Raw Data tab each "
+             "over the front half's (EPA 537.1 §9.3.9). On Data Review's Integration Review tab each "
              "analyte's card names its Engine, Classic when the peak says none, and shows, where "
              "the peak has them, the Qualifier S/N, FWHM in seconds, Tailing, Asymmetry, or why it "
              "was not measured, Plates, Smoothing as the number "
@@ -787,88 +878,170 @@ ENTRIES = [
      ]},
     {"id": "raw-review",
      "term": "Editing raw traces",
-     "text": "Data Review's Raw Data tab shows every chromatogram of the run as a small thumbnail, by "
-             "compound, one analyte across every injection, or by injection, every analyte of one "
-             "injection. Click a thumbnail to open its card in a dialog. The card shows the Quantifier "
-             "and Qualifier switch, the trace with its zoom tools, a readout of "
-             "area, retention time, S/N, ion ratio, concentration with its unit and how the peak was "
-             "integrated, the flags as chips, and Details for the engine, smoothing, FWHM, tailing, "
-             "plates and the file's transition. Previous and Next, or PageUp and PageDown, walk the "
-             "grid without closing the dialog and ask first when a change is not applied. "
-             "A peak is edited on the chart. The baseline is drawn as a line with a hollow handle at "
-             "each end. Drag a handle sideways to move that edge to the nearest sample. Drag it up or "
-             "down to set that end's level by hand, within the trace's counts; hold Shift, or "
-             "double-click the handle, to put the level back on the signal. Drag the line itself to "
-             "move both edges together. A right-click on the chart, the Actions button and the menu "
-             "key open the same menu: Set start here, Set end here, Drop baseline here, Baseline, "
-             "Peaks found, Add peak at cursor, Split at cursor, Delete peak, Undo edit, Restore "
-             "automatic, Set as expected retention time, Zoom to peak, Zoom to window and Copy "
-             "values. The dashed line is the compound's expected retention time on the method: drag "
-             "it to the peak and release, and the method takes the new time at once, the card says "
-             "what was set and Next takes the focus; the menu entry takes the quantifier's own "
-             "apex. The time must lie in every trace of the compound. An entry that cannot act is "
-             "shown with the reason, and each entry's key is shown beside it. The wheel zooms the time "
-             "axis and dragging the axis pans it. Above the chart, the magnifiers zoom in and out, the "
-             "dashed box zooms to a box dragged on the chart, and the corners go back to the whole "
-             "window; zoomed, the counts fit what is shown. "
-             "The baseline has four modes. Valley to valley joins the two edge levels, the line for a "
-             "peak that stands clear. Perpendicular drop draws one line under a pair of touching "
-             "peaks, from the outer edge of the pair, and measures each peak above it; it applies "
-             "where a neighbouring peak shares the valley. Tangent skim is for a small rider on the "
-             "tail of a tall peak: the line runs from the signal at the rider's start to the signal at "
-             "its end, so the tall peak's tail is not counted in the rider. Flat at the lower edge is "
-             "a horizontal line at the lower of the two edge levels. Where no neighbour is found a "
-             "drop is the valley line, and the menu says so. A level set by hand replaces the level "
-             "its mode reads: the line between the two levels for valley and skim, flat at the lower "
-             "of them for flat, and the line's value at the pair's outer edges for a drop. Whatever "
-             "the method's area setting, a manual edit's area is the trapezoid of the signal above the "
-             "line the analyst chose. "
-             "Peaks found lists the other peaks the worker found in the window, each with its time, "
-             "area and S/N, and a click chooses one. Another apex is chosen only on a single peak, and "
-             "it names the peak whose own apex it is. A candidate is offered only when at least the "
-             "method's Fewest points in a candidate of its raw samples stand at or above half its "
-             "height, 3 by default, and its width is at least Smallest candidate width of the "
-             "automatic peak's, 40 % by default, so a fragment on a tall peak's tail is not offered. "
-             "At coarse sampling a narrow real peak can fall under it: lower the value for that "
-             "compound or set the edges by hand. The choice is judged on the candidate's own area "
-             "against the automatic peak's stored area. Add peak at cursor searches from the cursor "
-             "for a peak above the compound's Peak search amplitude and fills in its edges; Split at "
-             "cursor cuts the automatic peak at the cursor with a perpendicular drop, where a "
-             "neighbour lies across it. Both are re-integrations. "
-             "The card previews the new peak with the worker's own arithmetic and refuses an edit in "
-             "the worker's words when its area is less than Smallest manual change from the automatic "
-             "area, when its S/N is under Smallest S/N for a manual peak, when it holds fewer points "
-             "between its edges than the method's Fewest points in a peak, when a level set by hand "
-             "lies outside the trace's range, or when a perpendicular drop or tangent skim reads past "
-             "the part of the trace kept at full resolution. Two of these are judged on the same edit "
-             "in that order: the levels, then the fewest points. A valley above the method's Valley "
-             "limit for a perpendicular drop, a skim above its Tangent skim ratio, and an edge nearer "
-             "its apex than the method's Edges past the tail are noted as chips, never refused. A "
-             "deleted peak is exempt from the first rule. A trace stored before the run was last "
-             "processed may ask for the run to be processed again before a drop or skim can be "
-             "measured on it. "
-             "A deleted quantifier makes the analyte N.D.; a deleted qualifier makes the result N.C. "
-             "on every run, a dilution too, whatever the S/N rule; and the ion ratio is taken from the qualifiers "
-             "left. A qualifier is read only beside a quantifier peak, so a qualifier edit is refused "
-             "while the quantifier has none, and one made before reads No effect, saying why, and asks "
-             "no reason or signature. An edit the run cannot make, such as levels off the trace or a "
-             "span too short to measure, is kept the same way. Deleting an isotope standard's peak "
-             "asks for a confirmation that names the natives that lose their concentration, which then "
-             "read N.Q., not quantified, and takes "
-             "that injection's calibrators off the curve. An edit needs no reason when it is made, and "
-             "the card shows it as waiting until the run is processed again; submit and release wait "
-             "until it has been. At the end of review the Manual changes panel lists every edit with "
-             "the line and levels it used: the analyst gives a reason for each and initials once, and "
-             "the verifier's Verify countersigns them, saved only once the worksheet is "
+     "text": "Data Review's Integration Review tab shows every chromatogram of the run as a bare card: "
+             "the thumbnail, the compound's name and its state icon, and nothing else. The cards are in "
+             "three sections, Analytes, Surrogates and Internal standards, each heading counting its "
+             "failed, warning, manual and not detected cards, with a jump button to each section above "
+             "them. A labelled compound is a surrogate or an internal standard by its role in the method "
+             "profile's isotope standards list; a labelled compound the grid does not list goes under "
+             "Surrogates, and every other compound is an analyte. By compound shows one analyte across "
+             "every injection; by injection shows every analyte of one injection. The Sort and filter "
+             "menu sorts A to Z or Action required first, and shows All, Action required only, Detected, "
+             "Not detected or Integrated by hand. The tabs a worksheet shows follow its results mode: "
+             "Validation shows Integration Review, Instrument Report and Comparison; Instrument software "
+             "shows Instrument Report only; LIMS integration shows Integration Review only. While the "
+             "worker processes the run, the tab stays and a band under the strip shows a looping ring, "
+             "Processing run, the start time and an estimate; the page updates itself when the run is "
+             "done, and the Overview carries one line with a button to the tab. Click a card to open its "
+             "peak window, nearly the full screen. The chart is on the left, with one label box by the "
+             "apex giving its retention time and area. The pane on the right is in groups: Result, Peak, "
+             "Integration, Smoothing, Signal and Source. The Details button hides the pane and the label "
+             "so the chart takes the width; under 900 px the pane drops below the chart. The values the "
+             "method judges, retention time, asymmetry, S/N, qualifier S/N and ion ratio, are tinted "
+             "pass, warning or fail where the method sets a limit, and read aloud as words; a value with "
+             "no limit is plain. The Quantifier and Qualifier switch chooses the trace, the flags are "
+             "chips, and Details also holds the engine and the file's transition. Previous and Next, or "
+             "PageUp and PageDown, walk the grid without closing the dialog and ask first when a change "
+             "is not applied. A peak is edited on the chart. Drag on empty chart to draw a dashed box and "
+             "zoom to it; a click under 4 px does not zoom but sets an apex while the fit tool is on. "
+             "Double-click empty chart for the whole window. The wheel zooms the time axis, and the axes "
+             "are titled Intensity (counts) and Retention time (min). The baseline is drawn as a line "
+             "with a hollow handle at each end. Each handle moves freely in time and in level together "
+             "and snaps to the trace within a few pixels, with a tall grab band to catch it; hold Shift, "
+             "or double-click the handle, to put the level back on the signal. With a perpendicular drop, "
+             "the drop line is a vertical line to drag: it moves the edge the two peaks share, for both "
+             "peaks at once, each listed as its own manual change; where the partner is not known on the "
+             "card, it moves this peak only and the hint says so. The Start RT and End RT boxes, the "
+             "handles and the drop line stay in step whichever is moved. Drag the line itself to move "
+             "both edges together. A right-click on the chart, the Actions button and the menu key open "
+             "the same menu: Set start here, Set end here, Drop baseline here, Baseline, Peaks found, Add "
+             "peak at cursor, Split at cursor, Delete peak, Undo edit, Restore automatic, Set as expected "
+             "retention time, Zoom to peak, Zoom to window and Copy values. The dashed line is the "
+             "compound's expected retention time on the method: drag it to the peak and release, and the "
+             "method takes the new time at once, the card says what was set and Next takes the focus; the "
+             "menu entry takes the quantifier's own apex. The time must lie in every trace of the "
+             "compound. An entry that cannot act is shown with the reason, and each entry's key is shown "
+             "beside it. Dragging the axis pans it. Above the chart, the magnifiers zoom in and out and "
+             "the corners go back to the whole window; zoomed, the counts fit what is shown. The "
+             "Integration group starts with the score, 0 to 100, a judgement of the fit alone: both edges "
+             "back to the baseline within the noise, no rise or shoulder inside the window, asymmetry in "
+             "range, S/N above the method's floor, a small baseline slope, an apex that is not jagged, "
+             "and for the Gaussian and EMG fits the residual against the noise. It reads no QC outcome. "
+             "The badge is passing at or above the method's Score to accept a fit, blank meaning the "
+             "lab's default, and warning below it; its arrow opens the breakdown by check, each with its "
+             "points against the total. The score only colours the badge: it feeds no count, no gate and "
+             "no QC rule. The worker scores the fitting methods when it processes a run, so a run "
+             "processed before the scores existed shows a dash until it is processed again. The fits "
+             "stepper, left and right arrows beside the fitting method's name, goes through valley to "
+             "valley, perpendicular drop, flat, tangent skim, Gaussian and EMG, with the score following "
+             "the fit shown. A fit shown is a preview; it becomes the peak's integration only through "
+             "Apply to this injection or Apply to all, and a Gaussian or EMG fit only inside the method's "
+             "fit limit. The Smoothing group is Low, Mid or High. Mid is the compound's own setting, Low "
+             "is one step narrower and High about double; Low is off when Mid is already 5 points, and no "
+             "step is offered for a compound with no learned width under Adaptive auto. Changing it "
+             "previews it on this peak and shows no score. Apply to this injection with another smoothing "
+             "asks Change the smoothing for this compound: smoothing cannot be kept for one injection, so "
+             "applying it refits every peak of the compound in the run, and the question says how many "
+             "peaks integrated by hand keep their edges. Apply to all applies at once with no question. A "
+             "pair or summed compound cannot take it. The change is listed under Processing changes, "
+             "countersigned at release, and can be saved to the method as a new revision. Back to "
+             "automatic, left of Apply to this injection, returns the peak to the system's default. The "
+             "baseline has four modes. Valley to valley joins the two edge levels, the line for a peak "
+             "that stands clear. Perpendicular drop draws one line under a pair of touching peaks, from "
+             "the outer edge of the pair, and measures each peak above it; it applies where a "
+             "neighbouring peak shares the valley. Tangent skim is for a small rider on the tail of a "
+             "tall peak: the line runs from the signal at the rider's start to the signal at its end, so "
+             "the tall peak's tail is not counted in the rider. Flat at the lower edge is a horizontal "
+             "line at the lower of the two edge levels. Where no neighbour is found a drop is the valley "
+             "line, and the menu says so. A level set by hand replaces the level its mode reads: the line "
+             "between the two levels for valley and skim, flat at the lower of them for flat, and the "
+             "line's value at the pair's outer edges for a drop. Whatever the method's area setting, a "
+             "manual edit's area is the trapezoid of the signal above the line the analyst chose. Peaks "
+             "found lists the other peaks the worker found in the window, each with its time, area and "
+             "S/N, and a click chooses one. Another apex is chosen only on a single peak, and it names "
+             "the peak whose own apex it is. A candidate is offered only when at least the method's "
+             "Fewest points in a candidate of its raw samples stand at or above half its height, 3 by "
+             "default, and its width is at least Smallest candidate width of the automatic peak's, 40 % "
+             "by default, so a fragment on a tall peak's tail is not offered. At coarse sampling a narrow "
+             "real peak can fall under it: lower the value for that compound or set the edges by hand. "
+             "The choice is judged on the candidate's own area against the automatic peak's stored area. "
+             "Add peak at cursor searches from the cursor for a peak above the compound's Peak search "
+             "amplitude and fills in its edges; Split at cursor cuts the automatic peak at the cursor "
+             "with a perpendicular drop, where a neighbour lies across it. Both are re-integrations. The "
+             "card previews the new peak with the worker's own arithmetic and refuses an edit in the "
+             "worker's words when its area is less than Smallest manual change from the automatic area, "
+             "when its S/N is under Smallest S/N for a manual peak, when it holds fewer points between "
+             "its edges than the method's Fewest points in a peak, when a level set by hand lies outside "
+             "the trace's range, or when a perpendicular drop or tangent skim reads past the part of the "
+             "trace kept at full resolution. Two of these are judged on the same edit in that order: the "
+             "levels, then the fewest points. A valley above the method's Valley limit for a "
+             "perpendicular drop, a skim above its Tangent skim ratio, and an edge nearer its apex than "
+             "the method's Edges past the tail are noted as chips, never refused. A deleted peak is "
+             "exempt from the first rule. A trace stored before the run was last processed may ask for "
+             "the run to be processed again before a drop or skim can be measured on it. A deleted "
+             "quantifier makes the analyte N.D.; a deleted qualifier makes the result N.C. on every run, "
+             "a dilution too, whatever the S/N rule; and the ion ratio is taken from the qualifiers left. "
+             "A qualifier is read only beside a quantifier peak, so a qualifier edit is refused while the "
+             "quantifier has none, and one made before reads No effect, saying why; it keeps the reason "
+             "and comment it was applied with and asks no initials or countersign. An edit the run cannot "
+             "make, such as levels off the trace or a span too short to measure, is kept the same way. "
+             "Deleting an isotope standard's peak asks for a confirmation that names the natives that "
+             "lose their concentration, which then read N.Q., not quantified, and takes that injection's "
+             "calibrators off the curve. A change to one injection is applied with Apply to this "
+             "injection, Ctrl+S or Enter, which opens a box beside the buttons: the reason from the lab's "
+             "list and a comment, both required. The card stays open, says Saved. Processing the run "
+             "again and updates itself, with the grid behind it, once the run has been processed; submit "
+             "and release wait until it has been. A peak changed by hand for one injection is filled "
+             "amber, with the automatic peak's edges and line as a dashed grey outline, on the card, its "
+             "thumbnail and the Manual changes list. At the end of review the Manual changes panel lists "
+             "every edit with the line, levels, reason and comment it was given: the analyst initials "
+             "once, and the verifier's Verify countersigns them, saved only once the worksheet is "
              "verified. Initials need the preparer sign right in People & Roles and the countersign the "
-             "reviewer sign right, and both a signature on file. The verifier cannot be the analyst who initialled, or anyone who "
-             "edited the peak since its last undo. An edit in the run's file that no change lists "
-             "holds submit and release until it is undone. A method can also set Most calibrators "
-             "dropped: more manual deletions than that on one analyte's curve fails its calibration "
-             "check, and the Calibration tab names the levels and holds Approve.",
+             "reviewer sign right, and both a signature on file. The verifier cannot be the analyst who "
+             "initialled, or anyone who edited the peak since its last undo. An edit in the run's file "
+             "that no change lists holds submit and release until it is undone. A method can also set "
+             "Most calibrators dropped: more manual deletions than that on one analyte's curve fails its "
+             "calibration check, and the Calibration tab names the levels and holds Approve. By injection "
+             "lists the run's injections beside the grid in the order they were acquired, each with its "
+             "place in the sequence, time, name, sample type and the most serious state of its cards: "
+             "failed, the diamond with the number of failed checks named on hover or focus; manual; "
+             "waiting; then passed. Where the clock order disagrees with the sequence the list says so. "
+             "Each card carries its state icon at its top right. The card opens on the peak and a peak "
+             "width either side. Under Signal, the Ion ratio row is tinted by the method's tolerance, "
+             "each qualifier has an Expected ion ratio row under it, and the ratio follows a handle while "
+             "it is dragged. Before a change to a calibrator whose ratio feeds the expected ion ratio, "
+             "the card says how many samples will be checked again, and after the run is processed the "
+             "Manual changes list names the samples whose verdict changed. Ctrl+Z and Ctrl+Y step back "
+             "and forward through the drawing; U still undoes the saved edit. Ctrl+Left and Right walk "
+             "the injections, Ctrl+Up and Down the compounds, + and - zoom, 0 shows the whole window, and "
+             "? lists every key; Cmd works for Ctrl on a Mac, and no key acts while a text box has the "
+             "focus. Apply to all and the fit tool have their own entries. ",
      "where": [("Data Review", "@@pfas-data-review")],
      "who": "bench",
      "effects": [
+         ('A change to one injection takes a reason and a comment', P + 'browser/data_review.py', 'COMMENT_TEXT'),
+         ('The card applies without leaving the page', P + 'browser/static/raw_data.js', 'Saved. Processing the run again'),
+         ("The tab's sections and the jump buttons", P + "browser/static/raw_data.js", "raw-jumps"),
+         ("Sort and filter", P + "browser/static/raw_data.js", "Sort and filter"),
+         ("Sort by action first", P + "browser/static/raw_data.js", "Action required first"),
+         ("Show integrated by hand", P + "browser/static/raw_data.js", "Integrated by hand"),
+         ("The tabs follow the results mode", P + "browser/data_review.py", "Validation lists Integration Review, Instrument"),
+         ("The processing band", P + "browser/templates/data_review.pt", "pfas-busy-line"),
+         ("Double-click shows the whole window", P + "browser/static/raw_data.js", "Double-click for the whole window."),
+         ("The axis titles", P + "browser/static/raw_data.js", "Intensity (counts)"),
+         ("The drop line moves both peaks", P + "browser/static/raw_data.js", "The drop line moves the shared edge of both peaks."),
+         ("The score breakdown", P + "browser/static/raw_data.js", "Score breakdown"),
+         ("Score to accept a fit", P + "method_profile_sections.py", "Score to accept a fit"),
+         ("The drop-line RT row", P + "browser/static/raw_data.js", "Drop-line RT"),
+         ("The smoothing question", P + "browser/static/raw_data.js", "Change the smoothing for "),
+         ("Smoothing is kept for the whole compound", P + "browser/static/raw_data.js", "Smoothing cannot be kept for one injection."),
+         ("Peaks integrated by hand keep their edges", P + "browser/static/raw_data.js", "keep their edges."),
+         ("Back to automatic", P + "browser/static/raw_data.js", "Back to automatic"),
+         ("Expected ion ratio", P + "browser/static/raw_data.js", "Expected ion ratio"),
+         ('The injections in the order they were acquired', P + 'raw_review.py', 'Acquired out of sequence order: '),
+         ('The ion-ratio line under the readout', P + 'browser/static/raw_data.js', 'expected from'),
+         ("A calibrator's ratio feeds the expected ion ratio", P + 'browser/static/raw_data.js', "This calibrator's ratio feeds"),
+         ('Every key, listed', P + 'browser/static/raw_data.js', 'Show these keys'),
          ('The overview is by compound or by injection', P + 'browser/static/raw_data.js', 'By compound'),
          ('The baseline handles and the menu', P + 'browser/static/raw_data.js', 'Drop baseline here'),
          ('The four baselines', P + 'browser/static/raw_data.js', 'Flat at the lower edge'),
@@ -899,7 +1072,7 @@ ENTRIES = [
          ('An edit with no effect asks nothing', P + 'manual_integration.py', 'less those the run could not apply'),
          ('Sign rights from People & Roles', P + 'manual_integration.py', 'sign right in People & Roles, so does not'),
          ('The countersign is saved once verified', P + 'browser/data_review.py', 'self._countersign_raw_changes(ws, save=True)'),
-         ('An edit with no record holds the release', P + 'manual_integration.py', 'an edit has no record; undo it on the Raw Data tab'),
+         ('An edit with no record holds the release', P + 'manual_integration.py', 'an edit has no record; undo it on the Integration Review tab'),
      ]},
     {"id": "spike-levels", "term": "Spike levels",
      "text": "The concentration a spiked QC sample is fortified at, per level (Low, "
@@ -1167,7 +1340,9 @@ ENTRIES = [
              "identified method, no issued reporting template, no issued certificate "
              "layout, no laboratory address, or a run whose "
              "surrogate / internal-standard verdicts are missing, unrounded or judged "
-             "under another rule. A sample with no run at all is not held.",
+             "under another rule. A sample with no run at all is not held. Issue also asks the "
+             "QC Summary again at that moment: a hold that applies now, such as a qualifier set to "
+             "block after release, refuses the issue with its reason, as Approve Release would.",
      "where": [("Data Review", "@@pfas-data-review"), ("Reporting Template", "@@pfas-report-template")],
      "who": "system",
      "lists": ["publish_holds"],
@@ -1177,6 +1352,7 @@ ENTRIES = [
          ("Certificate layout issued", P + "browser/guards.py", "class CertificateLayoutGuard"),
          ("Laboratory address set", P + "browser/guards.py", "class LabAddressGuard"),
          ("Surrogate / internal-standard verdicts", P + "browser/guards.py", "class QCStandardsGuard"),
+         ("A QC hold at the moment of issue", P + "browser/controlled_publications.py", "def qc_hold_refusal("),
      ]},
     {"id": "reprocess", "term": "Reprocess a run",
      "text": "Import the run's instrument file again so the pipeline re-judges it with "

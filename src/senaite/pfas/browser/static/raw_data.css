@@ -1,4 +1,4 @@
-/* Data Review's Raw Data tab: the view switch, the list down the left, the
+/* Data Review's Integration Review tab: the view switch, the list down the left, the
    chromatograms as a grid of thumbnail buttons, and the card in the centred
    dialog with its edits; colour from tokens only. */
 .raw-banner { margin:0 0 var(--sp-3); padding:var(--sp-2) var(--sp-3); border:1px solid var(--s-warn-bd);
@@ -8,11 +8,40 @@
 .raw-list { display:flex; flex-direction:column; gap:4px; max-height:75vh; overflow-y:auto; }
 .raw-list .btn-sm[aria-current="true"] { border-color:var(--s-primary); color:var(--s-primary-dk); }
 .raw-list .raw-type { color:var(--s-secondary); font-size:var(--fs-xs); margin-left:6px; }
+.raw-side { display:flex; flex-direction:column; gap:var(--sp-2); min-width:0; }
+.raw-order-warning { margin:0; padding:var(--sp-2) var(--sp-3); border:1px solid var(--s-warn-bd); border-radius:var(--radius);
+                     background:var(--s-warn-lt); color:var(--s-warn-text); font-size:var(--fs-sm); }
+.raw-li-fail { display:inline-flex; align-items:center; gap:2px; }
+.raw-li-count { font-size:var(--fs-xs); }
+.raw-li { display:flex; align-items:center; gap:var(--sp-2); text-align:left; }
+.raw-li-pos, .raw-li-time { color:var(--s-secondary); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; }
+.raw-li-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.raw-li-status { display:inline-flex; align-items:center; margin-left:auto; }
+.raw-split.is-compact { grid-template-columns:120px minmax(0, 1fr); }
+.raw-split.is-compact .raw-li-time, .raw-split.is-compact .raw-li-name, .raw-split.is-compact .raw-type .pfas-type-cell > span { display:none; }
+.raw-thumb-head { display:flex; align-items:center; justify-content:space-between; gap:var(--sp-2); min-width:0; }
+.raw-thumb-status { position:absolute; top:var(--sp-2); right:var(--sp-2); display:inline-flex; padding:2px;
+                    background:var(--s-bg); border-radius:var(--radius); }
 .raw-dropped { margin:0 0 var(--sp-2); font-size:var(--fs-sm); color:var(--s-danger-dk); }
+
+/* the grid in sections: a heading with its counts, then its thumbnails; the jump buttons above them */
+.raw-sections { display:flex; flex-direction:column; gap:var(--sp-4); min-width:0; }
+.raw-section { min-width:0; scroll-margin-top:var(--sp-3); }
+.raw-section-head { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2) var(--sp-3); margin:0 0 var(--sp-2);
+                    padding-bottom:var(--sp-1); border-bottom:1px solid var(--s-border); font-size:var(--fs-sm);
+                    font-weight:var(--fw-strong); letter-spacing:.06em; text-transform:uppercase; }
+.raw-section-sum { display:inline-flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-3); font-weight:var(--fw-body);
+                   letter-spacing:0; text-transform:none; color:var(--text-muted); }
+.raw-section-count { display:inline-flex; align-items:center; gap:var(--sp-1); }
+.raw-jumps { display:flex; flex-wrap:wrap; gap:var(--sp-2); margin:0 0 var(--sp-3); }
+.raw-jump { display:inline-flex; align-items:center; gap:var(--sp-1); }
+.raw-jump-n { color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.raw-list-head { margin:var(--sp-2) 0 0; font-size:var(--fs-xs); font-weight:var(--fw-strong); letter-spacing:.06em;
+                 text-transform:uppercase; color:var(--text-muted); }
 
 /* the thumbnails: each a button holding an inline SVG */
 .raw-thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
-.raw-thumb { display:flex; flex-direction:column; gap:2px; min-width:0; padding:6px 8px; text-align:left;
+.raw-thumb { position:relative; display:flex; flex-direction:column; gap:2px; min-width:0; padding:6px 8px; text-align:left;
              font:inherit; color:var(--text); background:var(--s-bg); border:1px solid var(--s-border);
              border-radius:var(--radius); cursor:pointer; }
 .raw-thumb:hover { border-color:var(--s-primary); }
@@ -22,11 +51,23 @@
 .raw-thumb.is-warn { border-color:var(--s-warn-bd); }
 .raw-thumb.is-nd, .raw-thumb.is-missing { background:var(--s-bg-alt); }
 .raw-thumb-name { font-weight:var(--fw-strong); font-size:var(--fs-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.raw-thumb-said { font-size:var(--fs-xs); color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .raw-thumb.is-deleted .raw-thumb-name { text-decoration:line-through; }
-.raw-spark { display:block; width:100%; height:56px; }
+/* a card the worker is processing again: its chart and name dimmed, the tag in the information colour */
+.raw-thumb.is-busy { border-color:var(--s-info-bd); }
+.raw-thumb.is-busy > svg { opacity:.38; }      /* the chart only: the name keeps its full contrast */
+.raw-thumb-busy { position:absolute; left:var(--sp-2); bottom:var(--sp-2); padding:1px var(--sp-2); border-radius:var(--radius-pill);
+                  font-size:var(--fs-xs); font-weight:var(--fw-strong); color:var(--s-info-text); background:var(--s-info-lt); }
+/* a first import's faint cards, before any trace is stored */
+/* a first import's placeholder: the panel colour with the edge, against the content area's ground: 1.06 and 1.23:1 light, 1.15 and 1.31:1 dark, faint and seen (the old colour was the ground itself, 1:1) */
+.raw-thumb-ghost { display:block; height:96px; border-radius:var(--radius); background:var(--s-bg); border:1px solid var(--s-border); }
+.raw-spark { display:block; width:100%; height:78px; }
 .raw-spark-line { fill:none; stroke:var(--series-1); stroke-width:1.25; }
 .raw-spark-area { fill:var(--s-primary-lt); stroke:none; }
+.raw-spark-area.is-manual { fill:var(--s-manual-fill); }
+.raw-swatch { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-1px;
+              background:var(--s-manual-fill); border:1px solid var(--s-warn-bd); border-radius:2px; }
+.raw-spark-area.is-manual ~ .raw-spark-line { stroke:var(--s-info-text); }
+html[data-theme="dark"] .raw-spark-area.is-manual ~ .raw-spark-line { stroke:var(--series-1); }
 .raw-spark-auto { fill:none; stroke:var(--s-secondary); stroke-width:1; stroke-dasharray:3 2; }
 .raw-spark.is-deleted .raw-spark-line, .raw-spark.is-missing .raw-spark-line { stroke:var(--s-secondary); }
 .raw-spark.is-pending { outline:1px dashed var(--s-info); outline-offset:1px; }
@@ -39,66 +80,150 @@
 .raw-dialog { display:flex; flex-direction:column; gap:var(--sp-2); }
 .raw-trace-line { margin:0; font-size:var(--fs-sm); color:var(--text-muted); }
 .raw-charts { display:grid; grid-template-columns:minmax(0, 1fr); gap:6px; }
-.raw-charts .raw-chart { position:relative; height:280px; }
-/* the chart's zoom tools, above its right-hand end */
-.raw-zoom { display:flex; justify-content:flex-end; gap:var(--sp-1); }
+/* the chart sits in the white panel with its axis titles; its height is fixed (the width follows the columns), so
+   the window body does not scroll with the pane shown or hidden */
+.raw-charts .raw-chart { position:relative; height:min(548px, 62vh); max-height:clamp(240px, calc(100vh - 468px), 548px); background:var(--s-bg); border:1px solid var(--s-border);
+                         border-radius:var(--radius); }
+.raw-peak-grid { display:grid; grid-template-columns:minmax(0, 1fr) 340px; gap:var(--sp-4); align-items:start; }
+.raw-chart-col { display:flex; flex-direction:column; gap:var(--sp-2); min-width:0; }
+.raw-peak-grid .raw-pane-col { display:flex; flex-direction:column; gap:var(--sp-3); min-width:0; }
+/* from a 1232 px viewport (a 1200 px window, the browser's scrollbar and edge taken off) the groups run in two columns under the score, as on the board */
+@media (min-width: 1232px) {
+  .raw-peak-grid { grid-template-columns:minmax(0, 1fr) 600px; }
+  .raw-peak-grid .raw-pane-col { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); grid-template-rows:auto; gap:var(--sp-3) 18px;
+                                 align-content:start; }
+  .raw-pane-col > .raw-score, .raw-pane-col > .raw-note, .raw-pane-col > .raw-curve { grid-column:1 / -1; }
+  /* two packed columns: Result, Peak, Signal, Source down the left; Integration and Smoothing down the right, each
+     spanning the left's rows beside it, so the short groups leave no gaps (the pane is 41 px shorter than paired rows) */
+  .raw-pane-col > .raw-grp:nth-of-type(1), .raw-pane-col > .raw-grp:nth-of-type(2), .raw-pane-col > .raw-grp:nth-of-type(5), .raw-pane-col > .raw-grp:nth-of-type(6) { grid-column:1; }
+  .raw-pane-col > .raw-grp:nth-of-type(3), .raw-pane-col > .raw-grp:nth-of-type(4) { grid-column:2; }
+  .raw-pane-col > .raw-grp:nth-of-type(1) { grid-row:2; }
+  .raw-pane-col > .raw-grp:nth-of-type(2) { grid-row:3; }
+  .raw-pane-col > .raw-grp:nth-of-type(5) { grid-row:4; }
+  .raw-pane-col > .raw-grp:nth-of-type(6) { grid-row:5; }
+  .raw-pane-col > .raw-grp:nth-of-type(3) { grid-row:2 / span 2; }
+  .raw-pane-col > .raw-grp:nth-of-type(4) { grid-row:4 / span 2; }
+}
+.raw-dialog-wide.is-bare .raw-pane-col, .raw-dialog-wide.is-bare .raw-peak-label { display:none; }
+.raw-dialog-wide.is-bare .raw-peak-grid { grid-template-columns:minmax(0, 1fr); }
+/* the label by the apex: the peak's time and area, a border in the manual colour once edited */
+.raw-peak-label { position:absolute; transform:translate(-50%, -100%); display:flex; flex-direction:column; padding:2px var(--sp-2);
+                  font-size:var(--fs-xs); font-weight:var(--fw-strong); line-height:1.35; white-space:nowrap; pointer-events:none;
+                  color:var(--text); background:var(--s-bg); border:1px solid var(--s-primary); border-radius:var(--radius); }
+.raw-peak-label[hidden] { display:none; }
+.raw-peak-label.is-manual { border-color:var(--s-warning); }
+.raw-drag-hint { margin:0; }
+/* the pane's groups: a heading over rows of label and value */
+.raw-grp { display:flex; flex-direction:column; gap:var(--sp-1); min-width:0; }
+.raw-gh { margin:0; font-size:var(--fs-xs); font-weight:var(--fw-strong); letter-spacing:.09em; text-transform:uppercase;
+          color:var(--accent-text); }
+.raw-kv { display:flex; flex-direction:column; gap:2px; margin:0; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
+.raw-row { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:0 var(--sp-3); }
+.raw-row dt { color:var(--text-muted); white-space:nowrap; }
+.raw-verdict { position:relative; padding:0 6px; border-radius:6px; }
+.raw-verdict.is-pass { background:var(--s-success-lt); color:var(--s-success-text); }
+.raw-verdict.is-warn { background:var(--s-warn-lt); color:var(--s-warn-text); }
+.raw-verdict.is-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+.raw-row dd { margin:0; text-align:right; font-weight:var(--fw-strong); overflow-wrap:anywhere; }
+.raw-edge-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--sp-2); margin:0; }
+.raw-step:empty, .raw-step[hidden], .raw-score:empty { display:none; }
+/* a stepper: Previous, the name centred, Next */
+.raw-step { display:grid; grid-template-columns:30px minmax(0, 1fr) 30px; gap:var(--sp-2); align-items:center; }
+.raw-step output { font-size:var(--fs-sm); font-weight:var(--fw-strong); text-align:center; line-height:1.3; }
+.raw-step .btn { display:inline-flex; align-items:center; justify-content:center; padding:4px 0; min-height:26px; }
+.raw-step .btn svg { width:14px; height:14px; }
+.raw-step .btn[data-fit="-1"] svg, .raw-step .btn[data-smooth="-1"] svg { transform:scaleX(-1); }
+/* the note under the smoothing stepper while a step is only previewed */
+.raw-smooth-note { margin:var(--sp-1) 0 0; font-size:var(--fs-xs); color:var(--s-info-text); }
+/* the score: a large number that passes or warns against the method's threshold, and its breakdown */
+.raw-score { display:flex; flex-direction:column; gap:var(--sp-1); }
+.raw-score-badge { display:inline-flex; align-items:center; gap:var(--sp-2); align-self:flex-start; padding:0 var(--sp-2); border-radius:var(--radius); }
+.raw-score-num { font-size:var(--fs-xl); font-weight:var(--fw-strong); font-variant-numeric:tabular-nums; }
+.raw-score-badge.is-pass { background:var(--s-success-lt); color:var(--s-success-text); }
+.raw-score-badge.is-warn { background:var(--s-warn-lt); color:var(--s-warn-text); }
+.raw-score-more { display:inline-flex; align-items:center; justify-content:center; width:26px; min-height:26px; padding:0; color:inherit;
+                  background:transparent; border:1px solid currentColor; border-radius:var(--radius); cursor:pointer; }
+.raw-score-more svg { width:14px; height:14px; transition:transform .12s; }
+.raw-score-more[aria-expanded="true"] svg { transform:rotate(180deg); }
+.raw-score-more:focus-visible { outline:none; box-shadow:0 0 0 3px var(--focus); }
+.raw-score-checks { list-style:none; margin:0; padding:6px 8px; display:flex; flex-direction:column; gap:2px; font-size:var(--fs-sm);
+                    border:1px solid var(--s-border); border-radius:var(--radius); }
+.raw-score-checks[hidden] { display:none; }
+.raw-check { display:grid; grid-template-columns:16px minmax(0, 1fr) auto; gap:var(--sp-2); align-items:center; }
+.raw-check svg { width:14px; height:14px; }
+.raw-check-pts { font-weight:var(--fw-strong); font-variant-numeric:tabular-nums; }
+.raw-check-total { border-top:1px solid var(--s-border); padding-top:3px; margin-top:2px; font-weight:var(--fw-strong); }
+/* the chart's zoom tools, with Details at the far right */
+.raw-zoom { display:flex; align-items:center; gap:var(--sp-1); }
+.raw-details-toggle { margin-left:auto; }
 .raw-zoom .btn { display:inline-flex; align-items:center; padding:4px 6px; }
 .raw-zoom svg { width:16px; height:16px; }
 .raw-zoom .btn[aria-pressed="true"] { background:var(--s-primary-lt); border-color:var(--s-primary-dk); }
-.raw-chart-edit.is-region { cursor:crosshair; }
 .raw-chart-edit canvas { touch-action:none; }
 .raw-chart-edit canvas:focus-visible { outline:none; box-shadow:0 0 0 3px var(--focus); border-radius:var(--radius); }
 /* a handle takes the hand; the line and the time axis move sideways */
 .raw-chart-edit.is-edge { cursor:grab; }
 .raw-chart-edit.is-line { cursor:ew-resize; }
 .raw-chart-edit.is-dragging { cursor:grabbing; }
+/* the strip under the chart: what the stored fit leaves of the signal */
+.raw-residual { position:relative; height:84px; }
+.raw-residual[hidden] { display:none !important; }
+.raw-fit-options { display:flex; flex-wrap:wrap; gap:var(--sp-2); align-items:center; }
 .raw-edit { display:flex; flex-direction:column; gap:var(--sp-2); padding-top:var(--sp-2); border-top:1px solid var(--s-border); }
 .raw-edit-form[hidden], .raw-pane[hidden] { display:none !important; }   /* a display set on a class must not show what is hidden */
 .raw-edges { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .raw-edges input[type="number"] { width:7em; }
 .raw-edges label[hidden] { display:none; }
-/* the start and end times sit in the readout and are edited there: a pencil on the label, a dashed edge on the box */
-.raw-readout .raw-edit-cell dt { display:flex; align-items:center; gap:var(--sp-1); }
+/* the start and end times sit in the pane and are edited there: a pencil on the label, a dashed edge on the box */
+.raw-edge-pair .raw-edit-cell dt { display:flex; align-items:center; gap:var(--sp-1); font-size:var(--fs-xs); color:var(--text-muted); }
+.raw-edge-pair .raw-edit-cell dd { margin:0; }
 .raw-pencil { width:12px; height:12px; color:var(--accent-text); }
-.raw-readout .raw-edit-cell input[type="number"] { width:6.5em; padding:2px var(--sp-2); font:inherit; font-size:var(--fs-sm);
+.raw-edge-pair .raw-edit-cell input[type="number"] { width:6.5em; padding:2px var(--sp-2); font:inherit; font-size:var(--fs-sm);
   color:var(--text); background:var(--accent-soft); border:1px dashed var(--accent-text); border-radius:var(--radius); }
-.raw-readout .raw-edit-cell input[type="number"]:focus { border-style:solid; }
+.raw-edge-pair .raw-edit-cell input[type="number"]:focus { border-style:solid; }
 .raw-unit { color:var(--text-muted); font-size:var(--fs-xs); }
 .raw-preview { margin:0; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
 .raw-refusal { margin:0; font-size:var(--fs-sm); color:var(--s-danger-dk); }
 .raw-refusal:empty { display:none; }
 .raw-warning { margin:0; font-size:var(--fs-sm); color:var(--s-warn-text); }
-/* the readout strip: a small uppercase label over each value, one wrapping row
-   centred under the chromatogram */
-.raw-readout { display:flex; flex-wrap:wrap; justify-content:center; gap:var(--sp-2) var(--sp-5); margin:0;
-  font-variant-numeric:tabular-nums; }
-.raw-readout > div { display:flex; flex-direction:column; min-width:0; }
-.raw-readout dt { font-size:var(--fs-xs); font-weight:var(--fw-strong); text-transform:uppercase; letter-spacing:.04em;
-  color:var(--text-muted); }
-.raw-readout dd { margin:0; font-size:var(--fs-sm); }
-.raw-under { display:block; font-size:var(--fs-xs); color:var(--text-muted); }
+.raw-under { display:block; font-size:var(--fs-xs); font-weight:var(--fw-body); color:var(--text-muted); }
 /* the flags and the method's notes as chips, the shared badges */
 .raw-flags { display:flex; flex-wrap:wrap; gap:var(--sp-1); margin:0; padding:0; list-style:none; }
 .raw-flags:empty { display:none; }
 .raw-flags .badge { white-space:normal; text-align:left; }
-.raw-details { padding-top:var(--sp-2); border-top:1px solid var(--s-border); }
-/* the Details drop-down centred in its box, as the values under it */
-.raw-details > summary { list-style:none; }
-.raw-details > summary.btn-help { display:flex; width:max-content; margin:0 auto; }
-.raw-details > summary::-webkit-details-marker { display:none; }
-/* the details fill the box: a label over its value in as many columns as fit,
-   at the card's text size, each centred in its column so the box keeps even
-   margins left and right */
-.raw-details { padding:var(--sp-3) 0 var(--sp-2); }
-.raw-details-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(11rem, 1fr)); gap:var(--sp-4) var(--sp-5);
-  margin:var(--sp-3) 0 0; padding:var(--sp-3) var(--sp-4) var(--sp-2); font-size:var(--fs-base); font-variant-numeric:tabular-nums; }
-.raw-details-list > div { display:flex; flex-direction:column; align-items:center; gap:var(--sp-1); min-width:0; text-align:center; }
-.raw-details-list dt { color:var(--s-secondary); font-size:var(--fs-sm); }
-.raw-details-list dd { margin:0; overflow-wrap:anywhere; }
+
 .raw-note { margin:6px 0 0; color:var(--s-secondary); font-size:var(--fs-sm); }
 .raw-note:empty { display:none; }
 .raw-curve { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-2); margin:var(--sp-2) 0 0; font-size:var(--fs-sm); }
+@media (max-width: 900px) {
+  .raw-peak-grid { grid-template-columns:minmax(0, 1fr); }
+}
 @media (max-width: 800px) {
   .raw-split, .raw-charts { grid-template-columns:minmax(0, 1fr); }
   .raw-list { flex-direction:row; flex-wrap:wrap; max-height:none; }
 }
+
+/* the reason and comment, asked beside the Apply buttons: the reason box is wide enough
+   for the longest reason to read in full */
+.raw-comment { order:-1; flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--sp-3); }
+.raw-comment[hidden] { display:none !important; }
+.raw-comment label { display:flex; flex-direction:column; gap:var(--sp-1); font-size:var(--fs-sm); }
+.raw-comment-reason select { min-width:22em; max-width:100%; }
+.raw-comment-detail { flex:1 1 18em; }
+.raw-comment-detail textarea { width:100%; min-height:3em; font:inherit; }
+.raw-comment .raw-note { flex:1 1 100%; margin:0; order:5; }
+.raw-keys { width: 100%; border-collapse: collapse; }
+.raw-keys th, .raw-keys td { text-align: left; padding: var(--sp-1) var(--sp-2); vertical-align: top; }
+.raw-keys th { white-space: nowrap; font-weight: 600; }
+
+/* the view row: By compound / By injection, the funnel at its right end; the round down-arrow at the window's bottom centre */
+.raw-viewbar { display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); margin-bottom:var(--sp-4); }
+.raw-filter { display:inline-flex; align-items:center; justify-content:center; }
+/* the filter is on: --s-primary-dk on --s-primary-lt is 4.6:1 (light) and 6.9:1 (dark); the name says it too */
+.raw-filter.has-filter { background:var(--s-primary-lt); border-color:var(--s-primary-dk); color:var(--s-primary-dk); }
+.raw-more { position:fixed; left:50%; bottom:var(--sp-4); transform:translateX(-50%); z-index:5; display:inline-flex;
+            align-items:center; justify-content:center; width:40px; height:40px; padding:0; border-radius:50%;
+            background:var(--s-bg); color:var(--s-body); border:1px solid var(--s-border); box-shadow:var(--shadow-card-hover); cursor:pointer; }
+.raw-more[hidden] { display:none; }
+.raw-more:hover { border-color:var(--s-primary); }
+.raw-more:focus-visible { outline:none; box-shadow:0 0 0 3px var(--focus); }

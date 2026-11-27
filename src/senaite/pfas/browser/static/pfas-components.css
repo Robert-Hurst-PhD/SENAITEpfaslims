@@ -336,6 +336,8 @@ td.row-plus-cell .pfas-rowmenu { font-size: var(--fs-lg); }
   opacity: 0; visibility: hidden; transform: translate(-50%, -50%) scale(var(--pfas-win-from, .98));
   transform-origin: var(--pfas-win-origin, 50% 50%);
   transition: transform var(--t-quick) var(--ease), opacity var(--t-quick) var(--ease), visibility 0s linear var(--t-quick); }
+/* the peak window is wider than the other dialogs: the chart and its pane side by side */
+.pfas-drawer.is-dialog.raw-dialog-wide { width: min(1240px, calc(100vw - 32px)); }
 /* opens: the panel fades and settles (opacity, scale .98 to 1), grown from
    the tile that opened it where there is one (--pfas-win-origin, its centre;
    --pfas-win-from, its size: pfas-components.js windowFrom); closes faster;
@@ -1039,8 +1041,10 @@ summary .badge { margin-left: var(--sp-2); }
 .is-readonly .pfas-seqrow .grip, .is-readonly .pfas-seqrow .del, .is-readonly .pfas-seq-add { display: none; }
 /* a page drawn view-only (main[data-readonly], the inspector reading a
    configuration page): what would post or change a value is not offered;
-   pfas-components.js locks the fields themselves */
-main[data-readonly] form[method="post" i] [type="submit"],
+   pfas-components.js locks the fields themselves. A form marked
+   data-readonly-live is the one act the reader holds a right to (a QA
+   approver's countersign) and stays offered; the server decides */
+main[data-readonly] form[method="post" i]:not([data-readonly-live]) [type="submit"],
 main[data-readonly] .pfas-sheet-add, main[data-readonly] .pfas-sheet-remove,
 main[data-readonly] .btn-add-row, main[data-readonly] [data-row-add], main[data-readonly] [data-row-remove],
 main[data-readonly] [data-copy-from], main[data-readonly] [data-copy-tiers], main[data-readonly] [data-fill-rl],
@@ -2428,6 +2432,26 @@ td.state_title .pfas-state-word { display: none; }
 .pfas-unit-state { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); font-weight: var(--fw-strong); }
 /* core's listing image drawn as an icon (coreImages): the image stays, hidden */
 td img.pfas-core-img { display: none; }
+
+/* ── A run being processed: the band and its progress ring ──────────────────
+   The ring is a progress animation, not an icon: the one round outline
+   outside the limit-state glyphs (DESIGN_REFERENCES I9). It turns by CSS
+   alone, in the information colour (in progress), and stands still under
+   reduced motion; the band's words say what is happening either way. */
+.pfas-busy { display: flex; align-items: center; gap: var(--sp-3); margin: 0 0 var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); background: var(--surface-raised); border: 1px solid var(--line);
+  border-radius: var(--radius-card); }
+.pfas-busy.is-compact { padding: var(--sp-2) var(--sp-3); }
+.pfas-busy-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pfas-busy-line { font-weight: var(--fw-strong); }
+.pfas-busy-note { font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-busy-end { margin-left: auto; }
+@keyframes pfas-progress-turn { to { transform: rotate(360deg); } }
+.pfas-progress-ring { flex: none; box-sizing: border-box; width: 32px; height: 32px; border-radius: 50%;
+  border: 4px solid var(--line); border-top-color: var(--s-info);
+  animation: pfas-progress-turn var(--t-turn) linear infinite; }
+.pfas-busy.is-compact .pfas-progress-ring { width: 22px; height: 22px; border-width: 3px; }
+@media (prefers-reduced-motion: reduce) { .pfas-progress-ring { animation: none; } }
 
 /* ── Glass: the frame floats ─────────────────────────────────────────────
    The top bar, the rail and the panel draw their glass on a ::before layer

@@ -21,7 +21,7 @@ from senaite.pfas.browser.view_helpers import ViewHelpers
 logger = logging.getLogger("senaite.pfas.system_settings")
 
 SYSTEM_GATES = {"save_notices": TIER_CONFIG, "save_raw": TIER_SITE_ADMIN, "save_coc_limits": TIER_CONFIG,
-                "save_signing_rules": TIER_CONFIG}
+                "save_signing_rules": TIER_CONFIG, "save_fit_accept": TIER_CONFIG}
 
 # Plone's own control panels, for the Site Administrator
 CONTROL_PANELS = (
@@ -55,6 +55,8 @@ class PFASSystemView(ViewHelpers, GateMixin, BrowserView):
                 msg = "saved" if self._save_coc_limits(req.form) else "coc_error"
             elif action == "save_raw":
                 msg = "saved" if self._save_raw(req.form) else "raw_error"
+            elif action == "save_fit_accept":
+                msg = "saved" if self._save_fit_accept(req.form) else "fit_error"
             elif action == "save_signing_rules":
                 msg = "saved" if self._save_signing_rules(req.form) else "signing_error"
             req.response.redirect("%s/@@pfas-system?%s=1" % (self.portal_url(), msg))
@@ -169,6 +171,31 @@ class PFASSystemView(ViewHelpers, GateMixin, BrowserView):
             logger.warning("signing rules change not tracked", exc_info=True)
         signing_rules.save(portal, values)
         return True
+
+    # ── Score to accept a fit ───────────────────────────────────
+
+    def fit_accept_default(self):
+        from senaite.pfas import fit_accept
+        return fit_accept.load(api.get_portal())
+
+    def _save_fit_accept(self, form):
+        """False when the value is refused: nothing is saved."""
+        from senaite.pfas import fit_accept
+        portal = api.get_portal()
+        values, errors = fit_accept.from_form(form)
+        if errors:
+            return False
+        try:
+            from senaite.pfas import config_history
+            config_history.track(portal, "fit_accept", "default",
+                                 lambda: fit_accept.stored(portal), label=u"Score to accept a fit")
+        except Exception:                                   # noqa: BLE001
+            logger.warning("fit score change not tracked", exc_info=True)
+        fit_accept.save(portal, values)
+        return True
+
+    def fit_failed(self):
+        return bool(self.request.form.get("fit_error"))
 
     def signing_failed(self):
         return bool(self.request.form.get("signing_error"))

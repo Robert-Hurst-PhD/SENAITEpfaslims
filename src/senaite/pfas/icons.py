@@ -56,6 +56,7 @@ DRAWINGS = {
     "fail": ('<path class="pfas-icon-f" fill-rule="evenodd" d="M12 1.75 22.25 12 12 22.25 1.75 12Z'
              + _cross() + '"/>'),
     "unjudged": '<path stroke-dasharray="2.4 2.2" d="M12 3.25 20.75 12 12 20.75 3.25 12Z"/>',
+    "not-detected": '<path d="M3 17.5h18"/><path stroke-dasharray="2 2" d="M7.5 17.5c1.6-9 7.4-9 9 0"/>',
     "note": ('<path d="M4.75 4.75h14.5v10.5h-7.5l-4 3.75v-3.75h-3Z"/>'
              '<rect class="pfas-icon-a" x="11.1" y="6.9" width="1.8" height="1.8" rx=".4"/>'
              '<rect class="pfas-icon-a" x="11.1" y="9.6" width="1.8" height="3.9" rx=".4"/>'),
@@ -92,6 +93,7 @@ DRAWINGS = {
     "settings": ('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><rect x="13" y="5" width="4" height="4" rx="1"/>'
                  '<rect x="7" y="15" width="4" height="4" rx="1"/>'),
     "add": '<path d="M12 5v14M5 12h14"/>',
+    "revert": '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     "close": '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
     "more": ('<rect class="pfas-icon-a" x="4.25" y="10.75" width="3" height="2.5" rx=".7"/>'
              '<rect class="pfas-icon-a" x="10.5" y="10.75" width="3" height="2.5" rx=".7"/>'
@@ -113,7 +115,7 @@ DRAWINGS = {
              '<path d="M9.75 9.75a2.25 2.25 0 1 1 3.4 1.95c-.7.45-1.15.9-1.15 1.8"/>'
              '<rect class="pfas-icon-a" x="11.2" y="15.4" width="1.6" height="1.6" rx=".4"/>'),
     "external": '<path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 13.5v5.5H5.5V7.5H11"/>',
-    "filter": '<path d="M4 7h16M7 12h10M10 17h4"/>',
+    "filter": '<path d="M4.5 5h15L14 12v6.5l-4 1.5V12Z"/>',
     "person": '<rect x="8" y="3.5" width="8" height="8" rx="4"/><path d="M4.5 20.5v-1a5 5 0 0 1 5-5h5a5 5 0 0 1 5 5v1"/>',
     "building": ('<path d="M5 21V4.5a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 16 4.5V21"/><path d="M16 9h2.5A1.5 1.5 0 0 1 20 10.5V21"/>'
                  '<path d="M3 21h18"/><path d="M9 7h3M9 11h3M9 15h3"/>'),
@@ -132,7 +134,7 @@ DRAWINGS = {
 }
 
 FAMILY = {}
-for _n in ("pass", "warn", "fail", "unjudged", "note", "waiting", "sent-back"):
+for _n in ("pass", "warn", "fail", "unjudged", "not-detected", "note", "waiting", "sent-back"):
     FAMILY[_n] = "outcome"
 for _n in ("received", "extraction", "analysis", "verify", "issued"):
     FAMILY[_n] = "stage"
@@ -147,23 +149,23 @@ for _n in DRAWINGS:
 
 # The meaning colour of a drawing, an --ico-* token (pfas-tokens.css);
 # a drawing not named here takes the text colour.
-COLOUR = {"pass": "ok", "warn": "warn", "fail": "fail", "unjudged": "neutral", "note": "info",
+COLOUR = {"pass": "ok", "warn": "warn", "fail": "fail", "unjudged": "neutral", "not-detected": "neutral", "note": "info",
           "waiting": "info", "sent-back": "warn",
           "received": "brand", "extraction": "brand", "analysis": "brand", "verify": "brand", "issued": "brand",
           "sig-wait": "neutral", "sig-signed": "ok", "sig-withdrawn": "neutral",
           "doc-draft": "neutral", "doc-issued": "brand", "doc-superseded": "neutral", "doc-revoked": "neutral",
-          "lot-archived": "neutral"}
+          "lot-archived": "neutral", "revert": "neutral"}
 TOKENS = ("brand", "ok", "info", "warn", "fail", "neutral", "pale")
 
 # The words of a drawing when nothing more is said: its accessible name.
-WORDS = {"pass": "Pass", "warn": "Warning", "fail": "Failure", "unjudged": "Not judged", "note": "Note",
+WORDS = {"pass": "Pass", "warn": "Warning", "fail": "Failure", "unjudged": "Not judged", "not-detected": "Not detected", "note": "Note",
          "waiting": "Waiting", "sent-back": "Sent back",
          "received": "Received", "extraction": "Extraction", "analysis": "Analysis", "verify": "Verify",
          "issued": "Certificate issued",
          "sig-wait": "Waiting for a signature", "sig-signed": "Signed", "sig-withdrawn": "Signature withdrawn",
          "doc-draft": "Draft", "doc-issued": "Issued", "doc-superseded": "Superseded", "doc-revoked": "Revoked",
          "lot": "In date", "lot-opened": "Opened", "lot-archived": "Archived",
-         "tour": "System tour", "custody": "Chain of custody", "temperature": "Temperature", "edd": "Data deliverable"}
+         "filter": "Sort and filter", "revert": "Back to automatic", "tour": "System tour", "custody": "Chain of custody", "temperature": "Temperature", "edd": "Data deliverable"}
 
 # Corner marks: a flag on a 24 px icon's lower right, over a halo of the
 # ground. At 16 px the flag stands as its own outcome mark instead.

@@ -408,6 +408,11 @@ def observed_ratios(r):
 
 EXPECTED_SOURCES = (("expected_ion_ratios", ""), ("quan_ref_expected_ion_ratios", "quantitation reference"),
                     ("method_expected_ion_ratios", "method"))
+# the expected ratio's last source, the mean of the run's calibrators; each
+# source as the Raw Data card names it
+CALIBRATORS_SOURCE = "this run's calibrators"
+ION_SOURCE_WORDS = {"": "export", "quantitation reference": "quantitation reference", "method": "method",
+                    CALIBRATORS_SOURCE: "calibrators"}
 
 
 def expected_ratios(r, calibrators=None):
@@ -425,7 +430,7 @@ def expected_ratios(r, calibrators=None):
                 got = (v, src)
                 break
         if got[0] is None and calibrators and i < len(calibrators) and calibrators[i]:
-            got = (calibrators[i], "this run's calibrators")
+            got = (calibrators[i], CALIBRATORS_SOURCE)
         out.append(got)
     return out
 
@@ -450,16 +455,33 @@ def calibrator_rows(rows, analyte, keep=None, off_curve=False):
     return by_role or [r for r in mine if r.sample_type == "Standard"]
 
 
-def calibrator_ratio_means(rows, analyte):
-    """Mean observed ratio per qualifier ion over the run's calibrators."""
+def calibrator_ratio_means(rows, analyte, counts=False):
+    """Mean observed ratio per qualifier ion over the run's calibrators;
+    with `counts`, (means, the calibrators each mean was taken over)."""
     sums = {}
     for r in calibrator_rows(rows, analyte):
         for i, o in enumerate(observed_ratios(r)):
             if isinstance(o, float):
                 sums.setdefault(i, []).append(o)
-    if not sums:
-        return []
-    return [(sum(sums[i]) / len(sums[i])) if i in sums else None for i in range(max(sums) + 1)]
+    n = max(sums) + 1 if sums else 0
+    means = [(sum(sums[i]) / len(sums[i])) if i in sums else None for i in range(n)]
+    if counts:
+        return means, [len(sums.get(i, ())) for i in range(n)]
+    return means
+
+
+def ion_lines(r, exp, n_cal):
+    """Each qualifier ion of a row: its observed ratio, the expected one, the
+    expected ratio's source in the card's words and, for the mean of this
+    run's calibrators, how many calibrators it was taken over."""
+    obs = observed_ratios(r)
+    out = []
+    for i in range(max(len(obs), len(exp))):
+        e, src = exp[i] if i < len(exp) else (None, "")
+        out.append({"observed": obs[i] if i < len(obs) else None, "expected": e,
+                    "source": ION_SOURCE_WORDS[src] if e is not None else "",
+                    "n_cal": (n_cal[i] if i < len(n_cal) else 0) if src == CALIBRATORS_SOURCE else 0})
+    return out
 
 
 def qual_quan_check(
@@ -476,12 +498,13 @@ def qual_quan_check(
     tol = tol_pct / 100.0
 
     results: list[QualQuanResult] = []
-    cal_means = calibrator_ratio_means(rows, analyte)
+    cal_means, n_cal = calibrator_ratio_means(rows, analyte, counts=True)
     for r in [row for row in rows if row.compound_name == analyte]:
         # observed: the ratio column, else qualifier / quantifier response;
         # expected: the first column the export fills, else the calibrators'
         # mean
         exp = expected_ratios(r, cal_means)
+        ions = ion_lines(r, exp, n_cal)
         pairs, sources = [], []
         for o, (e, src) in zip(observed_ratios(r), exp):
             if o is not None and (e not in (None, 0) or o == "uncalculable"):
@@ -496,7 +519,7 @@ def qual_quan_check(
             results.append(QualQuanResult(
                 analyte=analyte, injection_name=r.injection_name,
                 concat_id=r.concat_id, response_ratio=None,
-                avg_response_ratio=None, pct_of_cal=None, flag=None))
+                avg_response_ratio=None, pct_of_cal=None, flag=None, ions=ions))
             continue
 
         uncalculable = any(o == "uncalculable" for o, _e in pairs)
@@ -521,7 +544,7 @@ def qual_quan_check(
                 results.append(QualQuanResult(
                     analyte=analyte, injection_name=r.injection_name,
                     concat_id=r.concat_id, response_ratio=None,
-                    avg_response_ratio=None, pct_of_cal=None, flag=None))
+                    avg_response_ratio=None, pct_of_cal=None, flag=None, ions=ions))
                 continue
             flag = QCFlag(
                 source="Qual-Quan Table",
@@ -547,6 +570,7 @@ def qual_quan_check(
             avg_response_ratio=(pairs[0][1] if pairs[0][1] not in (None, 0) else None),
             pct_of_cal=worst,
             flag=flag,
+            ions=ions,
         ))
 
     return results
@@ -591,6 +615,24 @@ def coelution_split(r) -> bool:
     if rec.get("manual"):
         return _on_pair(rec.get("auto") or {}) and rec.get("baseline") in SPLIT_LINES
     return _on_pair(rec)
+
+
+# the remark token on a result whose quantifier peak was separated by curve
+# fitting (fitted_estimate): the QAO's "fitted" qualifier marks it
+FITTED_FLAG = "FITTED"
+
+
+def fitted_estimate(r) -> bool:
+    """True when a raw run's row holds a detected quantifier peak measured by
+    a curve fit, so its value is an estimate: the row's own record carries
+    the fit and an area, whether the analyst fitted this one injection or a
+    processing change fitted every injection. A fitted peak under the
+    detection floor keeps its fit's record but has no area, and is not
+    marked; a fit on a qualifier ion only sits in the qualifier's own
+    record, and a hand-drawn peak's fitted automatic peak in "auto", so
+    neither marks the result."""
+    rec = _raw_record(r)
+    return rec.get("area") is not None and bool(rec.get("fit"))
 
 
 def qualifier_deleted_check(rows: list[InstrumentRow], analyte: str) -> list[QCFlag]:

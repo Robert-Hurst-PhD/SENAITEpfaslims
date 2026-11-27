@@ -4,7 +4,7 @@
 The method profile owns each compound's expected time, the Integration
 tab's compound row (integration.analytes[<compound>].rt). The time drifts
 from run to run and is updated routinely, so an analyst may set it from the
-quantifier peak of a run under review (Data Review's Raw Data card), and it
+quantifier peak of a run under review (Data Review's Integration Review card), and it
 is not a setting an issued method revision freezes: `exempt` leaves every
 expected time out of what method_revisions fingerprints, and the value
 carries from run to run without a new issue.

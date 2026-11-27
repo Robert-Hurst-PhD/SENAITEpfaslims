@@ -191,6 +191,7 @@ def page_header(header, page_rows, info, names=None):
 # ── drawing ──────────────────────────────────────────────────────────────────
 
 _PALETTE = load("print_style").PALETTE
+MANUAL_FILL = "s-manual-fill"   # a manually integrated peak's area
 
 
 def _palette(name, mono=False):
@@ -318,6 +319,18 @@ def _draw_trace(c, row, x0, y0, w, h, mono=False):
     box = c.beginPath()
     box.rect(px, py, pw, ph)
     c.clipPath(box, stroke=0, fill=0)
+    if not mono and g["baseline"] and _review().stored_state(row.get("peak")) == "edited":
+        # a manually integrated peak: its area down to its baseline, under the trace
+        (s0, b0), (s1, b1) = g["baseline"]
+        inside = [(a, b) for a, b in zip(row["t"], row["y"]) if s0 <= a <= s1]
+        area = c.beginPath()
+        area.moveTo(X(s0), Y(b0))
+        for a, b in inside:
+            area.lineTo(X(a), Y(b))
+        area.lineTo(X(s1), Y(b1))
+        area.close()
+        c.setFillColor(_colour(MANUAL_FILL))
+        c.drawPath(area, stroke=0, fill=1)
     path = c.beginPath()
     path.moveTo(X(g["trace"][0][0]), Y(g["trace"][0][1]))
     for a, b in g["trace"][1:]:

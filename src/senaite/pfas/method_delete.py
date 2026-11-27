@@ -34,6 +34,8 @@ import json
 import logging
 import os
 
+from senaite.pfas import method_revisions
+
 logger = logging.getLogger("senaite.pfas.method_delete")
 
 DELETED_KEY = "senaite.pfas.deleted_methods"     # {method id: JSON {by, at, label}}
@@ -137,7 +139,7 @@ def references(method_id, src):
         [r.get("number") for r in src.get("cocs") or []
          if any((row or {}).get("method") == method_id for row in r.get("rows") or [])])
     add(u"Issued method revisions",
-        [u"Rev {0} ({1})".format(r.get("rev"), print_doc.lab_or(r.get("issued_at"), (r.get("issued_at") or u"")[:10],
+        [u"Rev {0} ({1})".format(method_revisions.label(r), print_doc.lab_or(r.get("issued_at"), (r.get("issued_at") or u"")[:10],
                                                                 u"%Y-%m-%d"))
          for r in src.get("revisions") or []])
     if method_id and src.get("reference_method") == method_id:
@@ -478,7 +480,6 @@ def collect(portal, method_id):
     src["cocs"] = guarded("chain of custody records", cocs, [])
 
     def revisions():
-        from senaite.pfas import method_revisions
         return method_revisions.records(portal, method_id)
     src["revisions"] = guarded("method revisions", revisions, [])
 

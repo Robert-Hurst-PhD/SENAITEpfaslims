@@ -107,10 +107,13 @@ def library(portal=None, extra=None):
     Read once per request (callers never change it); `extra`, a service
     being saved, is read fresh. Outside SENAITE (tests and tools on the
     host, where there are no services) it is the install seed, as the
-    migration writes it."""
+    migration writes it: SENAITE is there only where its API has the
+    catalog tool the services are read through."""
     try:
-        import bika.lims  # noqa: F401
+        from bika.lims import api
     except ImportError:
+        api = None
+    if not hasattr(api, "get_tool"):
         return cl.build(cl.seed_rows())
     request = None
     if extra is None:

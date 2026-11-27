@@ -117,13 +117,16 @@ _SEP = "·"
 
 
 def title(ws_id, method_title, revision):
-    """"WS-329 · EPA 1633A r3"; no revision, no "r"; no method, the
-    worksheet alone."""
+    """"WS-329 · EPA 1633A r4.1"; a revision stored as an integer predates
+    major.sub and reads "r3.0" (method_revisions.revision_text); no
+    revision, no "r"; no method, the worksheet alone. The title is printed,
+    never hashed: the record keeps the revision as stored."""
     if not method_title:
         return ws_id or ""
     out = "%s %s %s" % (ws_id or "", _SEP, method_title)
     if revision is not None:
-        out += " r%s" % revision
+        from senaite.pfas.method_revisions import revision_text
+        out += " r" + revision_text(revision)
     return out
 
 

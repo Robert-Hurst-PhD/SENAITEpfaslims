@@ -471,6 +471,22 @@ def supersede(conn, batch_id, at, by, tables=None, alt_side=None):
     return out
 
 
+# what a processing of the same import keeps: the run's ion-ratio records it
+# replaces, stamped this (superseded_by), so the review can say which
+# samples changed verdict; the other stores and kinds are not kept
+REPROCESS = "reprocess"
+
+
+def keep_on_reprocess(conn, batch_id, at):
+    """Before a processing of the worksheet replaces its value records: its
+    ion-ratio records (kind ION) kept as superseded copies stamped `at` and
+    REPROCESS, beside every earlier processing's: what each change did to
+    the ion-ratio verdicts stays on record. Returns the rows copied. No
+    commit."""
+    return _copy(conn, "value_provenance", "superseded_value_provenance", "batch_id=? AND kind='ION'",
+                 (batch_id,), (at or "", REPROCESS))
+
+
 def _has_rows(conn, batch_id, tables, alt_side):
     for table, _archive in SUPERSEDED:
         if table not in tables or table in ("calibrations", "calibration_levels"):

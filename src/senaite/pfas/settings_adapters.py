@@ -161,6 +161,20 @@ def _coc_limits(field, seed=None):
     return _hook
 
 
+def _fit_accept(portal, setting):
+    """The lab's score to accept a fit (System): seeded at 85. The lab's own
+    is a number it saved, whatever it is, 85 among them: judged by what is
+    stored, never by the value."""
+    from senaite.pfas import fit_accept
+    try:
+        saved = fit_accept.whole(fit_accept.stored(portal).get("default"))
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("settings hook for %s: %s", setting.key, exc)
+        return {"value": None, "seed": fit_accept.DEFAULT, "source": "unknown"}
+    return {"value": saved if saved is not None else fit_accept.DEFAULT, "seed": fit_accept.DEFAULT,
+            "source": "override" if saved is not None else "seed", "customised": saved is not None}
+
+
 def _signing_rules(field):
     """The signing rules (System): seeded, the expiry unset (never)."""
     def _hook(portal, setting):
@@ -313,6 +327,10 @@ def declare_all(portal=None):
           _signing_rules("lock_minutes"), "pfas-system", unit=u"minutes")
     _link("signing.expiry_days", u"Passwords and PINs expire after", GROUP_THRESHOLDS, KIND_INT,
           _signing_rules("expiry_days"), "pfas-system", unit=u"days")
+
+    # The score a fit must reach to be accepted, where a method sets none
+    _link("fit_accept_score_default", u"Score to accept a fit", GROUP_THRESHOLDS, KIND_INT,
+          _fit_accept, "pfas-system", unit=u"points")
 
     # Balance acceptance is the balance TYPE's tolerance, % of nominal
     # (equipment_types.py), never a lab-wide value in grams.

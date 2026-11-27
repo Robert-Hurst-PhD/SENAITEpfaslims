@@ -12,7 +12,7 @@ the mark. Core offers a transition only when its guard passes, so the
 plain Retract is hidden from every listing and menu, and a URL firing it is
 refused the same way.
 
-An analysis's retract on an open worksheet is not refused: Raw Data and the
+An analysis's retract on an open worksheet is not refused: Integration Review and the
 identity correction retract there, and the worksheet is already open.
 
 Pure; Python 2.7 and 3.

@@ -1,4 +1,4 @@
-/* raw_data.js — Data Review's Raw Data tab, for a run imported from raw data.
+/* raw_data.js — Data Review's Integration Review tab, for a run imported from raw data.
  * The overview: "By compound" (one analyte across every injection) or "By
  * injection" (every analyte of one injection), the list down the left (each a
  * button to its page), and each chromatogram as a small inline SVG, a button
@@ -24,6 +24,9 @@
 (function () {
   "use strict";
   var doc = typeof document !== "undefined" ? document : null;   /* node: the pure helpers only */
+  /* the fit's preview, loaded before this file (node: beside it) */
+  var rawFit = (typeof window !== "undefined" && window.PFAS && window.PFAS.rawFit) ||
+               (typeof require === "function" ? require("./raw_fit.js") : null);
 
   /* ── the integrated peak as drawn ─────────────────────────────────────── */
   function baselineAt(peak, x) {
@@ -556,6 +559,13 @@
   /* the hidden form's fields for an edit: only the kind's own filled, the
      rest empty (the server reads only the kind's); a re-integration's
      baseline levels set by hand both or neither */
+  /* what a change to one injection still lacks: a reason from the lab's list,
+     then a comment; "" when it has both */
+  var REASON_TEXT = "Choose a reason from the lab's list.", COMMENT_TEXT = "Write a comment on the change.";
+  function commentProblem(reasonId, comment) {
+    if (!reasonId) { return REASON_TEXT; }
+    return String(comment == null ? "" : comment).replace(/^\s+|\s+$/g, "") ? "" : COMMENT_TEXT;
+  }
   function editPayload(st) {
     var out = { injection: st.injection, analyte: st.analyte, transition: field(st.transition),
                 mode: st.mode || "injection", kind: st.kind, start: "", end: "", apex: "", baseline: "", confirm: "",
@@ -563,8 +573,16 @@
     if (st.kind === "integrate") { out.start = field(st.start); out.end = field(st.end); }
     if (st.kind === "integrate" && st.levels) { out.level_start = field(st.levels[0]); out.level_end = field(st.levels[1]); }
     if (st.kind === "apex") { out.apex = field(st.apex); }
+    /* a drop line's shared edge moved: the partner's analyte and edges, edited in the same action */
+    if (st.kind === "integrate" && st.partner) {
+      out.partner_analyte = field(st.partner.analyte);
+      out.partner_start = field(st.partner.start);
+      out.partner_end = field(st.partner.end);
+    }
     if (st.kind === "integrate" || st.kind === "apex") { out.baseline = field(st.baseline); }
     if (st.kind === "delete") { out.confirm = st.confirm ? "1" : ""; }
+    out.reason_id = st.kind === "revert" ? "" : field(st.reason_id);
+    out.detail = st.kind === "revert" ? "" : field(st.detail);
     return out;
   }
 
@@ -597,9 +615,12 @@
   }
   /* the view a box drawn on the chart from (x0, y0) to (x1, y1) enlarges:
      {x, y} in either drawing direction, or null for a box no wider in time
-     than least or with no height */
-  function regionView(x0, y0, x1, y1, least) {
+     than least or with no height; heightPx, when given, is the box's height
+     on the screen: a box of 8 px or less zooms time only (y null, the counts
+     fit to the new window) */
+  function regionView(x0, y0, x1, y1, least, heightPx) {
     var x = [Math.min(x0, x1), Math.max(x0, x1)], y = [Math.min(y0, y1), Math.max(y0, y1)];
+    if (heightPx != null && heightPx <= TALL_PX && x[1] - x[0] > (least || 0)) { return { x: x, y: null }; }
     if (!(x[1] - x[0] > (least || 0) && y[1] > y[0])) { return null; }
     /* the counts on two significant figures, a box started on the zero line from zero */
     var lo = y[0] < 0 && -y[0] < (y[1] - y[0]) / 100 ? 0 : y[0];
@@ -626,7 +647,7 @@
      is-missing, is-deleted, is-edited, is-pending). opts: w, h, pending. */
   function thumbSvg(th, opts) {
     opts = opts || {};
-    var w = opts.w || 160, h = opts.h || 56;
+    var w = opts.w || 160, h = opts.h || 78;
     var cls = ["raw-spark"];
     if (knownState(th.state)) { cls.push("is-" + th.state); }
     if (th.deleted) { cls.push("is-deleted"); }
@@ -650,7 +671,7 @@
       return '<path class="' + klass + '" d="' + d + ' Z" vector-effect="non-scaling-stroke"/>';
     }
     if (th.auto) { out += region(th.auto, "raw-spark-auto"); }
-    if (th.peak && !th.deleted) { out += region(th.peak, "raw-spark-area"); }
+    if (th.peak && !th.deleted) { out += region(th.peak, isManual(th) ? "raw-spark-area is-manual" : "raw-spark-area"); }
     var pts = [];
     for (var j = 0; j < t.length; j++) { pts.push(px(t[j]) + "," + py(y[j])); }
     return out + '<polyline class="raw-spark-line" points="' + pts.join(" ") +
@@ -667,6 +688,14 @@
     for (var places = 1; places < 10; places++) {
       var text = pyFixed(value, places);
       if (parseFloat(text) < limit) { return text; }
+    }
+    return pyRepr(value);
+  }
+  /* value with the fewest decimals (one at least) that still reads above limit (raw_preview._above) */
+  function above(value, limit) {
+    for (var places = 1; places < 10; places++) {
+      var text = pyFixed(value, places);
+      if (parseFloat(text) > limit) { return text; }
     }
     return pyRepr(value);
   }
@@ -809,8 +838,13 @@
     });
     return out;
   }
-  /* the trapezoid over the automatic peak's edges on the method's baseline:
-     what the manual area is judged against; null when it cannot be measured */
+  /* the line the automatic peak was measured on: the processing change that made it (a change
+     applied to all), else the method's */
+  function autoLine(card, tr) {
+    return (tr && tr.processing && tr.processing.baseline) || card.method_baseline;
+  }
+  /* the trapezoid over the automatic peak's edges on `baseline` (autoLine's): what the manual
+     area is judged against; null when it cannot be measured */
   function autoArea(tr, baseline) {
     var auto = tr.auto || tr.peak || {};
     if (auto.start == null || auto.end == null) { return null; }
@@ -873,8 +907,10 @@
      re-integration's on the samples the worker takes; another apex's, its
      candidate's)}. edit: {kind, start,
      end, apex, baseline ("" for the method's)}. A deletion or an undo is
-     not judged here. */
-  function judge(card, tr, edit) {
+     not judged here. `forAll` judges a change "Apply to all" would make: processing, not a
+     manual change, so the method's smallest manual change and S/N do not apply; the hard
+     limits (the fewest points, the full-resolution reach) still do. */
+  function judge(card, tr, edit, forAll) {
     var res = { problem: null, preview: null, auto_area: null, change: null, start: null, end: null, notes: [] };
     if (edit.kind !== "integrate" && edit.kind !== "apex") { return res; }
     try {
@@ -938,12 +974,12 @@
       }
       res.preview = manual;
       var limits = card.limits || {};
-      if (limits.min_manual_change_pct == null) { throw new Error("The method's limits on a manual change are not numbers."); }
-      res.auto_area = asFound ? storedAutoArea(tr) : autoArea(tr, card.method_baseline);
+      if (!forAll && limits.min_manual_change_pct == null) { throw new Error("The method's limits on a manual change are not numbers."); }
+      res.auto_area = asFound ? storedAutoArea(tr) : autoArea(tr, autoLine(card, tr));
       res.change = areaChangePct(res.auto_area, manual.area);
-      res.problem = editProblem(edit.kind, res.auto_area, manual.area, sn, limits.min_manual_change_pct,
-                                limits.min_manual_sn);
-      if (res.problem === null) { res.notes = peakNotes(manual, rules).concat(edgeNotes(tr, card.method_baseline, manual, rules)); }
+      res.problem = forAll ? null : editProblem(edit.kind, res.auto_area, manual.area, sn, limits.min_manual_change_pct,
+                                                limits.min_manual_sn);
+      if (res.problem === null) { res.notes = peakNotes(manual, rules).concat(edgeNotes(tr, autoLine(card, tr), manual, rules)); }
     } catch (err) {
       res.problem = err.message;
     }
@@ -956,23 +992,105 @@
     var line = (lines[0] || "").replace(/^\s+|\s+$/g, "");
     return line.length <= 200 ? line : line.slice(0, 197).replace(/\s+$/, "") + "...";
   }
-  /* the banner over the tab: the run's failed processing, a retry, or edits
-     waiting for it to be processed again; null when there is nothing to say */
+  /* a processing the worker failed, or refused (never tried again) */
+  function failedRun(f) { return !!f && (f.status === "failed" || f.status === "refused"); }
+  /* the banner over the tab: the run's failed processing, a refused one while edits wait on it, or
+     a retry; null when there is nothing to say. Edits being processed are the band's
+     (processingBand), not the banner's */
   function banner(data) {
     var f = data.failure;
-    if (f && f.status === "failed") {
+    /* edits made after a failed run wait on a new processing: the band says so, the old failure is not repeated */
+    if (f && !data.processing && (f.status === "failed" || (f.status === "refused" && data.waiting))) {
       return { cls: "is-fail", text: "The run's last processing failed: " + (shortError(f.error) || "no reason was recorded.") };
     }
     if (f && f.status === "retrying") {
       return { cls: "is-warn", text: "The run is being processed again after a failure, attempt " + (f.attempts || 1) +
                                      (f.error ? ": " + shortError(f.error) : ".") };
     }
-    if (data.waiting) {
-      var n = data.edited || 0;
-      return { cls: "is-warn", text: "Edits are waiting for the run to be processed again" +
-                                     (n ? ": " + n + (n === 1 ? " trace" : " traces") + " edited." : ".") };
-    }
     return null;
+  }
+  /* the band under the strip while the worker processes the run (data.processing, the server's
+     raw_progress): the ring, "Processing run · Started: HH:MM · Est. completion: HH:MM" and the
+     smaller line under it; a store that cannot be read says so, with no ring. The words are the
+     server's, on the lab's clock; "" when nothing is processed */
+  function processingBand(p) {
+    if (!p || !p.text) { return ""; }
+    var ring = p.state === "unreadable" ? "" : '<span class="pfas-progress-ring" role="img" aria-label="Processing"></span>';
+    return '<div class="pfas-busy raw-busy" role="status">' + ring + '<div class="pfas-busy-text"><span class="pfas-busy-line">' +
+           esc(p.text) + "</span>" + (p.note ? '<span class="pfas-busy-note">' + esc(p.note) + "</span>" : "") + "</div></div>";
+  }
+  /* faint cards under each section's heading while a first import has stored nothing yet */
+  var GHOSTS = { analyte: 16, surrogate: 8, internal_standard: 3 };
+  function ghostSectionsHtml(pairs) {
+    return (pairs || []).map(function (pair) {
+      var cards = "", n = GHOSTS[pair[0]] || 8;
+      for (var i = 0; i < n; i++) { cards += '<span class="raw-thumb-ghost"></span>'; }
+      return '<section class="raw-section is-ghost" data-section="' + esc(pair[0]) + '">' +
+             '<h3 class="raw-section-head">' + esc(pair[1]) + "</h3>" +
+             '<div class="raw-thumbs" aria-hidden="true">' + cards + "</div></section>";
+    }).join("");
+  }
+
+  /* ── the edit's answer and the wait for the run ──────────────────────── */
+  var SESSION_ENDED = "Your session ended: sign in again, then apply.";
+  var POLL_MS = 5000, STALL_MS = 60000, PAGE_POLL_MS = 5000, MIN_POLL_MS = 2000;
+  /* the wait between two looks at the run's status: what the server sends (poll_ms), never under the floor,
+     so a wrong figure cannot make the page hammer the server; no figure, the page's own */
+  function pollEvery(sent, fallback, floor) {
+    var n = parseInt(sent, 10), min = floor == null ? MIN_POLL_MS : floor;
+    return Math.max(min, n > 0 ? n : fallback);
+  }
+  /* a watch is idle, and may be woken to look at once, when no timer waits and no look is out */
+  /* the floor in force; a test lowers it through window.PFAS.rawMinPollMs, the page never sets it */
+  function minPoll() {
+    var o = typeof window !== "undefined" && window.PFAS ? window.PFAS.rawMinPollMs : null;
+    return typeof o === "number" ? o : MIN_POLL_MS;
+  }
+  function watchIdle(w) { return !!w && !w.timer && !w.inFlight; }
+  /* the answer to an edit posted by fetch: {ok, kind, error, notes, waiting}; a body that
+     is not JSON is the sign-in page, a session that ended */
+  function replyOf(text) {
+    var r = null;
+    try { r = JSON.parse(text); } catch (e) { r = null; }
+    if (!r || typeof r !== "object" || Array.isArray(r)) { return { ok: false, session: true, error: SESSION_ENDED }; }
+    var out = { ok: !!r.ok, kind: r.kind || "", error: r.error || "", notes: r.notes || [], waiting: !!r.waiting };
+    /* a preview of "Apply to all" also answers what it would do */
+    if (typeof r.text === "string") { out.text = r.text; out.needs_confirm = !!r.needs_confirm; out.natives = r.natives || []; out.major = !!r.major; }
+    return out;
+  }
+  var NO_ANSWER = "The server did not answer: try again.";
+  var STATUS_LOST = "The run's status could not be read: reload the page.";
+  /* the answer to a fetch (its response and text): the JSON the server wrote, whatever the
+     status (a refusal is JSON); else the sign-in page (a redirect, 401 or 403) is an ended
+     session and any other answer is none */
+  function isObject(text) {
+    try { var r = JSON.parse(text); return !!r && typeof r === "object" && !Array.isArray(r); } catch (e) { return false; }
+  }
+  function endedSession(resp) {
+    return !!resp && (resp.redirected === true || resp.status === 401 || resp.status === 403);
+  }
+  function replyFrom(resp, text) {
+    if (isObject(text)) { return replyOf(text); }
+    if (endedSession(resp)) { return { ok: false, session: true, error: SESSION_ENDED }; }
+    return { ok: false, noanswer: true, error: NO_ANSWER };
+  }
+  /* the run's status answer: {status} or {session: true, error} or {noanswer: true, error} */
+  function statusFrom(resp, text) {
+    if (isObject(text)) { return { status: JSON.parse(text) }; }
+    if (endedSession(resp)) { return { session: true, error: SESSION_ENDED }; }
+    return { noanswer: true, error: NO_ANSWER };
+  }
+  /* one look at the run's status (raw_status=1) after `elapsedMs` of waiting: done when
+     nothing waits, failed (and stopped) only when its processing failed after `since` (the
+     time of the failure on record when the edit was posted: an older one is not this edit's);
+     a retry keeps waiting */
+  function pollStep(status, elapsedMs, since) {
+    var f = status && status.failure;
+    if (failedRun(f) && !(since && f.at && String(f.at) <= String(since))) {
+      return { done: false, failed: true, text: "The run's last processing failed: " + shortError(f.error) };
+    }
+    if (!status || !status.waiting) { return { done: true, failed: false, text: "" }; }
+    return { done: false, failed: false, text: elapsedMs >= STALL_MS ? "Still processing the run" : "Saved. Processing the run again" };
   }
 
   /* ── the page's address ───────────────────────────────────────────────── */
@@ -986,17 +1104,29 @@
     return out;
   }
   /* the edit as the server says it was posted (posted_<field>): its trace
-     ("" the quantifier), kind, edges, apex, line and levels, read when the
-     browser kept none of its own; null when the address names none */
-  var POSTED_KINDS = ["integrate", "apex", "delete", "revert"];
+     ("" the quantifier), kind, edges, apex, line and levels, a fit's shape,
+     apexes and the peak picked, read when the browser kept none of its own;
+     null when the address names none */
+  var POSTED_KINDS = ["integrate", "apex", "fit", "delete", "revert"];
+  var FIT_SHAPES = ["gaussian", "emg"];
   function postedEdit(p) {
     if (POSTED_KINDS.indexOf(p.posted_kind) < 0) { return null; }
     var number = function (k) { return p[k] == null || p[k] === "" || isNaN(Number(p[k])) ? null : Number(p[k]); };
     var ls = number("posted_level_start"), le = number("posted_level_end");
-    return { transition: p.posted_transition || "", kind: p.posted_kind, start: number("posted_start"),
-             end: number("posted_end"), apex: number("posted_apex"),
-             baseline: BASELINES.indexOf(p.posted_baseline) >= 0 ? p.posted_baseline : "",
-             levels: ls != null && le != null ? [ls, le] : null };
+    var out = { transition: p.posted_transition || "", kind: p.posted_kind, start: number("posted_start"),
+                end: number("posted_end"), apex: number("posted_apex"),
+                baseline: BASELINES.indexOf(p.posted_baseline) >= 0 ? p.posted_baseline : "",
+                levels: ls != null && le != null ? [ls, le] : null };
+    if (p.posted_kind === "fit") {
+      var apexes = String(p.posted_apexes || "").split(",").filter(function (v) {
+        return v !== "" && !isNaN(Number(v));
+      }).map(Number);
+      out.shape = FIT_SHAPES.indexOf(p.posted_shape) >= 0 ? p.posted_shape : "";
+      out.apexes = apexes;
+      out.pick = number("posted_pick");
+      out.alone = p.posted_alone === "1";
+    }
+    return out;
   }
   /* the card the edit's redirect names (open=<injection>|<analyte>), with
      the refusal it carries, the method's notes on the edit made (notes=,
@@ -1062,6 +1192,228 @@
            (cal ? " " + card.injection + " comes off the " + name + " curve." : "");
   }
 
+  var ALL_LEVELS = "Levels set by hand apply to this injection only.";
+  var ALL_ONE = "Choosing an apex or deleting applies to this injection only.";
+  var ALL_SINGLE = "Apply to all is for a single peak.";
+  /* "" when the change drawn may be applied to every injection, else why it may not; the
+     method's mode for the compound is the card's peak_mode, never the view's */
+  function allOffered(st, a) {
+    if ((a.peak_mode || "single") !== "single") { return ALL_SINGLE; }
+    if (st.kind === "apex" || st.mode === "delete") { return ALL_ONE; }
+    if (st.levels) { return ALL_LEVELS; }
+    return "";
+  }
+  var ALL_NO_PEAK = "This trace has no peak to apply from.";
+  /* what "Apply to all" posts (null when the trace has no peak to measure from): the edges as offsets from the automatic peak's apex, the one
+     the worker measures from; a fit adds kind "fit" and its own fields here */
+  function allPayload(st, tr, a) {
+    /* a fit goes in absolute times: the server places it from each injection's expected time */
+    if (st.kind === "fit") {
+      var all = { analyte: a.analyte, transition: tr.transition || "", kind: "fit", shape: st.shape || "",
+                  injection: a.injection || "", start: field(st.start), end: field(st.end),
+                  apexes: fitApexText(st.apexes) };
+      if (st.alone) { all.alone = "1"; }
+      return all;
+    }
+    var apex = (tr.auto || tr.peak || {}).apex;
+    if (apex == null) { return null; }
+    function off(x) { return Math.round((x - apex) * 10000) / 10000; }
+    return { analyte: a.analyte, transition: tr.transition || "", kind: st.kind, baseline: st.baseline || "",
+             start_offset: off(st.start), end_offset: off(st.end) };
+  }
+
+  /* ── the fit tool: overlapping peaks fitted between two edges ─────────── */
+  var FIT_APEXES = "Click two or three apexes between the edges.";
+  var FIT_ISOTOPE = "An isotope standard's peak is not fitted.";
+  var FIT_UNSET = "Set the fit limit on the method's Integration tab.";
+  var FIT_MAJOR = "This changes how the compound is processed: it is countersigned at release.";
+  /* the preview's interval is the covariance's; the worker judges the resampled one */
+  var FIT_FINAL = "The final check uses the resampled interval.";
+  var FIT_FITTING = "Fitting the peaks.";
+  var FIT_FAILED = "The preview could not be computed.";
+  /* past the most samples the preview fits (raw_fit.MOST_POINTS): the preview is not drawn, but the
+     fit may still be applied; the cap limits the preview's cost, not what an analyst may fit */
+  var FIT_WIDE = "Too long to preview: the fit is checked when the run is processed.";
+  var FIT_NO_FLOOR = "Process the run again to preview the detection floor.";
+  var FIT_MOST = 3;
+  /* the apexes in time order, as posted: "4.2500,4.3100" */
+  function fitApexSorted(apexes) {
+    return (apexes || []).filter(function (v) { return typeof v === "number" && isFinite(v); })
+      .sort(function (p, q) { return p - q; });
+  }
+  function fitApexText(apexes) {
+    return fitApexSorted(apexes).map(function (v) { return v.toFixed(4); }).join(",");
+  }
+  /* the time the trace's peak is searched about, as the run stored it (a fit applied to all is placed
+     from it); null when the trace holds none */
+  /* the expected RT of a card: the quantifier's own first, then the card's, so the chart line and the pane read one */
+  function expectedRtOf(a) {
+    var q = (a && a.quant) || {};
+    return q.expected_rt != null ? q.expected_rt : (a ? a.expected_rt : null);
+  }
+  function expectedOf(a, tr) {
+    var v = tr && tr.expected_rt;
+    return v == null || isNaN(Number(v)) ? null : Number(v);
+  }
+  /* the index among the apexes (in time order) nearest the expected time, the first of two equally
+     near; 0 where there is no expected time */
+  function defaultPick(apexes, expected) {
+    var best = 0;
+    if (expected == null) { return best; }
+    /* the offsets to six decimals, as the server keeps them, so a tie is the same tie there */
+    function off(v) { return Math.abs(Math.round((v - expected) * 1e6) / 1e6); }
+    for (var i = 1; i < apexes.length; i++) {
+      if (off(apexes[i]) < off(apexes[best])) { best = i; }
+    }
+    return best;
+  }
+  /* the component a fit applied to all reports, or -1 when none can be named: no apex, no expected
+     time stored, or an expected time that is not between the edges */
+  function fitAllPick(st, a, tr) {
+    var ap = fitApexSorted(st.apexes), e = expectedOf(a, tr);
+    if (!ap.length || e == null || !(st.start < e && e < st.end)) { return -1; }
+    return defaultPick(ap, e);
+  }
+  /* the component this injection's fit reports: the one chosen, else the one nearest the expected time */
+  function fitPick(st, a, tr) {
+    var ap = fitApexSorted(st.apexes);
+    return st.pick != null && st.pick < ap.length ? st.pick : defaultPick(ap, expectedOf(a, tr));
+  }
+  /* "" when the fit drawn can be applied, else what it lacks */
+  function fitProblem(st) {
+    var s = st.start, e = st.end, ap = fitApexSorted(st.apexes);
+    if (typeof s !== "number" || typeof e !== "number" || !(s < e)) { return NO_EDGES; }
+    /* one apex only for a fit alone, the fits stepper's candidate; the fit tool's own clicks are two or three */
+    if (st.alone ? ap.length !== 1 : (ap.length < 2 || ap.length > FIT_MOST)) { return FIT_APEXES; }
+    for (var i = 0; i < ap.length; i++) {
+      if (!(s < ap[i] && ap[i] < e) || (i && ap[i] === ap[i - 1])) { return FIT_APEXES; }
+    }
+    return "";
+  }
+  /* what a fit of one injection posts besides the trace's own fields */
+  function fitPayload(st, a, tr) {
+    var out = { kind: "fit", shape: st.shape || "", apexes: fitApexText(st.apexes), start: field(st.start),
+                end: field(st.end), pick: String(fitPick(st, a, tr)) };
+    if (st.alone) { out.alone = "1"; }
+    return out;
+  }
+  /* the apexes after a click at x: one within tol is taken away, else x is added (never a fourth) */
+  function apexClick(apexes, x, tol) {
+    var ap = fitApexSorted(apexes);
+    for (var i = 0; i < ap.length; i++) {
+      if (Math.abs(ap[i] - x) <= tol) { ap.splice(i, 1); return ap; }
+    }
+    if (ap.length < FIT_MOST) { ap.push(Math.round(x * 10000) / 10000); }
+    return fitApexSorted(ap);
+  }
+  /* a multiple on two decimals, more where two would read as the limit it is under */
+  function belowLimit(v, limit) {
+    for (var places = 2; places < 10; places++) {
+      var text = v.toFixed(places);
+      if (limit == null || !(v < limit) || parseFloat(text) < limit) { return text; }
+    }
+    return String(v);
+  }
+  /* the stored fit in words: "Area 26,090 · 95 % interval 24,543 to 35,154 · residual 1.05 times the noise" */
+  function fitReadout(fit) {
+    fit = fit || {};
+    var c = (fit.components || [])[fit.pick || 0] || {}, out = ["Area " + num(c.area, 0)];
+    var ci = fit.ci, label = "95 % interval";
+    if (!ci && fit.ci_approx) { ci = fit.ci_approx; label = "approximate 95 % interval"; }
+    if (ci && ci.length === 2) { out.push(label + " " + num(ci[0], 0) + " to " + num(ci[1], 0)); }
+    if (fit.noise_multiple != null) { out.push("residual " + belowLimit(fit.noise_multiple, fit.noise_multiple_limit) + " times the noise"); }
+    return out.join(" · ");
+  }
+  /* a text of the worker's with its numbers put in as Python's % puts them: %s as given, %g, %% */
+  function fitText(text, args) {
+    var k = 0;
+    return String(text).replace(/%([%sg])/g, function (m, c) {
+      if (c === "%") { return "%"; }
+      var v = args[k++];
+      return c === "g" ? pyG(v) : String(v);
+    });
+  }
+  /* the fit as the worker would make and judge it, previewed (raw_fit.js), with `problem`: "" or the
+     worker's refusal in the words the card is sent (`words`, raw_review.fit_preview_words), the
+     residual's multiple written with the fewest decimals that read over the limit; and `fit`, the
+     preview as a stored fit's record, drawn alike. The approximate interval is never a refusal. */
+  function fitPreview(t, y, opts, words) {
+    words = words || {};
+    var texts = words.texts || {}, fewest = ((words.fewest || {})[opts.shape] || {})[String((opts.apexes || []).length)];
+    var o = {}, k;
+    for (k in opts) { if (opts.hasOwnProperty(k)) { o[k] = opts[k]; } }
+    o.fewest = fewest == null ? null : fewest;
+    var res = rawFit.fit(t, y, o), why = res.refused;
+    res.problem = "";
+    res.own = !!why && why.key === "wide";          /* the card's own sentence, not a refusal of the worker's */
+    res.unpreviewed = res.own;                      /* not drawn, but not refused: Apply stays on */
+    if (res.own) {
+      res.problem = FIT_WIDE;
+    } else if (why) {
+      var args = why.key === "residual" ? [above(why.args[0], why.args[1]), why.args[1]] : why.args;
+      res.problem = fitText(texts[why.key] || why.key, args);
+    }
+    res.fit = res.components.length ? {
+      shape: res.shape, pick: opts.pick || 0, baseline: res.baseline, span: res.span, ci_approx: res.ci_approx,
+      noise_multiple: res.noise_multiple, noise_multiple_limit: opts.limit,
+      components: res.components.map(function (c) { return { area: c.area, se: c.se, mu: c.mu, sigma: c.sigma, tau: c.tau }; })
+    } : null;
+    return res;
+  }
+  /* what applying a fit to all reports, said before it is made: the click nearest the expected time */
+  function fitAllWords(apexes, expected, edges) {
+    var ap = fitApexSorted(apexes);
+    if (!ap.length) { return ""; }
+    if (expected == null) {
+      return "No expected time is stored for this trace, so no peak can be named.";
+    }
+    if (edges && !(edges[0] < expected && expected < edges[1])) {
+      return "The fit's edges must lie either side of the expected time, " + pyFixed(expected, 3) + " min.";
+    }
+    return "In every injection the reported peak is peak " + (defaultPick(ap, expected) + 1) +
+           ", the one nearest the expected time, " + pyFixed(expected, 3) + " min. " + FIT_MAJOR;
+  }
+  /* one fitted component at time x, above the baseline: the preview's model (raw_fit.js), the worker's */
+  function fitComponentAt(shape, c, x) { return rawFit.componentAt(shape, c, x); }
+  function fitBaselineAt(fit, x) { var b = fit.baseline || [0, 0, 0]; return b[0] + b[1] * (x - b[2]); }
+  function fitModelAt(fit, x) {
+    var y = fitBaselineAt(fit, x);
+    (fit.components || []).forEach(function (c) { y += fitComponentAt(fit.shape, c, x); });
+    return y;
+  }
+  function curveXs(from, to, n) {
+    var out = [];
+    for (var i = 0; i <= n; i++) { out.push(from + (to - from) * i / n); }
+    return out;
+  }
+  /* component k over the fitted span, drawn on the baseline */
+  function fitCurve(fit, k) {
+    var span = fit.span || [0, 0], c = fit.components[k];
+    return curveXs(span[0], span[1], 160).map(function (x) {
+      return { x: x, y: fitBaselineAt(fit, x) + fitComponentAt(fit.shape, c, x) };
+    });
+  }
+  /* the reported component's area, as the card fills it: its curve and the baseline under it,
+     between mu - 3 sigma and mu + 3 sigma (+ 3 tau), inside the fitted span */
+  function fitFill(fit) {
+    var c = (fit.components || [])[fit.pick || 0], top = [], base = [];
+    if (!c || !fit.span) { return { top: top, base: base }; }
+    var lo = Math.max(fit.span[0], c.mu - 3 * c.sigma), hi = Math.min(fit.span[1], c.mu + 3 * c.sigma + (c.tau ? 3 * c.tau : 0));
+    curveXs(lo, hi, 80).forEach(function (x) {
+      base.push({ x: x, y: fitBaselineAt(fit, x) });
+      top.push({ x: x, y: fitBaselineAt(fit, x) + fitComponentAt(fit.shape, c, x) });
+    });
+    return { top: top, base: base };
+  }
+  /* the signal less the fitted model, at the trace's samples inside the fitted span */
+  function fitResidual(fit, t, y) {
+    var out = [], span = fit.span || [-Infinity, Infinity];
+    for (var i = 0; i < t.length; i++) {
+      if (t[i] >= span[0] && t[i] <= span[1]) { out.push({ x: t[i], y: y[i] - fitModelAt(fit, t[i]) }); }
+    }
+    return out;
+  }
+
   /* whether deleting the quantifier's peak is confirmed before it is posted:
      an isotope standard (the card says so), or a deletion the server has
      already asked to have confirmed */
@@ -1084,8 +1436,12 @@
   function integrationText(tr) {
     tr = tr || {};
     if (tr.deleted) { return "Peak deleted"; }
-    var manual = tr.edit === "edited" || (tr.auto != null && tr.edit !== "no_effect");
-    return (manual ? "Manual" : "Automatic") + (tr.line ? " · " + tr.line : "");
+    return (editedByHand(tr) ? "Manual" : "Automatic") + (tr.line ? " · " + tr.line : "");
+  }
+  /* a peak edited by hand: an edit stored, or an automatic peak kept beside it */
+  function editedByHand(tr) {
+    tr = tr || {};
+    return tr.edit === "edited" || (tr.auto != null && tr.edit !== "no_effect");
   }
   /* the readout strip, [label, value, the line under the value]: the area
      (once edited, the automatic area and the change under it), retention
@@ -1096,29 +1452,304 @@
     var change = q.auto && !q.deleted ? signedChange(auto.area, a.area) : null;
     if (change != null) { under = "automatic " + num(auto.area, 0) + " · change " + signedPct(change); }
     var conc = a.state === "nd" ? "N.D." : (a.conc == null ? "—" : num(a.conc) + (a.unit ? " " + a.unit : ""));
-    var ion = a.ion_ratio == null ? "—" : num(a.ion_ratio) + (a.ion_expected == null ? "" : ", expected " + num(a.ion_expected));
+    var ion = (a.ions || []).length ? a.ions.map(ionLine).join("\n")
+            : a.ion_ratio == null ? "—" : num(a.ion_ratio) + (a.ion_expected == null ? "" : ", expected " + num(a.ion_expected));
     return [["Area", num(a.area, 0), under], ["Retention time", a.rt == null ? "—" : num(a.rt) + " min", ""],
-            ["S/N", num(a.sn, 1), ""], ["Ion ratio", ion, ""], ["Concentration", conc, ""],
+            ["S/N", num(a.sn, 1), ""], ["Ion ratio", ion, fitMixed(a, null)], ["Concentration", conc, ""],
             ["Integration", integrationText(q), ""]];
   }
-  /* the Details disclosure's [label, value] pairs: the measures that
-     explain the peak where it has them, the engine always named, and the
-     isotope standard it is read against */
-  function details(a) {
-    var rows = [["Engine", a.engine || "Classic"]];
-    if (a.smoothing_points != null) {
-      rows.push(["Smoothing", a.smoothing_points + " points" + (a.smoothing_from ? ", from " + a.smoothing_from : "")]);
+
+  /* ── ion ratios ───────────────────────────────────────────────────────── */
+  /* where the expected ratio came from, as the line says it; the mean of the
+     run's calibrators is said by their count, "from 7 calibrators" */
+  var ION_SOURCES = { "method": "from the method", "quantitation reference": "from the quantitation reference",
+                      "export": "from the export" };
+  /* a difference in whole percent, signed: "+3 %", "−20 %", "0 %" */
+  function wholePct(v) {
+    var s = pyFixed(Math.abs(v), 0);
+    return (s === "0" ? "" : v < 0 ? "−" : "+") + s + " %";
+  }
+  /* one qualifier's line, named by its transition where the card knows it:
+     "413.0 > 169.0: 0.214 against 0.208 expected from 7 calibrators · +3 %";
+     a qualifier not calculated says so; with no expected ratio, the ratio alone */
+  function ionLine(ion) {
+    ion = ion || {};
+    var o = ion.observed, e = ion.expected, n = ion.n_cal || 0;
+    var obs = (ion.label ? ion.label + ": " : "") +
+              (typeof o === "number" ? num(o) : o === "uncalculable" ? "Not calculated" : "—");
+    if (typeof e !== "number" || !e) { return obs; }
+    var src = ion.source === "calibrators" ? "from " + n + (n === 1 ? " calibrator" : " calibrators") : ION_SOURCES[ion.source] || "";
+    return obs + " against " + num(e) + " expected" + (src ? " " + src : "") +
+           (typeof o === "number" ? " · " + wholePct((o / e - 1) * 100) : "");
+  }
+  /* detected as the worker reads it (qc_engine.qual_quan_check): a
+     concentration, or one below or above the range */
+  function detectedOf(a) {
+    return !!a && (a.conc != null || a.qualifier === "BLoQ" || a.qualifier === "ALoQ");
+  }
+  /* the line's verdict by the method's tolerance in % (null while the check
+     is Off), as the worker judges: |observed ÷ expected − 1| over it fails,
+     and so does a qualifier not calculated beside a detection; null with
+     nothing to judge */
+  function ionStatus(ion, tolPct, detected) {
+    ion = ion || {};
+    var icon = null;
+    if (tolPct == null) { return null; }
+    if (ion.observed === "uncalculable") { icon = detected ? "fail" : null; }
+    else if (typeof ion.observed === "number" && typeof ion.expected === "number" && ion.expected) {
+      icon = Math.abs(ion.observed / ion.expected - 1) * 100 > tolPct ? "fail" : "pass";
     }
-    if (a.fwhm_s != null) { rows.push(["FWHM", num(a.fwhm_s, 1) + " s"]); }
-    if (a.tailing != null) { rows.push(["Tailing", num(a.tailing, 2)]); }
-    /* the asymmetry factor at 10 % of the height, or why it was not read */
-    if (a.asymmetry != null) { rows.push(["Asymmetry", num(a.asymmetry, 2)]); }
-    else if (a.asymmetry_note) { rows.push(["Asymmetry", "Not measured: " + a.asymmetry_note]); }
-    if (a.plates != null) { rows.push(["Plates", num(a.plates, 0)]); }
-    if (a.qual_sn != null) { rows.push(["Qualifier S/N", num(a.qual_sn, 1)]); }
-    if (a.file_transition) { rows.push(["File transition", a.file_transition]); }
-    rows.push(["Isotope standard", a.is ? shown(a.is) : "—"]);
-    return rows;
+    if (!icon) { return null; }
+    return { icon: icon, label: STATUS_WORD[icon], colour: STATUS_COLOUR[icon] };
+  }
+  /* a qualifier's ratio while one trace's edge is dragged: the dragged
+     trace's previewed area against the other's stored one, qualifier over
+     quantifier; null without both areas */
+  function ionPreview(draggedArea, otherArea, draggingQuant) {
+    var quant = draggingQuant ? draggedArea : otherArea, qual = draggingQuant ? otherArea : draggedArea;
+    if (quant == null || qual == null || !(quant > 0)) { return null; }
+    return qual / quant;
+  }
+  /* the stored area of a trace, null for a deleted peak */
+  function storedArea(tr) { return !tr || tr.deleted ? null : (tr.peak || {}).area == null ? null : tr.peak.area; }
+  /* the preview's ratio words for trace `index` (0 the quantifier) at `area`:
+     every qualifier's ratio when the quantifier is dragged, that
+     qualifier's alone otherwise; "" with none to say */
+  function ionPreviewText(a, index, area) {
+    var quals = a.quals || [], vals = [];
+    if (!index) { quals.forEach(function (q) { vals.push(ionPreview(area, storedArea(q), true)); }); }
+    else { vals.push(ionPreview(area, storedArea(a.quant), false)); }
+    if (!vals.some(function (v) { return v != null; })) { return ""; }
+    return (vals.length > 1 ? "ion ratios " : "ion ratio ") + vals.map(function (v) { return num(v); }).join(", ");
+  }
+  /* a quantifier fitted beside a qualifier integrated: the ratio sets the
+     two areas side by side, which the card says. `fitting` is the trace
+     being fitted (0 the quantifier, k the k-th qualifier), which counts as
+     fitted; null for the stored peaks alone */
+  var FIT_MIXED = "Quantifier fitted, qualifier integrated";
+  function fitMixed(a, fitting) {
+    var fitted = fitting === 0 || !!(a.quant || {}).fit;
+    return fitted && (a.quals || []).some(function (q, k) { return fitting !== k + 1 && !q.fit && !q.deleted; }) ? FIT_MIXED : "";
+  }
+  /* said before a change to a calibrator whose ratio feeds an expected one
+     (the card's ion_warning: a qualifier's expected ratio is the
+     calibrators' mean), or, with `all`, before a change applied to all
+     injections, which reaches every calibrator (ion_warning_all); nothing
+     when no other injection would be judged again */
+  function calibratorWarning(a, all) {
+    var w = (a || {})[all ? "ion_warning_all" : "ion_warning"];
+    if (!w || !w.feeds || !w.samples) { return ""; }
+    return (all ? "The calibrators' ratios feed" : "This calibrator's ratio feeds") + " the expected ion ratio: " + w.samples +
+           (w.samples === 1 ? " sample" : " samples") + " will be checked again.";
+  }
+  /* a measure the card carries beside the quantifier's own record */
+  function measure(a, k) { return a[k] != null ? a[k] : (a.quant || {})[k]; }
+  /* the six ways a peak is integrated or fitted, [key, name], one wording for the pane and the chart's menu */
+  var FIT_METHODS = [["valley", "Valley to valley"], ["drop", "Perpendicular drop"], ["flat", "Flat at the lower edge"], ["skim", "Tangent skim"],
+                     ["gaussian", "Gaussian fit"], ["emg", "EMG fit"]];
+  function fitMethodName(key) {
+    for (var i = 0; i < FIT_METHODS.length; i++) { if (FIT_METHODS[i][0] === key) { return FIT_METHODS[i][1]; } }
+    return "—";
+  }
+  /* the method the stored peak was integrated by: the fit's shape, else the baseline */
+  function fitMethodOf(q) {
+    q = q || {};
+    return q.fit && q.fit.shape ? q.fit.shape : q.baseline;
+  }
+  /* the fits the stepper offers: each fitting method the worker scored for the quantifier's peak,
+     in the stored order, [{method, name, score, cand}]; a run with no stored scores offers the six
+     methods unscored, on the peak's current edges (cand is null) */
+  function fitSteps(a) {
+    var scores = ((a && a.quant) || {}).fit_scores, steps;
+    if (!scores || !scores.length) {
+      steps = FIT_METHODS.map(function (m) { return { method: m[0], name: m[1], score: null, cand: null }; });
+    } else {
+      steps = scores.map(function (c) {
+        return { method: c.method, name: fitMethodName(c.method), score: c.score == null ? null : c.score, cand: c };
+      });
+    }
+    /* an isotope standard's peak is not fitted: no fit among the steps, as the menu's fit tool is shut */
+    return a && a.is_standard ? steps.filter(function (x) { return x.method !== "gaussian" && x.method !== "emg"; }) : steps;
+  }
+  /* the step the stepper opens on: the peak's stored fitting method, else the first */
+  function fitStart(a, steps) {
+    var m = fitMethodOf((a && a.quant) || {});
+    for (var i = 0; i < steps.length; i++) { if (steps[i].method === m) { return i; } }
+    return 0;
+  }
+  function checkIcon(name, fallback) {
+    var I = icons();
+    return (I && I.svg(name, { hidden: true })) || fallback;
+  }
+  /* a stepper built once into `bar`: a Previous button, the output, a Next button. Later calls change only what
+     differs, in place, so the button pressed keeps the keyboard focus and the output's new words are announced;
+     a button that goes disabled under the focus hands it to its partner. o: attr (the data- name of the
+     buttons), labels [previous, next], off [previous, next], text, title (on both buttons), hidden */
+  function paintStepper(bar, o) {
+    var btns = bar.querySelectorAll("button"), out = bar.querySelector("output"), i;
+    if (btns.length !== 2 || !out) {
+      var title = o.title ? ' title="' + esc(o.title) + '"' : "";
+      bar.innerHTML = '<button type="button" class="btn btn-sm btn-secondary" data-' + o.attr + '="-1" aria-label="' + esc(o.labels[0]) + '"' + title + ">" +
+        checkIcon("open", "Previous") + '</button><output aria-live="polite"></output>' +
+        '<button type="button" class="btn btn-sm btn-secondary" data-' + o.attr + '="1" aria-label="' + esc(o.labels[1]) + '"' + title + ">" +
+        checkIcon("open", "Next") + "</button>";
+      btns = bar.querySelectorAll("button");
+      out = bar.querySelector("output");
+    }
+    for (i = 0; i < 2; i++) {
+      if (!!btns[i].disabled !== !!o.off[i]) { btns[i].disabled = !!o.off[i]; }
+      if (o.title) { btns[i].setAttribute("title", o.title); } else if (btns[i].getAttribute("title")) { btns[i].removeAttribute("title"); }
+    }
+    if (out.textContent !== o.text) { out.textContent = o.text; }
+    bar.hidden = !!o.hidden;
+    var act = doc && doc.activeElement;
+    for (i = 0; i < 2; i++) {
+      if (act === btns[i] && btns[i].disabled && !btns[1 - i].disabled && btns[1 - i].focus) { btns[1 - i].focus(); }
+    }
+  }
+  /* the words under the smoothing stepper: why it is shut, what is previewed against the stored step, that a
+     drawn edit went with it (and is sent no further), and that it was set aside (Ctrl+Z brings it back) */
+  var SMOOTH_ASIDE = "Your drawn edit was set aside; Ctrl+Z brings it back.";
+  function smoothNote(o) {
+    var out = [];
+    if (o.blocked) { out.push(o.blocked); }
+    if (o.preview) {
+      out.push("Previewing " + o.name + " smoothing on this peak. The stored setting is " + o.stored + ".");
+      if (o.drawn) { out.push(o.drawn); }
+    }
+    if (o.aside) { out.push(SMOOTH_ASIDE); }
+    return out.join(" ");
+  }
+  /* the score badge: the shown candidate's total, passing at the method's threshold, and an arrow
+     opening each check's points and the total against the threshold. No score (an unscored
+     candidate, a peak integrated by hand) is a dash and no arrow. A check's outcome is an icon
+     and, for a screen reader, the words met or not met. `labels` maps a check's key to its
+     words (the card's check_labels); `open` is the breakdown's state. */
+  function scoreBadge(step, threshold, labels, open) {
+    if (!step || step.score == null) { return '<span class="raw-score-badge"><span class="raw-score-num">\u2014</span></span>'; }
+    labels = labels || {};
+    var checks = (step.cand && step.cand.checks) || [], pass = step.score >= threshold;
+    var rows = checks.map(function (c) {
+      return '<li class="raw-check is-' + (c.ok ? "pass" : "fail") + '">' +
+             checkIcon(c.ok ? "pass" : "fail", "") +
+             '<span class="raw-check-name">' + esc(labels[c.key] || c.key) + "</span>" +
+             '<span class="raw-check-pts">' + esc(c.points) + " of " + esc(c.max) + "</span>" +
+             '<span class="sr-only">' + (c.ok ? "met" : "not met") + "</span></li>";
+    }).join("");
+    return '<span class="raw-score-badge ' + (pass ? "is-pass" : "is-warn") + '"><span class="raw-score-num">' + esc(step.score) + "</span>" +
+           '<span class="sr-only">' + (pass ? "meets" : "is under") + " the threshold of " + esc(threshold) + "</span>" +
+           '<button type="button" class="raw-score-more" aria-expanded="' + (open ? "true" : "false") +
+           '" aria-controls="raw-score-checks" aria-label="Score breakdown">' + checkIcon("expand", "More") + "</button></span>" +
+           '<ul class="raw-score-checks" id="raw-score-checks"' + (open ? "" : " hidden") + ">" + rows +
+           '<li class="raw-check-total">Total ' + esc(step.score) + " of 100 against " + esc(threshold) + "</li></ul>";
+  }
+  /* the smoothing stepper: Low, Mid and High from the card's smoothing_steps (half-widths; the server
+     decides which are allowed, a null is skipped). A window is 2m + 1 points. */
+  var SMOOTH_NAMES = ["Low", "Mid", "High"], SMOOTH_KEYS = ["low", "mid", "high"];
+  function smoothingList(a) {
+    var s = (a && a.smoothing_steps) || {};
+    return SMOOTH_KEYS.map(function (k, i) { return { name: SMOOTH_NAMES[i], m: s[k] == null ? null : s[k] }; });
+  }
+  /* the step the card opens on: the change in force (its window), else Mid */
+  function smoothingStart(a, list) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].m != null && 2 * list[i].m + 1 === (a || {}).smoothing_in_force_points) { return i; }
+    }
+    return 1;
+  }
+  /* the next step allowed from `at` in the direction dir (-1 or 1), or -1 */
+  function smoothingNext(list, at, dir) {
+    for (var i = at + dir; i >= 0 && i < list.length; i += dir) { if (list[i].m != null) { return i; } }
+    return -1;
+  }
+  /* a smoothing change is a compound's: only "Apply to this injection" with another smoothing than the
+     stored one asks first; "Apply to all" never does */
+  function needsSmoothingWarning(stored, chosen, button) {
+    return button === "one" && stored != null && chosen != null && stored !== chosen;
+  }
+  /* Apply sends the smoothing alone while an edit is also drawn: said beside the stepper and in the question */
+  function smoothingDropsEdges(label) {
+    return "Apply sends the smoothing for every " + label + " peak; your drawn edges are not sent. Draw them again once the run has been processed.";
+  }
+  function smoothingWarning(label, count, kept) {
+    var text = "Smoothing cannot be kept for one injection. Applying it updates every " + label + " peak in this run, " +
+               count + " injections, and refits them.";
+    if (kept > 0) {
+      text += " " + kept + " " + label + (kept === 1 ? " peak integrated by hand keeps its edges." : " peaks integrated by hand keep their edges.");
+    }
+    return text;
+  }
+  /* the trace drawn smoothed over 2m + 1 points as its engine reads it, [{x, y}] */
+  function smoothedLine(tr, m) {
+    var y = tr.y || [], n = null;
+    try { n = engineSmoothing(tr.engine || "classic", y, 2 * m + 1, m); } catch (err) { n = null; }
+    return (tr.t || []).map(function (x, i) { return { x: x, y: smoothed(y, i, n) }; });
+  }
+  function unitText(v, d, unit) { return v == null || v === "" ? "—" : num(v, d) + unit; }
+  /* the pane's rows by group, [[group, [[label, value, key, extra]]]]. The
+     key names the rows judged against the method (rt, asymmetry, sn,
+     qual_sn, ion_ratio); extra is {under: a second line} or, on an ion
+     ratio row, {index: the qualifier's place in a.ions} */
+  function paneRows(a, editable) {
+    var q = a.quant || {}, auto = q.auto || {}, under = null;
+    var change = q.auto && !q.deleted ? signedChange(auto.area, a.area) : null;
+    if (change != null) { under = "automatic " + num(auto.area, 0) + " · change " + signedPct(change); }
+    var conc = a.state === "nd" ? "N.D." : (a.conc == null ? "—" : num(a.conc) + (a.unit ? " " + a.unit : ""));
+    var peak = q.peak || {}, levels = measure(a, "baseline_levels") || [];
+    var baseStart = levels[0] != null ? levels[0] : peak.base_start, baseEnd = levels[1] != null ? levels[1] : peak.base_end;
+    var expectedRt = expectedRtOf(a);
+    var asym = a.asymmetry == null ? "—" : num(a.asymmetry, 2), asymUnder = null;
+    if (a.asymmetry == null && a.asymmetry_note) {
+      asymUnder = "Not measured: " + String(a.asymmetry_note).replace(/(to|at) 10 %( of the apex height)?/, "to the level needed");
+    }
+    var edgeRows = editable === false ? [["Start RT", unitText(peak.start, 3, " min")], ["End RT", unitText(peak.end, 3, " min")]] : [];
+    var mixed = fitMixed(a, null);
+    var valley = measure(a, "valley_share"), drop = measure(a, "drop_rt");
+    var ions = (a.ions || []).length ? a.ions : [{ observed: a.ion_ratio, expected: a.ion_expected }];
+    var ionRows = [];
+    ions.forEach(function (ion, i) {
+      var tag = ions.length > 1 && ion.label ? " " + ion.label : "", o = ion.observed;
+      ionRows.push(["Ion ratio" + tag, typeof o === "number" ? num(o) : o === "uncalculable" ? "Not calculated" : "—", "ion_ratio",
+                    i === 0 && mixed ? { index: i, under: mixed } : { index: i }]);
+      ionRows.push(["Expected ion ratio" + tag, typeof ion.expected === "number" ? num(ion.expected) : "—", undefined, { index: i }]);
+    });
+    return [
+      ["Result", [["Concentration", conc], ["Area", num(a.area, 0), undefined, under ? { under: under } : undefined],
+                  ["Height", measure(a, "height") == null ? "—" : counts(measure(a, "height"))]]],
+      ["Peak", [["Retention time", unitText(a.rt, 3, " min"), "rt"], ["Expected RT", unitText(expectedRt, 3, " min")],
+                ["Asymmetry", asym, "asymmetry", asymUnder ? { under: asymUnder } : undefined],
+                ["Tailing", a.tailing == null ? "—" : num(a.tailing, 2)], ["FWHM", unitText(a.fwhm_s, 1, " s")],
+                ["Plates", a.plates == null ? "—" : num(a.plates, 0)]]],
+      ["Integration", edgeRows.concat([["Drop-line RT", unitText(drop, 3, " min")], ["Valley share", valley == null ? "—" : num(valley, 0) + " %"],
+                       ["Baseline at start", baseStart == null ? "—" : counts(baseStart)],
+                       ["Baseline at end", baseEnd == null ? "—" : counts(baseEnd)],
+                       ["Fitting method", fitMethodName(fitMethodOf(q))], ["Integration", integrationText(q)]])],
+      ["Smoothing", []],
+      ["Signal", [["S/N", num(a.sn, 1), "sn"], ["Qualifier S/N", a.qual_sn == null ? "—" : num(a.qual_sn, 1), "qual_sn"]].concat(ionRows)],
+      ["Source", [["Isotope standard", a.is ? shown(a.is) : "—"], ["File transition", a.file_transition || "—"]]]
+    ];
+  }
+  /* what places the apex label: its words, kind, spot and the plot it is kept inside; the same key is the same place */
+  function labelKey(L, px, py, ca) {
+    ca = ca || {};
+    return [L.lines.join("|"), L.manual ? 1 : 0, Math.round(px * 2), Math.round(py * 2), ca.left, ca.right, ca.top, ca.bottom].join(":");
+  }
+  /* the chart's label by the apex, {lines, manual, x, y}: the peak's time and
+     area; null for a deleted or missing peak. `t` is the trace shown */
+  function peakLabel(a, t, isQuant) {
+    t = t || {};
+    var p = t.peak || {}, rt = isQuant ? a.rt : p.apex, area = isQuant ? a.area : p.area;
+    if (t.deleted || rt == null) { return null; }
+    return { lines: ["RT " + num(rt, 3) + " min", "Area " + num(area, 0)], manual: editedByHand(t), x: rt };
+  }
+  /* "1": the Details are shown, "0": hidden; nothing stored: shown */
+  var DETAILS_KEY = "pfas.raw.details";
+  function detailsChoice(stored) { return stored !== "0"; }
+  function readDetails() {
+    try { return detailsChoice(window.localStorage.getItem(DETAILS_KEY)); } catch (e) { return true; }
+  }
+  function writeDetails(on) {
+    try { window.localStorage.setItem(DETAILS_KEY, on ? "1" : "0"); } catch (e) { /* not remembered */ }
   }
   /* the fit's state by its short name: "Fit refused", "Pair fit failed" */
   function fitName(text) { return String(text || "").split(":")[0]; }
@@ -1154,36 +1785,63 @@
     return '<div class="raw-edit-cell"><dt>' + label + PENCIL + '</dt><dd><input type="number" step="any" data-edge="' +
            edge + '" aria-label="' + label + ', min" title="Edit, then Re-integrate" /> <span class="raw-unit">min</span></dd></div>';
   }
-  function cardHead(a, editable) {
-    var h = '<dl class="raw-readout">';
-    readout(a).forEach(function (c) {
-      h += "<div><dt>" + esc(c[0]) + "</dt><dd>" + esc(c[1]) +
-           (c[2] ? '<span class="raw-under">' + esc(c[2]) + "</span>" : "") + "</dd></div>";
-    });
-    if (editable) { h += edgeCell("start", "Start") + edgeCell("end", "End"); }
-    h += "</dl>";
-    h += '<ul class="raw-flags" data-role="flags">' + chipItems(flagChips(a)) + "</ul>";
-    return h + '<p class="raw-note" data-role="said" aria-live="polite"></p>';
+  /* a value judged against a method limit is marked by colour, and a screen
+     reader hears the verdict in words; no verdict, the plain value. Only the
+     rows the method judges use it. */
+  var VERDICT_WORDS = { pass: "within the method's limit", warn: "near the method's limit", fail: "outside the method's limit" };
+  function verdictCell(value, verdict) {
+    if (!VERDICT_WORDS.hasOwnProperty(verdict)) { return esc(value); }
+    return '<span class="raw-verdict is-' + verdict + '">' + esc(value) + '<span class="sr-only"> \u00b7 ' +
+           VERDICT_WORDS[verdict] + "</span></span>";
   }
-  /* the Details disclosure: the rest of the values, the long notes and the
-     curve the concentration was read on, a button to the Calibration tab */
-  function cardDetail(a) {
-    var h = '<details class="raw-details"><summary class="btn-help is-term">Details</summary><dl class="raw-details-list">';
-    details(a).forEach(function (kv) { h += "<div><dt>" + esc(kv[0]) + "</dt><dd>" + esc(kv[1]) + "</dd></div>"; });
-    h += "</dl>";
+  /* the verdict of a keyed row: the card's own, and for an ion row the one at its index */
+  function rowVerdict(key, index, verdicts) {
+    var v = verdicts && key ? verdicts[key] : null;
+    if (key === "ion_ratio") { v = v && index != null ? v[index] : null; }
+    return v || null;
+  }
+  /* the rows of one group as a list of label and value; a keyed row carries
+     its key (and a qualifier's index) for the colour rule */
+  function rowHtml(r, verdicts) {
+    var extra = r[3] || {}, attrs = (r[2] ? ' data-key="' + r[2] + '"' : "") + (extra.index != null ? ' data-index="' + extra.index + '"' : "");
+    return '<div class="raw-row"' + attrs + "><dt>" + esc(r[0]) + "</dt><dd>" + verdictCell(r[1], rowVerdict(r[2], extra.index, verdicts)) +
+           (extra.under ? '<span class="raw-under">' + esc(extra.under) + "</span>" : "") + "</dd></div>";
+  }
+  /* what a group holds besides its rows: the score and the fit stepper, the
+     Start and End boxes, the smoothing stepper */
+  function groupHead(name, editable) {
+    if (name === "Integration") {
+      return '<div class="raw-step" data-role="fits"></div><p class="raw-note" data-role="fit-note" hidden></p>' +
+             (editable ? '<dl class="raw-edge-pair">' + edgeCell("start", "Start") + edgeCell("end", "End") + "</dl>" : "");
+    }
+    return name === "Smoothing" ? '<div class="raw-step" data-role="smoothing"></div><p class="raw-smooth-note" data-role="smooth-note" role="status" hidden></p>' : "";
+  }
+  /* the pane: the groups, then the notes behind the chips and the curve the concentration was read on */
+  function cardHead(a, editable) {
+    var h = '<div class="raw-pane-col" data-role="pane"><div class="raw-score" data-role="score"></div>';
+    paneRows(a, !!editable).forEach(function (g) {
+      h += '<section class="raw-grp"><h3 class="raw-gh">' + esc(g[0]) + "</h3>" + groupHead(g[0], editable) +
+           (g[1].length ? '<dl class="raw-kv">' + g[1].map(function (r) { return rowHtml(r, a.verdicts); }).join("") + "</dl>" : "") + "</section>";
+    });
     longNotes(a).forEach(function (n) { h += '<p class="raw-note">' + esc(n) + "</p>"; });
     if (a.conc != null) {
       h += '<p class="raw-curve">Quantified against the run\'s curve ' +
            '<a class="btn-sm btn-secondary" href="?tab=calibration">Calibration</a></p>';
     }
-    return h + "</details>";
+    return h + "</div>";
+  }
+  /* the flags and the line for what the card said it did, under the chart */
+  function cardFlags(a) {
+    return '<ul class="raw-flags" data-role="flags">' + chipItems(flagChips(a)) + "</ul>" +
+           '<p class="raw-note" data-role="said" aria-live="polite"></p>';
   }
 
-  /* the card's body as the dialog draws it, top to bottom: the server's
-     refusal (flash), the Trace switch, the trace line, the charts, the
-     readout strip and the flags, the edit's boxes and preview (editable)
-     and Details; the edit itself is made on the chart and its menu */
-  /* the chart's zoom tools: in, out, a region drawn as a box, the whole window */
+  /* the card's body as the dialog draws it: the server's refusal (flash), the
+     Trace switch and the trace line, then two columns: the chart column (the
+     zoom tools, the chart and its residual, the flags and, editable, the edit's
+     boxes and preview) and the pane of grouped values; the edit itself is made
+     on the chart and its menu */
+  /* the chart's zoom tools: in, out, the whole window (a box is dragged on an empty area, not a button) */
   function zoomIcon(path) {
     return '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" ' +
            'stroke-width="1.6" stroke-linecap="round">' + path + "</svg>";
@@ -1192,13 +1850,24 @@
   var ZOOM_BAR = '<div class="raw-zoom" role="toolbar" aria-label="Zoom the chart" data-role="zoom">' +
     [["in", "Zoom in", LENS + '<path d="M4.5 6.5h4M6.5 4.5v4"/>'],
      ["out", "Zoom out", LENS + '<path d="M4.5 6.5h4"/>'],
-     ["region", "Zoom to a region: drag a box on the chart", '<rect x="2" y="2" width="12" height="12" stroke-dasharray="2 2"/>' +
-      '<path d="M6 8h4M8 6v4"/>'],
      ["full", "Back to the whole window", '<path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/>']].map(function (b) {
       return '<button type="button" class="btn btn-sm btn-secondary" data-zoom="' + b[0] + '" title="' + b[1] +
-             '" aria-label="' + b[1] + '"' + (b[0] === "region" ? ' aria-pressed="false"' : "") + ">" + zoomIcon(b[2]) +
+             '" aria-label="' + b[1] + '"' + ">" + zoomIcon(b[2]) +
              "</button>";
-    }).join("") + "</div>";
+    }).join("") + '<button type="button" class="btn btn-sm btn-secondary raw-details-toggle" aria-pressed="true">Details</button></div>';
+  /* whether the card's drop line is an edge the quantifier shares with its partner's peak */
+  function sharesEdge(a, q) {
+    var peak = q && q.peak, rt = measure(a, "drop_rt");
+    if (!a || !a.partner || !peak || rt == null || !q.t || !q.full_res) { return false; }
+    var tol = 2 * edgeTolerance(q.t, q.full_res), side = dropSide(peak, rt, tol);
+    var theirs = side === "end" ? a.partner.start : side === "start" ? a.partner.end : null;
+    return typeof theirs === "number" && Math.abs(theirs - rt) <= tol + 1e-9;
+  }
+  function dragHint(a, q) {
+    return '<p class="raw-note raw-drag-hint">Drag on the chart to zoom in. Double-click for the whole window. ' +
+           'Drag an edge, or the drop line, anywhere along its band. ' +
+           (sharesEdge(a, q) ? "The drop line moves the shared edge of both peaks." : "The drop line moves this peak's edge only.") + "</p>";
+  }
   function cardBody(a, traces, index, editable, flash) {
     var h = "";
     if (flash) { h += '<p class="raw-refusal" role="alert">' + esc(flash) + "</p>"; }
@@ -1208,11 +1877,15 @@
       }), String(index));
     }
     h += '<p class="raw-trace-line" data-role="trace-line"></p>';
-    h += '<div class="raw-charts">' + ZOOM_BAR + '<div class="raw-chart raw-chart-edit" data-role="wrap">' +
+    h += '<div class="raw-peak-grid"><div class="raw-chart-col"><div class="raw-charts">' + ZOOM_BAR + (editable ? dragHint(a, traces[0]) : "") +
+         '<div class="raw-chart raw-chart-edit" data-role="wrap">' +
          '<canvas data-role="traces" tabindex="0" role="application" aria-label="The trace, its peak and baseline. ' +
-         'Menu key for its actions."></canvas></div>';
+         'Menu key for its actions."></canvas><span class="raw-peak-label" data-role="peak-label" hidden="hidden"></span></div>' +
+         '<div class="raw-residual" data-role="residual" hidden="hidden"><canvas data-role="residual-canvas" ' +
+         'aria-label="What the fit leaves of the signal"></canvas></div>';
     h += "</div>";
-    h += cardHead(a, editable);
+    h += '<p class="raw-note" data-role="fit-readout"></p>';
+    h += cardFlags(a);
     if (editable) {
       h += '<div class="raw-edit" data-role="edit">' +
            '<div class="raw-pane" data-pane="integrate">' +
@@ -1224,11 +1897,23 @@
              '<p class="raw-note" data-role="edge-note" aria-live="polite"></p>' +
              '<p class="raw-refusal" data-role="problem" role="alert"></p>' +
            "</div>" +
+           '<div class="raw-pane" data-pane="fit" hidden="hidden">' +
+             '<div class="raw-fit-options">' + seg("Shape", [["gaussian", "Gaussian"], ["emg", "EMG"]], "gaussian") +
+               '<span data-role="fit-report"></span></div>' +
+             '<p class="raw-note" data-role="fit-hint">Click each apex on the chart, up to three. Click one again to take it away.</p>' +
+             '<p class="raw-refusal" data-role="fit-problem" role="alert"></p>' +
+             '<p class="raw-note" data-role="fit-picked"></p>' +
+             '<p class="raw-preview" data-role="fit-preview" aria-live="polite"></p>' +
+             '<p class="raw-note" data-role="fit-final" hidden="hidden">' + FIT_FINAL + "</p>" +
+             '<p class="raw-note" data-role="fit-floor" hidden="hidden">' + FIT_NO_FLOOR + "</p>" +
+           "</div>" +
            '<div class="raw-pane" data-pane="delete" hidden="hidden"><p class="raw-warning" data-role="delete-text"></p></div>' +
-           '<div class="raw-pane" data-pane="revert" hidden="hidden"><p>Back to the automatic integration.</p></div>' +
+           '<div class="raw-pane" data-pane="revert" hidden="hidden"><p>Back to the automatic integration.</p>' +
+             '<p class="raw-warning" data-role="revert-warning"' + (calibratorWarning(a) ? "" : ' hidden="hidden"') + ">" +
+             esc(calibratorWarning(a)) + "</p></div>" +
            "</div>";
     }
-    h += cardDetail(a);
+    h += "</div>" + cardHead(a, editable) + "</div>";
     return h;
   }
 
@@ -1287,6 +1972,11 @@
                end: last.end == null ? null : last.end, apex: last.apex == null ? null : last.apex,
                baseline: last.baseline || "", levels: last.levels || null, touched: true };
     }
+    if (last.kind === "fit") {
+      return { mode: "fit", kind: "fit", shape: last.shape || "gaussian", apexes: fitApexSorted(last.apexes), alone: !!last.alone,
+               start: last.start == null ? null : last.start, end: last.end == null ? null : last.end,
+               pick: last.pick == null ? null : last.pick, touched: true };
+    }
     return last.kind === "delete" ? { mode: "delete", armed: true } : null;
   }
 
@@ -1299,6 +1989,27 @@
       if (list[i].injection === injection && list[i].analyte === analyte) {
         var j = i + step;
         return j >= 0 && j < list.length ? list[j] : null;
+      }
+    }
+    return null;
+  }
+  /* the card Previous (-1) or Next (+1) opens from the open one, in the overview's order. A card that has left Show
+     (fixed, undone) is not in that order: the step goes from its place in the whole sorted run to the next card
+     that does pass Show, so the buttons never go dead under it */
+  function stepFrom(data, injection, analyte, step) {
+    var shownList = displayedThumbs(data), at = neighbour(shownList, injection, analyte, step);
+    var inList = shownList.some(function (th) { return th.injection === injection && th.analyte === analyte; });
+    if (inList || !data || (data.processing && data.processing.first)) { return at; }
+    var f = data.filter || filterRead(null), pendingKeys = pendingKeysOf(data), all = [];
+    sectionsOf(orderThumbs(data.thumbs, f.sort, data.mode, pendingKeys), data.sections).forEach(function (sec) { all = all.concat(sec.items); });
+    var shownKeys = {};
+    shownList.forEach(function (th) { shownKeys[th.injection + "\u0000" + th.analyte] = true; });
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].injection === injection && all[i].analyte === analyte) {
+        for (var j = i + step; j >= 0 && j < all.length; j += step) {
+          if (shownKeys[all[j].injection + "\u0000" + all[j].analyte]) { return all[j]; }
+        }
+        return null;
       }
     }
     return null;
@@ -1336,34 +2047,97 @@
     return lo < 0 ? null : [lo, hi];
   }
 
-  /* a handle dragged, or double-clicked: h {held "start", "end" or "line",
-     t, fullRes, start, end, levels [left, right] (the line's values at the
-     edges as drawn), manual [left, right] (a level set by hand), baseline,
-     signal(start, end) (the line's values at those edges with no level set
-     by hand), range (the counts a level may take), from {start, end, x}
-     (the line's edges and the pointer's time when it was pressed)}; p {x,
-     y (the pointer's time and count), axis ("x" sideways, "y" up or down),
-     shift (the level kept on the signal), reset (a double-click)}. Sideways
-     an edge moves to its sample (dragIndex), a level not set by hand
-     following the signal; up or down that end's level is the pointer's
-     count, inside the trace's range (flat: both ends, the line kept
-     level); the line moves both edges by the same samples. Gives {start,
-     end, levels, manual}. */
+  /* what a press takes and what it then does: target (null for an empty
+     area) and the pointer's movement in px since the press. An empty area
+     dragged past 4 px is a zoom box, otherwise a click (in the fit tool an
+     apex, in every mode a click); a handle, the drop line, the expected-time line, the baseline and
+     the axis keep their own drag. */
+  var CLICK_PX = 4, SNAP_PX = 6, GRAB_PX = 9, TALL_PX = 8;
+  function pressKind(target, movedPx) {
+    if (target === "start" || target === "end") { return "edge"; }
+    if (target === "drop" || target === "axis" || target === "rt" || target === "line") { return target; }
+    return movedPx > CLICK_PX ? "zoom" : "click";
+  }
+  /* a pointer height within SNAP_PX of the signal's is on the signal: the level is not set by hand */
+  function onSignal(pointerPx, signalPx) { return Math.abs(pointerPx - signalPx) <= SNAP_PX; }
+  /* the edge a press at px takes: the nearer of the two within GRAB_PX of its
+     time, at any height ("start" when equally near), else null */
+  function edgeAt(px, startPx, endPx) { return dragTarget(px, startPx, endPx, GRAB_PX); }
+  /* of the offers [{kind, d (px away), limit (px)}] in priority order, the nearest within its limit;
+     a tie goes to the earlier */
+  function nearestPress(offers) {
+    var best = null, bestD = Infinity;
+    for (var i = 0; i < offers.length; i++) {
+      if (offers[i].d <= offers[i].limit && offers[i].d < bestD) { best = offers[i].kind; bestD = offers[i].d; }
+    }
+    return best;
+  }
+  /* the side ("start" or "end") of the peak's own edge the drop line is, that
+     edge's time being drop_rt; null when there is none or it is neither */
+  function dropSide(peak, dropRt, tol) {
+    if (dropRt == null || !peak) { return null; }
+    var near = function (v) { return typeof v === "number" && Math.abs(v - dropRt) <= (tol || 0) + 1e-9; };
+    var ds = near(peak.start) ? Math.abs(peak.start - dropRt) : Infinity, de = near(peak.end) ? Math.abs(peak.end - dropRt) : Infinity;
+    return ds === Infinity && de === Infinity ? null : ds <= de ? "start" : "end";
+  }
+  /* what the partner's edit is when the shared edge of a drop is moved to newEdge on this peak's
+     `side`: the partner {analyte, start, end} (its own other edge kept), or null where the card
+     knows no partner, the partner's edge is not the shared one (within tol) or nothing moved */
+  function partnerEdit(side, newEdge, partner, dropRt, tol) {
+    /* nothing moved: the edge is on the shared edge's own sample (half a sample either way; the
+       tolerance is a whole sample, as dropSide reads the edge) */
+    if (!partner || !side || typeof newEdge !== "number" || dropRt == null || Math.abs(newEdge - dropRt) <= (tol || 0) / 2 + 1e-9) { return null; }
+    var own = side === "end" ? partner.start : partner.end;
+    if (typeof own !== "number" || Math.abs(own - dropRt) > (tol || 0) + 1e-9) { return null; }
+    return { analyte: partner.analyte, start: side === "end" ? newEdge : partner.start, end: side === "end" ? partner.end : newEdge };
+  }
+  /* the level the held handle would take at the pointer's time with no level set by hand: the
+     line's value there (flat: the flat level), on the sample dragIndex gives */
+  function signalAt(h, x) {
+    var side = h.held === "start" ? 0 : h.held === "end" ? 1 : -1;
+    if (side < 0) { return null; }
+    var i = dragIndex(h.t, x, h.fullRes, h.held, h.start, h.end);
+    if (i < 0) { return null; }
+    var sig = h.signal(side === 0 ? h.t[i] : h.start, side === 1 ? h.t[i] : h.end);
+    return sig ? sig[side] : null;
+  }
+
+  /* a handle dragged, or double-clicked: h {held "start", "end", "drop" or
+     "line", dropSide (the edge the drop line is), t, fullRes, start, end,
+     levels [left, right] (the line's values at the edges as drawn), manual
+     [left, right] (a level set by hand), baseline, signal(start, end) (the
+     line's values at those edges with no level set by hand), range (the
+     counts a level may take), from {start, end, x} (the line's edges and the
+     pointer's time when it was pressed)}; p {x, y (the pointer's time and
+     count; either may be left out), snapped (the pointer is within SNAP_PX
+     of the signal), shift (the level kept on the signal), reset (a
+     double-click)}. There is no direction lock: a held edge takes the
+     pointer's sample (dragIndex) and, in the same move, its level is the
+     pointer's count inside the trace's range (flat: both ends, the line
+     kept level), unless snapped or Shift, which keep it on the signal; the
+     drop line moves its edge in time only; the line moves both edges by the
+     same samples. Gives {start, end, levels, manual}. */
   function handleDrag(h, p) {
     var start = h.start, end = h.end, manual = [!!(h.manual || [])[0], !!(h.manual || [])[1]];
-    var levels = (h.levels || [null, null]).slice(), side = h.held === "start" ? 0 : h.held === "end" ? 1 : -1;
-    var flat = h.baseline === "flat";
-    function onSignal(k) { if (flat || k < 0) { manual = [false, false]; } else { manual[k] = false; } }
-    if (p.reset || p.shift) {
-      onSignal(side);
-    }
-    if (!p.reset && side >= 0 && p.axis === "y" && !p.shift) {
-      var v = clampTo(p.y, h.range);
-      if (flat) { manual = [true, true]; levels = [v, v]; } else { manual[side] = true; levels[side] = v; }
-    } else if (!p.reset && side >= 0 && p.axis === "x") {
-      var i = dragIndex(h.t, p.x, h.fullRes, h.held, start, end);
-      if (i >= 0) { if (side === 0) { start = h.t[i]; } else { end = h.t[i]; } }
-    } else if (!p.reset && side < 0 && h.from) {
+    var levels = (h.levels || [null, null]).slice();
+    var side = h.held === "start" ? 0 : h.held === "end" ? 1 : h.held === "drop" ? (h.dropSide === "start" ? 0 : h.dropSide === "end" ? 1 : -1) : -1;
+    var flat = h.baseline === "flat", drop = h.held === "drop";
+    function onSig(k) { if (flat || k < 0) { manual = [false, false]; } else { manual[k] = false; } }
+    /* the drop line with no shared edge to hold moves nothing, never the whole line */
+    if (drop && side < 0) { return { start: start, end: end, levels: levels, manual: manual }; }
+    if (p.reset || p.shift) { onSig(side); }
+    if (!p.reset && side >= 0) {
+      if (p.x != null) {
+        var i = dragIndex(h.t, p.x, h.fullRes, side === 0 ? "start" : "end", start, end);
+        if (i >= 0) { if (side === 0) { start = h.t[i]; } else { end = h.t[i]; } }
+      }
+      if (!drop && p.y != null && !p.shift && !p.snapped) {
+        var v = clampTo(p.y, h.range);
+        if (flat) { manual = [true, true]; levels = [v, v]; } else { manual[side] = true; levels[side] = v; }
+      } else if (!drop && p.snapped) {
+        onSig(side);
+      }
+    } else if (!p.reset && side < 0 && h.held !== "drop" && h.from) {
       var span = fullIndices(h.t, h.fullRes), a = snapIndex(h.t, h.from.start, null), b = snapIndex(h.t, h.from.end, null);
       var to = snapIndex(h.t, h.from.start + (p.x - h.from.x), h.fullRes);
       if (span && to >= 0) {
@@ -1394,14 +2168,14 @@
      (raw_preview.REVIEW_DEFAULTS) */
   var DEFAULT_SEARCH_SLOPE = 0.7, DEFAULT_SEARCH_SMOOTH_PCT = 50.0;
   /* the automatic peak's full width at half its height, in points of the
-     full-resolution region (its mean spacing), measured on the method's
-     line; null when it cannot be read */
+     full-resolution region (its mean spacing), measured on the line it was
+     processed on (autoLine); null when it cannot be read */
   function autoWidthPoints(card, tr, span) {
     var auto = tr.auto || tr.peak || {}, t = tr.t || [];
     if (auto.start == null || auto.end == null || !(span[1] > span[0])) { return null; }
     var w;
     try {
-      var ref = tracePreview(tr, auto.start, auto.end, card.method_baseline);
+      var ref = tracePreview(tr, auto.start, auto.end, autoLine(card, tr));
       w = halfWidths(tr.engine || "classic", t, tr.y || [], ref, tr.smooth_points, tr.smoothing);
     } catch (err) { return null; }
     var full = w[0] != null && w[1] != null ? w[0] + w[1] : w[0] != null ? 2 * w[0] : w[1] != null ? 2 * w[1] : null;
@@ -1500,8 +2274,7 @@
     return out;
   }
 
-  var BASELINE_ENTRIES = [["valley", "Valley to valley"], ["drop", "Perpendicular drop"], ["skim", "Tangent skim"],
-                          ["flat", "Flat at the lower edge"]];
+  var BASELINE_ENTRIES = ["valley", "drop", "skim", "flat"].map(function (k) { return [k, fitMethodName(k)]; });
   var NO_TIME = "Point at a time on the chart first.";
   var NO_EDGES = "Set the start and end first.";
   /* the chart's menu, in its four groups, each entry {id, label, key,
@@ -1549,6 +2322,7 @@
           pyG(s.slope == null ? DEFAULT_SEARCH_SLOPE : s.slope) + ", S/N " +
           pyG(s.amp == null ? DEFAULT_SEARCH_AMP_SN : s.amp) + "."));
     entry("split", "Split at cursor", "S", timeReason(s.split ? null : "No neighbouring peak across the cursor."));
+    entry("fit", "Fit overlapping peaks", "", s.standard ? FIT_ISOTOPE : s.fitLimit == null ? FIT_UNSET : null);
     out.push({ sep: true });
     entry("delete", "Delete peak", "Del", s.deleted ? "The peak is deleted." : null, { confirm: !!s.confirm });
     entry("undo", "Undo edit", "U", s.edited ? null : "The trace is not edited.");
@@ -1623,14 +2397,24 @@
      (the focused element's), editable (a contenteditable), onChart (the
      chart has the focus)}; {act, by} or null. Nothing in a text box but
      Escape (asking first when a change is not applied); arrows, Tab and
-     the menu key only on the chart. */
+     the menu key only on the chart. Cmd acts as Ctrl; Alt gives none. */
   var KEY_ACTS = { "[": "start", "]": "end", d: "level", a: "add", s: "split", u: "undo", z: "zoom-peak",
-                   w: "zoom-window", Delete: "delete" };
+                   w: "zoom-window", Delete: "delete", "+": "zoom-in", "=": "zoom-in", "-": "zoom-out", "0": "zoom-window",
+                   "?": "keys" };
   function keyMap(e) {
-    var k = e.key, tag = String(e.tag || "").toUpperCase();
+    var k = e.key, tag = String(e.tag || "").toUpperCase(), mod = !!(e.ctrlKey || e.metaKey);
     if (k === "Escape") { return { act: "close" }; }
-    if (e.ctrlKey || e.metaKey || e.altKey) { return null; }
+    if (e.altKey) { return null; }
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || e.editable) { return null; }
+    if (mod) {
+      var low = k && k.length === 1 ? k.toLowerCase() : k;
+      if (low === "z") { return { act: e.shiftKey ? "step-forward" : "step-back" }; }
+      if (low === "y") { return { act: "step-forward" }; }
+      if (low === "s") { return { act: "apply-one" }; }
+      if (k === "ArrowLeft" || k === "ArrowRight") { return { act: "injection", by: k === "ArrowLeft" ? -1 : 1 }; }
+      if (k === "ArrowUp" || k === "ArrowDown") { return { act: "compound", by: k === "ArrowUp" ? -1 : 1 }; }
+      return null;
+    }
     var page = pageStep(k, tag);
     if (page) { return { act: page < 0 ? "previous" : "next" }; }
     if (e.onChart) {
@@ -1639,8 +2423,71 @@
       if (k === "ContextMenu" || (k === "F10" && e.shiftKey)) { return { act: "menu" }; }
     }
     if (k === "Enter") { return /^(BUTTON|A|SUMMARY)$/.test(tag) ? null : { act: "apply" }; }
-    var act = KEY_ACTS[k] || (k && k.length === 1 ? KEY_ACTS[k.toLowerCase()] : null);
+    var act = KEY_ACTS.hasOwnProperty(k) ? KEY_ACTS[k] : (k && k.length === 1 ? KEY_ACTS[k.toLowerCase()] : null);
     return act ? { act: act } : null;
+  }
+
+  /* the card's drawing, step by step: each snapshot is the drawing before a change.
+     back(current) gives the one before (null when none) and keeps current for forward */
+  function EditStack(limit) {
+    this.limit = limit || 100;
+    this.undo = [];
+    this.redo = [];
+  }
+  EditStack.prototype.push = function (snapshot) {
+    this.undo.push(snapshot);
+    if (this.undo.length > this.limit) { this.undo.shift(); }
+    this.redo = [];
+  };
+  EditStack.prototype.back = function (current) {
+    if (!this.undo.length) { return null; }
+    this.redo.push(current);
+    if (this.redo.length > this.limit) { this.redo.shift(); }
+    return this.undo.pop();
+  };
+  EditStack.prototype.forward = function (current) {
+    if (!this.redo.length) { return null; }
+    this.undo.push(current);
+    if (this.undo.length > this.limit) { this.undo.shift(); }
+    return this.redo.pop();
+  };
+  EditStack.prototype.clear = function () { this.undo = []; this.redo = []; };
+
+  /* the keys panel: [keys, what it does, the keyMap act] */
+  var KEYS_HELP = [
+    ["[", "Set the start edge at the cursor", "start"],
+    ["]", "Set the end edge at the cursor", "end"],
+    ["D", "Set the level at the cursor", "level"],
+    ["A", "Add a peak at the cursor", "add"],
+    ["S", "Split the peak at the cursor", "split"],
+    ["Delete", "Delete the peak", "delete"],
+    ["U", "Undo the saved edit", "undo"],
+    ["Ctrl+Z", "Undo a drawing step", "step-back"],
+    ["Ctrl+Y or Ctrl+Shift+Z", "Redo a drawing step", "step-forward"],
+    ["Ctrl+S", "Apply to this injection", "apply-one"],
+    ["Enter", "Apply to this injection", "apply"],
+    ["Left or Right on the chart", "Move the handle one sample, Shift five", "nudge"],
+    ["Tab on the chart", "Move between the two handles", "handle"],
+    ["Menu key or Shift+F10", "Open the peak menu", "menu"],
+    ["Z", "Zoom to the peak", "zoom-peak"],
+    ["W or 0", "Zoom to the whole window", "zoom-window"],
+    ["+ or =", "Zoom in", "zoom-in"],
+    ["-", "Zoom out", "zoom-out"],
+    ["Ctrl+Left or Ctrl+Right", "Previous or next injection", "injection"],
+    ["Ctrl+Up or Ctrl+Down", "Previous or next compound", "compound"],
+    ["Page Up", "Previous card", "previous"],
+    ["Page Down", "Next card", "next"],
+    ["?", "Show these keys", "keys"],
+    ["Escape", "Close this list, then the card", "close"]
+  ];
+  /* where Ctrl+Left, Right, Up or Down goes: the injection (axis "injection") or the compound
+     (axis "compound") by steps from this one, the other kept; null at either end */
+  function stepTarget(data, injection, analyte, axis, by) {
+    var list = axis === "compound" ? data.analytes : data.injections, own = axis === "compound" ? analyte : injection;
+    var names = (list || []).map(function (x) { return x && typeof x === "object" ? x.name : x; });
+    var at = names.indexOf(own), to = at + by;
+    if (at < 0 || to < 0 || to >= names.length) { return null; }
+    return axis === "compound" ? { injection: injection, analyte: names[to] } : { injection: names[to], analyte: analyte };
   }
 
   /* ── the chart's time axis: zoom and pan ──────────────────────────────── */
@@ -1676,18 +2523,25 @@
   function token(name) { return getComputedStyle(doc.documentElement).getPropertyValue(name).trim(); }
   function points(tr) { return tr.t.map(function (x, i) { return { x: x, y: tr.y[i] }; }); }
   var SERIES = ["--series-1", "--series-2", "--series-3", "--series-4"];
+  /* the trace line on the card: the light theme draws it in a darker token,
+     which holds 3:1 over the manual fill; the dark theme keeps its series */
+  var LIGHT_TRACE = "--s-info-text";
+  function traceToken(index, dark) { return dark ? SERIES[index % SERIES.length] : LIGHT_TRACE; }
+  /* the integrated area's fill: amber for a manual peak (an edit applied,
+     waiting, or kept with no effect), teal for an automatic one */
+  function isManual(tr) {
+    return tr.edit === "edited" || tr.edit === "pending" || tr.edit === "no_effect";
+  }
+  function fillToken(tr) { return isManual(tr) ? "--s-manual-fill" : "--s-primary-lt"; }
+  /* a view part way from one to another, eased out (cubic); f in [0, 1] */
+  function easedView(from, to, f) {
+    var k = Math.max(0, Math.min(1, f)), e = 1 - Math.pow(1 - k, 3);
+    return [from[0] + (to[0] - from[0]) * e, from[1] + (to[1] - from[1]) * e];
+  }
 
   /* a plain chart: the traces, the first's peak shaded (the isotope standard's) */
   function form() { return doc.getElementById("raw-edit"); }
   function components() { return window.PFAS && window.PFAS.components; }
-
-  /* the trace the analyst was on when the page went away to post an edit */
-  var LAST = "pfas.raw.last";
-  function remember(v) { try { window.sessionStorage.setItem(LAST, JSON.stringify(v)); } catch (e) { /* none kept */ } }
-  function recall() {
-    try { return JSON.parse(window.sessionStorage.getItem(LAST) || "null"); } catch (e) { return null; }
-  }
-  function forget() { try { window.sessionStorage.removeItem(LAST); } catch (e) { /* none kept */ } }
 
   var EDIT_TEXT = { auto: "Automatic", edited: "Edited", deleted: "Peak deleted",
                     pending: "Waiting for the run to be processed again", no_effect: "No effect" };
@@ -1723,10 +2577,12 @@
   /* the open dialog; one at a time. Its charts go when the dialog closes
      or another card opens, and a card asked for before either is dropped
      when it arrives (`asked` counts the requests). */
-  var current = null, asked = 0, watching = false;
+  var current = null, asked = 0, watching = false, poll = null, generation = 0, chain = null;
+  function stopPoll() { if (poll) { clearTimeout(poll); poll = null; } }
   function dispose() {
     if (current) {
       if (current.chart) { current.chart.destroy(); }
+      if (current.resChart) { current.resChart.destroy(); }
       current = null;
     }
   }
@@ -1751,8 +2607,9 @@
     var editable = !!(a.can_edit && data.can_edit !== false && f);
     var ui = { a: a, data: data, traces: traces, index: 0, chart: null, armed: false, pending: null,
                at: null, handle: "start", view: null, line: null, drawn: null, chartFocus: false,
-               rt: a.expected_rt == null ? null : Number(a.expected_rt), rtDrag: null, rtBusy: false };
+               rt: expectedRtOf(a) == null ? null : Number(expectedRtOf(a)), rtDrag: null, rtBusy: false, busy: {}, saying: null, saidShown: false };
     current = ui;
+    var keep = last && last.hasView ? last : null;
     /* the quantifier is posted with no transition of its own */
     if (last && !last.transition) { last.transition = a.quant.transition; }
     /* the method's notes on the edit just made, on its trace until the analyst changes anything */
@@ -1763,20 +2620,70 @@
     }
     var body = el("div", "raw-dialog " + stateClass(a.state).replace("raw-card", "").replace(/^\s+/, ""));
     body.innerHTML = cardBody(a, traces, ui.index, editable, flash);
-    var foot = el("div", "pfas-drawer-actions"), submit = null;
+    var foot = el("div", "pfas-drawer-actions"), submit = null, allBtn = null, allLine = null, backBtn = null;
     var actionsBtn = el("button", "btn btn-secondary", "Actions");
     actionsBtn.type = "button";
     actionsBtn.setAttribute("aria-haspopup", "menu");
     actionsBtn.setAttribute("aria-expanded", "false");
     actionsBtn.setAttribute("data-role", "actions");
     foot.appendChild(actionsBtn);
+    var commentBox = null, reasonSel = null, detailBox = null, commentGo = null, commentHint = null, ionWarn = null;
     if (editable) {
-      submit = el("button", "btn btn-primary");
+      submit = el("button", "btn btn-primary", "Apply to this injection");
       submit.type = "button";
-      foot.appendChild(submit);
+      submit.setAttribute("data-role", "apply-one");
+      foot.insertBefore(submit, actionsBtn);
+      /* the peak goes back to the automatic integration; directly left of Apply, as the review board draws it */
+      backBtn = el("button", "btn btn-secondary");
+      backBtn.type = "button";
+      backBtn.setAttribute("data-role", "revert");
+      backBtn.innerHTML = checkIcon("revert", "") + '<span data-role="revert-words">Back to automatic</span>';
+      foot.insertBefore(backBtn, submit);
+      /* "Apply to all N injections": a preview first, then Confirm; no reason or comment is asked */
+      allBtn = el("button", "btn btn-secondary", "Apply to all " + a.injection_count + " injections");
+      allBtn.type = "button";
+      allBtn.setAttribute("data-role", "apply-all");
+      foot.insertBefore(allBtn, actionsBtn);
+      allLine = el("p", "raw-note");
+      allLine.setAttribute("data-role", "all-line");
+      allLine.hidden = true;
+      foot.appendChild(allLine);
+      /* the reason (the lab's list) and a comment, asked when the change is made */
+      commentBox = el("div", "raw-comment");
+      commentBox.setAttribute("data-role", "comment");
+      commentBox.hidden = true;
+      var rl = el("label", "raw-comment-reason", "Reason ");
+      reasonSel = el("select");
+      reasonSel.setAttribute("data-role", "reason");
+      var ro = el("option", "", "Choose a reason");
+      ro.value = "";
+      reasonSel.appendChild(ro);
+      (a.reasons || []).forEach(function (r) {
+        var o = el("option");
+        o.value = r.id;
+        o.textContent = r.text;
+        reasonSel.appendChild(o);
+      });
+      rl.appendChild(reasonSel);
+      var dl = el("label", "raw-comment-detail", "Comment ");
+      detailBox = el("textarea");
+      detailBox.setAttribute("data-role", "detail");
+      detailBox.setAttribute("rows", "2");
+      dl.appendChild(detailBox);
+      commentHint = el("p", "raw-note");
+      commentHint.setAttribute("data-role", "comment-problem");
+      commentGo = el("button", "btn btn-primary", "Apply");
+      commentGo.type = "button";
+      commentGo.setAttribute("data-role", "comment-apply");
+      /* a calibrator whose ratio feeds the expected ion ratio says so before its Apply */
+      ionWarn = el("p", "raw-warning");
+      ionWarn.setAttribute("data-role", "ion-warning");
+      ionWarn.hidden = true;
+      [rl, dl, commentHint, ionWarn, commentGo].forEach(function (n) { commentBox.appendChild(n); });
+      foot.appendChild(commentBox);
     }
     var head = navHead(step);
-    C.drawer.open(shown(a) + " in " + a.injection, body, { cls: "is-dialog raw-dialog-box", footer: foot,
+    C.drawer.open(shown(a) + " in " + a.injection, body, { cls: "is-dialog raw-dialog-wide", footer: foot,
                                                            head: head.nodes, focus: head.focus });
     if (C.init) { C.init(body); }
     var traceSeg = body.querySelector('.pfas-seg[aria-label="Trace"]');
@@ -1796,7 +2703,28 @@
     function rtShown() { return ui.rtDrag != null ? ui.rtDrag : ui.rt; }
     function line() { return st.baseline || a.method_baseline; }
     /* a change drawn and not posted: Previous and Next ask before leaving it */
-    ui.dirty = function () { return !!(editable && st && st.mode === "integrate" && st.touched); };
+    ui.dirty = function () {
+      return editDrawn() || (editable && smoothChanged());
+    };
+    /* an edge or fit edit drawn and not posted */
+    function editDrawn() {
+      return !!(editable && st && ((st.mode === "integrate" && st.touched) || (st.mode === "fit" && fitApexSorted(st.apexes).length)));
+    }
+    /* the card's drawing as a stack of snapshots (Ctrl+Z, Ctrl+Y); a snapshot is pushed before
+       each change commits: a drag, a typed edge, the line, a level, add, split, an apex chosen */
+    ui.stack = new EditStack();
+    function snapshot() { return JSON.parse(JSON.stringify(st)); }
+    /* the drawing before a change goes on the stack only when the change altered it */
+    function recorded(was) { if (JSON.stringify(was) !== JSON.stringify(snapshot())) { ui.stack.push(was); } }
+    function restoreDrawing(snap) {
+      for (var k in st) { if (st.hasOwnProperty(k)) { delete st[k]; } }
+      for (var k2 in snap) { if (snap.hasOwnProperty(k2)) { st[k2] = snap[k2]; } }
+      ui.asideNote = false;
+      ui.armed = false;
+      ui.commentOpen = false;
+      boxes();
+      update();
+    }
     function seedLevels(levels) {
       st.levels = levels || null;
       st.manual = levels ? [true, true] : [false, false];
@@ -1843,10 +2771,16 @@
     function dropBounds(start, end) {
       try { return tracePreview(tr(), start, end, "drop", null, rules().search_amp_sn).bounds; } catch (err) { return null; }
     }
+    /* the edge of this peak the drop line is, only for the quantifier under a drop: the shared edge
+       drop_rt, which the stored peak holds as its start or end */
+    function dropSideOf() {
+      var t = tr();
+      return line() === "drop" && ui.index === 0 ? dropSide(t.peak, measure(a, "drop_rt"), 2 * edgeTolerance(t.t, t.full_res || limits())) : null;
+    }
     /* what a handle's drag reads: the edit as drawn */
     function handleState(held, from) {
       var t = tr();
-      return { held: held, t: t.t, fullRes: t.full_res, start: st.start, end: st.end,
+      return { held: held, dropSide: dropSideOf(), t: t.t, fullRes: t.full_res, start: st.start, end: st.end,
                levels: st.handles || ui.drawn || [null, null], manual: st.manual, baseline: line(),
                range: countRange(t), from: from,
                signal: function (s, e) {
@@ -1857,7 +2791,23 @@
                } };
     }
     /* a drag's result taken as the edit: a re-integration on these edges and levels */
-    function takeDrag(d) {
+    /* a drag repaints at most once a frame; under reduced motion on release only */
+    function repaintDrag() {
+      if (!window.requestAnimationFrame) { update(); return; }
+      ui.dragDirty = true;
+      if (reduced()) { return; }
+      if (ui.dragFrame) { return; }
+      ui.dragFrame = window.requestAnimationFrame(function () {
+        ui.dragFrame = 0;
+        if (ui.dragDirty) { ui.dragDirty = false; update(); }
+      });
+    }
+    function flushDrag() {
+      if (ui.dragFrame) { window.cancelAnimationFrame(ui.dragFrame); ui.dragFrame = 0; }
+      if (ui.dragDirty) { ui.dragDirty = false; update(); }
+    }
+    function takeDrag(d, dragging) {
+      var was = snapshot();
       st.mode = "integrate";
       st.kind = "integrate";
       st.start = d.start;
@@ -1868,21 +2818,27 @@
                                line() === "drop" ? dropBounds(d.start, d.end) : null, countRange(tr()));
       st.touched = true;
       st.note = "";
+      if (!dragging) { recorded(was); }
+      else if (!ui.dragOpen && JSON.stringify(was) !== JSON.stringify(snapshot())) { ui.dragOpen = true; ui.stack.push(was); }   /* a drag is one step */
       boxes();
-      update();
+      if (dragging) { repaintDrag(); } else { update(); }
     }
     /* the baseline drawn at another line: the levels set by hand kept where the handles are */
     function setLine(mode) {
+      var was = snapshot();
       st.baseline = mode === a.method_baseline ? "" : mode;
       if (st.kind === "integrate" && (st.manual[0] || st.manual[1]) && edgesSet()) {
         st.levels = postedLevels(line(), st.start, st.end, st.handles || ui.drawn, st.manual,
                                  line() === "drop" ? dropBounds(st.start, st.end) : null, countRange(tr()));
       }
       st.mode = "integrate";
+      if (st.kind === "fit") { st.kind = "integrate"; st.alone = false; }    /* a line is not a fit */
       st.touched = true;
+      recorded(was);
       update();
     }
     function setEdges(start, end, baseline) {
+      var was = snapshot();
       st.mode = "integrate";
       st.kind = "integrate";
       st.start = start;
@@ -1891,6 +2847,7 @@
       seedLevels(null);
       st.touched = true;
       st.note = "";
+      recorded(was);
       boxes();
       update();
     }
@@ -1904,9 +2861,10 @@
                apex: st.kind === "apex" ? st.apex : null, minSn: lim.min_manual_sn, amp: rules().search_amp_sn, slope: rules().search_slope,
                add: addAt(a, t, ui.at), split: splitAt(a, t, ui.at), deleted: !!t.deleted && t.edit !== "pending",
                edited: !!t.edit && t.edit !== "auto", changed: !!st.touched || st.mode !== "integrate",
+               fitLimit: a.fit_limit, standard: !!a.is_standard,
                confirm: confirmsDelete(a, ui.index, false), peak: !!(t.peak && t.peak.start != null),
                setRt: a.set_rt_url ? { quant: ui.index === 0, rt: a.quant && a.quant.deleted ? null : a.rt,
-                                       expected: a.expected_rt, pending: tr().edit === "pending" } : null };
+                                       expected: expectedRtOf(a), pending: tr().edit === "pending" } : null };
     }
     var VIEW_ONLY = ["zoom-peak", "zoom-window", "copy"];
     function entries() {
@@ -1933,8 +2891,16 @@
     function run(e) {
       if (!e || e.disabled) { return; }
       var t = tr(), id = e.id;
-      if (id === "start" || id === "end") {
-        takeDrag(handleDrag(handleState(id), { x: ui.at, axis: "x" }));
+      if (st.mode === "fit" && (id === "start" || id === "end")) {
+        var wasEdge = snapshot();
+        st[id] = typedEdge(t.t, ui.at, t.full_res, id).value;
+        recorded(wasEdge);
+        boxes();
+        update();
+      } else if (id === "fit") {
+        enterFit();
+      } else if (id === "start" || id === "end") {
+        takeDrag(handleDrag(handleState(id), { x: ui.at }));
       } else if (id === "level") {
         var v = clampTo(traceSignal(t)(snapIndex(t.t, ui.at, t.full_res)), countRange(t));
         takeDrag({ start: st.start, end: st.end, levels: [v, v], manual: [true, true] });
@@ -1949,14 +2915,20 @@
         var cut = splitAt(a, t, ui.at);
         if (cut) { setEdges(cut.start, cut.end, cut.baseline); }
       } else if (id === "delete") {
+        var wasDel = snapshot();
         st.mode = "delete";
         ui.armed = false;
+        recorded(wasDel);
         update();
       } else if (id === "undo" || (id === "restore" && !e.discard)) {
+        var wasRev = snapshot();
         st.mode = "revert";
+        recorded(wasRev);
         update();
       } else if (id === "restore") {
+        var wasRes = snapshot();
         startState();                 /* the change drawn is let go */
+        recorded(wasRes);
         boxes();
         update();
       } else if (id === "zoom-peak") {
@@ -1969,6 +2941,33 @@
       } else if (id === "set-rt") {
         setExpected(null);
       }
+    }
+    /* the fit tool: the edges as drawn (else the stored peak's), no apex clicked yet, the shape kept */
+    function enterFit() {
+      var was = snapshot(), p = tr().peak || {};
+      var edges = edgesSet() ? [st.start, st.end] : [p.start == null ? null : p.start, p.end == null ? null : p.end];
+      st.mode = "fit";
+      st.kind = "fit";
+      st.alone = false;             /* the fit tool's own clicks are two or three apexes */
+      st.shape = st.shape || "gaussian";
+      st.apexes = [];
+      st.pick = null;
+      seedLevels(null);             /* levels set by hand apply to one injection only */
+      st.start = edges[0];
+      st.end = edges[1];
+      st.note = "";
+      recorded(was);
+      boxes();
+      update();
+    }
+    /* the apexes after a click at time x; the picked peak stays the one at its time */
+    function clickApex(x, tol) {
+      var was = snapshot(), old = fitApexSorted(st.apexes), at = st.pick != null ? old[st.pick] : null;
+      st.apexes = apexClick(old, x, tol);
+      if (st.apexes.length !== 1) { st.alone = false; }       /* a second apex makes it the fit tool's own fit */
+      st.pick = at == null ? null : (st.apexes.indexOf(at) < 0 ? null : st.apexes.indexOf(at));
+      recorded(was);
+      update();
     }
     /* a time onto the method, posted to the analyst's own route with no
        reload: the dragged line's time, or none for the quantifier's found
@@ -1987,6 +2986,7 @@
         ui.rtDrag = null;
         if (j && j.ok) {
           ui.rt = a.expected_rt = j["new"];
+          if (a.quant && a.quant.expected_rt != null) { a.quant.expected_rt = j["new"]; }
           announce(rtSetText(name, j.old, j["new"]), false);
           if (current === ui) { focusNext(); }
         } else {
@@ -2021,33 +3021,60 @@
       if (ln) { shown.push({ t: [ln[0], ln[2]], y: [ln[1], ln[3]] }); }
       return spanY(shown, v[0], v[1]);
     }
-    function zoomTo(view, counts) {
+    /* the milliseconds a zoom takes: the reveal time, none when the person prefers reduced motion */
+    function reduced() {
+      var mq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+      return !!(mq && mq.matches);
+    }
+    function zoomMs() { return reduced() ? 0 : parseFloat(token("--t-reveal")) || 0; }
+    function setScales(x, y) {
+      var o = ui.chart.options.scales;
+      o.x.min = x[0]; o.x.max = x[1]; o.y.min = y[0]; o.y.max = y[1];
+      ui.chart.update("none");
+      placeLabel();
+      if (ui.resChart) {
+        ui.resChart.options.scales.x.min = x[0];
+        ui.resChart.options.scales.x.max = x[1];
+        ui.resChart.update("none");
+      }
+    }
+    /* the view set at once (instant: a pan under the pointer) or eased to */
+    function zoomTo(view, counts, instant) {
       ui.view = view;
       ui.yview = view && counts ? counts : null;
+      if (ui.zoomFrame) { window.cancelAnimationFrame(ui.zoomFrame); ui.zoomFrame = 0; }
       if (!ui.chart) { return; }
-      var v = view || windowView(), y = countsFor(v);
-      ui.chart.options.scales.x.min = v[0];
-      ui.chart.options.scales.x.max = v[1];
-      ui.chart.options.scales.y.min = y[0];
-      ui.chart.options.scales.y.max = y[1];
-      ui.chart.update("none");
+      var v = view || windowView(), y = countsFor(v), ms = instant ? 0 : zoomMs(), o = ui.chart.options.scales;
+      if (!ms || !window.requestAnimationFrame) { setScales(v, y); return; }
+      var chart = ui.chart, fromX = [o.x.min, o.x.max], fromY = [o.y.min, o.y.max], t0 = null;
+      function frame(now) {
+        ui.zoomFrame = 0;
+        if (ui.chart !== chart) { return; }
+        if (t0 === null) { t0 = now; }
+        var f = (now - t0) / ms;
+        setScales(easedView(fromX, v, f), easedView(fromY, y, f));
+        if (f < 1) { ui.zoomFrame = window.requestAnimationFrame(frame); }
+      }
+      ui.zoomFrame = window.requestAnimationFrame(frame);
     }
     /* the narrowest view: eight edge tolerances either side */
     function leastSpan() { var t = tr(); return 8 * 2 * edgeTolerance(t.t, t.full_res || limits()); }
-    function setRegion(on) {
-      ui.region = on;
-      var b = body.querySelector('[data-zoom="region"]'), wrap = body.querySelector('[data-role="wrap"]');
-      if (b) { b.setAttribute("aria-pressed", on ? "true" : "false"); }
-      if (wrap) { wrap.classList.toggle("is-region", on); }
+    /* the Details button shows or hides the pane and the label; the choice is remembered */
+    var detailsBtn = body.querySelector(".raw-details-toggle"), detailsOn = readDetails();
+    function showDetails(on) {
+      detailsOn = on;
+      C.drawer.el.classList.toggle("is-bare", !on);
+      if (detailsBtn) { detailsBtn.setAttribute("aria-pressed", on ? "true" : "false"); }
+      placeLabel();
     }
+    showDetails(detailsOn);
+    if (detailsBtn) { detailsBtn.addEventListener("click", function () { showDetails(!detailsOn); writeDetails(detailsOn); }); }
     var zoomBar = body.querySelector('[data-role="zoom"]');
     if (zoomBar) {
       zoomBar.addEventListener("click", function (e) {
         var b = e.target && e.target.closest ? e.target.closest("[data-zoom]") : null;
         if (!b || !ui.chart) { return; }
         var z = b.getAttribute("data-zoom"), cur = [ui.chart.scales.x.min, ui.chart.scales.x.max];
-        if (z === "region") { setRegion(!ui.region); return; }
-        setRegion(false);
         if (z === "full") { zoomTo(null); return; }
         zoomTo(zoomView(cur, (cur[0] + cur[1]) / 2, z === "in" ? 0.5 : 2, limits(), leastSpan()));
       });
@@ -2068,28 +3095,142 @@
       var sets = [
         { label: "baseline", data: [], borderColor: token("--s-secondary"), borderWidth: 0, pointRadius: 0, showLine: true },
         { label: "integrated", data: [], borderWidth: 0, pointRadius: 0, showLine: true,
-          backgroundColor: token("--s-primary-lt"), fill: "-1" },
+          backgroundColor: token(fillToken(t)), fill: "-1" },
         { label: "automatic", data: t.auto ? peakOutline(t.t, t.y, t.auto) : [], borderColor: token("--s-secondary"),
           borderWidth: 1, borderDash: [2, 3], pointRadius: 0, showLine: true },
-        { label: t.transition, data: points(t), borderColor: token(SERIES[ui.index % SERIES.length]), borderWidth: 1.5,
+        { label: t.transition, data: points(t), borderColor: token(traceToken(ui.index, doc.documentElement.getAttribute("data-theme") === "dark")),
+          borderWidth: 1.5,
           pointRadius: 0, showLine: true }];
       others.forEach(function (o) {
         sets.push({ label: o.transition, data: points(o), borderColor: token("--s-border"), borderWidth: 1,
                     pointRadius: 0, showLine: true });
       });
+      /* a smoothing previewed: the trace as that smoothing draws it, dashed */
+      if (ui.smoothPreview && ui.smoothM != null) {
+        sets.push({ label: "smoothed", data: smoothedLine(t, ui.smoothM), borderColor: token("--smooth-preview"), borderWidth: 1.5,
+                    borderDash: [4, 3], pointRadius: 0, showLine: true });
+      }
+      /* the fit shown: each component dashed on its baseline */
+      var stored = ui.fitDrawn = fitShown();
+      fitSets(stored).forEach(function (d) { sets.push(d); });
       var view = chartView(t, traces), x = ui.view || view.x, y = ui.view ? countsFor(x) : view.y;
+      drawResidual(stored, x);        /* before the chart, so the chart is the last one made */
       ui.chart = new window.Chart(canvas, {
-        type: "scatter", data: { datasets: sets },
+        type: "scatter", data: { datasets: sets }, plugins: [LABEL_PLUGIN],
         options: { animation: false, maintainAspectRatio: false,
+                   layout: { padding: { top: 8, right: 12, bottom: 4, left: 4 } },
                    plugins: { legend: { display: false }, annotation: { annotations: {} } },
-                   scales: { x: { title: { display: true, text: "min" }, min: x[0], max: x[1] },
-                             y: { min: y[0], max: y[1],
+                   scales: { x: { title: { display: true, text: "Retention time (min)" }, min: x[0], max: x[1] },
+                             y: { title: { display: true, text: "Intensity (counts)" }, min: y[0], max: y[1],
                                   afterBuildTicks: function (axis) {
                                     axis.ticks = niceTicks(axis.min, axis.max, axis.height).map(function (v) { return { value: v }; });
                                   },
                                   ticks: { callback: function (v) { return axisCounts(this.max)(v); } } } } }
       });
+      placeLabel();
       if (wrap) { gestures(wrap); }
+    }
+    /* the label by the apex: the time and area of the peak shown. It is placed again on every layout of the
+       chart (a resize, the Details toggle, a change of columns), hidden when the apex lies outside the x scale,
+       and kept whole inside the plot */
+    function placeLabel(c) {
+      var lab = body.querySelector('[data-role="peak-label"]'), t = tr(), chart = c || ui.chart;
+      if (!lab) { return; }
+      var L = peakLabel(a, t, ui.index === 0), sx = chart && chart.scales && chart.scales.x;
+      if (!L || !chart || !sx || L.x < sx.min || L.x > sx.max) { lab.hidden = true; ui.labelKey = "hidden"; return; }
+      var ca = chart.chartArea, i = nearest(t.t, L.x);
+      var px = sx.getPixelForValue(L.x), py = chart.scales.y.getPixelForValue(t.y[i]);
+      /* a drag lays the chart out on every frame: nothing moved, nothing is measured (a measure forces a layout) */
+      var key = labelKey(L, px, py, ca);
+      if (key === ui.labelKey && !lab.hidden) { return; }
+      ui.labelKey = key;
+      lab.innerHTML = "<span>" + esc(L.lines[0]) + "</span><span>" + esc(L.lines[1]) + "</span>";
+      lab.classList.toggle("is-manual", L.manual);
+      lab.hidden = false;
+      var w = lab.offsetWidth || 0, h = lab.offsetHeight || 0;
+      lab.style.left = Math.min(Math.max(px, ca.left + w / 2), Math.max(ca.right - w / 2, ca.left + w / 2)) + "px";
+      lab.style.top = Math.min(Math.max(py - 8, ca.top + h), ca.bottom) + "px";
+    }
+    var LABEL_PLUGIN = { id: "peakLabel", afterLayout: function (c) { placeLabel(c); } };
+
+    /* the fit drawn: the preview while the fit tool is open (none until it is made), else the stored fit */
+    function fitShown() {
+      var t = tr();
+      if (st && st.mode === "fit") { return ui.previewFit || null; }
+      return t.fit && !t.deleted && t.fit.components && t.fit.span ? t.fit : null;
+    }
+    function fitSets(fit) {
+      return (fit ? fit.components : []).map(function (c, k) {
+        return { label: "fitted peak " + (k + 1), data: fitCurve(fit, k), borderColor: token("--s-secondary"),
+                 borderWidth: 1, borderDash: [4, 3], pointRadius: 0, showLine: true };
+      });
+    }
+    /* the fit shown drawn again on the chart as it stands: its components and the residual strip */
+    function drawFit() {
+      if (!ui.chart) { return; }
+      var shownFit = ui.fitDrawn = fitShown(), sets = ui.chart.data.datasets.filter(function (d) { return !/^fitted peak /.test(d.label); });
+      ui.chart.data.datasets = sets.concat(fitSets(shownFit));
+      drawResidual(shownFit, ui.view || chartView(tr(), traces).x);
+      paint(lastRes);
+    }
+    /* the chart's fit made the one to show, when it is not: the stored fit leaves as the fit tool opens */
+    function syncFit() { if (fitShown() !== (ui.fitDrawn || null)) { drawFit(); } }
+
+    /* the fit previewed as drawn (raw_fit.js): made a moment after the last change, as clicks and
+       drags come in bursts, and never for a drawing the fit tool already says is incomplete; Apply
+       waits for it, and stays off while the worker would refuse the fit */
+    var PREVIEW_WAIT = 150;
+    function previewKey() {
+      return JSON.stringify([ui.index, st.shape || "gaussian", fitApexSorted(st.apexes), st.start, st.end, fitPick(st, a, tr())]);
+    }
+    function previewOk() {
+      return !!ui.preview && ui.previewKey === previewKey() && (!ui.preview.problem || !!ui.preview.unpreviewed);
+    }
+    function schedulePreview() {
+      if (!st || st.mode !== "fit" || fitProblem(st)) {
+        if (ui.previewTimer) { clearTimeout(ui.previewTimer); ui.previewTimer = 0; }
+        ui.preview = ui.previewKey = null;
+        ui.previewFit = null;
+        syncFit();
+        return;
+      }
+      var key = previewKey();
+      if (key === ui.previewKey) { return; }
+      ui.previewKey = key;
+      ui.preview = null;
+      if (ui.previewTimer) { clearTimeout(ui.previewTimer); }
+      ui.previewTimer = setTimeout(function () {
+        ui.previewTimer = 0;
+        if (current !== ui || ui.previewKey !== key || st.mode !== "fit") { return; }
+        var t = tr();
+        try {
+          ui.preview = fitPreview(t.t, t.y, { apexes: fitApexSorted(st.apexes), shape: st.shape || "gaussian", start: st.start,
+                                              end: st.end, pick: fitPick(st, a, t), limit: a.fit_limit, noise: t.sigma,
+                                              minSn: t.min_sn }, a.fit_preview);
+        } catch (err) {
+          /* a preview that fails says so and leaves Apply off */
+          ui.preview = { problem: FIT_FAILED, own: true, components: [], fit: null };
+        }
+        ui.previewFit = ui.preview.fit;
+        drawFit();
+        update();
+      }, PREVIEW_WAIT);
+    }
+
+    /* the residual strip under the chart: what the fit shown leaves, on the chart's own time axis */
+    function drawResidual(stored, x) {
+      if (ui.resChart) { ui.resChart.destroy(); ui.resChart = null; }
+      var box = body.querySelector('[data-role="residual"]'), rc = body.querySelector('canvas[data-role="residual-canvas"]');
+      if (box) { box.hidden = !stored; }
+      if (!stored || !rc) { return; }
+      var t = tr();
+      ui.resChart = new window.Chart(rc, {
+        type: "scatter",
+        data: { datasets: [{ label: "residual", data: fitResidual(stored, t.t, t.y), borderColor: token("--s-secondary"),
+                             borderWidth: 1, pointRadius: 0, showLine: true }] },
+        options: { animation: false, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                   scales: { x: { min: x[0], max: x[1], title: { display: true, text: "min" } },
+                             y: { title: { display: true, text: "residual" }, ticks: { maxTicksLimit: 3 } } } } });
     }
 
     /* the shading, the baseline and its handles, the candidates as the edit stands */
@@ -2099,14 +3240,19 @@
       /* an edit waiting for the run is drawn until the analyst changes it */
       var pe = !st.touched && st.mode === "integrate" ? ui.pending : null;
       var p = (res && res.preview) || (pe && pe.preview);
-      if (p) {
+      var pf = st.mode === "fit" ? ui.previewFit : null;
+      if (pf) {
+        var pff = fitFill(pf);
+        top = pff.top; base = pff.base;
+      } else if (p) {
         for (var i = p.s; i <= p.e; i++) {
           top.push({ x: t.t[i], y: t.y[i] });
           base.push({ x: t.t[i], y: interp(t.t[i], t.t[p.s], t.t[p.e], p.base_start, p.base_end) });
         }
         ln = [t.t[p.s], p.base_start, t.t[p.e], p.base_end];
-      } else if (!pe && (!st.touched || st.mode !== "integrate") && !t.deleted && t.peak && t.peak.start != null) {
-        var fl = peakFill(t.t, t.y, t.peak);    /* the stored peak: the one a delete removes */
+      } else if (st.mode !== "fit" && !pe && (!st.touched || st.mode !== "integrate") && !t.deleted && t.peak && t.peak.start != null) {
+        /* the stored peak: the one a delete removes; a fitted one is its reported component */
+        var fl = t.fit && t.fit.components && t.fit.span ? fitFill(t.fit) : peakFill(t.t, t.y, t.peak);
         top = fl.top; base = fl.base;
         ln = [t.peak.start, t.peak.base_start, t.peak.end, t.peak.base_end];
       }
@@ -2142,6 +3288,13 @@
           });
         }
       }
+      var dropEdge = working && edgesSet() ? dropSideOf() : null;
+      if (dropEdge) {
+        /* the shared edge as a full-height vertical line, held as "drop" */
+        var dropAt = dropEdge === "start" ? ln[0] : ln[2];
+        marks.dropShared = { type: "line", xMin: dropAt, xMax: dropAt, borderColor: colour, borderWidth: 2 };
+      }
+      ui.dropAt = dropEdge ? (dropEdge === "start" ? ln[0] : ln[2]) : null;
       if (working) {
         (t.candidates || []).forEach(function (c, k) {
           var on = st.kind === "apex" && st.apex === c.apex;
@@ -2150,6 +3303,7 @@
                                 borderWidth: 2, click: function () { if (!ui.justDragged) { choose(c); } } };
         });
       }
+      if (st.mode === "fit") { fitMarks(marks, t); }
       if (rtOn()) {
         var rv = rtShown();
         marks.expected = { type: "line", xMin: rv, xMax: rv, borderWidth: 2, borderDash: [6, 4],
@@ -2159,6 +3313,24 @@
       }
       ui.chart.options.plugins.annotation.annotations = marks;
       ui.chart.update("none");
+    }
+
+    /* the fit being drawn: its edges, each apex clicked (the one reported here thick), and where the
+       peak reported in every injection is, the click nearest the expected time */
+    function fitMarks(marks, t) {
+      var ap = fitApexSorted(st.apexes), here = fitPick(st, a, t), all = fitAllPick(st, a, t);
+      ["start", "end"].forEach(function (e) {
+        if (typeof st[e] === "number") {
+          marks["fit_" + e] = { type: "line", xMin: st[e], xMax: st[e], borderColor: token("--s-warning"), borderWidth: 2 };
+        }
+      });
+      ap.forEach(function (v, k) {
+        marks["fit_apex" + k] = { type: "line", xMin: v, xMax: v, borderColor: token(k === here ? "--s-primary-dk" : "--s-info"),
+                                  borderWidth: k === here ? 3 : 1, borderDash: [5, 3],
+                                  label: { display: true, content: "Peak " + (k + 1) + (k === here ? ", reported here" : "") +
+                                           (k === all ? ", reported in all" : ""), position: "start",
+                                           backgroundColor: token("--s-info-lt"), color: token("--s-info-text") } };
+      });
     }
 
     /* the chart's gestures: a handle or the line dragged, a handle
@@ -2177,25 +3349,33 @@
         var ar = ui.chart.chartArea;
         return q.px >= ar.left && q.px <= ar.right && q.py >= ar.top && q.py <= ar.bottom;
       }
-      /* what a press at q takes: a handle (within 9 px), the expected-time
-         line (5 px), the baseline (6 px), the axis, or nothing */
+      /* what a press at q takes: a handle (within 9 px of its point), then whichever of the drop
+         line and an edge (within 9 px of its time, at any height) and the expected-time line (5 px)
+         is nearest, a tie going to the drop line, then an edge, then the line; then the baseline
+         (6 px), the axis, or nothing */
       function target(q) {
         var ar = ui.chart.chartArea;
         if (q.py > ar.bottom && q.px >= ar.left && q.px <= ar.right) { return "axis"; }
         var ln = ui.line, working = !!ln && editable && st.mode === "integrate";
-        var xs = ui.chart.scales.x, ys = ui.chart.scales.y, best = null, bestD = 9;
-        if (working) {
+        var xs = ui.chart.scales.x, ys = ui.chart.scales.y, inY = q.py >= ar.top && q.py <= ar.bottom;
+        if (working && inY) {
+          var circle = null, cd = GRAB_PX;
           ["start", "end"].forEach(function (h, k) {
-            var d = Math.sqrt(Math.pow(q.px - xs.getPixelForValue(ln[2 * k]), 2) +
-                              Math.pow(q.py - ys.getPixelForValue(ln[2 * k + 1]), 2));
-            if (d <= bestD) { best = h; bestD = d; }
+            var d = Math.sqrt(Math.pow(q.px - xs.getPixelForValue(ln[2 * k]), 2) + Math.pow(q.py - ys.getPixelForValue(ln[2 * k + 1]), 2));
+            if (d <= cd) { circle = h; cd = d; }
           });
-          if (best) { return best; }
+          if (circle) { return circle; }
         }
-        if (rtOn() && !ui.rtBusy && q.py >= ar.top && q.py <= ar.bottom &&
-            rtHit(q.px, xs.getPixelForValue(rtShown()), 5)) {
-          return "rt";
+        var offers = [];
+        function offer(kind, d, limit) { offers.push({ kind: kind, d: d, limit: limit }); }
+        if (working && inY) {
+          if (ui.dropAt != null) { offer("drop", Math.abs(q.px - xs.getPixelForValue(ui.dropAt)), GRAB_PX); }
+          var edge = edgeAt(q.px, xs.getPixelForValue(ln[0]), xs.getPixelForValue(ln[2]));
+          if (edge) { offer(edge, Math.abs(q.px - xs.getPixelForValue(edge === "start" ? ln[0] : ln[2])), GRAB_PX); }
         }
+        if (rtOn() && !ui.rtBusy && inY) { offer("rt", Math.abs(q.px - xs.getPixelForValue(rtShown())), 5); }
+        var best = nearestPress(offers);
+        if (best) { return best; }
         if (!working) { return null; }
         var x = timeAt(q.px);
         if (x > ln[0] && x < ln[2] && Math.abs(q.py - ys.getPixelForValue(interp(x, ln[0], ln[2], ln[1], ln[3]))) <= 6) {
@@ -2203,24 +3383,30 @@
         }
         return null;
       }
+      function ends() {
+        held = null;
+        try { canvas.releasePointerCapture(ui.pointerId); } catch (err) { /* released already */ }
+      }
       canvas.onpointerdown = function (e) {
         if (e.button !== 0 || !ui.chart) { return; }
         var q = pos(e);
-        if (ui.region && inArea(q)) {     /* a box drawn to zoom into, not a handle */
-          held = "region"; press = q; moved = false;
+        held = target(q);
+        if (!held) {
+          if (!inArea(q)) { return; }
+          held = "zoom";                /* an empty area: a box to zoom into, or a click */
+          press = q; moved = false;
           from = { x: timeAt(q.px), y: countAt(q.py) };
+          ui.pointerId = e.pointerId;
           canvas.setPointerCapture(e.pointerId);
           e.preventDefault();
           return;
         }
-        held = target(q);
-        if (!held) { return; }
         press = q;
-        axis = held === "line" || held === "axis" || held === "rt" ? "x" : null;
         moved = false;
         from = held === "axis" ? { view: [ui.chart.scales.x.min, ui.chart.scales.x.max] }
                                : { start: st.start, end: st.end, x: timeAt(q.px) };
         if (held === "start" || held === "end") { ui.handle = held; }
+        ui.pointerId = e.pointerId;
         canvas.setPointerCapture(e.pointerId);
         wrap.classList.add("is-dragging");
         e.preventDefault();
@@ -2232,10 +3418,19 @@
           if (inArea(q)) { ui.at = timeAt(q.px); }
           var over = target(q);
           wrap.classList.toggle("is-edge", over === "start" || over === "end");
-          wrap.classList.toggle("is-line", over === "line" || over === "axis" || over === "rt");
+          wrap.classList.toggle("is-line", over === "line" || over === "axis" || over === "rt" || over === "drop");
           return;
         }
-        if (held === "region") {
+        var far = Math.max(Math.abs(q.px - press.px), Math.abs(q.py - press.py));
+        if (held === "zoom") {
+          if (pressKind(null, far) !== "zoom") {      /* back within 4 px of the press: a click again */
+            if (moved) {
+              moved = false;
+              delete ui.chart.options.plugins.annotation.annotations.region;
+              ui.chart.update("none");
+            }
+            return;
+          }
           var marks = ui.chart.options.plugins.annotation.annotations;
           marks.region = { type: "box", xMin: from.x, xMax: timeAt(q.px), yMin: from.y, yMax: countAt(q.py),
                            borderColor: token("--s-info"), borderWidth: 1, borderDash: [4, 3],
@@ -2244,15 +3439,12 @@
           ui.chart.update("none");
           return;
         }
-        if (axis === null) {            /* past a few pixels the drag takes its direction */
-          var dx = Math.abs(q.px - press.px), dy = Math.abs(q.py - press.py);
-          if (dx < 4 && dy < 4) { return; }
-          axis = dx >= dy ? "x" : "y";
-        }
+        /* a handle or the drop line stays put for a few pixels, so a click does not move it */
+        if ((held === "start" || held === "end" || held === "drop") && !moved && far < CLICK_PX) { return; }
         moved = true;
         if (held === "axis") {
           var w = from.view[1] - from.view[0], ar = ui.chart.chartArea;
-          zoomTo(panView(from.view, -(q.px - press.px) / (ar.right - ar.left) * w, limits()));
+          zoomTo(panView(from.view, -(q.px - press.px) / (ar.right - ar.left) * w, limits()), null, true);
           return;
         }
         if (held === "rt") {            /* the expected time, on a sample every trace holds */
@@ -2260,23 +3452,30 @@
           if (to != null && to !== ui.rtDrag) { ui.rtDrag = to; paint(lastRes); }
           return;
         }
-        var d = handleDrag(handleState(held, from), { x: timeAt(q.px), y: countAt(q.py), axis: axis, shift: e.shiftKey });
+        var p = { x: timeAt(q.px), shift: e.shiftKey };
+        if (held === "start" || held === "end") {
+          /* the level is the pointer's count, unless the pointer is on the signal at that sample */
+          var sv = signalAt(handleState(held, from), p.x);
+          p.y = countAt(q.py);
+          p.snapped = sv != null && onSignal(q.py, ui.chart.scales.y.getPixelForValue(sv));
+        }
+        var d = handleDrag(handleState(held, from), p);
         if (d.start !== st.start || d.end !== st.end || d.levels[0] !== (st.handles || ui.drawn || [])[0] ||
             d.levels[1] !== (st.handles || ui.drawn || [])[1] || d.manual[0] !== st.manual[0] || d.manual[1] !== st.manual[1]) {
-          takeDrag(d);
+          takeDrag(d, true);
         }
       };
       canvas.onpointerup = canvas.onpointercancel = canvas.onlostpointercapture = function (e) {
         if (!held) { return; }
-        if (held === "region") {
-          held = null;
-          try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* released already */ }
+        if (held === "zoom") {
+          ends();
           delete ui.chart.options.plugins.annotation.annotations.region;
-          var q = pos(e), box = moved ? regionView(from.x, from.y, timeAt(q.px), countAt(q.py), leastSpan()) : null;
-          setRegion(false);
+          var q = pos(e), box = moved && e.type === "pointerup" ? regionView(from.x, from.y, timeAt(q.px), countAt(q.py), leastSpan(), Math.abs(q.py - press.py)) : null;
           if (box) { zoomTo(box.x, box.y); } else { ui.chart.update("none"); }
-          ui.justDragged = true;       /* the click that ends the box is not a candidate's */
-          window.setTimeout(function () { ui.justDragged = false; }, 0);
+          if (moved) {                 /* the click that ends the box is not a candidate's or an apex */
+            ui.justDragged = true;
+            window.setTimeout(function () { ui.justDragged = false; }, 0);
+          }
           return;
         }
         if (held === "rt") {
@@ -2296,8 +3495,10 @@
           return;
         }
         held = null;
+        ui.dragOpen = false;
         wrap.classList.remove("is-dragging");
         try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* released already */ }
+        flushDrag();
         if (moved) {                 /* the click that ends a drag is not a candidate's */
           ui.justDragged = true;
           window.setTimeout(function () { ui.justDragged = false; }, 0);
@@ -2305,10 +3506,22 @@
       };
       /* a handle double-clicked: its level back on the signal */
       canvas.ondblclick = function (e) {
-        var h = ui.chart ? target(pos(e)) : null;
-        if (h !== "start" && h !== "end") { return; }
+        if (!ui.chart) { return; }
+        var q = pos(e), h = target(q);
+        if (!h && inArea(q)) { e.preventDefault(); zoomTo(null); return; }   /* an empty area: the whole window */
+        if (h !== "start" && h !== "end" && h !== "drop") { return; }
         e.preventDefault();
         takeDrag(handleDrag(handleState(h), { reset: true }));
+      };
+      /* in the fit tool a click sets an apex, or takes the one beside it away */
+      canvas.onclick = function (e) {
+        if (!ui.chart || !st || st.mode !== "fit" || ui.justDragged) { return; }
+        var q = pos(e);
+        if (!inArea(q)) { return; }
+        var xs = ui.chart.scales.x, tol = 10 * (xs.max - xs.min) / (ui.chart.chartArea.right - ui.chart.chartArea.left);
+        if (xs.min == null) { return; }
+        var tt = tr(), at = timeAt(q.px), i = snapIndex(tt.t, at, null);
+        clickApex(i >= 0 ? tt.t[i] : at, tol);
       };
       canvas.oncontextmenu = function (e) {
         if (!ui.chart) { return; }
@@ -2345,9 +3558,35 @@
         return true;
       }
       if (k.act === "apply") {
-        if (submit && !submit.disabled) { post(); return true; }
+        if (submit && !submit.disabled) { applyOne(); return true; }
         return false;
       }
+      if (k.act === "apply-one") {
+        /* the Apply button's own path: a change opens the comment box, an armed undo posts at
+           once; nothing posts with Apply disabled, and the key is the card's even then, so the
+           browser does not save the page */
+        if (editable && submit && !submit.disabled) { applyOne(); }
+        return true;
+      }
+      if (k.act === "step-back" || k.act === "step-forward") {
+        if (!editable || !st) { return false; }
+        if (ui.busy[ui.index]) { return true; }       /* posted, or waiting for the run: the drawing stands */
+        var snap = k.act === "step-back" ? ui.stack.back(snapshot()) : ui.stack.forward(snapshot());
+        if (!snap) { return false; }
+        restoreDrawing(snap);
+        return true;
+      }
+      if (k.act === "zoom-in" || k.act === "zoom-out") {
+        if (!ui.chart) { return false; }
+        var xs0 = ui.chart.scales.x, vw = [xs0.min, xs0.max];
+        zoomTo(zoomView(vw, (vw[0] + vw[1]) / 2, k.act === "zoom-in" ? 0.8 : 1.25, limits(), leastSpan()));
+        return true;
+      }
+      if (k.act === "injection" || k.act === "compound") {
+        walk(k.act, k.by);
+        return true;
+      }
+      if (k.act === "keys") { toggleKeys(); return true; }
       if (k.act === "handle") {
         if (!editable || !ui.line) { return false; }
         if (k.by > 0 && ui.handle !== "end") { ui.handle = "end"; paint(lastRes); return true; }
@@ -2358,7 +3597,7 @@
         if (!editable || st.mode !== "integrate" || !edgesSet()) { return false; }
         var i = snapIndex(t.t, st[ui.handle], null) + k.by;
         i = Math.max(0, Math.min(i, t.t.length - 1));
-        takeDrag(handleDrag(handleState(ui.handle), { x: t.t[i], axis: "x" }));
+        takeDrag(handleDrag(handleState(ui.handle), { x: t.t[i] }));
         return true;
       }
       list = entries();
@@ -2387,6 +3626,7 @@
     }
 
     function choose(c) {
+      var was = snapshot();
       st.mode = "integrate";
       st.kind = "apex";
       st.note = "";
@@ -2395,6 +3635,7 @@
       st.end = c.end;
       seedLevels(null);
       st.touched = true;
+      recorded(was);
       boxes();
       update();
     }
@@ -2408,12 +3649,177 @@
 
     /* everything the edit shows: the panes, the preview, the refusal, the notes, the button */
     var lastRes = null;
+    /* the fits stepper and the score badge, on the quantifier. A step previews that candidate through
+       the edit's own drawing (its edges and line, or a fit of its shape on one apex); nothing is
+       applied until Apply. The score shows only while the drawing is still the candidate's. */
+    var fitList = fitSteps(a), fitAt = fitStart(a, fitList), fitStartAt = fitAt, scoreOpen = false;
+    /* the smoothing stepper: a step only previews (the dashed line, no score); it is applied by "Apply to this
+       injection" (asked first) or "Apply to all", and is the compound's, never one injection's */
+    var smoothList = smoothingList(a), smoothStart = smoothingStart(a, smoothList), smoothAt = smoothStart;
+    var SMOOTH_PAIRED = "Smoothing cannot be changed for a paired or summed peak";
+    ui.smoothPreview = false;
+    ui.smoothM = null;
+    ui.smoothAllPrev = null;
+    ui.asideNote = false;
+    function smoothBlocked() { return !!a.peak_mode && a.peak_mode !== "single"; }
+    function smoothChanged() { return smoothAt !== smoothStart && smoothList[smoothAt].m != null; }
+    function smoothReset() {
+      var was = smoothChanged();
+      smoothAt = smoothStart;
+      ui.smoothPreview = false;
+      ui.smoothM = null;
+      ui.smoothAllPrev = null;
+      return was;
+    }
+    /* a step drops an edge or fit edit drawn (Ctrl+Z brings it back): the smoothing is the compound's, the
+       edit this injection's. A drag or a fits step afterwards keeps the smoothing chosen. */
+    function smoothTo(i) {
+      if (smoothBlocked() || i < 0 || i >= smoothList.length || i === smoothAt || smoothList[i].m == null) { return; }
+      if (editDrawn()) {
+        var was = snapshot();
+        startState();
+        recorded(was);
+        ui.asideNote = true;          /* said under the stepper: the edit is not lost, Ctrl+Z brings it back */
+        if (editable) { boxes(); }
+      }
+      smoothAt = i;
+      ui.smoothPreview = smoothChanged();
+      ui.smoothM = ui.smoothPreview ? smoothList[i].m : null;
+      ui.smoothAllPrev = null;
+      draw();
+      update();
+    }
+    function smoothingStepper() {
+      var bar = body.querySelector('[data-role="smoothing"]'), note = body.querySelector('[data-role="smooth-note"]');
+      var blocked = smoothBlocked();
+      if (note) {
+        var words = smoothNote({ blocked: blocked ? SMOOTH_PAIRED + "." : "", preview: ui.smoothPreview, name: smoothList[smoothAt].name,
+                                 stored: smoothList[smoothStart].name,
+                                 drawn: editDrawn() ? smoothingDropsEdges(a.label || a.analyte) : "", aside: !!ui.asideNote });
+        if (note.textContent !== words) { note.textContent = words; }
+        note.hidden = !words;
+      }
+      if (!bar) { return; }
+      var lo = blocked ? -1 : smoothingNext(smoothList, smoothAt, -1), hi = blocked ? -1 : smoothingNext(smoothList, smoothAt, 1);
+      paintStepper(bar, { attr: "smooth", labels: ["Less smoothing", "More smoothing"], off: [lo < 0, hi < 0],
+                          text: smoothList[smoothAt].m == null ? "\u2014" : smoothList[smoothAt].name, title: blocked ? SMOOTH_PAIRED : "" });
+    }
+    function stepTo(i) {
+      if (i < 0 || i >= fitList.length || i === fitAt) { return; }
+      var step = fitList[i], c = step.cand, p = tr().peak || {};
+      var from = edgesSet() ? [st.start, st.end] : [p.start, p.end];
+      var lo = c && c.start != null ? c.start : from[0], hi = c && c.end != null ? c.end : from[1];
+      fitAt = i;
+      if (step.method === "gaussian" || step.method === "emg") {
+        var was = snapshot();
+        st.mode = "fit";
+        st.kind = "fit";
+        st.shape = step.method;
+        st.alone = true;
+        st.apexes = [p.apex != null ? p.apex : (lo + hi) / 2];
+        st.pick = null;
+        seedLevels(null);
+        st.start = lo;
+        st.end = hi;
+        st.note = "";
+        recorded(was);
+        boxes();
+        update();
+      } else if (i === fitStartAt && (!c || c.start == null || edgesAre(c, p))) {
+        run({ id: "restore", discard: true });
+      } else if (c && c.start != null && c.end != null) {
+        st.alone = false;
+        setEdges(lo, hi, step.method);
+      } else {
+        st.alone = false;
+        setLine(step.method);
+      }
+    }
+    /* the method the drawing is: the fit's shape, else the line it is measured on; an untouched drawing
+       is the stored peak's own method; a deletion or an undo is none */
+    function drawnMethod() {
+      if (st.mode === "fit") { return st.shape || "gaussian"; }
+      if (st.mode !== "integrate") { return null; }
+      if (!st.touched && !ui.pending) { return fitMethodOf(tr()); }
+      return line();
+    }
+    function syncStep() {
+      var m = drawnMethod(), at = -1;
+      for (var k = 0; k < fitList.length; k++) { if (fitList[k].method === m) { at = k; } }
+      fitAt = at;
+    }
+    function edgesAre(c, p) { return Math.abs(c.start - p.start) < 5e-4 && Math.abs(c.end - p.end) < 5e-4; }
+    /* the candidate the drawing still is, or null: a drag or a typed edge makes it nobody's */
+    function shownStep() {
+      var step = fitList[fitAt];
+      if (!step || !step.cand || step.cand.start == null || tr().edit !== "auto" || !edgesSet()) { return null; }
+      /* levels set by hand, or a fit of two or three apexes, are nobody's candidate */
+      if (st.levels || (st.manual && (st.manual[0] || st.manual[1]))) { return null; }
+      if (st.mode === "fit" && fitApexSorted(st.apexes).length !== 1) { return null; }
+      return Math.abs(st.start - step.cand.start) < 5e-4 && Math.abs(st.end - step.cand.end) < 5e-4 ? step : null;
+    }
+    function stepper() {
+      smoothingStepper();
+      var on = ui.index === 0, bar = body.querySelector('[data-role="fits"]'), score = body.querySelector('[data-role="score"]');
+      var note = body.querySelector('[data-role="fit-note"]');
+      if (on) { syncStep(); }
+      var name = fitAt >= 0 ? fitList[fitAt].name : fitMethodName(drawnMethod());
+      if (bar) {
+        paintStepper(bar, { attr: "fit", labels: ["Previous fit", "Next fit"], off: [fitAt <= 0, fitAt >= fitList.length - 1], text: name, hidden: !on });
+      }
+      var shown = on ? shownStep() : null;
+      if (note) {
+        var why = on && fitAt >= 0 && fitList[fitAt].cand ? fitList[fitAt].cand.note || "" : "";
+        note.textContent = why;
+        note.hidden = !why;
+      }
+      if (score) {
+        var skey = JSON.stringify([shown ? shown.method : null, on, !!ui.smoothPreview]);
+        if (score.getAttribute("data-key") !== skey) {
+          score.setAttribute("data-key", skey);
+          /* a smoothing previewed has no score until it is applied and the run processed again */
+          score.innerHTML = on ? scoreBadge(ui.smoothPreview ? null : shown, a.fit_accept_score, a.check_labels, scoreOpen) : "";
+        }
+        /* the breakdown opens and shuts in place: the arrow pressed keeps the focus */
+        var more = score.querySelector(".raw-score-more"), list = score.querySelector(".raw-score-checks");
+        if (more && more.getAttribute("aria-expanded") !== (scoreOpen ? "true" : "false")) { more.setAttribute("aria-expanded", scoreOpen ? "true" : "false"); }
+        if (list && list.hidden === scoreOpen) { list.hidden = !scoreOpen; }
+      }
+    }
+    var stepBar = body.querySelector('[data-role="fits"]');
+    if (stepBar) {
+      stepBar.addEventListener("click", function (e) {
+        var b = e.target && e.target.closest ? e.target.closest("[data-fit]") : null;
+        if (b && !b.disabled) { stepTo(fitAt + parseInt(b.getAttribute("data-fit"), 10)); }       /* from no step, Next is the first */
+      });
+    }
+    var smoothBar = body.querySelector('[data-role="smoothing"]');
+    if (smoothBar) {
+      smoothBar.addEventListener("click", function (e) {
+        var b = e.target && e.target.closest ? e.target.closest("[data-smooth]") : null;
+        if (b && !b.disabled) { smoothTo(smoothingNext(smoothList, smoothAt, parseInt(b.getAttribute("data-smooth"), 10))); }
+      });
+    }
+    var scoreBox = body.querySelector('[data-role="score"]');
+    if (scoreBox) {
+      scoreBox.addEventListener("click", function (e) {
+        var b = e.target && e.target.closest ? e.target.closest(".raw-score-more") : null;
+        if (!b) { return; }
+        scoreOpen = !scoreOpen;
+        stepper();
+      });
+    }
     function update() {
       var t = tr();
+      if (ui.asideNote && editDrawn()) { ui.asideNote = false; }       /* a new edit is drawn: the set-aside edit is let go */
+      /* a smoothing is previewed on the integration drawing only: a delete or an undo leaves it */
+      if (smoothChanged() && (st.mode === "delete" || st.mode === "revert")) { smoothReset(); draw(); }
+      schedulePreview();
+      stepper();
       var panes = body.querySelectorAll(".raw-pane");
       for (var i = 0; i < panes.length; i++) { panes[i].hidden = panes[i].getAttribute("data-pane") !== st.mode; }
       var res = null, problem = null;
-      if (editable && st.mode === "integrate" && st.touched) {
+      if (st.mode === "integrate" && st.touched) {
         res = judge(a, t, editOf());
         problem = res.problem;
       }
@@ -2423,8 +3829,10 @@
       var prev = body.querySelector('[data-role="preview"]');
       if (prev) {
         var p = res && res.preview;
+        var ionText = p ? ionPreviewText(a, ui.index, p.area) : "";
         prev.textContent = p ? "Area " + num(p.area, 0) + " · S/N " + (p.sn == null ? "—" : num(p.sn, 1)) +
-                               (res.change == null ? "" : " · change " + pyFixed(res.change, 1) + " %") : "";
+                               (res.change == null ? "" : " · change " + pyFixed(res.change, 1) + " %") +
+                               (ionText ? " · " + ionText : "") : "";
         body.querySelector('[data-role="problem"]').textContent = problem || "";
         body.querySelector('[data-role="edge-note"]').textContent = st.mode === "integrate" ? st.note || "" : "";
       }
@@ -2437,16 +3845,34 @@
       }
       if (submit) {
         if (st.mode === "integrate") {
-          submit.textContent = st.kind === "apex" ? "Choose this peak" : "Re-integrate";
+          submit.textContent = "Apply to this injection";
           submit.disabled = !st.touched || !!problem;
+        } else if (st.mode === "fit") {
+          submit.textContent = "Apply to this injection";
+          submit.disabled = !!fitProblem(st) || !previewOk();     /* no fit limit: no preview is made, so it is never applied */
         } else if (st.mode === "delete") {
-          submit.textContent = ui.armed && needsConfirm() ? "Confirm delete" : "Delete peak";
+          submit.textContent = ui.armed && needsConfirm() ? "Confirm delete" : "Apply to this injection";
           submit.disabled = !!t.deleted && t.edit !== "pending";
         } else {
           submit.textContent = "Undo edit";
           submit.disabled = false;
         }
+        if (smoothChanged()) { submit.disabled = false; }
+        if (ui.busy[ui.index]) { submit.disabled = true; }       /* posted, or waiting for the run */
+        /* the comment box stays only for a change that can be applied, never for an undo */
+        if (submit.disabled || st.mode === "revert") { ui.commentOpen = false; }
+        commentBox.hidden = !ui.commentOpen;
+        var cp = commentProblem(reasonSel.value, detailBox.value);
+        commentHint.textContent = cp;
+        ionWarn.textContent = calibratorWarning(a);
+        ionWarn.hidden = !ionWarn.textContent;
+        commentGo.disabled = !!cp || !!ui.busy[ui.index];
       }
+      if (st.mode === "fit") { fitPane(); }
+      var stored = body.querySelector('[data-role="fit-readout"]');
+      if (stored) { stored.textContent = t.fit && !t.deleted ? fitReadout(t.fit) : ""; }
+      if (allBtn) { updateAll(); }
+      if (backBtn) { updateBack(); }
       var trace = body.querySelector('[data-role="trace-line"]');
       /* an edit the run could not apply says why; one waiting for the run says what it is */
       trace.textContent = t.transition + " · " + (EDIT_TEXT[t.edit] || EDIT_TEXT.auto) +
@@ -2456,36 +3882,401 @@
       levelBoxes();
     }
 
-    function post() {
+    /* "Back to automatic": offered where there is a saved edit, a drawn change or a smoothing preview to give up;
+       where a calibrator warning applies the first click shows it and the second posts */
+    function updateBack() {
       var t = tr();
+      if (st.mode !== "revert") { ui.backArmed = false; }
+      backBtn.disabled = !(t.edit && t.edit !== "auto") && !st.touched && st.mode === "integrate" && !smoothChanged() || !!ui.busy[ui.index];
+      var words = ui.backArmed ? "Confirm back to automatic" : "Back to automatic";
+      backBtn.querySelector('[data-role="revert-words"]').textContent = words;
+    }
+    function backToAutomatic() {
+      var t = tr();
+      if (ui.busy[ui.index] || backBtn.disabled) { return; }
+      /* a smoothing preview is the compound's, not this peak's: it goes with the return to automatic */
+      if (smoothChanged()) { smoothReset(); draw(); }
+      if (!t.edit || t.edit === "auto") {
+        var was = snapshot();
+        startState();                 /* only a drawn change: it is let go */
+        recorded(was);
+        boxes();
+        update();
+        return;
+      }
+      if (st.mode !== "revert") { var wasRev = snapshot(); st.mode = "revert"; recorded(wasRev); }
+      if (calibratorWarning(a) && !ui.backArmed) { ui.backArmed = true; update(); return; }
+      ui.backArmed = false;
+      post();
+    }
+
+    /* "Apply to all N injections": offered for a change drawn on a single peak; its preview
+       holds only while the drawing is the one previewed */
+    /* the injections holding the trace shown: what the preview counts */
+    function countOf(t) { return t.injection_count != null ? t.injection_count : a.injection_count; }
+    function updateAll() {
+      var t = tr(), fitting = st.mode === "fit";
+      if (smoothChanged()) {
+        /* an isotope standard asks to confirm, as an edit of it applied to all does */
+        allBtn.hidden = false;
+        allBtn.textContent = ui.smoothAllPrev ? "Confirm" : "Apply to all " + a.injection_count + " injections";
+        allBtn.disabled = !!ui.busy[ui.index];
+        allLine.textContent = ui.smoothAllPrev ? ui.smoothAllPrev.text : "";
+        allLine.hidden = !allLine.textContent;
+        return;
+      }
+      var reason = st.mode === "delete" ? ALL_ONE : st.mode === "integrate" || fitting ? allOffered(st, a) : "";
+      var touched = st.mode === "integrate" && st.touched, apex = (t.auto || t.peak || {}).apex;
+      /* judged without the manual-change limits; the hard ones still refuse */
+      var hard = touched ? judge(a, t, editOf(), true).problem : null;
+      if (!reason && touched && apex == null) { reason = ALL_NO_PEAK; }
+      /* a fit is drawn when it is whole; it is applied once its preview has passed */
+      var whole = fitting && !fitProblem(st), drawn = fitting ? whole && previewOk() : touched && !hard;
+      if (ui.allPrev && (ui.allPrev.snap !== snap() || !drawn || reason)) { ui.allPrev = null; }
+      allBtn.hidden = st.mode === "revert";
+      allBtn.textContent = ui.allPrev ? "Confirm" : "Apply to all " + countOf(t) + " injections";
+      allBtn.disabled = !drawn || !!reason || !!ui.busy[ui.index] || (fitting && fitAllPick(st, a, t) < 0);
+      var line = ui.allPrev ? ui.allPrev.text + (ui.allPrev.major ? " " + FIT_MAJOR : "") +
+                              (calibratorWarning(a, true) ? " " + calibratorWarning(a, true) : "")
+                            : whole && !reason ? fitAllWords(st.apexes, expectedOf(a, t), [st.start, st.end])
+                            : (st.mode !== "revert" && (touched || st.mode === "delete" || fitting) ? reason || hard || "" : "");
+      allLine.textContent = line;
+      allLine.hidden = !line;
+    }
+    /* the fit tool's pane: the shape, which peak is reported here, what is still lacking */
+    function fitPane() {
+      var ap = fitApexSorted(st.apexes), here = fitPick(st, a, tr());
+      var shape = body.querySelector('.pfas-seg[aria-label="Shape"]');
+      if (shape) { pressSeg(shape, st.shape || "gaussian"); }
+      var rep = body.querySelector('[data-role="fit-report"]');
+      if (rep) {
+        var key = ap.length + ":" + here;
+        if (rep.getAttribute("data-key") !== key) {
+          rep.setAttribute("data-key", key);
+          rep.innerHTML = ap.length < 2 ? "" : seg("Report", ap.map(function (v, k) { return [String(k), "Peak " + (k + 1)]; }), String(here));
+          var rs = rep.querySelector(".pfas-seg");
+          if (rs) {
+            if (C.placePill) { C.placePill(rs); }
+            onSeg(rs, function (v) { var was = snapshot(); st.pick = parseInt(v, 10); recorded(was); update(); });
+          }
+        }
+      }
+      var prob = body.querySelector('[data-role="fit-problem"]'), picked = body.querySelector('[data-role="fit-picked"]');
+      var why = fitProblem(st) || (a.fit_limit == null ? FIT_UNSET : ""), pv = !why && ui.preview && ui.previewKey === previewKey() ? ui.preview : null;
+      if (prob) { prob.textContent = why || (pv && pv.problem ? (pv.own ? pv.problem : "Fit refused: " + pv.problem + ".") : ""); }
+      var readout = body.querySelector('[data-role="fit-preview"]'), fin = body.querySelector('[data-role="fit-final"]');
+      if (readout) { readout.textContent = why ? "" : pv ? (pv.fit ? fitReadout(pv.fit) + fitIonText(pv.fit) : "") : FIT_FITTING; }
+      if (fin) { fin.hidden = !(pv && pv.fit); }
+      var floor = body.querySelector('[data-role="fit-floor"]');
+      if (floor) { floor.hidden = !(pv && pv.fit && tr().min_sn == null); }
+      if (picked) { picked.textContent = why ? "" : "This injection reports peak " + (here + 1) + ", at " + pyFixed(ap[here], 3) + " min."; }
+    }
+    /* the ratio on the fitted area of the peak reported, against the other trace's stored area */
+    function fitIonText(fit) {
+      var c = (fit.components || [])[fit.pick || 0] || {};
+      var text = c.area == null ? "" : ionPreviewText(a, ui.index, c.area), mixed = fitMixed(a, ui.index);
+      return (text ? " · " + text : "") + (text && mixed ? " · " + mixed : "");
+    }
+    function sendAll(extra) {
+      var fd = new FormData(), p = allPayload(st, tr(), a), k;
+      if (!ui.index) { p.transition = ""; }          /* the quantifier is named by none */
+      if (f.elements._authenticator) { fd.append("_authenticator", f.elements._authenticator.value); }
+      fd.append("action", "raw_apply_all");
+      for (k in p) { if (p.hasOwnProperty(k)) { fd.append(k, p[k]); } }
+      for (k in extra) { if (extra.hasOwnProperty(k)) { fd.append(k, extra[k]); } }
+      return fetch(f.getAttribute("action"), { method: "POST", body: fd, credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.text().then(function (text) { return replyFrom(r, text); }); });
+    }
+    function applyAll() {
+      var t = tr(), idx = ui.index, mine = ui;
+      if (ui.busy[idx] || allBtn.disabled) { return; }
+      if (smoothChanged()) {
+        if (!a.standard_all_text) { sendSmoothing(false); return; }
+        if (ui.smoothAllPrev) { sendSmoothing(true); return; }
+        previewSmoothing();
+        return;
+      }
+      var was = snap(), since = (data.failure && data.failure.at) || "", previewed = ui.allPrev;
+      if (previewed && previewed.snap !== was) { previewed = ui.allPrev = null; }    /* a new drawing is previewed again */
+      function failed(text) {
+        delete mine.busy[idx];
+        if (current === mine && drawerOpen()) { mine.say(idx, text, true); update(); } else { pageNote(text, true); }
+      }
+      ui.busy[idx] = true;
+      if (!previewed) {
+        update();
+        sendAll({ preview: "1" }).then(function (reply) {
+          delete mine.busy[idx];
+          if (reply.ok && current === mine && drawerOpen()) {
+            mine.allPrev = { text: reply.text, needs_confirm: !!reply.needs_confirm, major: !!reply.major, snap: was };
+            update();
+          } else if (!reply.ok) { failed(reply.error || "The change could not be previewed."); }
+        }).catch(function () { failed("The change could not be sent."); });
+        return;
+      }
+      ui.allPrev = null;
+      ui.stack.clear();
+      update();
+      ui.say(idx, "Saving the change.", false);
+      sendAll(previewed.needs_confirm ? { confirm: "1" } : {}).then(function (reply) {
+        if (reply.ok) {
+          waitForRun({ data: data, ui: mine, idx: idx, last: { transition: t.transition, notes: [] },
+                       waiting: reply.waiting, since: since, was: was });
+          return;
+        }
+        failed(reply.error || "The change was not applied.");
+      }).catch(function () { failed("The change could not be sent."); });
+    }
+
+    function say(text, isError) {
+      var box = body.querySelector('[data-role="said"]');
+      if (box) { box.className = isError ? "raw-refusal" : "raw-note"; box.textContent = text; }
+    }
+
+    /* what the post and the run's answer say, kept with the trace they are about */
+    function paintSaid() {
+      var box = body.querySelector('[data-role="said"]'), sy = ui.saying;
+      if (!box || !sy) { return; }
+      if (sy.index === ui.index) {
+        box.className = sy.error ? "raw-refusal" : "raw-note";
+        box.textContent = sy.text;
+        ui.saidShown = true;
+      } else if (ui.saidShown) {
+        box.className = "raw-note";
+        box.textContent = "";
+        ui.saidShown = false;
+      }
+    }
+    ui.say = function (index, text, error) { ui.saying = { index: index, text: text, error: !!error }; paintSaid(); };
+    ui.unsay = function () {
+      ui.saying = null;
+      var box = body.querySelector('[data-role="said"]');
+      if (box && ui.saidShown) { box.className = "raw-note"; box.textContent = ""; }
+      ui.saidShown = false;
+    };
+    ui.release = function (index) { delete ui.busy[index]; if (current === ui) { update(); } };
+    /* a change drawn since the post, on any trace */
+    function snap() { return JSON.stringify([ui.index, st.mode, st.kind, st.start, st.end, st.apex, st.baseline, st.levels, st.shape, st.apexes, st.pick]); }
+    ui.drawnSince = function (was) { return !!(ui.dirty && ui.dirty() && snap() !== was); };
+    /* the view on screen, Whole window (a null view) included */
+    ui.zoomed = function () { var v = ui.view; return { view: v ? v.slice() : null, yview: ui.yview ? ui.yview.slice() : null }; };
+    /* the refusal in the card, over the edit as posted */
+    function refused(index, error, posted) {
+      ui.say(index, error, true);
+      if (index !== ui.index) { return; }
+      var box = body.querySelector("p.raw-refusal.is-flash");
+      if (!box) {
+        box = el("p", "raw-refusal is-flash");
+        box.setAttribute("role", "alert");
+        body.insertBefore(box, body.firstChild);
+      }
+      box.textContent = error;
+      var back = refusedEdit(posted, error, tr().transition);
+      if (back && back.mode === "delete") {
+        st.mode = "delete";
+        ui.armed = true;
+      } else if (back) {
+        for (var k in back) { if (back.hasOwnProperty(k)) { st[k] = back[k]; } }
+        seedLevels(back.levels);
+      }
+    }
+
+    /* "Apply to this injection": an undo posts at once, a delete asks its confirm first, any
+       other change opens the comment box, whose Apply posts */
+    /* a smoothing change goes to the compound's peaks in the run, whichever button asked. It does not reuse
+       sendAll: that sends the drawn edit's edges, offsets and kind, which a smoothing change refuses. */
+    function smoothingPost(extra) {
+      var fd = new FormData();
+      if (f.elements._authenticator) { fd.append("_authenticator", f.elements._authenticator.value); }
+      fd.append("action", "raw_apply_all");
+      fd.append("analyte", a.analyte);
+      fd.append("smoothing", String(2 * smoothList[smoothAt].m + 1));
+      for (var k in extra) { if (extra.hasOwnProperty(k)) { fd.append(k, extra[k]); } }
+      return fetch(f.getAttribute("action"), { method: "POST", body: fd, credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.text().then(function (text) { return replyFrom(r, text); }); });
+    }
+    /* an isotope standard's smoothing for all, previewed: the words the server confirms it with, then Confirm */
+    function previewSmoothing() {
+      var idx = ui.index, mine = ui;
+      if (ui.busy[idx]) { return; }
+      ui.busy[idx] = true;
+      update();
+      smoothingPost({ preview: "1" }).then(function (reply) {
+        delete mine.busy[idx];
+        if (reply.ok && current === mine && drawerOpen()) {
+          mine.smoothAllPrev = { text: reply.text || "" };
+          update();
+        } else if (!reply.ok) {
+          if (current === mine && drawerOpen()) { mine.say(idx, reply.error || "The change could not be previewed.", true); update(); }
+          else { pageNote(reply.error || "The change could not be previewed.", true); }
+        }
+      }).catch(function () {
+        delete mine.busy[idx];
+        pageNote("The change could not be sent.", true);
+        if (current === mine && drawerOpen()) { update(); }
+      });
+    }
+    function sendSmoothing(confirm) {
+      var t = tr(), idx = ui.index, mine = ui, was = snap(), since = (data.failure && data.failure.at) || "", sent = smoothAt;
+      function failed(text) {
+        delete mine.busy[idx];
+        if (current === mine && drawerOpen()) { mine.say(idx, text, true); update(); } else { pageNote(text, true); }
+      }
+      ui.busy[idx] = true;
+      ui.stack.clear();
+      update();
+      ui.say(idx, "Saving the change.", false);
+      smoothingPost(confirm ? { confirm: "1" } : {})
+        .then(function (reply) {
+          if (reply.ok) {
+            /* applied: the chosen step is now the stored one, nothing is previewed or left to leave */
+            if (current === mine) {
+              /* the step that was posted is the stored one; a step pressed while saving is a new preview */
+              smoothStart = sent;
+              a.smoothing_in_force_points = 2 * smoothList[sent].m + 1;
+              ui.smoothPreview = smoothChanged();
+              ui.smoothM = ui.smoothPreview ? smoothList[smoothAt].m : null;
+              ui.smoothAllPrev = null;
+              draw();
+              update();
+            }
+            waitForRun({ data: data, ui: mine, idx: idx, last: { transition: t.transition, notes: [] },
+                         waiting: reply.waiting, since: since, was: was });
+            return;
+          }
+          failed(reply.error || "The change was not applied.");
+        }).catch(function () { failed("The change could not be sent."); });
+    }
+    /* the question before one injection's button changes a whole compound: Cancel keeps the stored step.
+       An isotope standard's modal carries the words its change for all is confirmed with, and its Apply confirms. */
+    function askSmoothing() {
+      if (ui.smoothClose) { ui.smoothClose(); }          /* a question still open goes, with its key listener */
+      var m = el("div", "pfas-modal is-top open"), back = doc.activeElement, label = a.label || a.analyte;
+      m.id = "raw-smoothing";
+      m.innerHTML = '<div class="pfas-modal-box" role="dialog" aria-modal="true" aria-labelledby="raw-smoothing-h">' +
+        '<h2 id="raw-smoothing-h">' + esc("Change the smoothing for " + label + "?") + "</h2>" +
+        '<p data-role="smooth-from">' + esc("From " + smoothList[smoothStart].name + " to " + smoothList[smoothAt].name + ".") + "</p>" +
+        '<p data-role="smooth-text">' + esc(smoothingWarning(label, a.injection_count, a.manual_kept || 0)) + "</p>" +
+        (editDrawn() ? '<p data-role="smooth-drops">' + esc(smoothingDropsEdges(label)) + "</p>" : "") +
+        (a.standard_all_text ? '<p data-role="smooth-standard">' + esc(a.standard_all_text) + "</p>" : "") +
+        '<div class="form-actions is-end"><button type="button" class="btn btn-secondary" data-role="smooth-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" data-role="smooth-apply">' + esc("Apply to all " + label + " peaks") + "</button></div></div>";
+      doc.body.appendChild(m);
+      var cancelBtn = m.querySelector('[data-role="smooth-cancel"]'), applyBtn = m.querySelector('[data-role="smooth-apply"]');
+      /* Escape answers this question only, and the focus stays on its two buttons: caught before the drawer's own keys */
+      function keys(e) {
+        if (e.key === "Escape") { e.stopPropagation(); cancel(); return; }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          e.stopPropagation();
+          (doc.activeElement === cancelBtn ? applyBtn : cancelBtn).focus();
+        }
+      }
+      function shut() {
+        ui.smoothClose = null;
+        doc.removeEventListener("keydown", keys, true);
+        if (m.parentNode) { m.parentNode.removeChild(m); }
+        if (back && back.focus) { try { back.focus(); } catch (e) { /* gone */ } }
+      }
+      function cancel() { shut(); smoothTo(smoothStart); }
+      ui.smoothClose = shut;
+      doc.addEventListener("keydown", keys, true);
+      cancelBtn.addEventListener("click", cancel);
+      applyBtn.addEventListener("click", function () { shut(); sendSmoothing(!!a.standard_all_text); });
+      cancelBtn.focus();
+    }
+    function applyOne() {
+      if (ui.busy[ui.index]) { return; }
+      if (smoothChanged()) {
+        if (needsSmoothingWarning(smoothList[smoothStart].m, smoothList[smoothAt].m, "one")) { askSmoothing(); }
+        return;
+      }
+      if (st.mode === "revert") { post(); return; }
       if (st.mode === "delete" && needsConfirm() && !ui.armed) {
         ui.armed = true;            /* a confirming click first */
         update();
         return;
       }
+      ui.commentOpen = true;
+      update();
+      if (reasonSel) { reasonSel.focus(); }
+    }
+
+    /* the partner's edit when this peak's shared edge was moved under a drop (partnerEdit), else null */
+    function sharedEdit(res) {
+      var side = dropSideOf(), t = tr();
+      if (!side || !res) { return null; }
+      return partnerEdit(side, side === "start" ? res.start : res.end, a.partner, measure(a, "drop_rt"),
+                         2 * edgeTolerance(t.t, t.full_res || limits()));
+    }
+    function post() {
+      var t = tr(), idx = ui.index;
+      if (ui.busy[idx]) { return; }
+      var asked = st.mode !== "revert";
+      if (asked && commentProblem(reasonSel.value, detailBox.value)) { return; }
       var kind = st.mode === "integrate" ? st.kind : st.mode, edit = editOf();
+      if (kind === "fit" && (fitProblem(st) || !previewOk())) { return; }
       var res = kind === "integrate" ? judge(a, t, edit) : null;
       var levels = kind === "integrate" ? edit.levels : null;
       var payload = editPayload({ injection: a.injection, analyte: a.analyte, transition: ui.index ? t.transition : "",
                                   mode: data.mode, kind: kind, start: res ? res.start : st.start,
                                   end: res ? res.end : st.end, apex: st.apex, baseline: st.baseline, levels: levels,
-                                  confirm: kind === "delete" && ui.armed });
-      for (var k in payload) {
-        if (payload.hasOwnProperty(k) && f.elements[k]) { f.elements[k].value = payload[k]; }
+                                  confirm: kind === "delete" && ui.armed, partner: kind === "integrate" ? sharedEdit(res) : null,
+                                  reason_id: asked ? reasonSel.value : "", detail: asked ? detailBox.value : "" });
+      if (kind === "fit") {
+        var fp = fitPayload(st, a, t);
+        for (var fk in fp) { if (fp.hasOwnProperty(fk)) { payload[fk] = fp[fk]; } }
       }
-      /* the edit as posted, for the card to open on again if the server refuses it */
-      remember({ open: a.injection + "|" + a.analyte, transition: t.transition, kind: kind,
-                 start: res ? res.start : st.start, end: res ? res.end : st.end, apex: st.apex, baseline: st.baseline,
-                 levels: levels });
-      submit.disabled = true;
-      f.submit();
+      /* the edit as posted: what a refusal draws again */
+      var posted = { transition: t.transition, kind: kind, start: res ? res.start : st.start, end: res ? res.end : st.end,
+                     apex: st.apex, baseline: st.baseline, levels: levels };
+      if (kind === "fit") { posted.shape = st.shape; posted.apexes = fitApexSorted(st.apexes); posted.pick = fitPick(st, a, t); posted.alone = !!st.alone; }
+      var was = snap(), since = (data.failure && data.failure.at) || "";
+      ui.busy[idx] = true;
+      ui.stack.clear();            /* the edit is sent: its steps are no longer the card's to take back; a refusal draws the edit as posted */
+      ui.commentOpen = false;
+      var old = body.querySelector("p.raw-refusal.is-flash");
+      if (old) { old.textContent = ""; }
+      update();
+      ui.say(idx, "Saving the change.", false);
+      var formData = new FormData();
+      ["action", "_authenticator"].forEach(function (n) { if (f.elements[n]) { formData.append(n, f.elements[n].value); } });
+      for (var pk in payload) { if (payload.hasOwnProperty(pk)) { formData.append(pk, payload[pk]); } }
+      var mine = ui;
+      /* the form's own address: a field named action shadows form.action */
+      fetch(f.getAttribute("action"), { method: "POST", body: formData, credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.text().then(function (text) { return replyFrom(r, text); }); })
+        .then(function (reply) {
+          if (reply.ok) {
+            if (asked) { reasonSel.value = ""; detailBox.value = ""; }
+            waitForRun({ data: data, ui: mine, idx: idx, last: { transition: t.transition, notes: reply.notes },
+                         waiting: reply.waiting, since: since, was: was });
+            return;
+          }
+          answered(reply.error || "The change was not applied.", !reply.session && !reply.noanswer);
+        })
+        .catch(function () { answered("The change could not be sent.", false); });
+      /* a refusal, an ended session or no answer: in the card when it is still the one shown,
+         else on the page, where the analyst now is */
+      function answered(text, refusal) {
+        if (current === mine && drawerOpen()) {
+          delete mine.busy[idx];
+          if (refusal) { refused(idx, text, posted); } else { mine.say(idx, text, true); }
+          update();
+        } else {
+          delete mine.busy[idx];
+          pageNote(text, true);
+        }
+      }
     }
 
     function showTrace() {
+      ui.stack.clear();
+      ui.boxWas = null;
       startState();
-      ui.view = null;
+      var pk = tr().peak;
+      ui.view = pk && pk.start != null && pk.end != null && !tr().deleted ? peakView(pk.start, pk.end, limits()) : null;
       ui.yview = null;
-      setRegion(false);
       ui.handle = "start";
       var step = edgeStep(tr().t, tr().full_res), edges = body.querySelectorAll("input[data-edge]");
       for (var k = 0; k < edges.length; k++) { edges[k].setAttribute("step", step); }
@@ -2493,30 +4284,40 @@
       if (editable) { boxes(); }
       draw();
       update();
+      paintSaid();
     }
 
     if (editable) {
-      submit.addEventListener("click", post);
+      var shapeSeg = body.querySelector('.pfas-seg[aria-label="Shape"]');
+      if (shapeSeg) {
+        onSeg(shapeSeg, function (v) { var was = snapshot(); st.shape = v; recorded(was); update(); });
+      }
+      submit.addEventListener("click", applyOne);
+      allBtn.addEventListener("click", applyAll);
+      backBtn.addEventListener("click", backToAutomatic);
+      commentGo.addEventListener("click", post);
+      reasonSel.addEventListener("change", update);
+      detailBox.addEventListener("input", update);
       ["start", "end"].forEach(function (edge) {
         var box = body.querySelector('input[data-edge="' + edge + '"]');
         box.addEventListener("input", function () {
+          if (!ui.boxWas) { ui.boxWas = snapshot(); }
           var v = box.value === "" ? null : parseFloat(box.value);
           st[edge] = v != null && isNaN(v) ? box.value : v;
           st.note = "";
-          st.mode = "integrate";
-          st.kind = "integrate";
-          st.touched = true;
+          if (st.mode !== "fit") { st.mode = "integrate"; st.kind = "integrate"; st.touched = true; }
           update();
         });
         box.addEventListener("change", function () {         /* typed, or the stepper's buttons: on its sample */
           var v = parseFloat(box.value), t = tr();
-          if (isNaN(v)) { return; }
+          var was = ui.boxWas || snapshot();
+          ui.boxWas = null;
+          if (isNaN(v)) { recorded(was); return; }       /* what the input wrote is one step too */
           var kept = typedEdge(t.t, v, t.full_res, edge);
           st[edge] = kept.value;
           st.note = kept.note;
-          st.mode = "integrate";
-          st.kind = "integrate";
-          st.touched = true;
+          if (st.mode !== "fit") { st.mode = "integrate"; st.kind = "integrate"; st.touched = true; }
+          recorded(was);
           boxes();
           update();
         });
@@ -2527,12 +4328,18 @@
         box.addEventListener("change", function () {
           var v = parseFloat(box.value);
           if (isNaN(v) || !edgesSet()) { return; }
-          var h = handleState(side), d = handleDrag(h, { y: v, axis: "y" });
+          var h = handleState(side), d = handleDrag(h, { y: v });
           takeDrag(d);
         });
       });
     }
     showTrace();
+    /* the card made again after an apply: the zoom it had */
+    if (keep && keep.viewIndex === ui.index) {
+      ui.view = keep.view;
+      ui.yview = keep.yview || null;
+      draw();
+    }
     /* the last expected time set stays in view as the walk goes on */
     var said = body.querySelector('[data-role="said"]');
     if (said && rtLast && a.set_rt_url) { said.textContent = rtLast; }
@@ -2567,7 +4374,7 @@
       var b = el("button", "btn-sm btn-secondary", esc(d[1]));
       b.type = "button";
       b.setAttribute("data-step", String(d[0]));
-      b.disabled = !shownCard || !neighbour(shownCard.data.thumbs, shownCard.injection, shownCard.analyte, d[0]);
+      b.disabled = !shownCard || !stepFrom(shownCard.data, shownCard.injection, shownCard.analyte, d[0]);
       b.addEventListener("click", function () { move(d[0]); });
       if (step === d[0] && !b.disabled) { focus = b; }
       nodes.push(b);
@@ -2580,9 +4387,73 @@
   }
   /* the next or previous chromatogram in the overview's order, the dialog
      kept open; a change drawn and not posted is asked about first */
+  /* Ctrl+Arrow: along the grid's own axis (the compounds of an injection, the injections of a
+     compound) the next card of the grid, as Page Down; across it, the grid's selection moves to
+     the next injection or compound whose pair has a trace, the grid and its list made again for
+     it. A change drawn and not posted is asked about first. */
+  function walk(act, by) {
+    if (!shownCard || !drawerOpen() || asking()) { return; }
+    var data = shownCard.data, along = data.mode === "compound" ? act === "injection" : act === "compound";
+    var go = function () {
+      if (along) { move(by); return; }
+      var stamp = asked, at = { injection: shownCard.injection, analyte: shownCard.analyte };
+      (function next() {
+        var to = stepTarget(data, at.injection, at.analyte, act, by);
+        if (!to) { return; }                               /* the end: the card stays */
+        fetchTab(data, act === "injection" ? to.injection : to.analyte).then(function (fresh) {
+          if (stamp !== asked || !drawerOpen() || !fresh || typeof fresh !== "object") { return; }
+          if (!hasTrace(fresh, to)) { at = to; next(); return; }
+          applyTab(data, fresh);
+          openCard(data, to.injection, to.analyte, "", null, by);
+          followThumb(gridRoot, to.injection, to.analyte, components().drawer);
+        }).catch(function () { /* the card stays */ });
+      })();
+    };
+    if (current && current.dirty && current.dirty()) { askLeave(go); } else { go(); }
+  }
+  function hasTrace(fresh, to) {
+    return (fresh.thumbs || []).some(function (th) {
+      return th.injection === to.injection && th.analyte === to.analyte && th.state !== "missing";
+    });
+  }
+
+  /* the keys panel (KEYS_HELP) in a dialog over the card; it takes every key while open */
+  var keysBack = null;
+  function keysBox() {
+    var m = doc.getElementById("raw-keys");
+    if (m) { return m; }
+    m = el("div", "pfas-modal is-top");
+    m.id = "raw-keys";
+    var rows = KEYS_HELP.map(function (r) {
+      return "<tr><th scope=\"row\"><kbd>" + esc(r[0]) + "</kbd></th><td>" + esc(r[1]) + "</td></tr>";
+    }).join("");
+    m.innerHTML = '<div class="pfas-modal-box" role="dialog" aria-modal="true" aria-labelledby="raw-keys-h">' +
+      '<h2 id="raw-keys-h">Keys</h2><table class="raw-keys"><tbody>' + rows + "</tbody></table>" +
+      '<p class="raw-note">Cmd works as Ctrl on a Mac.</p>' +
+      '<div class="form-actions is-end"><button type="button" class="btn btn-secondary" data-role="close">Close</button></div></div>';
+    doc.body.appendChild(m);
+    m.querySelector('[data-role="close"]').addEventListener("click", function () { shutKeys(); });
+    return m;
+  }
+  function keysOpen() { var m = doc.getElementById("raw-keys"); return !!(m && m.classList.contains("open")); }
+  function toggleKeys() {
+    if (keysOpen()) { shutKeys(); return; }
+    var m = keysBox();
+    keysBack = doc.activeElement;
+    m.classList.add("open");
+    var b = m.querySelector('[data-role="close"]');
+    if (b && b.focus) { b.focus(); }
+  }
+  function shutKeys() {
+    var m = doc.getElementById("raw-keys");
+    if (m) { m.classList.remove("open"); }
+    if (keysBack && keysBack.focus) { try { keysBack.focus(); } catch (e) { /* gone */ } }
+    keysBack = null;
+  }
+
   function move(step) {
     if (!shownCard || !drawerOpen() || asking()) { return; }
-    var th = neighbour(shownCard.data.thumbs, shownCard.injection, shownCard.analyte, step), data = shownCard.data;
+    var th = stepFrom(shownCard.data, shownCard.injection, shownCard.analyte, step), data = shownCard.data;
     if (!th) { return; }
     var go = function () {
       openCard(data, th.injection, th.analyte, "", null, step);
@@ -2655,7 +4526,200 @@
     if (!m) { go(); return; }
     m.__ask(go);
   }
-  function asking() { var m = doc.getElementById("raw-leave"); return !!(m && m.classList.contains("open")); }
+  function asking() {
+    var m = doc.getElementById("raw-leave");
+    return !!((m && m.classList.contains("open")) || doc.getElementById("raw-smoothing"));
+  }
+
+  /* the grid made again from raw_tab=1 for the mode and selection shown: the list and the
+     thumbnails (and the banner) in place, the data object kept so the open handlers see it */
+  function tabUrl(data, query, pick) {
+    var sel = data.mode === "compound" ? "analyte" : "injection", chosen = pick || data.selected;
+    return data.card_url.replace("raw_card=1", query) + "&mode=" + data.mode +
+           (chosen ? "&" + sel + "=" + encodeURIComponent(chosen) : "");
+  }
+  /* the grid's answer for the selection pick (the shown one when none) */
+  function fetchTab(data, pick) {
+    return fetch(tabUrl(data, "raw_tab=1", pick), { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); });
+  }
+  function refreshGrid(data) {
+    return fetchTab(data).then(function (fresh) { applyTab(data, fresh); });
+  }
+  function applyTab(data, fresh) {
+    if (!gridRoot || !fresh || typeof fresh !== "object") { return; }
+    for (var k in fresh) { if (fresh.hasOwnProperty(k) && k !== "card_url") { data[k] = fresh[k]; } }
+    /* an answer that names no processing has none */
+    data.processing = fresh.processing || null;
+    data.busy = fresh.busy || [];
+    var mode = data.mode === "compound" ? "compound" : "injection";
+    var list = gridRoot.querySelector(".raw-list"), thumbs = gridRoot.querySelector(".raw-sections");
+    if (list) { list.innerHTML = listHtml(data, mode); }
+    if (thumbs) { thumbs.innerHTML = sectionsHtml(data); }
+    var C = components();
+    if (C && C.init) { C.init(list || gridRoot); if (thumbs) { C.init(thumbs); } }
+    setBanner(banner(data));
+    setBand(data);
+  }
+  /* only what says the run is being processed: the band and the dimmed cards */
+  function applyBusy(data, fresh) {
+    if (!gridRoot || !fresh || typeof fresh !== "object") { return; }
+    ["processing", "pending", "busy"].forEach(function (k) { if (fresh.hasOwnProperty(k)) { data[k] = fresh[k]; } });
+    setBand(data);
+    var thumbs = gridRoot.querySelector(".raw-sections"), C = components();
+    if (thumbs) { thumbs.innerHTML = sectionsHtml(data); if (C && C.init) { C.init(thumbs); } }
+  }
+  function setBand(data) {
+    var slot = gridRoot && gridRoot.querySelector(".raw-band");
+    if (slot) { slot.innerHTML = processingBand(data.processing); }
+  }
+  /* the page while the worker processes the run, or while its store cannot be read: the run's
+     status (raw_status=1, the light read: it carries the band) looked at every poll_ms, the band's
+     words kept current, and once nothing is processed the grid read once (raw_tab=1) and made again
+     in place; no full reload. An ended session stops it, saying nothing new. A hidden page stops looking and looks again once it is
+     shown. One watch for the page; an edit's own wait (waitForRun) takes its place */
+  var runWatch = null;
+  function pagePollMs(data) {
+    return pollEvery(data && data.processing && data.processing.poll_ms, (api && api.PAGE_POLL_MS) || PAGE_POLL_MS,
+                     minPoll());
+  }
+  function stopWatch() {
+    if (runWatch && runWatch.timer) { clearTimeout(runWatch.timer); }
+    runWatch = null;
+  }
+  function watchRun(data) {
+    stopWatch();
+    var me = { timer: null, look: null, inFlight: false };
+    runWatch = me;
+    function next() { me.inFlight = false; if (runWatch === me) { me.timer = setTimeout(me.look, pagePollMs(data)); } }
+    me.look = function () {
+      me.timer = null;
+      if (runWatch !== me || (doc && doc.hidden) || me.inFlight) { return; }
+      me.inFlight = true;
+      fetch(tabUrl(data, "raw_status=1"), { credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.text().then(function (text) { return statusFrom(r, text); }); })
+        .then(function (res) {
+          if (runWatch !== me) { return; }
+          /* the session ended: the looking stops and nothing new is said, as the card's wait does */
+          if (res.session) { stopWatch(); return; }
+          if (!res.status) { next(); return; }
+          var p = res.status.processing;
+          if (p) { data.processing = p; setBand(data); setBanner(banner(data)); next(); return; }
+          stopWatch();
+          refreshGrid(data).catch(function () { /* the grid stays as it was */ });
+        })
+        .catch(next);
+    };
+    next();
+  }
+  function wakeWatch() {
+    if (doc && !doc.hidden && watchIdle(runWatch)) { runWatch.look(); }
+  }
+  function setBanner(note) {
+    var old = null, kids = gridRoot.children || [], k;
+    for (k = 0; k < kids.length; k++) { if (/(^|\s)raw-banner(\s|$)/.test(kids[k].className || "")) { old = kids[k]; break; } }
+    if (old && !note) { old.parentNode.removeChild(old); }
+    else if (note && !old) { old = el("p", ""); old.setAttribute("role", "status"); gridRoot.insertBefore(old, gridRoot.firstChild); }
+    if (old && note) { old.className = "raw-banner " + note.cls; old.textContent = note.text; }
+  }
+  /* a word to the analyst on the page, over the grid: where an answer lands when the card
+     it was for is no longer the one shown */
+  function pageNote(text, isError) {
+    if (!gridRoot) { return; }
+    setBanner({ cls: isError ? "is-fail" : "is-warn", text: text });
+  }
+  /* the run is processed again: one poll for the page (never two: a newer wait ends the
+     older), kept when the card closes, looking at the status each POLL_MS until nothing
+     waits. Then the grid is made again in place and, if the card that made the edit is still
+     open and nothing was drawn on it since, the card too (the trace and zoom kept).
+     o: data, ui (the card; null when the page loaded waiting), idx (its trace), last, waiting,
+     since (the failure on record when the edit was posted), was (the edit as drawn then) */
+  /* the page may start its wait while the file is still being read, before `api` exists */
+  function pollMs() { return (api && api.POLL_MS) || POLL_MS; }
+  function waitForRun(o) {
+    var data = o.data, ui = o.ui, idx = o.idx, mygen, started = Date.now(), bad = 0;
+    function open() { return !!ui && current === ui && drawerOpen(); }
+    function end() {
+      if (generation === mygen) { generation++; chain = null; }
+      stopPoll();
+      if (ui) { ui.release(idx); }
+    }
+    function live() { return generation === mygen; }
+    function note(text, isError) {
+      if (open()) { ui.say(idx, text, isError); } else { pageNote(text, isError); }
+    }
+    function reopen() {
+      if (!open()) { return; }
+      var a = ui.a, last = { transition: o.last.transition, notes: o.last.notes };
+      var v = ui.index === idx ? ui.zoomed() : null;
+      if (v) { last.hasView = true; last.view = v.view; last.yview = v.yview; last.viewIndex = idx; }
+      openCard(data, a.injection, a.analyte, "", last);
+      followThumb(gridRoot, a.injection, a.analyte, components().drawer);
+    }
+    function finish() {
+      refreshGrid(data).catch(function () { /* the grid stays as it was */ }).then(function () {
+        if (!live()) { return; }
+        end();
+        if (data.processing) { watchRun(data); }
+        if (!open()) { return; }
+        if (ui.drawnSince(o.was)) { ui.unsay(); askLeave(reopen); } else { reopen(); }
+      });
+    }
+    /* the wait ends in failure: the grid made again first, so its banner (the server's) is
+       not written over; a word of ours after it only where the server has none (`word`) */
+    function lost(text, word) {
+      end();
+      var after = generation;
+      refreshGrid(data).catch(function () { /* as it was */ }).then(function () {
+        /* the page looks on as after a finished wait, unless a newer wait has begun meanwhile */
+        if (generation === after && data.processing) { watchRun(data); }
+        if (word) { note(text, true); } else if (open()) { ui.say(idx, text, true); }
+      });
+    }
+    function again() {
+      if (!live()) { return; }
+      if (++bad >= 3) { lost(STATUS_LOST, true); return; }
+      poll = setTimeout(look, pollMs());
+    }
+    function look() {
+      poll = null;
+      if (!live()) { return; }
+      /* a hidden page asks nothing; it looks again once shown */
+      if (doc && doc.hidden) { poll = setTimeout(look, pollMs()); return; }
+      fetch(tabUrl(data, "raw_status=1"), { credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.text().then(function (text) { return statusFrom(r, text); }); })
+        .then(function (res) {
+          if (!live()) { return; }
+          if (res.session) { end(); note(SESSION_ENDED, true); return; }
+          if (!res.status) { again(); return; }
+          bad = 0;
+          if (res.status.processing !== undefined) { data.processing = res.status.processing; setBand(data); }
+          var step = pollStep(res.status, Date.now() - started, o.since);
+          if (step.done) { finish(); return; }
+          if (step.failed) { lost(step.text, false); return; }
+          if (open()) { ui.say(idx, step.text, false); }     /* the page's banner is the server's */
+          poll = setTimeout(look, pollMs());
+        })
+        .catch(again);
+    }
+    if (chain) { chain(); }
+    chain = null;
+    stopPoll();
+    stopWatch();
+    mygen = ++generation;
+    if (ui) { chain = function () { ui.release(idx); }; }
+    if (o.waiting === false) { finish(); return; }
+    if (open()) { ui.say(idx, pollStep({ waiting: true }, 0).text, false); }
+    poll = setTimeout(look, pollMs());
+    /* the band and the cards being processed, read once as the wait starts: the edited card
+       dimmed and the band shown at once; the banner and the list are the wait's to say */
+    if (ui) {
+      fetch(tabUrl(data, "raw_tab=1") + "&busy=1", { credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (fresh) { if (live()) { applyBusy(data, fresh); } })
+        .catch(function () { /* the grid stays as it was */ });
+    }
+  }
 
   /* one card fetched and opened in the dialog; step (-1, +1) when Previous
      or Next opened it */
@@ -2687,6 +4751,100 @@
       });
   }
 
+  /* a card's status as one icon (icons.py), ranked once here: failed, flagged, edited,
+     waiting, not detected, passed. No reading (state "missing") has none. `pending`: an
+     edit of the trace waits for the run. */
+  var STATUS_ORDER = ["fail", "warn", "edit", "waiting", "not-detected", "pass"];
+  var STATUS_WORD = { "fail": "Failed", "warn": "Flagged", "edit": "Edited", "waiting": "Waiting",
+                      "not-detected": "Not detected", "pass": "Passed" };
+  var STATUS_COLOUR = { "fail": "fail", "warn": "warn", "edit": "warn", "waiting": "info",
+                        "not-detected": "neutral", "pass": "ok" };
+  function thumbStatus(th, pending) {
+    if (th.state === "missing") { return null; }
+    var waits = th.edit === "pending" || !!pending, icon;
+    if (th.state === "fail" || (th.failed && th.failed.length)) { icon = "fail"; }
+    else if (th.state === "warn") { icon = "warn"; }
+    else if (isManual(th) && (th.edit !== "pending" || th.auto)) { icon = "edit"; }
+    else if (waits) { icon = "waiting"; }
+    else if (th.state === "nd") { icon = "not-detected"; }
+    else { icon = "pass"; }
+    return { icon: icon, label: STATUS_WORD[icon], colour: STATUS_COLOUR[icon] };
+  }
+  /* the first-ranked of several statuses (null ones are passed over) */
+  function worstStatus(list) {
+    var best = null;
+    (list || []).forEach(function (st) {
+      if (st && (!best || STATUS_ORDER.indexOf(st.icon) < STATUS_ORDER.indexOf(best.icon))) { best = st; }
+    });
+    return best;
+  }
+  function pendingKeysOf(data) {
+    var keys = {};
+    (data.pending || []).forEach(function (p) { keys[p.injection + "|" + p.analyte] = true; });
+    return keys;
+  }
+  /* the cards the worker is processing again: an edit or a processing change of theirs waits
+     (data.pending, data.busy), while the run is processed (data.processing) */
+  function busyKeysOf(data) {
+    var keys = {};
+    if (!data.processing || data.processing.state === "unreadable") { return keys; }
+    (data.pending || []).concat(data.busy || []).forEach(function (p) { keys[p.injection + "|" + p.analyte] = true; });
+    return keys;
+  }
+  /* one injection's row in the list, ranked by thumbStatus from the same inputs whether or not it is
+     the one open: failed checks, flagged-only, and an edit on record (waiting while the run is
+     processed again). The open injection adds only a waiting edit of its own traces (data.pending):
+     an edit comes from edited_in alone, so the row ranks the same open or shut. */
+  function injectionStatus(data, i, own) {
+    var edited = (data.edited_in || []).indexOf(i.name) >= 0;
+    var sts = [thumbStatus({ state: (i.failed && i.failed.length) || i.flagged ? "fail" : (i.warned ? "warn" : ""),
+                             edit: edited ? (data.waiting ? "pending" : "edited") : "auto" }, false)];
+    if (own) {
+      var keys = pendingKeysOf(data);
+      (data.thumbs || []).forEach(function (th) {
+        if (keys[th.injection + "|" + th.analyte]) { sts.push(thumbStatus({ state: "", edit: "auto" }, true)); }
+      });
+    }
+    return worstStatus(sts);
+  }
+  function icons() {
+    var w = typeof window !== "undefined" ? window : null;
+    return w && w.PFAS && w.PFAS.components && w.PFAS.components.icon;
+  }
+  function statusIcon(st) {
+    if (!st) { return ""; }
+    var I = icons();
+    return (I && I.svg(st.icon, { label: st.label, colour: st.colour })) || esc(st.label);
+  }
+  function hhmm(when) {
+    var m = /(\d\d):(\d\d)/.exec(String(when || "").replace(/^[^T ]*[T ]/, ""));
+    return m ? m[1] + ":" + m[2] : "";
+  }
+  var COMPACT_KEY = "raw-compact-list";
+  function compactList() {
+    try { return window.localStorage.getItem(COMPACT_KEY) === "1"; } catch (e) { return false; }
+  }
+  function setCompactList(on) {
+    try { window.localStorage.setItem(COMPACT_KEY, on ? "1" : "0"); } catch (e) { /* not remembered */ }
+  }
+  /* the left list: the order warning above the entries, the selected injection's status
+     from its thumbnails; one place for the first draw and every redraw */
+  function listHtml(data, mode) {
+    var h = "";
+    if (mode === "injection" && data.order_warning) { h += '<p class="raw-order-warning" role="status">' + esc(data.order_warning) + "</p>"; }
+    if (mode === "compound") {
+      /* the picker in the grid's sections, each under its name */
+      return h + sectionsOf(data.list, data.sections).map(function (sec) {
+        return '<p class="raw-list-head">' + esc(sec.title) + "</p>" + sec.items.map(function (i) {
+          return listItem(mode, i, data.selected);
+        }).join("");
+      }).join("");
+    }
+    return h + (data.list || []).map(function (i) {
+      return listItem(mode, i, data.selected, mode === "injection" ? injectionStatus(data, i, i.name === data.selected) : undefined);
+    }).join("");
+  }
+
   function listHref(mode, name) {
     return "?tab=raw&amp;mode=" + mode + "&amp;" + (mode === "compound" ? "analyte" : "injection") + "=" +
            encodeURIComponent(name);
@@ -2694,62 +4852,293 @@
 
   /* one entry of the list down the left: a button to its page, its type
      and how many of its rows are flagged */
-  /* the failure diamond before a count of flagged rows (icons.py); without
-     the page's drawings, the word */
-  function flagMark() {
-    var w = typeof window !== "undefined" ? window : null;
-    var I = w && w.PFAS && w.PFAS.components && w.PFAS.components.icon;
-    return (I && I.svg("fail", { label: "Flagged" })) || "flagged ";
+  /* a row's failed checks: the count beside the diamond (a hidden drawing), the checks as the
+     row's tooltip on hover and focus, and as the row's description for a screen reader; the row
+     link stays the one tab stop */
+  var rowSeq = 0;
+  function failMark(i) {
+    var failed = i.failed || [], count = failed.length || i.flagged || 0, I = icons();
+    if (!count) { return null; }
+    var id = "raw-li-" + (rowSeq++) + "-" + String(i.name).replace(/[^A-Za-z0-9_-]/g, "_");
+    var words = "Failed: " + count + (count === 1 ? " check" : " checks") + (failed.length ? ". " + failed.join(" \u00b7 ") : "");
+    return { id: id, words: words, tip: failed.join(" \u00b7 "),
+             mark: ((I && I.svg("fail", { hidden: true })) || esc("Failed ")) + '<span class="raw-li-count">' + esc(count) + "</span>",
+             desc: '<span class="pfas-sr-hide" id="' + id + '">' + esc(words) + "</span>" };
   }
-  function listItem(mode, i, selected) {
-    return '<a class="btn-sm btn-secondary" href="' + listHref(mode, i.name) + '"' +
-           (i.name === selected ? ' aria-current="true"' : "") + ">" + esc(i.label || i.name) +
-           '<span class="raw-type">' + esc(i.type || "") + (i.flagged ? " · " + flagMark() + esc(i.flagged) : "") + "</span></a>";
+  /* in "By injection": position, time, name, type icon with its word and the status icon; in
+     "By compound": the name and its failed count. `status` overrides the entry's own */
+  function listItem(mode, i, selected, status) {
+    var cur = i.name === selected ? ' aria-current="true"' : "", f = failMark(i);
+    var tip = f ? ' aria-describedby="' + f.id + '"' + (f.tip ? ' data-pfas-tip="' + esc(f.tip) + '"' : "") : "";
+    if (mode !== "injection") {
+      return '<a class="btn-sm btn-secondary" href="' + listHref(mode, i.name) + '"' + cur + tip + ">" + esc(i.label || i.name) +
+             '<span class="raw-type">' + (f ? '<span class="raw-li-fail">' + f.mark + "</span>" : "") + "</span></a>" + (f ? f.desc : "");
+    }
+    var st = status || (f ? { icon: "fail", label: "Failed", colour: "fail" } : { icon: "pass", label: "Passed", colour: "ok" });
+    var mark = st.icon === "fail" && f ? f.mark : statusIcon(st), T = typeof window !== "undefined" && window.PFAS && window.PFAS.components;
+    var type = T && T.type && i.type ? T.type.cell(i.type, i.type) : "";
+    return '<a class="btn-sm btn-secondary raw-li" href="' + listHref(mode, i.name) + '"' + cur + tip + ">" +
+           '<span class="raw-li-pos">' + esc(i.position || "") + '</span><span class="raw-li-time">' + esc(hhmm(i.acquired)) +
+           '</span><span class="raw-li-name">' + esc(i.label || i.name) + '</span>' +
+           '<span class="raw-type">' + (type || esc(i.type || "")) + '</span><span class="raw-li-status">' + mark + "</span></a>" +
+           (f ? f.desc : "");
   }
 
-  function thumbButton(data, th, pendingKeys) {
-    var name = data.mode === "compound" ? th.injection : shown(th);
-    var cls = "raw-thumb" + (knownState(th.state) ? " is-" + th.state : "") + (th.deleted ? " is-deleted" : "");
-    var pending = !!pendingKeys[th.injection + "|" + th.analyte];
-    var said = [];
-    if (data.mode === "compound" && th.type) { said.push(th.type); }
-    if (th.state_text) { said.push(th.state_text); }
-    else if (th.qualifier) { said.push(th.qualifier); }
-    else if (th.conc != null) { said.push(num(th.conc)); }
-    if (th.edit === "edited") { said.push("Edited"); }
-    if (th.edit === "pending" || pending) { said.push("Waiting"); }
+  /* ── the sections: analytes, surrogates, internal standards ───────────── */
+  var SECTION_DEFAULT = [["analyte", "Analytes"], ["surrogate", "Surrogates"], ["internal_standard", "Internal standards"]];
+  function sectionKey(item) {
+    return item && item.section && SECTION_DEFAULT.some(function (p) { return p[0] === item.section; }) ? item.section : "analyte";
+  }
+  /* how many of a section's thumbnails failed, carry a warning, were changed by hand or
+     were not detected, from their state, edit and qualifier */
+  function sectionCounts(thumbs) {
+    var out = { failed: 0, warn: 0, manual: 0, nd: 0 };
+    (thumbs || []).forEach(function (th) {
+      if (th.state === "missing") { return; }
+      if (th.state === "fail" || (th.failed && th.failed.length)) { out.failed += 1; }
+      if (th.state === "warn") { out.warn += 1; }
+      if (isManual(th)) { out.manual += 1; }
+      if (th.state === "nd" || th.qualifier === "N.D.") { out.nd += 1; }
+    });
+    return out;
+  }
+  /* the sections that hold something, in the server's order: [{ key, title, items }] */
+  function sectionsOf(items, pairs) {
+    var order = (pairs && pairs.length ? pairs : SECTION_DEFAULT);
+    return order.map(function (p) {
+      return { key: p[0], title: p[1], items: (items || []).filter(function (x) { return sectionKey(x) === p[0]; }) };
+    }).filter(function (sec) { return sec.items.length > 0; });
+  }
+  var COUNT_WORDS = [["failed", "failed", "fail", "fail", "Failed"], ["warn", "warning", "warn", "warn", "Flagged"],
+                     ["manual", "manual", "edit", "warn", "Edited"], ["nd", "not detected", "not-detected", "neutral", "Not detected"]];
+  function countIcon(row) {
+    return statusIcon({ icon: row[2], label: row[4], colour: row[3] });
+  }
+  /* the heading's counts of what needs a look: an icon and a number each, none for a count of nought */
+  function sectionSummary(counts) {
+    return COUNT_WORDS.filter(function (row) { return counts[row[0]] > 0; }).map(function (row) {
+      return '<span class="raw-section-count">' + countIcon(row) + counts[row[0]] + " " + row[1] + "</span>";
+    }).join("");
+  }
+  function sectionHead(sec) {
+    return '<h3 class="raw-section-head" tabindex="-1">' + esc(sec.title) + " \u00b7 " + sec.items.length +
+           '<span class="raw-section-sum">' + sectionSummary(sectionCounts(sec.items)) + "</span></h3>";
+  }
+  /* a button to each section, above the grid, with how many it holds and an icon for what needs a look */
+  function jumpHtml(secs) {
+    return '<nav class="raw-jumps" aria-label="Sections">' + secs.map(function (sec) {
+      var c = sectionCounts(sec.items);
+      return '<button type="button" class="btn-sm btn-secondary raw-jump" data-target="raw-sec-' + esc(sec.key) + '">' + esc(sec.title) +
+             ' <span class="raw-jump-n">' + sec.items.length + "</span>" +
+             COUNT_WORDS.filter(function (row) { return row[0] !== "nd" && c[row[0]] > 0; }).map(countIcon).join("") + "</button>";
+    }).join("") + "</nav>";
+  }
+  function thumbButton(data, th, pendingKeys, busyKeys) {
+    var name = data.mode === "compound" ? th.injection : shown(th), key = th.injection + "|" + th.analyte;
+    var busy = !!(busyKeys && busyKeys[key]);
+    var cls = "raw-thumb" + (knownState(th.state) ? " is-" + th.state : "") + (th.deleted ? " is-deleted" : "") + (busy ? " is-busy" : "");
+    var pending = !!pendingKeys[key], status = thumbStatus(th, pending);
     return '<button type="button" class="' + cls + '" data-injection="' + esc(th.injection) + '" data-analyte="' +
            esc(th.analyte) + '"' + (th.state === "missing" ? ' disabled="disabled"' : "") + ">" +
-           thumbSvg(th, { pending: pending }) + '<span class="raw-thumb-name">' + esc(name) + "</span>" +
-           '<span class="raw-thumb-said">' + esc(said.join(" · ")) + "</span></button>";
+           thumbSvg(th, { pending: pending }) + '<span class="raw-thumb-head"><span class="raw-thumb-name">' + esc(name) +
+           "</span>" + (status ? '<span class="raw-thumb-status">' + statusIcon(status) + "</span>" : "") + "</span>" +
+           (busy ? '<span class="raw-thumb-busy">Being processed</span>' : "") + "</button>";
+  }
+
+  function thumbsHtml(data) {
+    var pendingKeys = pendingKeysOf(data), busyKeys = busyKeysOf(data);
+    return (data.thumbs || []).map(function (th) { return thumbButton(data, th, pendingKeys, busyKeys); }).join("");
+  }
+  /* ── Sort and Show: the funnel's menu ─────────────────────────────────── */
+  var FILTER_KEY = "pfas.raw.filter";
+  var SORTS = [["az", "A to Z"], ["action", "Action required first"]];
+  var SHOWS = [["all", "All"], ["action", "Action required only"], ["detected", "Detected"], ["nd", "Not detected"], ["manual", "Integrated by hand"]];
+  function inList(list, v) { return list.some(function (p) { return p[0] === v; }); }
+  /* the stored choice as { show, sort }; anything unreadable or unknown is the default */
+  function filterRead(raw) {
+    var out = { show: "all", sort: "az" }, o = null;
+    try { o = raw ? JSON.parse(raw) : null; } catch (e) { o = null; }
+    if (o && inList(SHOWS, o.show)) { out.show = o.show; }
+    if (o && inList(SORTS, o.sort)) { out.sort = o.sort; }
+    return out;
+  }
+  function filterLoad() {
+    try { return filterRead(window.localStorage.getItem(FILTER_KEY)); } catch (e) { return filterRead(null); }
+  }
+  function filterSave(f) {
+    try { window.localStorage.setItem(FILTER_KEY, JSON.stringify(f)); } catch (e) { /* not remembered */ }
+  }
+  /* a thumb needs action when it failed, carries a warning, or its edit waits for the run */
+  function isActionThumb(th, pendingKeys) {
+    return th.state === "fail" || th.state === "warn" || !!(th.failed && th.failed.length) || th.edit === "pending" ||
+           !!(pendingKeys && pendingKeys[th.injection + "|" + th.analyte]);
+  }
+  function isNotDetected(th) { return th.state === "nd" || th.qualifier === "N.D."; }
+  /* the thumbs a Show choice keeps; a missing reading is neither detected nor not detected */
+  function filterThumbs(thumbs, show, pendingKeys) {
+    return (thumbs || []).filter(function (th) {
+      if (show === "action") { return isActionThumb(th, pendingKeys); }
+      if (show === "detected") { return th.state !== "missing" && !isNotDetected(th); }
+      if (show === "nd") { return th.state !== "missing" && isNotDetected(th); }
+      if (show === "manual") { return isManual(th); }
+      return true;
+    });
+  }
+  /* a copy in A to Z order of the card's name (numbers as numbers), or with fail, then warn, then
+     waiting first and the rest A to Z; the name is the injection by compound, else the compound */
+  function orderThumbs(thumbs, sort, mode, pendingKeys) {
+    var name = function (th) { return String(mode === "compound" ? th.injection : shown(th)); };
+    var rank = function (th) {
+      if (sort !== "action") { return 0; }
+      if (th.state === "fail" || (th.failed && th.failed.length)) { return 0; }
+      if (th.state === "warn") { return 1; }
+      return isActionThumb(th, pendingKeys) ? 2 : 3;
+    };
+    return (thumbs || []).map(function (th, i) { return { th: th, i: i }; }).sort(function (a, b) {
+      return (rank(a.th) - rank(b.th)) || name(a.th).localeCompare(name(b.th), undefined, { numeric: true, sensitivity: "base" }) || (a.i - b.i);
+    }).map(function (x) { return x.th; });
+  }
+  /* the funnel's name: it says when a Show choice is in force, as its colour does */
+  function filterLabel(f) { return f && f.show !== "all" ? "Sort and filter, filter is on" : "Sort and filter"; }
+  function filterButtonHtml(f, open) {
+    var I = icons();
+    return '<button type="button" class="btn btn-sm btn-secondary raw-filter' + (f && f.show !== "all" ? " has-filter" : "") +
+           '" ' + (f && f.show !== "all" ? 'aria-label="Sort and filter, filter is on"' : 'aria-label="Sort and filter"') + ' aria-expanded="' + (open ? "true" : "false") + '" aria-haspopup="menu">' +
+           ((I && I.svg("filter", { hidden: true })) || "") + "</button>";
+  }
+  /* the menu's entries: two groups, the current choice marked */
+  function filterMenuItems(f, pick) {
+    var items = [{ head: "Sort" }];
+    SORTS.forEach(function (p) {
+      items.push({ id: "sort-" + p[0], label: p[1], checked: f.sort === p[0], act: function () { if (pick) { pick({ sort: p[0] }); } } });
+    });
+    items.push({ head: "Show" });
+    SHOWS.forEach(function (p) {
+      items.push({ id: "show-" + p[0], label: p[1], checked: f.show === p[0], act: function () { if (pick) { pick({ show: p[0] }); } } });
+    });
+    return items;
+  }
+  /* whether the grid, whose box is `rect`, runs below a window of height h (a few pixels are the end) */
+  function moreBelow(rect, h) { return !!rect && rect.bottom - h > 8; }
+  /* what scrolls the page: the content area of the shell (the body is a fixed height there), else the window */
+  function scrollHost(root, win) {
+    var host = root && root.closest ? root.closest(".pfas-content-area") : null;
+    return host || win;
+  }
+  /* the host's visible height and its bottom edge on the screen, as moreBelow wants them */
+  function hostView(host, win) {
+    if (host && host !== win && host.getBoundingClientRect) {
+      var r = host.getBoundingClientRect();
+      return { bottom: r.bottom, height: host.clientHeight || (r.bottom - r.top) || 768 };
+    }
+    var h = (win && win.innerHeight) || 768;
+    return { bottom: h, height: h };
+  }
+  function moreButtonHtml() {
+    var I = icons();
+    return '<button type="button" class="raw-more" aria-label="Scroll down" hidden="hidden">' + ((I && I.svg("expand", { hidden: true })) || "") + "</button>";
+  }
+
+  /* the grid in its sections, the jump buttons above them; Show and Sort from data.filter; a
+     section with nothing left after Show is not drawn */
+  function displayedSections(data) {
+    var f = data.filter || filterRead(null), pendingKeys = pendingKeysOf(data);
+    var shownThumbs = orderThumbs(filterThumbs(data.thumbs, f.show, pendingKeys), f.sort, data.mode, pendingKeys);
+    return sectionsOf(shownThumbs, data.sections);
+  }
+  /* the thumbnails as the overview shows them: sections in order, each by Sort, after Show; what Previous
+     and Next step through. A run still on its first processing shows ghosts, none to open. */
+  function displayedThumbs(data) {
+    if (!data || (data.processing && data.processing.first)) { return []; }
+    var out = [];
+    displayedSections(data).forEach(function (sec) { out = out.concat(sec.items); });
+    return out;
+  }
+  function sectionsHtml(data) {
+    if (data.processing && data.processing.first) { return ghostSectionsHtml(data.sections); }
+    var pendingKeys = pendingKeysOf(data), busyKeys = busyKeysOf(data);
+    var secs = displayedSections(data);
+    return (secs.length > 1 ? jumpHtml(secs) : "") + secs.map(function (sec) {
+      return '<section class="raw-section" id="raw-sec-' + esc(sec.key) + '" data-section="' + esc(sec.key) + '">' + sectionHead(sec) +
+             '<div class="raw-thumbs">' + sec.items.map(function (th) { return thumbButton(data, th, pendingKeys, busyKeys); }).join("") +
+             "</div></section>";
+    }).join("");
   }
 
   function render(root, data) {
     var mode = data.mode === "compound" ? "compound" : "injection";
     var h = "", note = banner(data);
     if (note) { h += '<p class="raw-banner ' + note.cls + '" role="status">' + esc(note.text) + "</p>"; }
-    h += '<nav class="pfas-seg pfas-seg-sm is-spaced" aria-label="View">' +
+    h += '<div class="raw-band">' + processingBand(data.processing) + "</div>";
+    data.filter = data.filter || filterLoad();
+    h += '<div class="raw-viewbar"><nav class="pfas-seg pfas-seg-sm" aria-label="View">' +
          [["compound", "By compound"], ["injection", "By injection"]].map(function (m) {
            return '<a class="pfas-seg-item' + (m[0] === mode ? ' is-on" aria-current="page"' : '"') +
                   ' href="?tab=raw&amp;mode=' + m[0] + '">' + m[1] + "</a>";
-         }).join("") + "</nav>";
-    h += '<div class="raw-split"><nav class="raw-list" aria-label="' + (mode === "compound" ? "Compounds" : "Injections") + '">' +
-         (data.list || []).map(function (i) { return listItem(mode, i, data.selected); }).join("") +
-         "</nav><div class=\"raw-overview\">";
+         }).join("") + "</nav>" + filterButtonHtml(data.filter) + "</div>";
+    h += '<div class="raw-split' + (mode === "injection" && compactList() ? " is-compact" : "") + '"><div class="raw-side">' +
+         (mode === "injection" ? '<label class="pfas-switch raw-compact"><input type="checkbox" data-role="compact"' +
+           (compactList() ? ' checked="checked"' : "") + '><span class="pfas-switch-track"></span> Compact list</label>' : "") +
+         '<nav class="raw-list" aria-label="' + (mode === "compound" ? "Compounds" : "Injections") + '">' + listHtml(data, mode) +
+         "</nav></div><div class=\"raw-overview\">";
     if ((data.cal_dropped || []).length) {
       h += '<p class="raw-dropped">Calibrators off the curve by a deleted peak: ' +
            esc(data.cal_dropped.map(function (c) { return c.injection; }).join(", ")) + "</p>";
     }
-    var pendingKeys = {};
-    (data.pending || []).forEach(function (p) { pendingKeys[p.injection + "|" + p.analyte] = true; });
-    h += '<div class="raw-thumbs">' + (data.thumbs || []).map(function (th) {
-      return thumbButton(data, th, pendingKeys);
-    }).join("") + "</div></div></div>";
+    h += '<div class="raw-sections">' + sectionsHtml(data) + "</div></div></div>" + moreButtonHtml();
     root.innerHTML = h;
     gridRoot = root;
     var C = components();
     if (C && C.init) { C.init(root); }
+    root.addEventListener("change", function (e) {
+      var box = e.target && e.target.getAttribute && e.target.getAttribute("data-role") === "compact" ? e.target : null;
+      if (!box) { return; }
+      setCompactList(box.checked);
+      var split = root.querySelector(".raw-split");
+      if (split) { split.classList.toggle("is-compact", !!box.checked); }
+    });
+    var host = scrollHost(root, window);
+    function showMore() {
+      var more = root.querySelector(".raw-more"), grid = root.querySelector(".raw-sections");
+      if (more && grid) { more.hidden = !moreBelow(grid.getBoundingClientRect(), hostView(host, window).bottom); }
+    }
+    /* bound once for the page, to what scrolls it: the shell's content area, else the window */
+    if (!root.getAttribute("data-more-bound")) {
+      root.setAttribute("data-more-bound", "1");
+      host.addEventListener("scroll", showMore, { passive: true });
+      window.addEventListener("resize", showMore);
+    }
+    showMore();
     root.addEventListener("click", function (e) {
+      if (e.target.closest("button.raw-more")) {
+        host.scrollBy({ top: Math.round(hostView(host, window).height * 0.85), behavior: "smooth" });
+        return;
+      }
+      var funnel = e.target.closest("button.raw-filter");
+      if (funnel) {
+        var Cm = components();
+        if (!Cm || !Cm.menu) { return; }
+        if (Cm.menu.isOpen()) { Cm.menu.close(true); return; }
+        Cm.menu.open(filterMenuItems(data.filter, function (change) {
+          var f = { show: change.show || data.filter.show, sort: change.sort || data.filter.sort };
+          data.filter = f;
+          filterSave(f);
+          funnel.classList.toggle("has-filter", f.show !== "all");
+          funnel.setAttribute("aria-label", filterLabel(f));
+          var box = root.querySelector(".raw-sections");
+          if (box) { box.innerHTML = sectionsHtml(data); if (Cm.init) { Cm.init(box); } }
+          showMore();
+        }), { anchor: funnel, opener: funnel, label: "Sort and filter" });
+        return;
+      }
+      var jump = e.target.closest("button.raw-jump");
+      if (jump) {
+        var sec = doc.getElementById(jump.getAttribute("data-target"));
+        if (sec && sec.scrollIntoView) { sec.scrollIntoView({ block: "start", behavior: "smooth" }); }
+        var head = sec && sec.querySelector(".raw-section-head");
+        if (head && head.focus) { head.focus(); }
+        return;
+      }
       var b = e.target.closest("button.raw-thumb");
       if (b && !b.disabled) { openCard(data, b.getAttribute("data-injection"), b.getAttribute("data-analyte"), "", null); }
     });
@@ -2759,6 +5148,12 @@
        question or a menu is open, or with the focus outside the dialog */
     doc.addEventListener("keydown", function (e) {
       var C = components(), t = e.target || doc.body;
+      if (keysOpen()) {
+        /* the list takes every key: Escape or ? shuts it, the card behind stays as it is */
+        if (e.key === "Escape" || e.key === "?") { e.preventDefault(); e.stopPropagation(); shutKeys(); }
+        else if (e.key === "Tab") { e.preventDefault(); }
+        return;
+      }
       if (!shownCard || !drawerOpen() || asking() || (C.menu && C.menu.isOpen())) { return; }
       if (t !== doc.body && !C.drawer.el.contains(t)) { return; }
       var k = keyMap({ key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey,
@@ -2776,14 +5171,13 @@
       }
       if (current && current.key && current.key(k)) { e.preventDefault(); }
     }, true);
+    /* the run being processed when the page loads, or its store unreadable: the page looks again */
+    if (data.processing) { watchRun(data); }
     /* back from an edit: its card again, with what the server said of it */
     var target = openTarget(window.location.search);
     if (target) {
-      var last = recall();
-      forget();
-      if (!last || last.open !== target.injection + "|" + target.analyte) { last = null; }
-      /* the browser kept none: the edit as the server says it was posted */
-      if (!last && target.posted) { last = target.posted; }
+      /* the edit as the server says it was posted */
+      var last = target.posted || null;
       if (target.notes.length) {
         last = last || { transition: "" };
         last.notes = target.notes;
@@ -2794,32 +5188,82 @@
     }
   }
 
+  /* the Overview's line while the run is processed (#raw-busy-line), from the run's status
+     (raw_status=1): done once nothing is processed; the server's words while it is; a store that
+     cannot be read just now keeps the words it had */
+  function lineStep(status) {
+    var p = status && status.processing;
+    if (!p) { return { done: true, text: null }; }
+    return { done: false, text: p.state === "unreadable" ? null : (p.text || null) };
+  }
+  /* the line looked at every data-poll-ms; it goes once the run is done, with no reload. A hidden
+     page stops looking and looks again once shown; an ended session stops it */
+  var lineWatch = null;
+  function watchLine(line) {
+    var me = { timer: null, look: null, inFlight: false }, url = line.getAttribute("data-status-url");
+    var every = pollEvery(line.getAttribute("data-poll-ms"), PAGE_POLL_MS, minPoll());
+    lineWatch = me;
+    function next() { me.inFlight = false; if (lineWatch === me) { me.timer = setTimeout(me.look, every); } }
+    me.look = function () {
+      me.timer = null;
+      if (lineWatch !== me || doc.hidden || me.inFlight) { return; }
+      me.inFlight = true;
+      fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.text().then(function (text) { return statusFrom(r, text); }); })
+        .then(function (res) {
+          if (lineWatch !== me) { return; }
+          if (res.session) { lineWatch = null; return; }
+          if (!res.status) { next(); return; }
+          var step = lineStep(res.status);
+          if (step.done) {
+            if (line.parentNode) { line.parentNode.removeChild(line); }
+            lineWatch = null;
+            return;
+          }
+          var words = line.querySelector(".pfas-busy-line");
+          if (step.text && words) { words.textContent = step.text; }
+          next();
+        })
+        .catch(next);
+    };
+    next();
+  }
+
   if (doc) {
     var start = function () {
       var src = doc.getElementById("raw-data-json"), root = doc.getElementById("raw-data");
       if (src && root) { render(root, JSON.parse(src.textContent)); }
+      var line = doc.getElementById("raw-busy-line");
+      if (line) { watchLine(line); }
     };
+    doc.addEventListener("visibilitychange", function () {
+      wakeWatch();
+      if (!doc.hidden && watchIdle(lineWatch)) { lineWatch.look(); }
+    });
     if (doc.readyState === "loading") { doc.addEventListener("DOMContentLoaded", start); } else { start(); }
   }
-  var api = { baselineAt: baselineAt, peakFill: peakFill, peakOutline: peakOutline, stateClass: stateClass,
-              readout: readout, details: details, cardBody: cardBody, followThumb: followThumb, flagChips: flagChips, longNotes: longNotes,
+  var api = { replyOf: replyOf, replyFrom: replyFrom, statusFrom: statusFrom, pollStep: pollStep, NO_ANSWER: NO_ANSWER, STATUS_LOST: STATUS_LOST, POLL_MS: POLL_MS, STALL_MS: STALL_MS, MIN_POLL_MS: MIN_POLL_MS, pollEvery: pollEvery, watchIdle: watchIdle, SESSION_ENDED: SESSION_ENDED,
+              baselineAt: baselineAt, peakFill: peakFill, peakOutline: peakOutline, stateClass: stateClass,
+              readout: readout, detectedOf: detectedOf, wholePct: wholePct, storedArea: storedArea, ionLine: ionLine, ionStatus: ionStatus, ionPreview: ionPreview, ionPreviewText: ionPreviewText, fitMixed: fitMixed, calibratorWarning: calibratorWarning, paneRows: paneRows, verdictCell: verdictCell, fitMethods: FIT_METHODS, fitSteps: fitSteps, fitStart: fitStart, smoothingList: smoothingList, smoothingStart: smoothingStart, smoothingNext: smoothingNext, needsSmoothingWarning: needsSmoothingWarning, smoothingWarning: smoothingWarning, smoothingDropsEdges: smoothingDropsEdges, smoothNote: smoothNote, labelKey: labelKey, paintStepper: paintStepper, smoothedLine: smoothedLine, scoreBadge: scoreBadge, fitMethodName: fitMethodName, fitMethodOf: fitMethodOf, peakLabel: peakLabel, detailsChoice: detailsChoice, cardBody: cardBody, followThumb: followThumb, flagChips: flagChips, longNotes: longNotes,
               integrationText: integrationText, signedChange: signedChange, pendingEdges: pendingEdges,
               refusedEdit: refusedEdit, neighbour: neighbour, pageStep: pageStep, edgeLevel: edgeLevel, classicBase: classicBase, adaptiveBase: adaptiveBase,
               previewPeak: previewPeak, apexPreview: apexPreview, snOf: snOf, snapIndex: snapIndex, dragTarget: dragTarget,
-              editPayload: editPayload, thumbSvg: thumbSvg, chartView: chartView, areaChangePct: areaChangePct, editProblem: editProblem,
-              edgeTolerance: edgeTolerance, judge: judge, pyFixed: pyFixed, pyG: pyG, shortError: shortError,
-              banner: banner, openTarget: openTarget, withoutOpen: withoutOpen, postedEdit: postedEdit, dragIndex: dragIndex,
+              editPayload: editPayload, thumbSvg: thumbSvg, thumbStatus: thumbStatus, filterThumbs: filterThumbs, orderThumbs: orderThumbs, filterButtonHtml: filterButtonHtml, filterLabel: filterLabel, filterMenuItems: filterMenuItems, filterRead: filterRead, FILTER_KEY: FILTER_KEY, moreBelow: moreBelow, scrollHost: scrollHost, hostView: hostView, sectionCounts: sectionCounts, sectionsOf: sectionsOf, sectionsHtml: sectionsHtml, displayedThumbs: displayedThumbs, stepFrom: stepFrom, jumpHtml: jumpHtml, injectionStatus: injectionStatus, listHtml: listHtml, worstStatus: worstStatus, chartView: chartView, areaChangePct: areaChangePct, editProblem: editProblem,
+              commentProblem: commentProblem, edgeTolerance: edgeTolerance, judge: judge, pyFixed: pyFixed, pyG: pyG, shortError: shortError,
+              banner: banner, failedRun: failedRun, processingBand: processingBand, ghostSectionsHtml: ghostSectionsHtml, busyKeysOf: busyKeysOf,
+              thumbButton: thumbButton, lineStep: lineStep, PAGE_POLL_MS: PAGE_POLL_MS, openTarget: openTarget, withoutOpen: withoutOpen, postedEdit: postedEdit, dragIndex: dragIndex,
               typedEdge: typedEdge, edgeStep: edgeStep, injectionType: injectionType, deleteWarning: deleteWarning, confirmsDelete: confirmsDelete,
+              allOffered: allOffered, allPayload: allPayload, autoLine: autoLine, autoArea: autoArea,
               knownState: knownState, listItem: listItem, apexTolerance: apexTolerance, nearestApex: nearestApex,
               matchCandidate: matchCandidate, shown: shown, labelIn: labelIn, BASELINES: BASELINES, peakNotes: peakNotes, shareOf: shareOf, outward: outward,
               walkReach: walkReach, readMargin: readMargin, readReach: readReach, halfWidths: halfWidths, counts: counts, sciCounts: sciCounts, axisCounts: axisCounts, niceTicks: niceTicks,
               levelsOutside: levelsOutside, edgeNotes: edgeNotes, HALF_WIDTH_SIGMA: HALF_WIDTH_SIGMA,
               DEFAULT_SEARCH_AMP_SN: DEFAULT_SEARCH_AMP_SN, DEFAULT_SEARCH_SLOPE: DEFAULT_SEARCH_SLOPE,
-              DEFAULT_SEARCH_SMOOTH_PCT: DEFAULT_SEARCH_SMOOTH_PCT, autoWidthPoints: autoWidthPoints, handleDrag: handleDrag, postedLevels: postedLevels,
+              DEFAULT_SEARCH_SMOOTH_PCT: DEFAULT_SEARCH_SMOOTH_PCT, autoWidthPoints: autoWidthPoints, handleDrag: handleDrag, pressKind: pressKind, nearestPress: nearestPress, partnerEdit: partnerEdit, sharesEdge: sharesEdge, signalAt: signalAt, onSignal: onSignal, edgeAt: edgeAt, dropSide: dropSide, SNAP_PX: SNAP_PX, GRAB_PX: GRAB_PX, postedLevels: postedLevels,
               rtSpan: rtSpan, rtDragTime: rtDragTime, rtHit: rtHit, rtPayload: rtPayload, rtSetText: rtSetText,
               rtRefusedText: rtRefusedText, rtLabel: rtLabel,
-              menuEntries: menuEntries, keyMap: keyMap, chipItems: chipItems, addAt: addAt, splitAt: splitAt, geometryOf: geometryOf,
-              zoomView: zoomView, panView: panView, spanY: spanY, regionView: regionView, peakView: peakView, valuesText: valuesText, countRange: countRange };
+              menuEntries: menuEntries, fitProblem: fitProblem, expectedOf: expectedOf, expectedRtOf: expectedRtOf, fitPick: fitPick, fitAllPick: fitAllPick, fitPayload: fitPayload, fitReadout: fitReadout, defaultPick: defaultPick, apexClick: apexClick, fitAllWords: fitAllWords, fitCurve: fitCurve, fitFill: fitFill, fitResidual: fitResidual, fitComponentAt: fitComponentAt, fitPreview: fitPreview, fitText: fitText, above: above, keyMap: keyMap, EditStack: EditStack, KEYS_HELP: KEYS_HELP, stepTarget: stepTarget, chipItems: chipItems, addAt: addAt, splitAt: splitAt, geometryOf: geometryOf,
+              zoomView: zoomView, panView: panView, spanY: spanY, regionView: regionView, peakView: peakView, fillToken: fillToken, easedView: easedView, traceToken: traceToken, valuesText: valuesText, countRange: countRange };
   if (typeof window !== "undefined") { window.PFAS = window.PFAS || {}; window.PFAS.rawData = api; }
   if (typeof module !== "undefined" && module.exports) { module.exports = api; }
 })();

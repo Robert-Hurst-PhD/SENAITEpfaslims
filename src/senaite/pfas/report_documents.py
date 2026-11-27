@@ -83,8 +83,8 @@ BANNER = ("lab_name", "lab_address")
 # checklist, under the record's title, method revision and hash.
 
 BATCH_RECORD_FIELDS = [
-    ("record_title", "Record", "WS-DEMO \u00b7 EPA 537.1 r2"),
-    ("revision", "Method revision", "2"),
+    ("record_title", "Record", "WS-DEMO \u00b7 EPA 537.1 r2.0"),
+    ("revision", "Method revision", "2.0"),
     ("batch_id", "Batch ID", "B-DEMO"),
     ("batch_title", "Batch title", "DEMO batch"),
     ("method", "Method", "EPA 537.1"),
@@ -565,9 +565,11 @@ def batch_record_data(record, log=None, review_order=(), people=None, signatures
          "lot": _s(r.get("lot")), "supplier": "", "qty": _s(r.get("qty")), "conc": "", "expiry": ""}
         for r in other_lots or ()]
     revision = record.get("revision")
+    from senaite.pfas import method_revisions
     out.update({
         "record_title": _s(record.get("title")),
-        "revision": _s(revision_text) if revision is None else _s(revision),
+        # an integer revision predates major.sub and prints "N.0"
+        "revision": _s(revision_text) if revision is None else _s(method_revisions.revision_text(revision)),
         "record_hash": _record_hashes(record),
         "record_revision": _s(record.get("revision_words") or batch_record.revision_words(1)),
         "corrections": corrections_rows(record.get("corrections") if corrections is None else corrections),
@@ -1222,7 +1224,7 @@ SETTINGS_TABLES = {
                                ("evaluated", "Judged by the pipeline", "Yes"), ("how", "How", "Per analyte")),
     "recovery_grid": _cols(("method", "Method", "EPA_537_1"), ("analytes", "Analytes", "Regulated analytes"),
                            ("matrix", "Matrix", "Drinking Water"), ("window", "Window", "70–130%")),
-    "revisions": _cols(("method", "Method", "EPA_537_1"), ("rev", "Revision", "2"),
+    "revisions": _cols(("method", "Method", "EPA_537_1"), ("rev", "Revision", "2.0"),
                        ("issued", "Issued", "2026-10-02"), ("by", "By", "AN3"), ("reason", "Reason", "")),
     "settings": _cols(("method", "Method", "EPA_537_1"), ("section", "Section", "Calibration & CCV"),
                       ("setting", "Setting", "r² minimum"), ("value", "Value", "0.99")),
@@ -1253,6 +1255,12 @@ SETTINGS_REQUIRED = ("title", "revision_label", "generated", "user", "fingerprin
                      "unread_switches", "stale", "lab_name", "lab_address", "control")
 
 
+def _rev_label(rec):
+    """A method revision record (or status) by its major.sub number."""
+    from senaite.pfas import method_revisions
+    return _s(rec.get("label") or method_revisions.label(rec))
+
+
 def settings_data(report):
     """From PFASSettingsReportView.report()."""
     methods, unread, stale = [], [], []
@@ -1263,7 +1271,7 @@ def settings_data(report):
         rv = m.get("revision") or {}
         methods.append("%s: %s; %s analytes; %s" % (
             mid, ", ".join(m.get("matrices") or []) or "none", _s(m.get("panel")),
-            ("Revision %s, issued %s by %s%s" % (rv["rev"], _s(rv.get("issued_at")), _s(rv.get("issued_by")),
+            ("Revision %s, issued %s by %s%s" % (_rev_label(rv), _s(rv.get("issued_at")), _s(rv.get("issued_by")),
                                                  "; settings changed since" if rv.get("unissued") else ""))
             if rv.get("rev") else "No revision issued yet"))
         unread += ["%s: %s" % (mid, sw.get("label") or sw.get("key"))
@@ -1289,7 +1297,7 @@ def settings_data(report):
                     window += " low level %s" % cell["low"]
                 grid.append({"method": mid, "analytes": _s(row.get("title")), "matrix": _s(mx), "window": window})
         for r in m.get("revisions") or []:
-            revs.append({"method": mid, "rev": _s(r.get("rev")), "issued": _s(r.get("issued_at")),
+            revs.append({"method": mid, "rev": _rev_label(r), "issued": _s(r.get("issued_at")),
                          "by": _s(r.get("issued_by")), "reason": _s(r.get("reason"))})
         for sec in m.get("sections") or []:
             cols = sec.get("columns") or []

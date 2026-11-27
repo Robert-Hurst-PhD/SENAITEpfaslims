@@ -1,6 +1,8 @@
 pandas>=2.0
 numpy>=2.0
 scipy>=1.11
+# the fit of overlapping peaks runs on one BLAS thread (raw_integrate.fit_peaks)
+threadpoolctl>=3.1
 requests>=2.31
 reportlab>=4.0
 pypdf>=4.0

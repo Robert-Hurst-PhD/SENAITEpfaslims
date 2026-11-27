@@ -104,6 +104,7 @@
   --s-warn-lt:      #fdf1dd;
   --s-warn-bd:      #f3cf8f;
   --s-warn-text:    #8a5a12;
+  --s-manual-fill:  rgba(232, 163, 61, .18);   /* a manually integrated peak's area, over the chart ground; an alias of the amber family */
   /* failure (warm) */
   --s-danger:       #e06a4e;
   --s-danger-lt:    #fce8e3;
@@ -118,6 +119,8 @@
   --s-placard-evaluate-text: var(--s-info-text);
   --s-placard-evaluate-bd:   var(--s-info-bd);
   --s-placard-off:           var(--s-secondary);
+  /* the dashed line of a smoothing previewed on the card's chart: information, never the automatic outline's grey */
+  --smooth-preview:          var(--s-info-text);
   --s-placard-unset:         var(--s-danger-dk);
   /* sample types (sample_type_icons.py): one icon per group, a category and
      never a flag; none is mint, teal, the Off grey, amber or coral. Each is
@@ -294,6 +297,7 @@
      Only transform, opacity and height move; a colour changes at once */
   --t-quick: 120ms; --t-fast: 160ms; --t-pill: 180ms; --t-reveal: 200ms;
   --t-step: 15ms;   /* the gap between two rows that arrive one after the other */
+  --t-turn: 1.1s;   /* one turn of a progress ring; under reduced motion the ring stands still */
   --ease: cubic-bezier(.2,.7,.2,1);
   --ease-give: cubic-bezier(.34, 1.4, .64, 1);   /* a small overshoot: a part that gives way and settles */
 }
@@ -323,6 +327,7 @@ html[data-theme="dark"] {
   --s-success-lt: #1b3a30; --s-success-bd: #2f5e4c; --s-success-text: #86dcbc;
   --s-info: #4fa39a; --s-info-lt: #17332f; --s-info-bd: #2c5a55; --s-info-text: #8fd0c8;
   --s-warn-lt: #3d2d12; --s-warn-bd: #6a4a1a; --s-warn-text: #f2c77a;
+  --s-manual-fill: rgba(232, 163, 61, .22);
   --s-danger-lt: #3f1f18; --s-danger-bd: #6e3328; --s-danger-dk: #f4a08c;
   --type-samples: #aea7f5; --type-spiked: #e8a2d6; --type-blanks: #a9b6cc; --type-checks: #8bbcf0; --type-calibration: #8bbcf0; --type-na: #4f5866;
   --tier-c1: #5f9bd0; --tier-c2: #a583d8; --tier-c3: #5f9a90; --tier-c4: #d59a3f; --tier-c5: #94a3b3;

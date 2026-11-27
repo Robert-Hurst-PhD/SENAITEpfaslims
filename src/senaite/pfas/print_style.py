@@ -301,6 +301,7 @@ PALETTE = {
     "s-input-border": "#c4d3cc",
     "s-input-text": "#3f4d48",
     "s-light": "#f5f9f7",
+    "s-manual-fill": "#fbeedc",
     "s-primary": "#2fa88a",
     "s-primary-dk": "#1e7a64",
     "s-primary-lt": "#e3f5ef",

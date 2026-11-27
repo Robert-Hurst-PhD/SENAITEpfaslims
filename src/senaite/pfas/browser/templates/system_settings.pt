@@ -13,6 +13,7 @@
     <div class="alert alert-error" tal:condition="view/failed">Not saved.</div>
     <div class="alert alert-error" tal:condition="view/coc_failed">CoC limits not saved: whole numbers from 1, or blank.</div>
     <div class="alert alert-error" tal:condition="view/signing_failed">Signing rules not saved: whole numbers, a PIN of 4 to 32 digits, the longest not under the shortest.</div>
+    <div class="alert alert-error" tal:condition="view/fit_failed">Score to accept a fit not saved: a whole number from 1 to 100, or blank.</div>
     <div class="alert alert-error" tal:condition="view/raw_failed">Raw-data share not saved: an absolute path, and whole minutes from 1.</div>
 
     <div class="pfas-settings-grid">
@@ -100,6 +101,21 @@
           <label for="sign_expiry_days">Passwords and PINs expire after, days</label>
           <input type="number" min="1" step="1" name="sign_expiry_days" id="sign_expiry_days" placeholder="Never"
                  tal:attributes="value python:sr.get('expiry_days') or ''; disabled off" />
+        </div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button></div>
+    </form>
+
+    <form method="post" class="pfas-card" id="sec-fit-accept" tal:define="off python:None if view.can_configure() else 'disabled'"
+          tal:attributes="action string:${view/portal_url}/@@pfas-system">
+      <h3 class="pfas-card-head">Fit score</h3>
+      <input type="hidden" name="action" value="save_fit_accept" tal:condition="view/can_configure" />
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <div class="pfas-form-row">
+        <div class="pfas-form-field">
+          <label for="fit_accept_default">Score to accept a fit, where a method sets none</label>
+          <input type="number" min="1" max="100" step="1" name="fit_accept_default" id="fit_accept_default"
+                 tal:attributes="value view/fit_accept_default; disabled off" />
         </div>
       </div>
       <div class="form-actions"><button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button></div>

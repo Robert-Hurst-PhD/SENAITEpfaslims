@@ -764,6 +764,42 @@
                    transitions; or today's form and table, which hold every
                    posted field (the list's Edit writes them), hidden in the
                    list view, never disabled or moved -->
+              <!-- processing changes proposed from a run: each waits for a
+                   different manager or QA officer to countersign it; the
+                   row opens the run, its menu decides. Then those the
+                   method holds as its own -->
+              <tal:pp tal:define="props view/pending_proposals; own view/method_processing"
+                      tal:condition="python:props or own">
+                <div class="section-group-hdr" tal:condition="props">Proposed from a run</div>
+                <!-- live on a view-only page: the QA approver decides here -->
+                <table class="pfas-table pfas-table-fit" data-col-resize="method-profile-edit-proposals"
+                       data-readonly-live="data-readonly-live" tal:condition="props">
+                  <thead><tr><th>Trace</th><th>Change</th><th>Run</th><th>Proposed by</th><th>When</th></tr></thead>
+                  <tbody>
+                    <tr tal:repeat="p props" tal:attributes="data-row-open p/run_url; data-row-actions p/actions">
+                      <td tal:content="p/trace">PFOA, quantifier</td>
+                      <td tal:content="p/change">perpendicular drop, -0.05 to +0.08 min from the apex</td>
+                      <td tal:content="p/run">WS-0042, change P3</td>
+                      <td tal:content="p/who">Manager One</td>
+                      <td class="cell-nowrap" tal:content="p/when">2026-11-25 10:00</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="section-group-hdr" tal:condition="own">Processing from runs</div>
+                <table class="pfas-table pfas-table-fit" data-col-resize="method-profile-edit-processing"
+                       tal:condition="own">
+                  <thead><tr><th>Trace</th><th>Change</th></tr></thead>
+                  <tbody>
+                    <tr tal:repeat="o own" tal:attributes="data-row-actions o/actions">
+                      <td tal:content="o/trace">PFOA, quantifier</td>
+                      <td>
+                        <span tal:replace="o/change">perpendicular drop, -0.05 to +0.08 min from the apex</span>
+                        <div class="pfas-muted" tal:condition="o/misfit" tal:content="o/misfit"></div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </tal:pp>
               <div tal:define="cf_groups python:view.section_groups('intg'); cf_form string:section-run;
                                intg_head python:cf_groups[:1]; intg_rest python:cf_groups[1:]">
                 <div tal:define="cf_groups intg_head; cf_flat python:True">
@@ -975,6 +1011,82 @@
       <input type="hidden" name="section_stamp__flags_std" tal:attributes="value python:view.section_stamp('flags_std')" />
       <input type="hidden" name="section_stamp__lrr" tal:attributes="value python:view.section_stamp('lrr')" />
       <input type="hidden" name="section_stamp__salt_std" tal:attributes="value python:view.section_stamp('salt_std')" />
+    </form>
+    <!-- A proposed change's Countersign, Refuse and Withdraw, each in the
+         shared dialog, drawn only for the person its right allows -->
+    <tal:pm tal:repeat="p view/pending_proposals">
+    <div class="pfas-modal" tal:condition="p/may_decide" tal:attributes="id string:prop-cs-${p/id}">
+      <div class="pfas-modal-box is-narrow">
+        <h2 tal:content="string:Countersign: ${p/trace}">Countersign</h2>
+        <div class="pfas-sub" tal:content="p/change"></div>
+        <div class="form-note" tal:content="view/countersign_sentence"></div>
+        <form method="post" data-unsaved-skip="data-unsaved-skip" data-tab-label="Run &amp; reporting"
+              data-readonly-live="data-readonly-live" tal:attributes="action string:@@pfas-method-profile-edit">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="countersign_proposal" />
+          <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+          <input type="hidden" name="proposal" tal:attributes="value p/id" />
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-primary">Countersign</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="pfas-modal" tal:condition="p/may_decide" tal:attributes="id string:prop-rf-${p/id}">
+      <div class="pfas-modal-box is-narrow">
+        <h2 tal:content="string:Refuse: ${p/trace}">Refuse</h2>
+        <div class="pfas-sub" tal:content="p/change"></div>
+        <form method="post" data-unsaved-skip="data-unsaved-skip" data-tab-label="Run &amp; reporting"
+              data-readonly-live="data-readonly-live" tal:attributes="action string:@@pfas-method-profile-edit">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="refuse_proposal" />
+          <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+          <input type="hidden" name="proposal" tal:attributes="value p/id" />
+          <div class="pfas-form-field is-full">
+            <label tal:attributes="for string:prop-rf-reason-${p/id}">Reason</label>
+            <input type="text" name="reason" class="pfas-input" required="required"
+                   tal:attributes="id string:prop-rf-reason-${p/id}" />
+          </div>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-danger">Refuse</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="pfas-modal" tal:condition="p/may_withdraw" tal:attributes="id string:prop-wd-${p/id}">
+      <div class="pfas-modal-box is-narrow">
+        <h2 tal:content="string:Withdraw: ${p/trace}">Withdraw</h2>
+        <div class="pfas-sub" tal:content="p/change"></div>
+        <form method="post" data-unsaved-skip="data-unsaved-skip" data-tab-label="Run &amp; reporting"
+              data-readonly-live="data-readonly-live" tal:attributes="action string:@@pfas-method-profile-edit">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="withdraw_proposal" />
+          <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+          <input type="hidden" name="proposal" tal:attributes="value p/id" />
+          <div class="pfas-form-field is-full">
+            <label tal:attributes="for string:prop-wd-reason-${p/id}">Reason</label>
+            <input type="text" name="reason" class="pfas-input" required="required"
+                   tal:attributes="id string:prop-wd-reason-${p/id}" />
+          </div>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" data-modal-close="data-modal-close">Cancel</button>
+            <button type="submit" class="btn btn-danger">Withdraw</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    </tal:pm>
+    <!-- a saved processing change taken off its compound: a manager's edit -->
+    <form id="processing-remove" method="POST" data-unsaved-skip="data-unsaved-skip"
+          data-tab-label="Run &amp; reporting"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="action" value="remove_processing" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="analyte" value="" />
+      <input type="hidden" name="transition" value="" />
     </form>
     <!-- A standard joins or leaves the method by its own action: the
          server refuses to remove one that still quantifies a native. -->

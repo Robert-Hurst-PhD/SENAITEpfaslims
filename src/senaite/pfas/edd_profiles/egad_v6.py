@@ -330,12 +330,14 @@ QUALIFIER_MAP = [
     {"our_qualifier": "J*",     "code": "J*",   "description": "Estimated + QC out of limits"},
     # Qualified-release codes (qc_qualification.FAILURE_TYPES) are the
     # certificate's vocabulary: the EDD carries the nearest existing EGAD
-    # code. An unmapped code passes through `_translate_qualifier` unchanged,
-    # and "M" is not a valid EGAD LAB_QUALIFIER.
+    # code. A code with no row here, or a row with no code, is refused as a
+    # BLOCKING error when the EDD is built (edd_builder._issue_qualifiers),
+    # never passed through: "M" is not a valid EGAD LAB_QUALIFIER.
     {"our_qualifier": "M",      "code": "*",    "description": "Matrix effect — QC outside control limits"},
     {"our_qualifier": "P",      "code": "*",    "description": "Precision (RPD) outside control limits"},
     {"our_qualifier": "BH",     "code": "*",    "description": "Recovery biased high — QC outside control limits"},
     {"our_qualifier": "CE",     "code": "J",    "description": "Co-eluting peaks split: estimated"},
+    {"our_qualifier": "CF",     "code": "J",    "description": "Fitted estimate: separated by curve fitting"},
 ]
 
 QC_TYPE_MAP = [

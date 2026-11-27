@@ -69,7 +69,7 @@ def register_all():
                         ("study_templates", u"Study templates"),
                         ("backup_settings", u"Backup settings"),
                         ("coc_limits", u"CoC limits"), ("coc_removed", u"CoC removed"),
-                        ("signing_rules", u"Signing rules"),
+                        ("signing_rules", u"Signing rules"), ("fit_accept", u"Score to accept a fit"),
                         # a prepared-standard lot refiled by a one-off tool
                         ("prepared_standard", u"Prepared standard lot")):
         config_history.TITLES[name] = title

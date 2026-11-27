@@ -100,6 +100,18 @@ def get_edd_profiles(portal):
     return out
 
 
+def saved_edd_profiles(portal):
+    """{profile id: profile} the lab has saved, without the seed profiles
+    get_edd_profiles adds for those never saved."""
+    out = {}
+    for k, raw in list(_store(portal, create=False).items()):
+        try:
+            out[k] = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
 def get_profile(portal, profile_id):
     profs = get_edd_profiles(portal)
     return profs.get(profile_id) or profs[DEFAULT_PROFILE_ID]

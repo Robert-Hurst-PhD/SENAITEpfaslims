@@ -72,9 +72,32 @@ def peak_text(peak):
     b0, b1 = peak.get("base_start"), peak.get("base_end")
     base = ("a flat baseline at {0:,.0f}".format(b0) if b0 == b1
             else "a straight baseline from {0:,.0f} to {1:,.0f}".format(b0, b1))
-    return "apex %.2f min; integrated %.2f–%.2f min over %s; area %s by %s %s" % (
+    text = "apex %.2f min; integrated %.2f–%.2f min over %s; area %s by %s %s" % (
         peak["apex"], peak["start"], peak["end"], base, "{0:,.0f}".format(peak["area"]),
         peak.get("area_method") or "", rev)
+    # a change applied to every injection names itself: on the quantifier
+    # and on each qualifier whose peak it made
+    changes = ([processing_text(peak["processing"])] if peak.get("processing") else []) + [
+        "qualifier %s %s" % (label, processing_text(p))
+        for label, p in sorted((peak.get("qual_processing") or {}).items())]
+    return "; ".join([text] + changes)
+
+
+def processing_text(change):
+    """A processing change in words: "processed for all injections:
+    perpendicular drop, -0.06 to +0.09 min from the apex (by AN1, <when>)";
+    a fit in raw_review.fit_processing_text's words, the list's: "fitted
+    for all injections: EMG, 2 peaks, from 4.05 to 4.45 min, placed from
+    the expected time 4.20 min (by AN1, <when>)"."""
+    from .addon import load
+    review = load("raw_review")
+    who = ", ".join(x for x in (change.get("by"), change.get("at")) if x)
+    if change.get("kind") == "fit":
+        text = review.fit_processing_text(change)
+    else:
+        text = "processed for all injections: %s, %+.2f to %+.2f min from the apex" % (
+            review.line_text(change.get("baseline")), change["start_offset"], change["end_offset"])
+    return text + (" (by %s)" % who if who else "")
 
 
 def raw_terms(row):
@@ -84,13 +107,15 @@ def raw_terms(row):
     derived = getattr(row, "derived_from", "") or ""
     if not derived.startswith("raw:"):
         return [], []
-    quant = (json.loads(derived[len("raw:"):]) or {}).get("quant") or {}
+    record = json.loads(derived[len("raw:"):]) or {}
+    quant = record.get("quant") or {}
     curve = quant.get("curve") or {}
     if curve.get("quadratic") and quant.get("ratio") is not None:
-        return _quadratic_terms(row, quant, curve)
+        terms, steps = _quadratic_terms(row, quant, curve)
+        return terms + fit_terms(record), steps
     if quant.get("ratio") is None or not curve.get("slope"):
         return [], []
-    terms = _area_terms(row, quant)
+    terms = _area_terms(row, quant) + fit_terms(record)
     terms += [
              term("m", "slope of this run's curve (%s, %s, origin %s, r² %s)" % (
                  curve.get("kind"), curve.get("weighting"), curve.get("origin"), curve.get("r2")),
@@ -101,6 +126,34 @@ def raw_terms(row):
              {"label": "read on this run's curve", "expression": "(R − b) ÷ m",
               "value": (quant["ratio"] - (curve.get("intercept") or 0.0)) / curve["slope"]}]
     return terms, steps
+
+
+def fit_terms(record):
+    """The terms of a peak separated by a fit of overlapping peaks (its
+    record's "fit"): the fitted area reported; its 95 % interval, the
+    middle 95 % of the area over the fit refitted with its own residuals
+    resampled; the RMS of what the fit leaves over the fitted span and the
+    trace's baseline noise it is judged against (the method's largest fit
+    residual is a multiple of it); [] for any other peak."""
+    fit = (record or {}).get("fit")
+    if not isinstance(fit, dict):
+        return []
+    from .addon import load
+    review = load("raw_review")
+    comps = fit.get("components") or []
+    pick = fit.get("pick")
+    comp = comps[pick] if isinstance(pick, int) and 0 <= pick < len(comps) else {}
+    shape = review.fit_words(fit.get("shape"), len(comps))
+    src = {"record": "fit"}
+    return [term("A_fit", "area of the fitted peak reported (%s, peak %d of the fit)" % (
+                     shape, (pick if isinstance(pick, int) else 0) + 1), comp.get("area"), "counts", src),
+            term("CI95", "95 %% interval of the fitted area: the middle 95 %% of the area over %s refits with the "
+                 "fit's residuals resampled" % (fit.get("resamples") or "its"), fit.get("ci"), "counts", src),
+            term("residual", "RMS of what the fit leaves over the fitted span", fit.get("residual_rms"), "counts",
+                 src),
+            term("noise", "the trace's baseline noise, as its signal-to-noise is read (the fit leaves %s times "
+                 "it)" % ("%.2f" % fit["noise_multiple"] if isinstance(fit.get("noise_multiple"), float)
+                          else "an unknown number of"), fit.get("noise"), "counts", src)]
 
 
 def _members(quant):
@@ -376,7 +429,11 @@ def record_run(batch, rows, profile, matrix):
                                                      "column": "expected_ion_ratios"}),
                    term("%", "of the expected ratio", pct, "%", {"computed": True}),
                    term("T", "the method's ion-ratio tolerance", "", "%", src_profile(method, "ion_ratio_tol_pct"))],
-               "", _verdict(res.flag), rule={"text": res.flag.issue if res.flag else ""})
+               # each qualifier's observed and expected ratio and its source,
+               # kept in the rule so the stored record carries them (the
+               # Raw Data card reads them back)
+               "", _verdict(res.flag), rule={"text": res.flag.issue if res.flag else "",
+                                             "ions": list(getattr(res, "ions", None) or [])})
 
     for res in getattr(batch, "cal_results", None) or []:
         row = by.get((res.injection_name, res.analyte))

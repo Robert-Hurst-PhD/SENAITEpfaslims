@@ -62,11 +62,15 @@
             <span class="sur-tag sur-nocore" tal:condition="not:m/core_method_url">not linked</span>
           </td>
           <td class="mp-rev" tal:define="rv m/revision">
-            <tal:i condition="rv/rev"><strong tal:content="string:Rev ${rv/rev}">Rev 3</strong>
+            <tal:i condition="rv/rev"><strong tal:content="string:Rev ${rv/label}">Rev 4.1</strong>
               <div class="pfas-sub" tal:content="rv/issued_at">2026-10-02</div></tal:i>
             <span class="pfas-sub" tal:condition="not:rv/rev">Not issued</span>
             <span class="sur-tag sur-nocore" tal:condition="python:rv['rev'] and rv['unissued']"
                   title="Settings changed since this revision was issued">unissued changes</span>
+            <!-- a change proposed from a run waits for its countersign -->
+            <span class="sur-tag" tal:condition="m/pending|nothing"
+                  title="A change proposed from a run waits for a countersign on the method's page"><tal:i
+                  define="ic context/@@pfas-icons" replace="structure python:ic.svg('waiting', hidden=True)" />pending change</span>
           </td>
         </tr>
       </tbody>
@@ -78,6 +82,8 @@
     <div class="pfas-modal" tal:condition="python:m['revision']['unissued'] and not view.read_only()" tal:attributes="id string:mp-issue-${m/method_id}">
       <div class="pfas-modal-box is-narrow">
         <h2 tal:content="python:u'Issue revision: %s' % (m['display_name'] or m['method_id'])">Issue revision</h2>
+        <!-- the level follows from what changed since the last revision -->
+        <p class="form-note" tal:content="python:view.issue_sentence(m['issue'])"></p>
         <form method="post" class="mp-issue-form"
               tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
           <input type="hidden" name="action" value="issue_revision" />

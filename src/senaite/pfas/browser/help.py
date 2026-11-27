@@ -56,7 +56,9 @@ def help_lists():
         (u"Run stored before verdicts were kept", q.LEGACY),
         (u"Run judged before rounding applied", q.UNROUNDED),
         (u"Rounding rule changed since the run", q.RULE_CHANGED),
-        (u"Nothing judged for the injection", q.UNJUDGED)]
+        (u"Nothing judged for the injection", q.UNJUDGED),
+        (u"A QC hold at the moment of issue", u"the QC Summary does not pass, for example a "
+                                              u"qualifier set to block after release")]
     return out
 
 

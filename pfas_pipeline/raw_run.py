@@ -88,6 +88,19 @@ first qualifier's still present and the ion ratio the other qualifiers'.
 A deleted linear isomer leaves its branched partner's sum as it was
 beside the automatic linear peak.
 
+A processing change (<stem>.processing.json, "Apply to all", read through
+the add-on's raw_review record and never written here) is applied to every
+injection of one trace before the edits: its edges are the change's
+offsets from each injection's own automatic apex, measured on its baseline
+and the method's area measure. The peak it makes is automatic (the
+manual-change limits never judge it), and an edit of the trace keeps its
+manual peak over it. An injection with no apex, too few points between
+the edges or a drop or a skim reading past the stored trace's
+full-resolution region keeps its automatic peak, and its record says why.
+The method's own processing entry (method_proposals, countersigned from a
+run) takes every trace the file holds no change of, through the same path,
+and its peak's change says "from": "method".
+
 Nothing is quantified from a partial run: a file missing, not matching its
 checksum or not readable, a transition missing from a file, a native or
 isomer peak with no quantitation standard, or a curve that cannot be fitted
@@ -96,6 +109,7 @@ refuses the whole run, naming the injection and the analyte.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import json
 import math
@@ -124,6 +138,7 @@ from .constants import IS_PEAK_DELETED, PEAK_DELETED, QUALIFIER_ALOQ, QUALIFIER_
 from .models import InstrumentRow
 from . import masslynx_raw
 from . import peak_asymmetry
+from . import peak_score
 from . import raw_adaptive
 from . import raw_integrate as ri
 
@@ -135,6 +150,12 @@ class RawRunError(Exception):
 class Unapplied(RawRunError):
     """An edit the run keeps but cannot apply: the trace stays automatic,
     and the edit is kept with this reason (raw_review's wording)."""
+
+
+class Skipped(Unapplied):
+    """An injection that cannot take a processing change ("Apply to all"):
+    its trace keeps the automatic peak, and the change names the injection
+    with this reason (raw_review's SKIP_* words)."""
 
 
 # the run record's injection types as the rows carry them (a vendor
@@ -254,7 +275,9 @@ def folder_digest(source):
 
 
 def _label(q):
-    return "%.1f > %.1f" % (float(q[0]), float(q[1]))
+    """A transition as the traces name it, by the add-on's one rule
+    (method_proposals.transition_label), which its saved processing keys on."""
+    return load("method_proposals").transition_label(q)
 
 
 def _matches_checksum(path, expected):
@@ -384,11 +407,34 @@ def settings_for(a, settings, name):
 # read by _candidate_floor), and only the edge points are the classic
 # engine's own
 MANUAL_LIMITS = ("min_manual_change_pct", "min_manual_sn")
+# the largest residual of a fit of overlapping peaks, in times the trace's
+# baseline noise: the method's, judging a fit when the run is processed
+# (_fit_limits), never an engine setting
+FIT_LIMITS = ("fit_noise_multiple",)
 REVIEW_RULES = ("min_peak_points", "edge_sigma", "drop_valley_max_pct", "skim_ratio_pct",
                 "search_amp_sn", "candidate_min_points", "candidate_min_fwhm_pct")
 UNUSED_COMPOUND_SETTINGS = {"classic": ("min_qual_sn", "sensitivity", "shoulder_pct", "qual_apex_tol",
-                                        "rt_anchor") + MANUAL_LIMITS + REVIEW_RULES,
-                            "adaptive": ("min_qual_sn", "edge_points") + MANUAL_LIMITS + REVIEW_RULES}
+                                        "rt_anchor") + MANUAL_LIMITS + FIT_LIMITS + REVIEW_RULES,
+                            "adaptive": ("min_qual_sn", "edge_points") + MANUAL_LIMITS + FIT_LIMITS
+                            + REVIEW_RULES}
+
+
+def _fit_limits(a, integration):
+    """{"fit_noise_multiple": the method's largest fit residual, in times
+    the trace's baseline noise (None when unset: no fit is made), "min_manual_change_pct", "min_manual_sn": the
+    limits on a manual change, the compound's own where it sets one, else
+    the method's (raw_preview.manual_limits: the change defaults, an unset
+    S/N is no limit)}. A fit is judged by them when the run is processed:
+    the add-on cannot fit."""
+    own = a.get("settings") or {}
+    out = {"fit_noise_multiple": integration.get("fit_noise_multiple")}
+    defaults = {"min_manual_change_pct": load("raw_preview").DEFAULT_MIN_MANUAL_CHANGE_PCT, "min_manual_sn": None}
+    for key in MANUAL_LIMITS:
+        value = own.get(key)
+        if value is None:
+            value = integration.get(key)
+        out[key] = defaults[key] if value is None else float(value)
+    return out
 
 
 def _half_width(points):
@@ -490,7 +536,8 @@ def _adaptive_peak(t, y, p, m, settings, manual=False, pad=None, sigma=None):
                    ri.area_method(settings, manual, fit_note is not None), True, p.get("note", ""),
                    fwhm_s=p["fwhm_s"], tailing=p["tailing"], plates=p["plates"], smoothing=m,
                    engine="adaptive", fit_note=fit_note, noise=sigma, baseline=p.get("baseline"),
-                   levels=p.get("levels"), valley_share=p.get("valley_share"), skim_share=p.get("skim_share"))
+                   levels=p.get("levels"), valley_share=p.get("valley_share"), skim_share=p.get("skim_share"),
+                   height=p.get("height"))
 
 
 def _adaptive_not_detected(settings, m, note, sigma=None):
@@ -665,7 +712,8 @@ def _adaptive_summed(t, y, rt, tol, settings, note, exclude=(), bound=None):
     return ri.Peak(sum(p["area"] for p in near), top["rt"], near[0]["start"], near[-1]["end"],
                    near[0]["base"][0], near[-1]["base"][1], max(p["sn"] for p in near), "summed", True,
                    "; ".join(notes), fwhm_s=one.get("fwhm_s"), tailing=one.get("tailing"),
-                   plates=one.get("plates"), smoothing=m, engine="adaptive", noise=sigma)
+                   plates=one.get("plates"), smoothing=m, engine="adaptive", noise=sigma,
+                   height=top["height"])
 
 
 def _adaptive_group(t, y, rt, tol, settings, note, exclude=()):
@@ -689,7 +737,8 @@ def _adaptive_group(t, y, rt, tol, settings, note, exclude=()):
     return ri.Peak(sum(p["area"] for p in members), top["rt"], members[0]["start"], members[-1]["end"],
                    members[0]["base"][0], members[-1]["base"][1], top["sn"], "summed", True,
                    "; ".join(notes), fwhm_s=one.get("fwhm_s"), tailing=one.get("tailing"),
-                   plates=one.get("plates"), smoothing=m, engine="adaptive", noise=sigma)
+                   plates=one.get("plates"), smoothing=m, engine="adaptive", noise=sigma,
+                   height=top["height"])
 
 
 def _summed_on(t, y, a, partner, settings, rt, exclude, partner_peak):
@@ -752,6 +801,8 @@ def _peak(traces, analytes, name, settings, smooth=None, rt=None, partner_peak=N
 
 ANCHOR_NOT_FOUND = "anchor not found"
 RESUMMED = "re-summed beside the re-integrated linear peak"
+RESUMMED_PROCESSED = "re-summed beside the processed linear peak"
+RESUMMED_FITTED = "re-summed beside the fitted linear peak"
 PAIR_FIT_FAILED = "pair fit failed"
 
 
@@ -793,10 +844,11 @@ def _edits(overrides, analytes, peaks):
 
 def _deleted(auto):
     """The automatic peak deleted by the analyst: not detected, with no
-    area, time, edges or S/N; its engine and smoothing kept."""
+    area, time, edges, S/N or processing change; its engine and smoothing
+    kept."""
     return dataclasses.replace(auto, area=None, rt=None, start=None, end=None, base_start=None, base_end=None,
                                sn=None, detected=False, note=PEAK_DELETED, fwhm_s=None, tailing=None,
-                               plates=None, fit_note=None)
+                               plates=None, fit_note=None, processing=None, processing_skipped=None, fit=None)
 
 
 # how a manual peak's area is measured: the trapezoid of the raw signal
@@ -811,7 +863,207 @@ def _review_rules(a):
     return dict(load("raw_preview").REVIEW_DEFAULTS, **(a.get("review") or {}))
 
 
-def _replay(edit, auto, t, y, settings, a, where, exclude, choices=None):
+def _search_time(a, rt):
+    """The time a compound's peak is searched about in one injection: the
+    one relative retention moved it to (_expected_rt), else its configured
+    time."""
+    return a["rt"] if rt is None else rt
+
+
+def _span_points(t, start, end):
+    """The samples between the edges, both included, each edge on its
+    nearest sample: as the review counts them on the stored trace."""
+    tt = np.asarray(t, dtype=float)
+    return int(np.argmin(abs(tt - end))) - int(np.argmin(abs(tt - start))) + 1
+
+
+def _fit(t, y, start, end, apexes, shape, pick, limit, noise, refuse, min_sn=None, alone=False):
+    """The component `pick` (the index among `apexes`, fixed before the
+    fit, never chosen again from where the fitted peaks fell) of the fit of
+    overlapping peaks over [start, end] (raw_integrate.fit_peaks,
+    fitted_peak), or `refuse(why)` raised: no fit limit set
+    (FIT_NO_LIMIT_TEXT), a fit the engine refuses (FitRefused: one that
+    did not converge or collapsed, or why it cannot be made), or one
+    fit_problem refuses: its residual's RMS over `limit` times the trace's
+    baseline `noise` (the noise its S/N is read against), the picked
+    area's resampled interval wider than the area. Under the engine's
+    detection floor `min_sn` the peak reads not detected."""
+    review = load("raw_review")
+    if limit is None:
+        raise refuse(review.FIT_NO_LIMIT_TEXT)
+    try:
+        result = ri.fit_peaks(t, y, start, end, apexes, shape, alone=alone)
+    except ValueError as exc:                 # FitRefused is a ValueError
+        raise refuse(str(exc))
+    problem = ri.fit_problem(result, pick, float(limit), noise)
+    if problem:
+        raise refuse(problem)
+    return ri.fitted_peak(result, pick, apexes, noise, float(limit), min_sn)
+
+
+# why the fitted shapes are left unscored without a method fit limit
+NOT_TRIED_NO_LIMIT = "not tried: no fit limit"
+# a fit scored but over the method's fit limit: its residual check fails
+OVER_FIT_LIMIT = "the fit leaves %.1f times the noise, over the method's fit limit of %g"
+
+
+def _clean(value):
+    """`value` with every float finite (_finite), through lists and dicts, so
+    the record is JSON."""
+    if isinstance(value, float):
+        return _finite(value)
+    if isinstance(value, (list, tuple)):
+        return [_clean(v) for v in value]
+    if isinstance(value, dict):
+        return dict((k, _clean(v)) for k, v in value.items())
+    return value
+
+
+def _fit_residual_noise(result, noise):
+    """The fit's residual RMS over the baseline noise, the figure _fit
+    judges (raw_integrate.noise_multiple); None without a noise."""
+    return ri.noise_multiple(result, noise)
+
+
+def _score_settings(settings, found):
+    """The classic settings a candidate is measured under: the trace's own,
+    or, for the adaptive engine, a window of the peak's smoothing with
+    the engine's edge points."""
+    if isinstance(settings, ri.AdaptiveSettings):
+        m = found.smoothing if found.smoothing is not None else _adaptive_m(settings)
+        m = 2 if m is None else max(int(m), 1)
+        return ri.Settings(smooth_points=max(2 * m + 1, 5), baseline="valley", area="trapezoid",
+                           min_sn=settings.min_sn, edge_points=max(m, 1))
+    return dataclasses.replace(settings, area="trapezoid")
+
+
+def _scored(t, y, method, start, end, apex, base_start, base_end, height, sn, noise, min_sn,
+            residual_noise=None):
+    """peak_score.score of one candidate (edges and apex in minutes), with
+    the edges and baseline levels it was scored on. The checks carry their
+    key and points only: a label is read from peak_limits on display."""
+    tt = np.asarray(t, dtype=float)
+    factor, _why = peak_asymmetry.measure(tt, y, apex, start, end, base_start, base_end)
+    got = peak_score.score(tt, y, {
+        "method": method, "start": int(np.argmin(abs(tt - start))), "end": int(np.argmin(abs(tt - end))),
+        "apex_i": int(np.argmin(abs(tt - apex))), "base_start": base_start, "base_end": base_end,
+        "height": height, "asymmetry": factor, "sn": sn, "residual_noise": residual_noise}, noise, min_sn)
+    return {"method": got["method"], "score": got["score"],
+            "checks": [dict((k, c[k]) for k in ("key", "points", "max", "ok")) for c in got["checks"]],
+            "start": start, "end": end, "base_start": base_start, "base_end": base_end}
+
+
+def _scored_fit(t, y, peak, shape, limit, noise, min_sn):
+    """One apex fitted under `shape` over the automatic peak's own edges,
+    scored there like the baseline candidates: the fit's line gives the
+    baseline levels, its component the height and apex. The fit is a point
+    estimate, never kept; judged on its residual alone (the interval is the
+    applied fit's). A residual over the method's fit limit still scores, its
+    residual check failing, with the reason as the note."""
+    result = ri.fit_peaks(t, y, peak.start, peak.end, [peak.rt], shape, resamples=0, alone=True)
+    comp = result.components[0]
+    tt = np.asarray(t, dtype=float)
+    s, e = int(np.argmin(abs(tt - peak.start))), int(np.argmin(abs(tt - peak.end)))
+    base = [result.b0 + result.b1 * (float(tt[i]) - result.t0) for i in (s, e)]
+    multiple = _fit_residual_noise(result, noise)
+    note, residual = None, multiple
+    if multiple is None:
+        note = ri.FIT_NO_NOISE
+    elif not multiple <= limit:
+        note, residual = OVER_FIT_LIMIT % (multiple, limit), None
+    got = _scored(t, y, shape, peak.start, peak.end, comp.apex, base[0], base[1], comp.height,
+                  ri._sn(comp.height, noise) if noise is not None else None, noise, min_sn, residual)
+    if note:
+        got["note"] = note
+    return got
+
+
+def _fit_scores(t, y, peak, settings, limits, labelled, amp=None):
+    """The automatic peak scored under each of peak_limits.METHODS, in that
+    order, all on its own edges: [{"method", "score", "checks", "start",
+    "end", "base_start", "base_end"[, "note"]} or {"method", "score": None,
+    "note"}]. Valley, drop, flat and skim are measured between the edges
+    (raw_integrate.integrate_between); Gaussian and EMG are one apex fitted
+    over them (_scored_fit). A fit is left unscored with no fit limit set,
+    and a labelled compound has no fitted candidate at all. A candidate the
+    engine refuses, or that cannot be scored, has no score, its reason as
+    the note, and never stops the run. The score reads no QC outcome."""
+    limits_mod = load("peak_limits")
+    line = _score_settings(settings, peak)
+    noise, min_sn = peak.noise, settings.min_sn
+    out = []
+    for method in limits_mod.METHODS:
+        fitted = method in ("gaussian", "emg")
+        if fitted and labelled:
+            continue
+        limit = (limits or {}).get("fit_noise_multiple")
+        if fitted and limit is None:
+            out.append({"method": method, "score": None, "note": NOT_TRIED_NO_LIMIT})
+            continue
+        try:
+            if fitted:
+                out.append(_scored_fit(t, y, peak, method, float(limit), noise, min_sn))
+                continue
+            cand = ri.integrate_between(t, y, peak.start, peak.end, ri.with_baseline(line, method),
+                                        noise=noise, amp=amp)
+            out.append(_scored(t, y, method, cand.start, cand.end, cand.rt, cand.base_start, cand.base_end,
+                               cand.height, cand.sn, noise, min_sn))
+        except Exception as exc:       # one candidate's failure leaves the rest and the run
+            out.append({"method": method, "score": None, "note": str(exc) or exc.__class__.__name__})
+    return out
+
+
+def _drop_rt(peak, t, neighbours, adaptive=False):
+    """The edge a drop baseline shares with a neighbouring peak, in minutes:
+    the start where a neighbour ends there, the end where one starts there,
+    within one sample; None for any other baseline or no such neighbour. The
+    adaptive engine's own peaks are split from the group they touch by drop
+    lines, so an automatic one (`adaptive`, no baseline of its own) has the
+    edge it shares with a neighbour; a manual peak only on a drop baseline.
+    `neighbours` are the (start, end) of the other peaks."""
+    if peak is None or not peak.detected or peak.start is None:
+        return None
+    if not (peak.baseline == "drop" or (adaptive and peak.baseline is None)):
+        return None
+    tt = np.asarray(t, dtype=float)
+    tol = float(np.median(np.diff(tt))) if len(tt) > 1 else 0.0
+    for n_start, n_end in neighbours:
+        if abs(n_end - peak.start) <= tol:
+            return peak.start
+        if abs(n_start - peak.end) <= tol:
+            return peak.end
+    return None
+
+
+def _fit_edit(edit, auto, t, y, a, where, limits, min_sn=None):
+    """The peak an analyst's fit of overlapping peaks makes (_replay, kind
+    fit), kept with no effect (Unapplied) on an isotope standard, with
+    fewer samples than the compound's fewest points in a peak or than the
+    fit is made over, for any refusal of _fit, or under the smallest manual
+    change or the manual S/N floor (raw_preview.edit_problem: the fitted
+    area against the automatic peak's, its height over the automatic call's
+    noise). Under the engine's detection floor (`min_sn`) the fitted peak
+    reads not detected. The add-on refuses what it can see before writing;
+    the fit itself is made here."""
+    review = load("raw_review")
+    if a.get("labelled"):
+        raise Unapplied(review.FIT_LABELLED_TEXT % where)
+    start, end, shape = edit["start"], edit["end"], edit["shape"]
+    points = _span_points(t, start, end)
+    fewest = max(int(_review_rules(a)["min_peak_points"]), review.fit_fewest(shape, len(edit["apexes"])))
+    if points < fewest:
+        raise Unapplied(review.TOO_FEW_POINTS % (fewest, points))
+    peak = _fit(t, y, start, end, edit["apexes"], shape, edit["pick"], limits.get("fit_noise_multiple"),
+                auto.noise, Unapplied, min_sn, alone=bool(edit.get("alone")))
+    problem = load("raw_preview").edit_problem("fit", auto.area, peak.area, peak.sn,
+                                               limits.get("min_manual_change_pct"), limits.get("min_manual_sn"))
+    if problem:
+        raise Unapplied(problem)
+    return dataclasses.replace(peak, engine=auto.engine, smoothing=auto.smoothing,
+                               smoothing_from=auto.smoothing_from)
+
+
+def _replay(edit, auto, t, y, settings, a, where, exclude, choices=None, limits=None):
     """The peak the analyst's edit makes of one trace, whose automatic peak
     is `auto`, under `settings` (the automatic call's own):
       delete     not detected (_deleted);
@@ -838,10 +1090,16 @@ def _replay(edit, auto, t, y, settings, a, where, exclude, choices=None):
                  re-integration's line is. Only a single peak may have
                  another apex chosen; a chosen apex two candidates' are
                  equally near refuses the run; one no candidate's is that
-                 near is kept with no effect (Unapplied)."""
+                 near is kept with no effect (Unapplied);
+      fit        the component picked of the chosen shape fitted at each
+                 apex clicked over the edges (_fit_edit), judged by the
+                 method's fit limit and the manual-change limits in
+                 `limits` (_fit_limits)."""
     kind = edit["kind"]
     if kind == "delete":
         return _deleted(auto)
+    if kind == "fit":
+        return _fit_edit(edit, auto, t, y, a, where, limits or {}, settings.min_sn)
     adaptive = isinstance(settings, ri.AdaptiveSettings)
     baseline = edit.get("baseline")
     if kind == "apex":
@@ -896,6 +1154,138 @@ def _replay(edit, auto, t, y, settings, a, where, exclude, choices=None):
     return dataclasses.replace(peak, method=MANUAL_LINE_AREA)
 
 
+def _processed(rec, auto, t, y, settings, a, where, exclude, kept=None, limits=None, expected=None):
+    """The peak a processing change (raw_review.processing_of: one trace's
+    change applied to every injection) makes of one injection's trace,
+    whose automatic peak is `auto`, under `settings` (the automatic call's
+    own):
+      integrate  measured between the injection's own apex plus the
+                 change's start and end offsets, on its baseline and the
+                 method's own area measure (Classic integrate_between;
+                 Adaptive between, at the automatic peak's smoothing), its
+                 S/N over the automatic call's noise, a drop's or a skim's
+                 neighbours rising the compound's peak search amplitude
+                 times that noise, as a manual peak's;
+      fit        the change's shape fitted at the injection's `expected`
+                 time (the time its peak is searched about, after any
+                 relative-retention shift) plus each of its apex offsets,
+                 over that time plus the start and end offsets (_fit),
+                 the component the change's pick names reported (the
+                 click nearest the expected time, fixed when the change
+                 was made): a MAJOR processing change. Placed from the
+                 expected time, never the automatic apex, so a taller
+                 interference does not carry the fit. An isotope standard
+                 is never fitted; no expected time (SKIP_NO_TIME), an
+                 unset fit limit (in `limits`, _fit_limits), a fit the
+                 engine refuses (one collapsed among them), a residual
+                 over the limit or an interval wider than the area is
+                 skipped (Skipped) with its reason, as are fewer samples
+                 than the fit is made over (raw_review.fit_fewest:
+                 SKIP_FEW_POINTS); a fitted peak under the engine's
+                 detection floor reads not detected.
+    A processing change is not an analyst's edit: the smallest manual change
+    and the manual S/N floor never judge it, and the peak it makes is
+    automatic, its area named by the method's measure. The hard limits do
+    judge it: an injection that cannot take it raises Skipped and keeps its
+    automatic peak, for no detected apex to place the edges on
+    (SKIP_NO_APEX), an edge more than half a sample past either end of the
+    trace (SKIP_OUTSIDE), fewer samples between the edges than the
+    compound's fewest points in a peak or than the engine measures
+    (SKIP_FEW_POINTS), or a drop or a skim whose neighbours read past what
+    the stored trace holds at full resolution (SKIP_REACH; `kept(peak)`
+    gives those times [t0, t1] for the peak, as _keep_trace stores it; None
+    judges nothing). Any other refusal of the engine refuses the run with
+    its reason. The peak's change names who applied it and when."""
+    review = load("raw_review")
+    if rec["kind"] == "fit":
+        if a.get("labelled"):
+            raise Skipped(review.FIT_LABELLED_TEXT % where)
+        if expected is None:
+            raise Skipped(review.SKIP_NO_TIME)
+        anchor = expected
+    elif not auto.detected or auto.rt is None:
+        raise Skipped(review.SKIP_NO_APEX)
+    else:
+        anchor = auto.rt
+    start, end = anchor + rec["start_offset"], anchor + rec["end_offset"]
+    tt = np.asarray(t, dtype=float)
+    # an edge is placed on its nearest sample: one more than half a sample
+    # past an end of the trace has none, and is not moved onto the end
+    if len(tt) < 2 or start < tt[0] - (tt[1] - tt[0]) / 2 or end > tt[-1] + (tt[-1] - tt[-2]) / 2:
+        raise Skipped(review.SKIP_OUTSIDE)
+    # the samples between the edges, both included, each edge on its nearest
+    # sample: as a manual peak's are counted, against the fewest the
+    # engine measures (raw_review.ENGINE_FEWEST)
+    adaptive = isinstance(settings, ri.AdaptiveSettings)
+    points = int(np.argmin(abs(tt - end))) - int(np.argmin(abs(tt - start))) + 1
+    fewest = review.ENGINE_FEWEST["adaptive" if adaptive else "classic"]
+    if rec["kind"] == "fit":
+        fewest = max(fewest, review.fit_fewest(rec["shape"], len(rec["apex_offsets"])))
+    if points < max(int(_review_rules(a)["min_peak_points"]), fewest):
+        raise Skipped(review.SKIP_FEW_POINTS)
+    stamp = [(k, rec[k]) for k in ("by", "at", "from") if rec.get(k)]
+    if rec["kind"] == "fit":
+        apexes = [anchor + off for off in rec["apex_offsets"]]
+        peak = _fit(t, y, start, end, apexes, rec["shape"], rec["pick"], (limits or {}).get("fit_noise_multiple"),
+                    auto.noise, Skipped, settings.min_sn, alone=bool(rec.get("alone")))
+        # a detected fitted peak drops the automatic call's note (such as no
+        # peak above the floor); one under the floor says so itself
+        return dataclasses.replace(
+            peak, engine=auto.engine, smoothing=auto.smoothing, smoothing_from=auto.smoothing_from,
+            processing=dict([(k, rec[k]) for k in ("kind", "start_offset", "end_offset", "shape", "apex_offsets",
+                                                     "pick", "alone") if rec.get(k) is not None] + [("expected", anchor)] + stamp))
+    baseline = rec["baseline"]
+    amp = _review_rules(a)["search_amp_sn"]
+    try:
+        if adaptive:
+            peak = _adaptive_between(t, y, start, end, settings, auto.smoothing, where, exclude, baseline,
+                                     auto.noise, None, amp)
+        else:
+            peak = ri.integrate_between(t, y, start, end, ri.with_baseline(settings, baseline), exclude,
+                                        auto.noise, amp=amp)
+    except ValueError as exc:
+        raise RawRunError("%s: the processing change cannot be measured: %s" % (where, exc))
+    if baseline in ("drop", "skim") and kept is not None and auto.noise is not None:
+        region = kept(peak)
+        reach = _reach(settings, auto, y)
+        if region is not None and reach is not None:
+            margin = _engine_fields(settings, auto)[1]
+            r0, r1 = reach(int(np.argmin(abs(tt - peak.start))), int(np.argmin(abs(tt - peak.end))))
+            if tt[max(r0 - margin, 0)] < region[0] or tt[min(r1 + margin, len(tt) - 1)] > region[1]:
+                raise Skipped(review.SKIP_REACH)
+    return dataclasses.replace(
+        peak, method=ri.area_method(settings, refused=peak.fit_note is not None), note=auto.note,
+        smoothing_from=auto.smoothing_from,
+        processing=dict([("kind", rec["kind"]), ("start_offset", rec["start_offset"]),
+                         ("end_offset", rec["end_offset"]), ("baseline", baseline)] + stamp))
+
+
+def _processed_or_skipped(rec, auto, t, y, settings, a, where, exclude, kept=None, limits=None, expected=None):
+    """_processed's peak, or the automatic peak marked with why this
+    injection did not take the change."""
+    try:
+        return _processed(rec, auto, t, y, settings, a, where, exclude, kept, limits, expected)
+    except Skipped as exc:
+        return dataclasses.replace(auto, processing_skipped=str(exc))
+
+
+def _region_of(xy, settings, a, rt, search, choices):
+    """A function of a processed peak giving the times its trace, stored as
+    _keep_trace stores it, holds at full resolution: the peak's span first,
+    then its window about `rt` (the expected time searched; None the
+    configured one), the span `search`ed and the candidates offered beside
+    it (`choices()`, read only when asked, so the result is the same
+    whether or not the run's traces are kept)."""
+    centre = a["rt"] if rt is None else rt
+
+    def region(peak):
+        found = choices()
+        offered = _offered(found, peak)[0] if found else ()
+        window = (centre - a["window"], centre + a["window"])
+        return _kept(xy, settings, peak, _stored_spans(window, peak, None, search, offered))[3]
+    return region
+
+
 def _quant_choices(t, y, a, searched, own, smooth, exclude, rules=None):
     """A quantifier's candidates (_choices), found as its automatic peak
     was: about its expected time (`searched` where relative retention moved
@@ -943,7 +1333,7 @@ def _qual_floor(a, settings, confirm_min):
 
 def _qual_peaks(traces, analytes, name, peak, settings, smooth=None, confirm_min=None, rt=None,
                 edits=None, autos=None, where=None, review=None, rules=None, unapplied=None,
-                partner_peak=None):
+                partner_peak=None, processing=None, limits=None):
     """[(transition, qualifier peak or None)]: each qualifier integrated at
     the quantifier's apex (None when the quantifier has no peak); a summed
     analyte's qualifier is summed as its quantifier is, over the same group
@@ -967,7 +1357,14 @@ def _qual_peaks(traces, analytes, name, peak, settings, smooth=None, confirm_min
     trace kept for review; the candidates are the ones an apex choice is
     replayed among, of a single peak only, at the compound's candidate
     floor (_candidate_floor over the method's `rules`), and a qualifier not
-    read has neither."""
+    read has neither.
+
+    `processing` {transition label: change} are the run's processing
+    changes of the qualifiers ("Apply to all"), each applied (_processed)
+    to the qualifier's automatic peak on its own apex before its edit is
+    replayed, so an edit keeps its manual peak over the processed one; an
+    injection that cannot take a change keeps the automatic peak, marked
+    with why. `limits` judge a fit (_fit_limits)."""
     mzml = load("raw_mzml")
     out = []
     a = analytes[name]
@@ -1006,10 +1403,18 @@ def _qual_peaks(traces, analytes, name, peak, settings, smooth=None, confirm_min
                 choices = _choices(t, y, peak.rt, tol, settings, exclude, _candidate_floor(a, rules))
             if review is not None:
                 review[_label(q)] = (settings, choices, (peak.rt - tol, peak.rt + tol))
+            change = (processing or {}).get(_label(q))
+            if change is not None:
+                qp = _processed_or_skipped(
+                    change, qp, t, y, settings, a, "%s, qualifier %s" % (where or name, _label(q)), exclude,
+                    _region_of((t, y), settings, a, rt, (peak.rt - tol, peak.rt + tol),
+                               functools.partial(_choices, t, y, peak.rt, tol, settings, exclude,
+                                                 _candidate_floor(a, rules)) if single else lambda: None),
+                    limits, _search_time(a, rt))
             if edit is not None:
                 try:
                     made = _replay(edit, qp, t, y, settings, a, "%s, qualifier %s" % (where or name, _label(q)),
-                                   exclude, choices if edit["kind"] == "apex" else None)
+                                   exclude, choices if edit["kind"] == "apex" else None, limits)
                 except Unapplied as exc:
                     if unapplied is not None:
                         unapplied[_label(q)] = str(exc)
@@ -1071,6 +1476,22 @@ def _peak_record(a, peak, revision):
         value = getattr(peak, key)
         if value is not None:
             rec[key] = _finite(value) if isinstance(value, float) else value
+    # the height over the baseline, the drop line's shared edge, the
+    # baseline's levels and valley share, and the peak scored under each
+    # fitting method: written only when present, so an older record reads
+    for key in ("height", "valley_share", "levels", "drop_rt", "fit_scores"):
+        value = getattr(peak, key)
+        if value is not None:
+            rec[key] = _clean(value)
+    # a change applied to every injection: the change the peak was measured
+    # by, or why this injection kept its automatic peak (_processed)
+    for key in ("processing", "processing_skipped"):
+        value = getattr(peak, key)
+        if value is not None:
+            rec[key] = value
+    # a fitted peak: the fit it was separated by, so its value can be reproduced
+    if peak.fit is not None:
+        rec["fit"] = peak.fit
     return rec
 
 
@@ -1095,7 +1516,9 @@ def _line_of(edit, peak):
     """The line a replayed edit measured its peak on, {"baseline",
     "levels"?}: the peak's own (the edit's, else the method's), with the
     levels set by hand; {} for a deletion or another apex as found."""
-    if edit["kind"] == "delete" or (edit["kind"] == "apex" and not edit.get("baseline")) or peak is None:
+    # a fit is measured on its own fitted line, kept in its record
+    if (edit["kind"] in ("delete", "fit") or (edit["kind"] == "apex" and not edit.get("baseline"))
+            or peak is None):
         return {}
     out = {"baseline": peak.baseline or edit.get("baseline")}
     if peak.levels is not None:
@@ -1105,12 +1528,13 @@ def _line_of(edit, peak):
 
 def _unapplied_record(edit, why):
     """An edit kept with no effect, as a row's record names it."""
-    return dict([(k, edit[k]) for k in ("kind", "start", "end", "apex", "baseline", "levels", "by", "at")
+    return dict([(k, edit[k]) for k in ("kind", "start", "end", "apex", "baseline", "levels", "shape", "apexes",
+                                        "pick", "alone", "by", "at")
                  if edit.get(k) is not None] + [("why", why)])
 
 
 def _provenance(a, peak, revision, auto=None, override=None, quant=None, file_transition=None,
-                qual_edits=None, qual_deleted=None, unapplied=None):
+                qual_edits=None, qual_deleted=None, unapplied=None, qual_processing=None):
     rec = _peak_record(a, peak, revision)
     if file_transition:
         rec["file_transition"] = file_transition     # the file's transition, where it differs from the configured one
@@ -1135,6 +1559,10 @@ def _provenance(a, peak, revision, auto=None, override=None, quant=None, file_tr
         # the qualifiers whose peak the analyst deleted beside a quantifier
         # peak: the identification is not confirmed (qc_engine.qualifiers_deleted)
         rec["qual_deleted"] = qual_deleted
+    if qual_processing:
+        # the qualifiers a processing change made the peak of, each with its
+        # change: the ion ratio is read on them
+        rec["qual_processing"] = qual_processing
     return "raw:" + json.dumps(rec, sort_keys=True)
 
 
@@ -1142,7 +1570,8 @@ def _qual_edit_record(a, label, edit, auto, peak, revision, unapplied=None):
     """A qualifier's edit on the row's record: the edit, its automatic and
     its edited peak, the line it was measured on; an edit kept with no
     effect says why ("unapplied") and has no automatic peak beside it."""
-    rec = dict((k, edit[k]) for k in ("kind", "start", "end", "baseline", "levels", "by", "at", "reason")
+    rec = dict((k, edit[k]) for k in ("kind", "start", "end", "baseline", "levels", "shape", "apexes", "pick", "alone", "by",
+                                      "at", "reason")
                if k in edit)
     if edit.get("apex") is not None:
         rec["chosen_apex"] = edit["apex"]
@@ -1190,10 +1619,112 @@ def overrides_path(manifest_path):
     return os.path.splitext(manifest_path)[0] + ".overrides.json"
 
 
+def processing_path(manifest_path):
+    """The run's processing changes ("Apply to all"), beside its record:
+    the add-on writes it, the worker only reads it."""
+    return os.path.splitext(manifest_path)[0] + ".processing.json"
+
+
+def _processings(proc, analytes):
+    """({analyte: change} of the quantifiers, {analyte: {transition label:
+    change}} of the qualifiers): the run's processing file
+    (raw_review.read_processing's whole dict) read through the add-on's
+    record (raw_review.processing_of). A file of another version, a key or
+    change that cannot be read, an analyte the run does not hold, a
+    transition it does not have, two keys for one quantifier, or a compound
+    that is not a single peak refuse the run, naming the key."""
+    review = load("raw_review")
+    if not proc:
+        return {}, {}
+    if proc.get("version") != review.PROCESSING_VERSION or not isinstance(proc.get("traces"), dict):
+        raise RawRunError("The run's processing changes cannot be read: the file is not one of version %d"
+                          % review.PROCESSING_VERSION)
+    quant, quals, keys = {}, {}, {}
+    for key in sorted(proc["traces"]):
+        try:
+            n, label = review.parse_processing_key(key)
+            change = review.processing_of(proc["traces"][key])
+        except ValueError as exc:
+            raise RawRunError("The processing change %s cannot be applied: %s" % (key, exc))
+        if n not in analytes:
+            raise RawRunError("A processing change names %s, which this run does not hold" % n)
+        a = analytes[n]
+        mode = a.get("mode") or "single"
+        if mode != "single":
+            # a pair or a summed peak is split or summed with its partner: no
+            # one apex places its edges
+            raise RawRunError("The processing change %s cannot be applied: %s is %s, not a single peak"
+                              % (key, n, mode))
+        if label is None or label == _label(a["quant"]):
+            if n in quant:
+                raise RawRunError("The processing changes %s and %s both name %s's quantifier" % (keys[n], key, n))
+            quant[n], keys[n] = change, key
+        elif label in [_label(q) for q in a.get("quals") or []]:
+            quals.setdefault(n, {})[label] = change
+        else:
+            raise RawRunError("The processing change %s cannot be applied: %s has no transition %s"
+                              % (key, n, label))
+    return quant, quals
+
+
+def _run_smoothing(proc, analytes):
+    """The analytes with the run's smoothing changes (the processing file's
+    "smoothing", raw_review.read_processing) set as each compound's own
+    smoothing, before its settings are read (settings_for): {analyte:
+    analyte entry}, copied where changed, the method's entries never
+    altered. Every trace of the compound is then smoothed over that window
+    in every injection, and its learnt width is not used; an analyst's edit
+    is replayed on it as before, keeping its edges. A change that cannot be
+    read, one naming an analyte the run does not hold, or one of a pair or
+    summed compound (split or summed with its partner) refuses the run."""
+    smoothing = (proc or {}).get("smoothing")
+    if not smoothing:
+        return analytes
+    if not isinstance(smoothing, dict):
+        raise RawRunError("The run's smoothing changes cannot be read")
+    review = load("raw_review")
+    out = dict(analytes)
+    for n in sorted(smoothing):
+        try:
+            change = review.processing_of(smoothing[n])
+            if change["kind"] != review.SMOOTHING_KIND:
+                raise ValueError("it is not a smoothing change")
+        except ValueError as exc:
+            raise RawRunError("The smoothing change %s cannot be applied: %s" % (n, exc))
+        if n not in analytes:
+            raise RawRunError("A smoothing change names %s, which this run does not hold" % n)
+        mode = analytes[n].get("mode") or "single"
+        if mode != "single":
+            raise RawRunError("The smoothing change %s cannot be applied: %s is %s, not a single peak"
+                              % (n, n, mode))
+        a = dict(analytes[n])
+        a["settings"] = dict(a.get("settings") or {}, smooth_points=change["points"])
+        # each stored trace of the compound names the change it was smoothed
+        # by, so the review waits on a run not yet processed with the file's
+        a["smoothing_change"] = change
+        out[n] = a
+    return out
+
+
+def _mark_from_method(quant, quals, keys):
+    """Each change taken from the method's entry (`keys`, processing keys)
+    says so: "from": "method" on the peak's processing, its parentage, and
+    the review never waits on it as on an undone change of the run."""
+    review = load("raw_review")
+    for key in keys:
+        n, label = review.parse_processing_key(key)
+        change = quant.get(n) if label is None else (quals.get(n) or {}).get(label)
+        if change is None and label is not None:
+            # a qualifier named by the quantifier's transition is the quantifier
+            change = quant.get(n)
+        if change is not None:
+            change["from"] = "method"
+
+
 # the automatic peak's measures an edited trace keeps beside the manual one
 AUTO_MEASURES = ("start", "end", "base_start", "base_end", "area")
 # what the record keeps of the analyst's edit
-EDIT_FIELDS = ("kind", "by", "at", "apex", "baseline", "levels", "version")
+EDIT_FIELDS = ("kind", "by", "at", "apex", "baseline", "levels", "shape", "apexes", "pick", "alone", "version")
 
 
 def _offered(choices, auto):
@@ -1257,9 +1788,51 @@ def _reach(settings, found, y):
     return reach
 
 
+def _stored_spans(window, peak, auto=None, search=None, offered=()):
+    """The (t0, t1) spans a stored trace keeps at full resolution: the
+    peak's own first (the automatic and the manual peak's, as one), as past
+    the size limit the rest is cut back around it; then its `window`, the
+    span it was searched in and each candidate `offered`."""
+    own = [p for p in (peak, auto) if p is not None and p.start is not None]
+    spans = [(min(p.start for p in own), max(p.end for p in own))] if own else []
+    # a fitted peak's whole fitted span, so the fit can be drawn and judged
+    # on the points it was made over
+    spans += [tuple(p.fit["span"]) for p in (peak, auto) if p is not None and p.fit]
+    return spans + [tuple(window)] + ([tuple(search)] if search else []) + [(c.start, c.end) for c in offered]
+
+
+def _kept(xy, settings, found, spans):
+    """(t, y, full_res, full_res_reach) of the trace `xy` as stored for
+    `spans` (raw_traces.keep_reach) on its engine: `settings` the trace's
+    own, `found` the peak whose smoothing a drop's or a skim's neighbours
+    are walked at (_reach)."""
+    margin, window = ri.EDGE_POINTS, 0
+    if settings is not None:
+        _fields, margin, window = _engine_fields(settings, found)
+    return load("raw_traces").keep_reach(xy[0], xy[1], spans, margin, window, _reach(settings, found, xy[1]))
+
+
+def _with_review_measures(xy, a, peak, auto, settings, limits, neighbours, choices):
+    """The quantifier peak with its drop line's shared edge and the
+    automatic peak scored under each fitting method, for the review. A
+    summed peak has no single apex to score, and a peak not detected has no
+    edges. `neighbours` are the (start, end) of peaks beside it; the
+    candidates of its window count too."""
+    t = xy[0]
+    others = list(neighbours) + [(c.start, c.end) for c in (choices or []) if c.detected]
+    peak = dataclasses.replace(peak, drop_rt=_drop_rt(peak, t, others, isinstance(settings, ri.AdaptiveSettings)))
+    found = auto if auto is not None else peak
+    if (settings is None or a.get("mode") == "summed" or not found.detected or found.rt is None
+            or found.start is None):
+        return peak
+    amp = _review_rules(a)["search_amp_sn"]
+    return dataclasses.replace(peak, fit_scores=_fit_scores(t, xy[1], found, settings, limits,
+                                                            bool(a.get("labelled")), amp))
+
+
 def _keep_trace(out, inj, name, q, role, xy, a, peak, revision, linked, file_transition=None,
                 auto=None, settings=None, edit=None, choices=None, search=None, unapplied=None,
-                members=None):
+                members=None, skipped=None, expected=None, limits=None, neighbours=()):
     """One trace with its peak for review. `auto` is the automatic peak an
     edit replaced: its noise sigma is the trace's, so a manual peak's S/N
     is judged against the noise the automatic call read. `settings` are the
@@ -1280,48 +1853,58 @@ def _keep_trace(out, inj, name, q, role, xy, a, peak, revision, linked, file_tra
     (raw_traces.keep_reach). An
     edit kept but not applied (`unapplied`, why) is still "manual", with
     that reason and no automatic peak: the review reads it as having no
-    effect rather than as waiting for the run. Every number is finite, so
-    the record is JSON."""
-    rt = load("raw_traces")
+    effect rather than as waiting for the run. A processing change shows
+    where it acted: on the peak, or on "auto" under an edit; `skipped` is
+    why a trace with no peak did not take one. `expected` is the time its
+    peak was searched about ("expected_rt", after any relative-retention
+    shift): a fit applied to all is placed from it. Every number is
+    finite, so the record is JSON."""
+    if peak is not None and role == "quant":
+        peak = _with_review_measures(xy, a, peak, auto, settings, limits, neighbours, choices)
     rec = _peak_record(a, peak, revision) if peak is not None else {
         "window": [a["rt"] - a["window"], a["rt"] + a["window"]]}
+    if peak is None and skipped:
+        rec["processing_skipped"] = skipped
     found = auto if auto is not None else peak
     if found is not None and found.noise is not None:
         rec["sigma"] = _finite(float(found.noise))
     if file_transition:
         rec["file_transition"] = file_transition
     rec["linked_is"] = linked                      # the standard it was quantified on
+    if a.get("smoothing_change"):
+        rec["smoothing_change"] = dict(a["smoothing_change"])   # the run's smoothing (_run_smoothing)
+    if expected is not None:
+        rec["expected_rt"] = _finite(float(expected))
     if members:
         rec["linked_members"] = list(members)      # a composite's, averaged
-    # the peak's own span first (the automatic and the manual peak's, as one):
-    # past the size limit the rest is cut back around it
-    own = [p for p in (peak, auto) if p is not None and p.start is not None]
-    spans = [(min(p.start for p in own), max(p.end for p in own))] if own else []
-    spans += [tuple(rec["window"])] + ([tuple(search)] if search else [])
-    margin, window = ri.EDGE_POINTS, 0
     if settings is not None:
-        fields, margin, window = _engine_fields(settings, found)
-        rec.update(fields)
+        rec.update(_engine_fields(settings, found)[0])
+        # the trace's detection floor: a fitted peak under it reads not
+        # detected (raw_integrate.fitted_peak), which the card's preview says
+        rec["min_sn"] = _finite(float(settings.min_sn))
         if edit is not None and auto is not None and edit.get("baseline"):
             # the edit's baseline, where the edit was replayed
             rec["baseline"] = edit["baseline"]
+    offered = ()
     if choices is not None:
         offered, cut = _offered(choices, auto if auto is not None else peak)
         rec["candidates"] = [dict((k, _finite(v)) for k, v in ri.as_candidate(c, *xy).items()) for c in offered]
         if cut:
             rec["candidates_cut"] = cut
-        spans += [(c.start, c.end) for c in offered]
     if edit is not None and auto is not None:
         rec["manual"] = dict((k, edit[k]) for k in EDIT_FIELDS if edit.get(k) is not None)
         rec["auto"] = dict([(k, _finite(getattr(auto, k))) for k in AUTO_MEASURES]
-                           + [("apex", _finite(auto.rt)), ("sn", _finite(auto.sn))])
+                           + [("apex", _finite(auto.rt)), ("sn", _finite(auto.sn))]
+                           # the automatic peak a processing change made, or why it kept its own
+                           + [(k, getattr(auto, k)) for k in ("processing", "processing_skipped")
+                              if getattr(auto, k) is not None])
         if edit["kind"] == "delete":
             rec["deleted"] = True
     elif edit is not None and unapplied:
         rec["manual"] = dict([(k, edit[k]) for k in EDIT_FIELDS if edit.get(k) is not None]
                              + [("unapplied", unapplied)])
-    t, y, rec["full_res"], rec["full_res_reach"] = rt.keep_reach(xy[0], xy[1], spans, margin, window,
-                                                                 _reach(settings, found, xy[1]))
+    t, y, rec["full_res"], rec["full_res_reach"] = _kept(xy, settings, found,
+                                                         _stored_spans(rec["window"], peak, auto, search, offered))
     if rec.get("candidates") and rec["full_res"]:
         # past the size limit the stretch is cut back around the peak's own
         # span: a candidate it no longer holds is not offered, as its edges
@@ -1387,7 +1970,14 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
     if not injections:
         raise RawRunError("The run record lists no injections")
     settings = integration["method"]
-    analytes = integration["analytes"]
+    # the run's processing changes ("Apply to all"), read before any peak
+    # is found: a compound's smoothing changed for the run is its smoothing
+    # from the start. The worker only reads the file, which the add-on writes.
+    try:
+        proc = load("raw_review").read_processing(processing_path(manifest_path))
+    except ValueError as exc:
+        raise RawRunError(str(exc))
+    analytes = _run_smoothing(proc, integration["analytes"])
     revision = integration.get("revision")
     # a qualifier's floor when its compound sets none
     confirm_min = integration.get("sn_confirm_min")
@@ -1428,6 +2018,41 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                 searched[(inj["name"], n)] = rt
             notes[(inj["name"], n)] = note
             peaks[(inj["name"], n)] = found(inj["name"], n, rt, note)
+    # a change applied to every injection of a trace ("Apply to all") is
+    # placed on each injection's own automatic apex and measured before the
+    # analyst's edits: an edited trace keeps its manual peak over it, and an
+    # injection that cannot take it keeps its automatic peak, saying why.
+    # the method's own processing entry (countersigned from a run) takes
+    # each trace the run's file holds no change of, through the same path;
+    # the run's own change wins. Merged here only: the file is never written
+    proc, from_method = load("method_proposals").with_method_processing(
+        proc, dict((n, a.get("processing")) for n, a in analytes.items() if a.get("processing")))
+    processing, qual_processing = _processings(proc, analytes)
+    _mark_from_method(processing, qual_processing, from_method)
+    processed = set()
+    for (inj_name, n) in sorted(k for k in peaks if k[1] in processing):
+        a = analytes[n]
+        xy = chroms[inj_name][n][mzml.transition_key(*a["quant"])]
+        own = settings_for(a, settings, n)
+        rt = searched.get((inj_name, n))
+        exclude = _partner_span(analytes, n, rt)
+        region = _region_of(xy, _smoothed(own, smooth_of(inj_name, n))[0], a, rt, None,
+                            functools.partial(_quant_choices, xy[0], xy[1], a, rt, own, smooth_of(inj_name, n),
+                                              exclude, rules))
+        p = peaks[(inj_name, n)] = _processed_or_skipped(processing[n], peaks[(inj_name, n)], xy[0], xy[1], own, a,
+                                                         "%s / %s" % (inj_name, n), exclude, region,
+                                                         _fit_limits(a, integration), _search_time(a, rt))
+        if p.processing:
+            processed.add((inj_name, n))
+    # a summed peak beside a processed partner is summed again, as beside a
+    # re-integrated one (below), so no area is counted in both rows
+    for (inj_name, n) in sorted(processed):
+        for b in sorted(analytes):
+            if analytes[b].get("partner") == n and analytes[b].get("mode") == "summed":
+                p = found(inj_name, b, searched.get((inj_name, b)), notes.get((inj_name, b)))
+                fitted = (peaks[(inj_name, n)].processing or {}).get("kind") == "fit"
+                p.note = (p.note + "; " if p.note else "") + (RESUMMED_FITTED if fitted else RESUMMED_PROCESSED)
+                peaks[(inj_name, b)] = p
     # the analyst's edits replace those peaks, every time the run is processed
     overrides = load("raw_review").read_overrides(overrides_path(manifest_path))
     edits, qual_edits = _edits(overrides, analytes, peaks)
@@ -1444,7 +2069,8 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
             choices = _quant_choices(t, y, a, searched.get((inj_name, n)), own, smooth_of(inj_name, n), exclude,
                                      rules)
         try:
-            peaks[(inj_name, n)] = _replay(edit, auto, t, y, own, a, "%s / %s" % (inj_name, n), exclude, choices)
+            peaks[(inj_name, n)] = _replay(edit, auto, t, y, own, a, "%s / %s" % (inj_name, n), exclude, choices,
+                                           _fit_limits(a, integration))
         except Unapplied as exc:
             unapplied[(inj_name, n)] = str(exc)
             continue
@@ -1464,7 +2090,8 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
             if (analytes[b].get("partner") == n and analytes[b].get("mode") == "summed"
                     and ((inj_name, b) not in edits or (inj_name, b) in unapplied)):
                 p = found(inj_name, b, searched.get((inj_name, b)), notes.get((inj_name, b)))
-                p.note = (p.note + "; " if p.note else "") + RESUMMED
+                p.note = (p.note + "; " if p.note else "") + (
+                    RESUMMED_FITTED if edits[(inj_name, n)]["kind"] == "fit" else RESUMMED)
                 peaks[(inj_name, b)] = p
 
     def std_of(n):
@@ -1742,7 +2369,8 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
             q_review = {} if traces is not None else None
             quals = _qual_peaks(chroms[name][n], analytes, n, p, settings, smooth_of(name, n), confirm_min,
                                 searched.get((name, n)), q_edits, q_autos, "%s / %s" % (name, n), q_review,
-                                rules, q_why, peaks.get((name, analytes[n].get("partner"))))
+                                rules, q_why, peaks.get((name, analytes[n].get("partner"))),
+                                qual_processing.get(n), _fit_limits(a, integration))
             # a qualifier is read only beside a quantifier peak: with none, its
             # edit is kept on the trace as one with no effect, saying why
             if not (p.detected and p.area):
@@ -1776,12 +2404,20 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                             _smoothed(own, smooth_of(name, n))[0], edits.get((name, n)),
                             _quant_choices(xy[0], xy[1], analytes[n], searched.get((name, n)), own, smooth_of(name, n),
                                            _partner_span(analytes, n, searched.get((name, n))), rules),
-                            unapplied=unapplied.get((name, n)), members=composites.get(surrogate_map.get(n)))
+                            unapplied=unapplied.get((name, n)), members=composites.get(surrogate_map.get(n)),
+                            expected=_search_time(a, searched.get((name, n))),
+                            limits=_fit_limits(a, integration),
+                            neighbours=([(pp.start, pp.end)] if (pp := peaks.get((name, a.get("partner"))))
+                                        is not None and pp.detected and pp.start is not None else []))
                 for q, qp in quals:
                     q_settings, q_choices, q_search = q_review.get(_label(q), (None, None, None))
                     _keep_trace(traces, name, n, q, "qual", chroms[name][n][mzml.transition_key(*q)], a, qp, revision,
                                 surrogate_map.get(n), renamed[name][n].get(mzml.transition_key(*q)), q_autos.get(_label(q)),
-                                q_settings, q_edits.get(_label(q)), q_choices, q_search, q_why.get(_label(q)))
+                                q_settings, q_edits.get(_label(q)), q_choices, q_search, q_why.get(_label(q)),
+                                # a qualifier not read beside no quantifier peak has no apex for a change
+                                skipped=(load("raw_review").SKIP_NO_APEX
+                                         if _label(q) in qual_processing.get(n, {}) else None),
+                                expected=_search_time(a, searched.get((name, n))))
             rows.append(InstrumentRow(
                 compound_name=_row_name(n), compound_type="Internal Standard" if a.get("labelled") else "Analyte",
                 compound_group="",
@@ -1867,7 +2503,9 @@ def load_raw_run(manifest_path, integration, cal_rule, surrogate_map, traces=Non
                                          renamed[name][n].get(mzml.transition_key(*a["quant"])), q_records,
                                          q_marker,
                                          _unapplied_record(edits[(name, n)], unapplied[(name, n)])
-                                         if (name, n) in unapplied else None),
+                                         if (name, n) in unapplied else None,
+                                         dict((_label(q), qp.processing) for q, qp in quals
+                                              if qp is not None and qp.processing)),
                 ratio_held=held,
                 manual_integration=True if (name, n) in edits or q_edits else None,
                 manual_changes=_manual_changes(edits.get((name, n)), q_edits, p, unapplied.get((name, n)),

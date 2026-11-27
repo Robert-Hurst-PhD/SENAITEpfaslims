@@ -9,6 +9,10 @@ list -- the plan -- taken when the session starts:
     session["plan"] = {"method_id", "revision", "fingerprint", "taken_at",
                        "stages": [the method's extraction stages, as they were]}
 
+"revision" is the method revision's label ("4.1", method_revisions.label);
+a plan taken before major.sub holds an integer, kept as it is (a batch
+record's hash binds it) and read as "N.0".
+
 Everything that reads a session's stages reads them through stages_for():
 the session's plan when it has one, else the method's stages now (a session
 started before plans existed). A manager may then reorder, rename or
@@ -62,13 +66,15 @@ NOT_RECORDED = u"Not recorded"
 
 def revision_words(session):
     """The method revision a record names, in words: the number it was
-    started under; "Not issued" when the method's settings had no issued
+    started under, major.sub (an integer stored before major.sub reads
+    "N.0", method_revisions.revision_text); "Not issued" when the method's settings had no issued
     revision in force at the start (none issued yet, or changed since the
     last one); "Not recorded" for a session that kept no plan when it
     started. Never a number the record does not hold."""
     plan = (session or {}).get(PLAN) or {}
     if plan.get("revision") is not None:
-        return u"%s" % plan["revision"]
+        from senaite.pfas.method_revisions import revision_text
+        return revision_text(plan["revision"])
     if has_plan(session) and not plan.get("backfilled"):
         return NOT_ISSUED
     return NOT_RECORDED

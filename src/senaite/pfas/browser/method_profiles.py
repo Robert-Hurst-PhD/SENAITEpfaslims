@@ -27,6 +27,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import refuse
+from senaite.pfas import method_proposals as mp
 from senaite.pfas.html_text import escape
 from senaite.pfas.method_profile_store import (
     get_profile,
@@ -49,11 +50,31 @@ def _require_manager(context, request):
     return require_manager(context, request)
 
 
+def _qa_approver(context):
+    """True when the signed-in person holds the QA approver sign right in
+    People & Roles: they countersign or refuse a change proposed from a
+    run. False when their record cannot be read."""
+    try:
+        from AccessControl import getSecurityManager
+        from senaite.pfas.browser import staff
+        userid = getSecurityManager().getUser().getId()
+        return "qa_approver" in (staff.staff_info(userid).get("sign_as") or ())
+    except Exception:                                       # noqa: BLE001
+        logger.warning("QA approver right unread", exc_info=True)
+        return False
+
+
 def _may_read(context, request):
     """A manager in any way; the read-only inspector by GET or HEAD, the
-    pages drawn view-only for it (perms.may_read_config)."""
+    pages drawn view-only for it (perms.may_read_config); and by GET or
+    HEAD, drawn view-only, the holder of the QA approver sign right, who
+    decides the changes proposed from a run there and edits nothing else."""
     from senaite.pfas.browser.perms import may_read_config
-    return may_read_config(context, request)
+    if may_read_config(context, request):
+        return True
+    getter = getattr(request, "get", None)
+    method = ((getter("REQUEST_METHOD") if getter else None) or "GET").upper()
+    return method in ("GET", "HEAD") and _qa_approver(context)
 
 
 def _portal(context):
@@ -193,7 +214,28 @@ class PFASMethodProfilesView(ViewHelpers, BrowserView):
             logger.warning("matrix consistency: %s", exc)
             return []
 
+    def issue_preview(self, mid):
+        """What issuing `mid` now makes: {"label": "4.1", "level": "sub",
+        "groups": ["Integration"]}; the level follows from what changed
+        since the last issued revision (method_revisions.next_issue)."""
+        from senaite.pfas import method_revisions as mr
+        from senaite.pfas.method_profile_store import raw_profile
+        from senaite.pfas.qc.rules import method_toggles
+        portal = _portal(self.context)
+        raw = raw_profile(portal, mid) or {}
+        return mr.issue_preview(mid, mr.records(portal, mid), raw, method_toggles(raw, mid))
+
+    @staticmethod
+    def issue_sentence(preview):
+        """The Issue dialog's line: "Issues revision 4.1: Integration
+        changed."; "Level not known." when the preview could not be made."""
+        from senaite.pfas import revision_level
+        return revision_level.sentence(preview or {}) if preview else u""
+
     def methods(self):
+        # read once per request: the table and its Issue dialogs share it
+        if getattr(self, "_methods", None) is not None:
+            return self._methods
         portal = _portal(self.context)
         from senaite.pfas.method_bridge import get_association, get_core_method
         # the stored profiles: a deleted method (a shipped one included) is
@@ -203,9 +245,11 @@ class PFASMethodProfilesView(ViewHelpers, BrowserView):
         from senaite.pfas.browser.settings_report_view import _shown_revision
         from senaite.pfas.method_profile_store import raw_profile
         from senaite.pfas.qc.rules import method_toggles
+        proposals = mp.load(portal)
         result = []
         for mid in all_ids:
             p = get_profile(portal, mid)
+            raw = raw_profile(portal, mid) or {}
             # _seeded=True means the profile was written by seed_default_profiles
             # and has not yet been edited by a user.
             # User-saved profiles don't include _seeded, so it defaults to False.
@@ -222,9 +266,13 @@ class PFASMethodProfilesView(ViewHelpers, BrowserView):
                 "linked_sampletypes": 0,
                 # issued revisions
                 "revision": _shown_revision(mr.status(mr.records(portal, mid), mr.fingerprints(
-                    raw_profile(portal, mid) or {},
-                    method_toggles(raw_profile(portal, mid) or {}, mid)))),
+                    raw, method_toggles(raw, mid)))),
             }
+            # changes proposed from a run, waiting for a countersign
+            row["pending"] = len(mp.pending(proposals, mid))
+            # what Issue revision would issue, for its dialog
+            row["issue"] = (self.issue_preview(mid) if row["revision"]["unissued"] and not self.read_only()
+                            else None)
             if get_association is not None:
                 assoc = get_association(portal, mid)
                 if assoc.get("method_uid"):
@@ -234,6 +282,7 @@ class PFASMethodProfilesView(ViewHelpers, BrowserView):
                     row["linked_services"] = len(assoc.get("service_uids", []))
                     row["linked_sampletypes"] = len(assoc.get("sampletype_uids", []))
             result.append(row)
+        self._methods = result
         return result
 
 
@@ -249,8 +298,24 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
         no Delete, no edit window; every write is refused below."""
         return not _require_manager(self.context, self.request)
 
+    # a proposed change's countersign and refusal: a manager, or the QA
+    # approver sign right without a manager's role (the handler asks)
+    PROPOSAL_DECISIONS = ("countersign_proposal", "refuse_proposal")
+    PROPOSAL_ACTIONS = {"countersign_proposal": "_countersign_proposal",
+                        "refuse_proposal": "_refuse_proposal",
+                        "withdraw_proposal": "_withdraw_proposal",
+                        # a manager's edit, as any other save
+                        "remove_processing": "_remove_processing"}
+
     def __call__(self):
         flatten_form(self.request)
+        if self.request.method == "POST" and self.request.form.get("action") in self.PROPOSAL_DECISIONS:
+            # the right is asked before anything is read: no proposal's
+            # state is told to one who may not decide it
+            rights = self._rights()
+            if not (rights["manager"] or rights["qa"]):
+                return refuse(self.request, mp.NO_RIGHT)
+            return getattr(self, self.PROPOSAL_ACTIONS[self.request.form["action"]])()
         # a manager reads and writes; the read-only inspector reads by GET
         # (the JSON reads below included) and posts nothing
         if not _require_manager(self.context, self.request):
@@ -268,6 +333,9 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
         if self.request.method == "POST":
             if self.request.form.get("action") == "delete_method":
                 return self._delete_method()
+            # withdraw and remove past the manager's gate above
+            if self.request.form.get("action") in self.PROPOSAL_ACTIONS:
+                return getattr(self, self.PROPOSAL_ACTIONS[self.request.form["action"]])()
             return self._handle_post()
         return self.template()
 
@@ -886,8 +954,9 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
         not hold: the reagent inventory's standard lots (salt CoA lots), the
         services, and the regulatory limits (Reporting tab)."""
         if getattr(self, "_section_env", None) is None:
-            from senaite.pfas import regulatory_limits
-            self._section_env = {"standard_lots": self.standard_lot_options(),
+            from senaite.pfas import fit_accept, regulatory_limits
+            self._section_env = {"fit_accept_default": fit_accept.load(_portal(self.context)),
+                                 "standard_lots": self.standard_lot_options(),
                                  "services": self._pfas_service_index(),
                                  "qc_codes": self._qc_codes(),
                                  "regulatory": regulatory_limits.get_store(_portal(self.context)),
@@ -1331,6 +1400,216 @@ class PFASMethodProfileEditView(ViewHelpers, BrowserView):
                             "types: %s", removed, sorted(disabled))
 
         return profile
+
+    # ── changes proposed from a run (method_proposals) ───────────────────────
+
+    def _userid(self):
+        """The person's user id as unicode: compared with the stored one."""
+        from AccessControl import getSecurityManager
+        from Products.CMFPlone.utils import safe_unicode
+        return safe_unicode(getSecurityManager().getUser().getId() or u"")
+
+    def _rights(self):
+        """{"manager", "qa"} of the person: a manager's role at the portal,
+        and the QA approver sign right in People & Roles (none when their
+        record cannot be read). Once per request."""
+        if not hasattr(self, "_rights_cache"):
+            self._rights_cache = {"manager": bool(_require_manager(self.context, self.request)),
+                                  "qa": _qa_approver(self.context)}
+        return self._rights_cache
+
+    def _proposal_form(self):
+        """(portal, method id, proposal id, now as a stored stamp), after the
+        form's authenticator is checked: a countersign writes its revision's
+        files before the end of the request, where plone.protect would."""
+        try:
+            from plone.protect import CheckAuthenticator
+            CheckAuthenticator(self.request)
+        except ImportError:
+            pass
+        from datetime import datetime
+        when = datetime.utcnow().replace(microsecond=0).isoformat()
+        return (_portal(self.context), self.method_id(), (self.request.form.get("proposal") or u"").strip(), when)
+
+    def pending_proposals(self):
+        """The changes proposed from a run waiting on this method, each
+        {"id", "trace", "change" (the Processing changes list's words),
+        "run", "run_url" (its Data Review, Integration Review tab), "who", "when",
+        "may_decide", "may_withdraw", "actions" (the row's menu)}."""
+        if hasattr(self, "_pending_cache"):
+            return self._pending_cache
+        from six.moves.urllib.parse import quote
+        from senaite.pfas import lab_time, raw_review, row_menu
+        from senaite.pfas.browser import staff
+        portal, mid = _portal(self.context), self.method_id()
+        rights, me = self._rights(), self._userid()
+        out = []
+        for p in mp.pending(mp.load(portal), mid) if mid else []:
+            src = p.get("source") or {}
+            try:
+                who = staff.staff_info(p["proposed_by"]).get("fullname") or p["proposed_by"]
+            except Exception:                               # noqa: BLE001
+                who = p["proposed_by"]
+            decide = bool(rights["manager"] or rights["qa"]) and p["proposed_by"] != me
+            withdraw = p["proposed_by"] == me
+            url = u"%s/worksheets/%s/@@pfas-data-review?tab=raw&mode=compound&analyte=%s" % (
+                portal.absolute_url(), src.get("worksheet") or u"", quote(p["analyte"].encode("utf-8"), safe=""))
+            out.append({"id": p["id"], "trace": mp.trace_text(p["analyte"], p.get("transition"), p.get("record")),
+                        "change": raw_review.processing_text(p["record"]),
+                        "run": u"%s, change %s" % (src.get("worksheet") or u"", src.get("change") or u""),
+                        "run_url": url, "who": who,
+                        "when": lab_time.show(p.get("proposed_at")) if p.get("proposed_at") else u"",
+                        "may_decide": decide, "may_withdraw": withdraw,
+                        "actions": row_menu.actions(
+                            (u"Open the run", "href", url),
+                            (u"Countersign", "modal", u"prop-cs-%s" % p["id"]) if decide else None,
+                            (u"Refuse", "modal", u"prop-rf-%s" % p["id"], {"danger": True}) if decide else None,
+                            (u"Withdraw", "modal", u"prop-wd-%s" % p["id"], {"danger": True}) if withdraw else None)})
+        self._pending_cache = out
+        return out
+
+    def countersign_sentence(self):
+        """What a countersign issues, for its dialog: "Issues revision
+        4.1." when the method has no other unissued change, else why it is
+        refused."""
+        from senaite.pfas import method_revisions as mr
+        from senaite.pfas.method_profile_store import raw_profile
+        from senaite.pfas.qc.rules import method_toggles
+        portal, mid = _portal(self.context), self.method_id()
+        raw = raw_profile(portal, mid) or {}
+        recs = mr.records(portal, mid)
+        if mr.status(recs, mr.fingerprints(raw, method_toggles(raw, mid)))["unissued"]:
+            return mp.UNISSUED
+        return u"Issues revision %d.%d." % mr.next_label(recs, "sub")
+
+    # the confirm Remove asks
+    REMOVE_CONFIRM = u"Remove the method's saved processing for %s?"
+
+    def method_processing(self):
+        """The processing changes the method holds as its own, each
+        {"trace", "change", "misfit" (why the compound can no longer take
+        it: the worker leaves it out), "actions" (Remove, a manager's)}:
+        applied to every run's trace that holds none."""
+        from senaite.pfas import raw_review, row_menu
+        raw = self._raw()
+        misfit = dict(((a, t), why) for a, t, why in mp.misfits(raw))
+        rows = ((raw.get("integration") or {}).get("analytes") or {})
+        out = []
+        for kw in sorted(rows):
+            entry = rows[kw].get("processing") if isinstance(rows[kw], dict) else None
+            if mp.empty_processing(entry):
+                continue
+            for transition, record in mp.saved_traces(entry):
+                try:
+                    words = raw_review.processing_text(raw_review.processing_of(record))
+                except ValueError:
+                    words = mp.UNREADABLE
+                trace = mp.trace_text(kw, transition)
+                remove = None if self.read_only() else (
+                    u"Remove", "form", "processing-remove",
+                    {"values": {"analyte": kw, "transition": transition or u""}, "danger": True,
+                     "confirm": self.REMOVE_CONFIRM % trace})
+                out.append({"trace": trace, "change": words, "misfit": misfit.get((kw, transition), u""),
+                            "actions": row_menu.actions(remove)})
+        return out
+
+    def _remove_processing(self):
+        """POST: a manager takes one saved processing change off its
+        compound: an ordinary profile edit (Config History; a sub revision
+        when issued)."""
+        try:
+            from plone.protect import CheckAuthenticator
+            CheckAuthenticator(self.request)
+        except ImportError:
+            pass
+        portal, mid = _portal(self.context), self.method_id()
+        f = self.request.form
+        transition = (f.get("transition") or u"").strip() or None
+        try:
+            profile = mp.without_entry(get_profile(portal, mid), (f.get("analyte") or u"").strip(), transition)
+        except ValueError as exc:
+            return self._redirect_error(mid, u"Not removed: %s" % exc, "pane-run")
+        profile.pop("_seeded", None)
+        save_profile(portal, mid, profile)
+        return self._redirect_saved(mid, "pane-run", note=u"Saved processing removed.")
+
+    def _countersign_proposal(self):
+        """POST: a different manager or QA officer countersigns a proposed
+        change. In one transaction it saves the change into the compound's
+        processing entry (Config History, as any save) and issues the sub
+        revision, whose record names the run and the change. Refused before
+        anything is saved: no right, the proposer, not waiting, the method
+        unable to take it, or other changes not yet issued (the revision
+        would be mislabelled); a refused issue aborts the whole countersign."""
+        import transaction
+        from senaite.pfas import method_revisions as mr
+        from senaite.pfas.browser.report_designs import DesignedReportError
+        from senaite.pfas.browser.settings_report_view import issue_revision
+        from senaite.pfas.method_profile_store import raw_profile
+        from senaite.pfas.qc.rules import method_toggles
+        portal, mid, pid, when = self._proposal_form()
+        pane, no = "pane-run", u"Not countersigned: "
+        data = mp.load(portal)
+        try:
+            p = mp.countersign(data, mid, pid, self._userid(), when, self._rights())
+        except ValueError as exc:
+            return self._redirect_error(mid, no + u"%s" % exc, pane)
+        raw = raw_profile(portal, mid) or {}
+        recs = mr.records(portal, mid)
+        if mr.status(recs, mr.fingerprints(raw, method_toggles(raw, mid)))["unissued"]:
+            return self._redirect_error(mid, no + mp.UNISSUED, pane)
+        try:
+            profile = mp.with_change(get_profile(portal, mid), p)
+        except ValueError as exc:
+            return self._redirect_error(mid, no + u"%s" % exc, pane)
+        # a countersigned profile is the lab's, no longer the installer's
+        profile.pop("_seeded", None)
+        save_profile(portal, mid, profile)
+        saved = raw_profile(portal, mid) or {}
+        # a processing entry is a sub change; a last revision kept with no
+        # snapshot grades every change major: issue that first
+        if mr.next_issue(mid, recs, saved, method_toggles(saved, mid))["level"] != "sub":
+            transaction.abort()
+            return self._redirect_error(mid, no + mp.NOT_SUB, pane)
+        from bika.lims import api
+        user = api.get_current_user()
+        who = (user.getProperty("fullname") or user.getId()) if user else u""
+        try:
+            rec = issue_revision(portal, mid, who, mp.revision_reason(p["source"]), source=p["source"])
+        except (ValueError, ImportError, DesignedReportError) as exc:
+            transaction.abort()
+            logger.warning("method %s: proposal %s not countersigned: %s", mid, pid, exc)
+            why = (u"PDF rendering (WeasyPrint) is not installed on this server." if isinstance(exc, ImportError)
+                   else u"%s" % exc)
+            return self._redirect_error(mid, no + u"the revision was not issued. " + why, pane)
+        p["revision"] = mr.label(rec)
+        mp.save(portal, data)
+        logger.info("method %s: proposal %s countersigned by %s, revision %s", mid, pid, who, p["revision"])
+        return self._redirect_saved(mid, pane, note=u"Countersigned: revision %s issued." % p["revision"])
+
+    def _refuse_proposal(self):
+        """POST: one who may countersign a proposed change refuses it, with
+        a reason. The profile is not touched."""
+        portal, mid, pid, when = self._proposal_form()
+        data = mp.load(portal)
+        try:
+            mp.refuse(data, mid, pid, self._userid(), when, self.request.form.get("reason"), self._rights())
+        except ValueError as exc:
+            return self._redirect_error(mid, u"Not refused: %s" % exc, "pane-run")
+        mp.save(portal, data)
+        return self._redirect_saved(mid, "pane-run", note=u"Proposed change refused.")
+
+    def _withdraw_proposal(self):
+        """POST: the person who proposed a change withdraws it, with a
+        reason. The profile is not touched."""
+        portal, mid, pid, when = self._proposal_form()
+        data = mp.load(portal)
+        try:
+            mp.withdraw(data, mid, pid, self._userid(), when, self.request.form.get("reason"))
+        except ValueError as exc:
+            return self._redirect_error(mid, u"Not withdrawn: %s" % exc, "pane-run")
+        mp.save(portal, data)
+        return self._redirect_saved(mid, "pane-run", note=u"Proposed change withdrawn.")
 
     def _redirect_saved(self, mid, pane="", note=u""):
         url = "{}/@@pfas-method-profile-edit?method_id={}&saved=1{}{}".format(

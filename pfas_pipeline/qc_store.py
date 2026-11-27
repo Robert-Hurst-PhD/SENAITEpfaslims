@@ -447,9 +447,11 @@ def _pk(kind, injection, analyte):
     return key(kind, injection, analyte)
 
 
-def persist_provenance(batch, db_path: str = None) -> int:
+def persist_provenance(batch, db_path: str = None, reprocess: bool = True) -> int:
     """Write the run's value-provenance records; replaces the batch's
-    previous ones, like every other per-batch table."""
+    previous ones, like every other per-batch table. A processing of the
+    same import (`reprocess`) first keeps the ion-ratio records it replaces
+    (qc_schema.keep_on_reprocess); a new import has kept them already."""
     from .provenance import rows_for_persist, PERSIST_COLUMNS
     path = db_path or DB_PATH
     rows = rows_for_persist(batch)
@@ -458,6 +460,12 @@ def persist_provenance(batch, db_path: str = None) -> int:
         have = {r[1] for r in conn.execute("PRAGMA table_info(value_provenance)")}
         if not have:
             return 0
+        # the ion-ratio verdicts this processing replaces are kept, so the
+        # review can say which samples changed verdict
+        if reprocess:
+            from .addon import load
+            load("qc_schema").keep_on_reprocess(conn, batch.batch_id,
+                                                datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"))
         conn.execute("DELETE FROM value_provenance WHERE batch_id=?", (batch.batch_id,))
         if rows:
             conn.executemany("INSERT INTO value_provenance (%s) VALUES (%s)" % (

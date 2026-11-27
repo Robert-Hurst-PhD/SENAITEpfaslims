@@ -18,6 +18,7 @@ from collections import OrderedDict
 from senaite.pfas import config_forms as cf
 from senaite.pfas import lab_time
 from senaite.pfas import calibration_fit as _cfit
+from senaite.pfas import method_proposals as _mp
 from senaite.pfas.qc_names import QC_NAMES
 from senaite.pfas.qc import rules as _rules
 
@@ -580,13 +581,16 @@ def unit_choices(profile, env=None):
 
 def core_sample_types():
     """Titles of the core Sample Types: a method's matrices are picked from
-    them (core owns the name). [] outside Plone."""
+    them (core owns the name). [] outside Plone, where no API with a
+    catalog tool is found."""
     try:
         from bika.lims import api
-        cat = api.get_tool("senaite_catalog_setup")
-        return sorted(set(b.getObject().Title() for b in cat(portal_type="SampleType", is_active=True)))
-    except ImportError:         # outside Plone
+    except ImportError:
         return []
+    if not hasattr(api, "get_tool"):
+        return []
+    cat = api.get_tool("senaite_catalog_setup")
+    return sorted(set(b.getObject().Title() for b in cat(portal_type="SampleType", is_active=True)))
 
 
 def matrix_choices(profile, env=None):
@@ -3136,6 +3140,12 @@ def _default_manual_change(profile, env=None):
     return _preview.DEFAULT_MIN_MANUAL_CHANGE_PCT
 
 
+def _lab_fit_accept_score(profile, env=None):
+    """What a blank score to accept a fit resolves to: the lab's default."""
+    from senaite.pfas import fit_accept
+    return (env or {}).get("fit_accept_default") or fit_accept.DEFAULT
+
+
 # a saved apex choice whose candidate a raised floor no longer offers is
 # kept with no effect, the trace automatic, until that choice is undone
 APEX_CHOICE_FLOOR = u"Raising it can leave a saved apex choice unapplied until it is undone."
@@ -3261,7 +3271,18 @@ INTEGRATION = cf.Section(
                      help=u"A re-integration or another apex that moves the area less than this "
                           u"from the automatic area is refused; a deleted peak is not"),
             cf.Field("min_manual_sn", u"Smallest S/N for a manual peak", greater_than=0,
-                     help=u"A re-integrated or chosen peak under it is refused; blank: not judged")]),
+                     help=u"A re-integrated or chosen peak under it is refused; blank: not judged"),
+            # the lab's own limit on a fit of overlapping peaks, the RMS of
+            # what it leaves over the trace's baseline noise: no default, and
+            # no fit is made until it is set
+            cf.Field("fit_noise_multiple", u"Largest fit residual, times the baseline noise", greater_than=0,
+                     help=u"A fit of overlapping peaks leaving more than this many times the baseline noise is "
+                          u"refused; blank: no fit is allowed"),
+            # a fit scoring this or more is accepted; it colours the score
+            # badge and gates nothing
+            cf.Field("fit_accept_score", u"Score to accept a fit", kind=cf.INT, minimum=1, maximum=100,
+                     resolved=_lab_fit_accept_score,
+                     help=u"A fit scoring this or more is accepted; blank uses the lab's default")]),
         # the rules the review applies when a baseline is dropped or a
         # candidate is offered: a blank is the default drawn muted in the box
         (u"Peak review: baseline and candidates", [
@@ -3354,6 +3375,10 @@ def write_integration(profile, updates, env=None):
     intg = dict(intg) if isinstance(intg, dict) else {}
     rows = dict(intg.get(u"analytes") or {})
     for (kw,), vals in updates.items():
+        # a compound's processing entry is set only by a countersigned
+        # proposal (method_proposals), never on this table: a save keeps it,
+        # and a row left with an empty one and nothing else is cleared
+        kept = (rows.get(kw) or {}).get(u"processing") if isinstance(rows.get(kw), dict) else None
         row = {}
         for (name,), value in vals.items():
             if value in (None, u"", cf.REMOVE):
@@ -3363,6 +3388,8 @@ def write_integration(profile, updates, env=None):
             elif name == u"quals":
                 value = [list(q) for q in transitions(value)]
             row[name] = value
+        if kept is not None and (row or not _mp.empty_processing(kept)):
+            row[u"processing"] = kept
         if row:
             rows[kw] = row
         else:
@@ -3426,7 +3453,9 @@ INTEGRATION_ANALYTES = cf.Table(
     # and qualifiers, its
     # qualifier detection S/N the method's confirmation value as the floor a
     # qualifier is found at (the method's value alone judges N.C.); a blank uses the
-    # default, shown muted in the empty cell
+    # default, shown muted in the empty cell. A row's "processing" entry, the
+    # processing changes countersigned from a run (method_proposals), is read
+    # only: no column edits it and write_integration keeps it
     columns=[cf.Field("smooth_points", u"Smoothing", kind=cf.INT, unit=u"points", words=[AUTO],
                       resolved=_method_default(u"smooth_points")),
              cf.Field("area", u"Area", kind=cf.CHOICE, choices=INTEGRATION_AREAS,

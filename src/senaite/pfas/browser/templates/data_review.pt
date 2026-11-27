@@ -306,14 +306,7 @@
          the server renders the active one; POST-back carries tab param) -->
     <nav class="pfas-seg pfas-seg-strip dr-tabs" aria-label="Review sections">
       <tal:tl tal:define="at view/active_tab;
-                          tabs python:(('?tab=overview', u'Overview', u''), ('?tab=coc', u'Chain of Custody', u''),
-                                       ('?tab=traceability', u'Traceability', u''),
-                                       ('?tab=extraction', u'Extraction', u'The guided extraction of this worksheet'),
-                                       ('?tab=qc_summary', u'Blanks', u''), ('?tab=calibration', u'Calibration', u''),
-                                       ('?tab=spike_qc', u'Spike QC', u'LFSM/LFSMD/LFB/LCS recovery + RPD'),
-                                       ('?tab=final_data', u'Final Data', u''), ('?tab=instrument_report', u'Instrument Report', u'')) +
-                                      ((('?tab=raw', u'Raw Data', u'The chromatograms this run was integrated from'),) if view.raw_available() else ()) +
-                                      (('?tab=compare', u'Comparison', u'The run imported both ways'),)">
+                          tabs view/shown_tabs">
         <a class="pfas-seg-item" tal:repeat="t tabs"
            tal:attributes="href python:t[0]; title python:t[2] or None;
                            aria-selected python:'true' if at == t[0][5:] else 'false'"
@@ -326,6 +319,21 @@
     <div class="dr-tab-pane"
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'overview' else 'dr-tab-pane'"
          tal:condition="python: view.active_tab() == 'overview'">
+
+      <!-- the raw run while the worker processes it: one line, the ring, the
+           band's words and the way to the tab; raw_data.js looks again every
+           few seconds and takes the line away once it is done -->
+      <div class="pfas-busy is-compact dr-busy" id="raw-busy-line" role="status"
+           tal:define="busy view/raw_progress"
+           tal:condition="python: busy and busy['state'] in ('first', 'edits')"
+           tal:attributes="data-status-url string:${view/ws_url}/@@pfas-data-review?raw_status=1;
+                           data-poll-ms busy/poll_ms">
+        <span class="pfas-progress-ring" role="img" aria-label="Processing"></span>
+        <span class="pfas-busy-line" tal:content="busy/text">Processing run</span>
+        <a class="btn-sm btn-secondary pfas-busy-end" href="?tab=raw"
+           tal:condition="python: '?tab=raw' in [t[0] for t in view.shown_tabs()]">Open Integration Review</a>
+        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_data.js?v=${context/@@pfas-macros/asset_version}"></script>
+      </div>
 
       <!-- Where this run sits: client, chain of custody, batch, worksheet and
            the stages reached, then the next stage dashed until it is reached -->
@@ -612,23 +620,27 @@
         </table>
       </section>
 
-      <!-- the changes made on the Raw Data tab: a reason each and the
+      <!-- the changes made on the Integration Review tab: a reason each and the
            analyst's initials once, before submit; countersigned at release -->
       <section class="bench-block" id="dr-manual-changes"
                tal:define="mc view/manual_changes; edit python:view.can_act() and view.ws_state() == 'open'"
                tal:condition="mc/rows">
         <h2 class="bench-h">Manual changes</h2>
         <ul class="bench-alerts">
-          <li tal:attributes="class python:'bench-ok' if mc['ok'] else 'bench-bad'">
+          <li tal:condition="not:mc/ready" tal:attributes="class python:'bench-ok' if mc['ok'] else 'bench-bad'">
             <strong tal:content="python:('%d initialled' % mc['initialled']) if mc['ok'] else 'Not ready to submit'">Not ready</strong>
             <span tal:condition="not:mc/ok" tal:content="python:'; '.join(mc['missing'])">missing</span>
             <span tal:condition="python:mc['ok'] and not mc['verify_ok']">: Verify countersigns them; the verifier is a different person.</span>
+          </li>
+          <!-- submitted: the line judges the release -->
+          <li tal:condition="mc/ready" tal:attributes="class python:'bench-ok' if mc['ready']['ok'] else 'bench-bad'">
+            <strong tal:content="python:mc['ready']['text']">Ready</strong>
           </li>
         </ul>
         <form method="post" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <input type="hidden" name="action" value="save_manual_changes" />
-          <!-- a row's menu opens the change in Raw Data; the row itself
+          <!-- a row's menu opens the change in Integration Review; the row itself
                opens nothing, so a reason being typed is never lost -->
           <table class="pfas-table pfas-table-form pfas-table-fit" data-col-resize="data-review-manual-changes"
                  tal:define="rm context/@@pfas-row-menu">
@@ -637,12 +649,14 @@
             <tbody>
               <tr tal:repeat="r mc/rows"
                   tal:attributes="data-change r/id;
-                                  data-row-actions python:rm.actions((u'Open in Raw Data', 'href', r['href']))">
+                                  data-row-actions python:rm.actions((u'Open in Integration Review', 'href', r['href']))">
                 <td tal:content="r/injection">S-1</td>
                 <td tal:content="r/analyte">PFOA</td>
                 <td tal:content="r/transition">quantifier</td>
-                <td tal:content="r/kind">re-integrated</td>
-                <td tal:content="r/summary">4.10 to 4.40 min</td>
+                <td><span class="raw-swatch" aria-hidden="true"></span><span tal:replace="r/kind">re-integrated</span></td>
+                <td><span tal:replace="r/summary">4.10 to 4.40 min</span>
+                  <div class="pfas-muted" tal:condition="python:r.get('shared')" tal:content="r/shared">Shared edge with PFOS</div>
+                  <div class="pfas-muted" tal:repeat="v r/verdicts" tal:content="v">PFOA: MILK-0027 now fails the ion ratio</div></td>
                 <td tal:condition="r/no_effect" tal:content="r/no_effect">No effect</td>
                 <td tal:condition="not:r/no_effect">
                   <tal:e tal:condition="python:edit and not r['analyst']">
@@ -667,6 +681,63 @@
             <label>Initials <input type="text" name="initials" maxlength="6" /></label>
             <button type="submit" class="btn btn-primary">Save</button>
           </div>
+        </form>
+      </section>
+
+      <!-- the changes applied to all injections: the run's processing,
+           always listed; a major one is countersigned at release by
+           someone other than its maker. Its own gate line: a change in the
+           run's file with no record shows here even with no row -->
+      <section class="bench-block" id="dr-processing-changes"
+               tal:define="pc view/processing_changes"
+               tal:condition="python:pc['rows'] or pc['missing']">
+        <h2 class="bench-h">Processing changes</h2>
+        <ul class="bench-alerts">
+          <li tal:condition="pc/ready" tal:attributes="class python:'bench-ok' if pc['ready']['ok'] else 'bench-bad'">
+            <strong tal:content="python:pc['ready']['text']">Ready</strong>
+          </li>
+          <li tal:condition="not:pc/ready" tal:attributes="class python:'bench-ok' if pc['ok'] else 'bench-bad'">
+            <strong tal:content="python:'Listed' if pc['ok'] else 'Not ready to submit'">Listed</strong><span tal:condition="python:pc['ok'] and not pc['verify_ok']">: Verify countersigns the major changes; the verifier is not the person who made them.</span>
+            <span tal:condition="not:pc/ok" tal:content="python:'; '.join(pc['missing'])">missing</span>
+          </li>
+        </ul>
+        <table class="pfas-table pfas-table-fit" data-col-resize="data-review-processing-changes"
+               tal:condition="pc/rows">
+          <thead><tr><th>Who</th><th>When</th><th>Compound</th><th>Transition</th>
+                     <th>Before</th><th>After</th><th>Countersigned</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="r pc/rows"
+                tal:attributes="data-change r/id; data-row-actions r/actions">
+              <td tal:content="r/who">Analyst One</td>
+              <td class="cell-nowrap" tal:content="r/when">2026-11-24 10:00</td>
+              <td tal:content="r/compound">PFOA</td>
+              <td tal:content="r/transition">quantifier</td>
+              <td tal:content="r/before">automatic</td>
+              <td>
+                <span tal:replace="r/after">perpendicular drop, -0.05 to +0.08 min from the apex</span>
+                <div class="pfas-muted" tal:condition="r/held" tal:content="r/held">Fitted by the method's processing</div>
+                <div class="pfas-muted" tal:condition="r/undone"
+                     tal:content="python:'Undone by %s, %s' % (r['undone']['who'], r['undone']['when'])">Undone</div>
+                <div class="pfas-muted" tal:repeat="v r/verdicts" tal:content="v">PFOA: MILK-0027 now fails the ion ratio</div>
+              </td>
+              <td tal:content="python:view.NOT_RECORDED if not r['recorded'] else 'not needed' if not (r['major'] and r['in_force']) else r['verifier']['name'] if r['verifier'] else 'not countersigned'">not needed</td>
+            </tr>
+          </tbody>
+        </table>
+        <form method="post" id="dr-processing-undo" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="raw_processing_undo" />
+          <input type="hidden" name="id" value="" />
+          <input type="hidden" name="key" value="" />
+          <button type="submit" hidden="hidden">Undo</button>
+        </form>
+        <!-- a change in force proposed as the method's own: it waits on the
+             method's page for a countersign -->
+        <form method="post" id="dr-processing-propose" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="action" value="propose_processing" />
+          <input type="hidden" name="id" value="" />
+          <button type="submit" hidden="hidden">Propose</button>
         </form>
       </section>
 
@@ -1849,7 +1920,7 @@
 
     <!-- ══════ RAW DATA TAB (a run imported from raw data) ═══════════════ -->
     <div class="dr-tab-pane active"
-         tal:condition="python: view.active_tab() == 'raw' and view.raw_available()">
+         tal:condition="python: view.active_tab() == 'raw' and view.raw_tab_shown()">
       <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/raw_data.css?v=${context/@@pfas-macros/asset_version}" />
       <script type="application/json" id="raw-data-json" tal:content="structure view/raw_tab_json">{}</script>
       <div id="raw-data"></div>
@@ -1883,6 +1954,7 @@
       </form>
       <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chart.js-4.4.3.umd.min.js"></script>
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
+      <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_fit.js?v=${context/@@pfas-macros/asset_version}"></script>
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_data.js?v=${context/@@pfas-macros/asset_version}"></script>
     </div><!-- /raw -->
 

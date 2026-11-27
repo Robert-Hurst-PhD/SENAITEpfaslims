@@ -20,7 +20,7 @@
   <section class="sr-method">
     <h2 tal:content="m/name">FDA 32-PFAS</h2>
     <p class="sr-meta" tal:define="rv m/revision">
-      <tal:i condition="rv/rev">Revision <strong tal:content="rv/rev">3</strong>, issued
+      <tal:i condition="rv/rev">Revision <strong tal:content="rv/label">4.1</strong>, issued
         <span tal:replace="rv/issued_at">2026-10-02</span> by <span tal:replace="rv/issued_by">admin</span>.</tal:i>
       <tal:n condition="not:rv/rev">No revision issued yet.</tal:n>
       <span class="sr-warn" tal:condition="python:rv['rev'] and rv['unissued']">Settings changed since this revision.</span>
@@ -99,7 +99,7 @@
       <table class="sr-table" data-col-resize="settings-report-body-sr-table-3">
         <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Reason</th></tr></thead>
         <tbody><tr tal:repeat="r m/revisions">
-          <td tal:content="r/rev">3</td><td tal:content="r/issued_at">date</td>
+          <td tal:content="r/label">4.1</td><td tal:content="r/issued_at">date</td>
           <td tal:content="r/issued_by">who</td><td tal:content="r/reason">why</td></tr></tbody>
       </table>
     </tal:h>

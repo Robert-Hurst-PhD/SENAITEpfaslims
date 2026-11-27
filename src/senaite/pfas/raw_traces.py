@@ -23,7 +23,7 @@ its "auto" a subset of the automatic peak; a row's derived_from record uses
 the same names otherwise ("manual": true, "auto": the whole automatic
 record): the two are never read as one.
 
-Written by the worker, read by Data Review's Raw Data tab. Pure; Python 2.7
+Written by the worker, read by Data Review's Integration Review tab. Pure; Python 2.7
 and 3.
 """
 from __future__ import absolute_import, division
@@ -150,11 +150,9 @@ def keep_reach(t, y, spans, margin, smooth_window, reach=None):
     return st, sy, [t[e0], t[e1]], [t[lo], t[hi]]
 
 
-def read(conn, batch_id, injection=None, analytes=None, role=None):
-    """The batch's stored traces, t / y unpacked and peak parsed, in the
-    order they were stored. Each filter given narrows the rows in SQL (values
-    are bound parameters): one injection, a list of analytes, one role. No
-    filter reads the whole batch; an empty list of analytes reads none."""
+def _where(batch_id, injection=None, analytes=None, role=None):
+    """(the WHERE clause, its bound values) of read's filters; None when
+    an empty list of analytes reads none."""
     where, args = ["batch_id=?"], [batch_id]
     if injection is not None:
         where.append("injection=?")
@@ -162,16 +160,86 @@ def read(conn, batch_id, injection=None, analytes=None, role=None):
     if analytes is not None:
         analytes = list(analytes)
         if not analytes:
-            return []
+            return None
         where.append("analyte IN (%s)" % ",".join("?" * len(analytes)))
         args.extend(analytes)
     if role is not None:
         where.append("role=?")
         args.append(role)
+    return " AND ".join(where), args
+
+
+def read(conn, batch_id, injection=None, analytes=None, role=None):
+    """The batch's stored traces, t / y unpacked and peak parsed, in the
+    order they were stored. Each filter given narrows the rows in SQL (values
+    are bound parameters): one injection, a list of analytes, one role. No
+    filter reads the whole batch; an empty list of analytes reads none."""
+    found = _where(batch_id, injection, analytes, role)
+    if found is None:
+        return []
     rows = conn.execute("SELECT injection, analyte, transition, role, t, y, peak FROM raw_traces "
-                        "WHERE " + " AND ".join(where) + " ORDER BY id", args).fetchall()
+                        "WHERE " + found[0] + " ORDER BY id", found[1]).fetchall()
     return [{"injection": r[0], "analyte": r[1], "transition": r[2], "role": r[3],
              "t": unpack(r[4]), "y": unpack(r[5]), "peak": json.loads(r[6] or "{}")} for r in rows]
+
+
+def peaks(conn, batch_id, injection=None, analytes=None, role=None):
+    """read's rows without the signal: {injection, analyte, transition,
+    role, peak}, t and y never selected. What says whether the run shows
+    its edits and changes reads no more."""
+    found = _where(batch_id, injection, analytes, role)
+    if found is None:
+        return []
+    rows = conn.execute("SELECT injection, analyte, transition, role, peak FROM raw_traces "
+                        "WHERE " + found[0] + " ORDER BY id", found[1]).fetchall()
+    return [{"injection": r[0], "analyte": r[1], "transition": r[2], "role": r[3],
+             "peak": json.loads(r[4] or "{}")} for r in rows]
+
+
+# the mark a change taken from the method leaves in a stored peak, as the
+# worker writes the peak (json.dumps, its default separators)
+METHOD_MARK = '"from": "method"'
+# a stored peak smoothed by the run's own smoothing change (raw_run._keep_trace)
+SMOOTHING_MARK = '"smoothing_change"'
+# a stored peak measured by a processing change, the run's or the method's
+# (its own or its automatic peak's "processing"; "processing_skipped" is not it)
+PROCESSING_MARK = '"processing"'
+
+
+def method_marked(conn, batch_id):
+    """The batch's traces whose stored peak carries a change taken from the
+    method (METHOD_MARK; raw_review.method_applied judges where), a run's
+    own processing change (PROCESSING_MARK; raw_review.processing_applied)
+    or a run's smoothing change (SMOOTHING_MARK; raw_review.smoothing_applied),
+    as {injection, analyte, transition, role, peak}, the signal not read."""
+    rows = conn.execute("SELECT injection, analyte, transition, role, peak FROM raw_traces "
+                        "WHERE batch_id=? AND (instr(peak, ?) > 0 OR instr(peak, ?) > 0 OR instr(peak, ?) > 0) "
+                        "ORDER BY id", [batch_id, METHOD_MARK, SMOOTHING_MARK, PROCESSING_MARK]).fetchall()
+    return [{"injection": r[0], "analyte": r[1], "transition": r[2], "role": r[3],
+             "peak": json.loads(r[4] or "{}")} for r in rows]
+
+
+def stored(conn, batch_id):
+    """How many traces the batch has stored."""
+    return conn.execute("SELECT COUNT(*) FROM raw_traces WHERE batch_id=?", [batch_id]).fetchone()[0]
+
+
+def counts(conn, batch_id):
+    """(traces, injections) the batch has stored; reads no signal."""
+    row = conn.execute("SELECT COUNT(*), COUNT(DISTINCT injection) FROM raw_traces WHERE batch_id=?",
+                       [batch_id]).fetchone()
+    return int(row[0] or 0), int(row[1] or 0)
+
+
+def listing(conn, batch_id, analytes):
+    """The batch's traces of those analytes as {injection, analyte,
+    transition, role}, nothing unpacked: what a count needs."""
+    analytes = list(analytes)
+    if not analytes:
+        return []
+    rows = conn.execute("SELECT injection, analyte, transition, role FROM raw_traces WHERE batch_id=? AND analyte IN (%s) "
+                        "ORDER BY id" % ",".join("?" * len(analytes)), [batch_id] + analytes).fetchall()
+    return [{"injection": r[0], "analyte": r[1], "transition": r[2], "role": r[3]} for r in rows]
 
 
 def envelope(t, y, lo, hi, buckets=60):

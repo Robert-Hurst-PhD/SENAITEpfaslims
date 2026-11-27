@@ -193,6 +193,11 @@ class QualQuanResult:
     avg_response_ratio:  Optional[float]   # average from calibration curve
     pct_of_cal:          Optional[float]   # response_ratio / avg_response_ratio
     flag:                Optional[QCFlag]  = None
+    # each qualifier ion: {"observed", "expected", "source", "n_cal"} -- its
+    # observed ratio (a float, "uncalculable" or None), the expected ratio,
+    # where the expected ratio came from (qc_engine.ION_SOURCE_WORDS) and how
+    # many of this run's calibrators it is the mean of (0 for another source)
+    ions:                list              = field(default_factory=list)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

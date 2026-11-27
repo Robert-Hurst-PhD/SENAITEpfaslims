@@ -48,7 +48,7 @@ The worksheet's records (a dict, stored on the worksheet):
     server_heading_pages(texts, heading)     the server's scan of the report
     gate(state, report_fp)                   (ok, [what is missing])
 
-Changes made on the Raw Data tab are kept apart from the report's records
+Changes made on the Integration Review tab are kept apart from the report's records
 (raw_changes): one per (injection, analyte, transition), the transition None
 for the quantifier. An edit asks for nothing; before submit each open change
 has a reason and the analyst's initials, given once for all; at verify a
@@ -63,6 +63,9 @@ the analyst's, a countersignature the reviewer's.
                                              an edit made or changed
     drop_raw_edit(state, injection, analyte, transition, who, when,
                   quant_transition)          the edit undone
+    shared_partner(state, injection, analyte)
+                                             the peak a moved edge is shared
+                                             with, both records naming it
     set_raw_reason(state, id, reason_id, reason, detail, who, when)
     initial_raw(state, initials, who, when, name, no_effect, sign_as)
                                              the analyst, once for all
@@ -73,6 +76,43 @@ the analyst's, a countersignature the reviewer's.
                                              "submit" or "verify"; an edit in
                                              the run's file with no record
                                              is missing too
+
+A change applied to every injection of the run ("Apply to all") is the
+compound's processing for the run, not a manual change: it asks no reason
+or initials, and is listed in the run's processing history
+(processing_changes), each change with who, when, before and after. Only
+a major change (PROCESSING_MAJOR_KINDS) is countersigned at release, by a
+person other than its maker. The change in force for a trace is its last
+record not undone; only that one is undone, which puts back its before.
+
+    "processing_changes": [{"id", "analyte", "transition", "kind", "before",
+                  "after", "major", "skipped", "by", "at",
+                  "undone": {"by", "at"} | None,
+                  "verifier": {"userid", "name", "at", "fp"} | None,
+                  and for a smoothing change "mid", "label"}]
+
+    record_processing_change(state, analyte, transition, kind, before,
+                             after, major, who, when, skipped, mid, label)
+    undo_processing_change(state, id, who, when)
+    processing_open(state)                   the changes in force
+    countersign_processing(state, who, when, name, sign_as, signature, method)
+    processing_gate(state, phase, processing, method, stored_smoothing,
+                    label, stored_processing)
+                                             `method` the method's changes
+                                             the run applies (method_held);
+                                             the smoothing and the trace
+                                             changes its stored peaks show
+                                             each need a record in force
+                                             (ok, [what is missing]); a
+                                             change in the run's processing
+                                             file with no record is missing
+    processing_orphans(state, processing)    those changes, by their key
+    undo_orphan_processing(state, key, who, when, record)
+                                             one of them taken out of the
+                                             file: its history row
+    smoothing_first_mid(state, analyte)      (found, mid): the Mid of the
+                                             compound's first smoothing
+                                             change that carries one
 
 Pure: Python 2.7 and 3.
 """
@@ -144,7 +184,7 @@ QC_TYPES_FLAGGED = ("MB", "LRB", "MxB", "LFB", "LFSM", "LFSMD", "Dup", "CAL", "I
 def empty_state():
     return {"report_fp": "", "report_file": "", "records": [], "none_in_report": None,
             "history": [], "stamped": None, "heading_scan": None, "dismissed": {},
-            "raw_changes": []}
+            "raw_changes": [], "processing_changes": []}
 
 
 def _log(state, who, when, rec_id, action, changes=None):
@@ -248,6 +288,8 @@ def sign(state, rec_id, role, who, when, name=""):
     if role not in ("analyst", "reviewer"):
         raise ValueError("unknown role %s" % role)
     rec = _find(state, rec_id)
+    if rec.get(role):
+        raise ValueError("%s is already signed as %s." % (rec_id, role))
     need = missing(rec, role)
     if need:
         raise ValueError("%s: needs %s" % (rec_id, ", ".join(need)))
@@ -258,6 +300,96 @@ def sign(state, rec_id, role, who, when, name=""):
         rec["reviewer"] = None
     state["stamped"] = None
     _log(state, who, when, rec_id, "signed as %s" % role)
+    return rec
+
+
+def phase(review_status):
+    """"verify" once the worksheet is verified or published, else "submit":
+    the phase Data Review's gates are enforced in. A submitted worksheet is
+    still read at submit: Approve Release gives the countersignature."""
+    return "verify" if review_status in ("verified", "published") else "submit"
+
+
+READY_TO_VERIFY = "Ready to verify"
+NOT_READY_TO_VERIFY = "Not ready to verify"
+
+
+def readiness_phase(review_status):
+    """"verify" from to_be_verified on, else "submit": the phase the
+    readiness lines are worded in (Data Review's Manual changes and
+    Processing changes, the Manual integration page). A submitted worksheet
+    waits for its verifier, so its lines judge the release. They read the
+    gate in force (phase()): a line names only what the reviewer must do
+    first, never the countersignature Approve Release itself gives."""
+    return "verify" if review_status in ("to_be_verified", "verified", "published") else "submit"
+
+
+def verify_readiness(phase, ok, missing):
+    """The readiness line in the verify phase: {"ok", "text"}, the text
+    "Ready to verify", or "Not ready to verify: " and the first thing
+    missing, named. None in the submit phase, where each page words its
+    line to submit."""
+    if phase != "verify":
+        return None
+    if ok:
+        return {"ok": True, "text": READY_TO_VERIFY}
+    text = "%s: %s" % (NOT_READY_TO_VERIFY, missing[0]) if missing else NOT_READY_TO_VERIFY
+    return {"ok": False, "text": text}
+
+
+def action_allowed(review_status, action):
+    """Whether a record-changing action may run in this worksheet state. A
+    submitted worksheet waits for its reviewer: only the reviewer's signature,
+    a countersignature and the stamp (the verify gate wants the stamped copy
+    after the reviewer signs) may follow; verified and published are read only."""
+    if review_status in ("verified", "published"):
+        return False
+    if review_status == "to_be_verified":
+        return action in ("sign_reviewer", "countersign", "stamp")
+    return True
+
+
+def refused_text(review_status):
+    """Why a record-changing action was refused, naming the state the
+    worksheet is in; a submitted worksheet still takes the reviewer's
+    signature (action_allowed)."""
+    word = {"verified": u"verified", "published": u"published"}.get(review_status, u"submitted")
+    return u"This worksheet is %s: its manual integration records are read only%s." % (
+        word, u" except the reviewer's signature" if word == u"submitted" else u"")
+
+
+def scoped(names, allowed):
+    """The names inside the Method x Matrix panel (`allowed`; None = no panel
+    to scope by), in their order."""
+    return [n for n in names if allowed is None or n in allowed]
+
+
+def refuse_signed_change(rec, fields):
+    """A signed record changes only after it is reopened: a posted field that
+    differs from what is stored is refused, never ignored."""
+    for field in EDITABLE:
+        if field in fields and _clean(field, fields[field]) != rec.get(field):
+            raise ValueError("%s is signed: Edit it from the row menu first." % rec["id"])
+
+
+def all_signed(state):
+    """Every record is signed by the analyst and by the reviewer."""
+    recs = state.get("records") or []
+    return bool(recs) and all(r.get("analyst") and r.get("reviewer") for r in recs)
+
+
+def reopen(state, rec_id, who, when):
+    """A signed record is opened for editing: both signatures are cleared, so
+    the stamped copy is void, and it is logged."""
+    try:
+        rec = _find(state, rec_id)
+    except KeyError:
+        raise ValueError("%s: no such record" % rec_id)
+    if not (rec.get("analyst") or rec.get("reviewer")):
+        raise ValueError("%s: it is not signed" % rec_id)
+    rec["analyst"] = rec["reviewer"] = None
+    state["stamped"] = None
+    _log(state, who, when, rec_id, "reopened for editing", {"signatures": ["cleared", None]})
     return rec
 
 
@@ -481,13 +613,14 @@ def gate(state, report_fp, captured=True, server=None):
     return (not out), out
 
 
-# ── changes made on the Raw Data tab ───────────────────────────────────────
+# ── changes made on the Integration Review tab ───────────────────────────────────────
 
 # the People & Roles sign right each signature needs, the instrument report's
-# records and the Raw Data changes alike
+# records and the Integration Review changes alike
 SIGN_RIGHT = {"analyst": "preparer", "reviewer": "reviewer"}
-RAW_KINDS = ("integrate", "apex", "delete")
-RAW_KIND_TEXT = {"integrate": "re-integrated", "apex": "another apex", "delete": "peak deleted"}
+RAW_KINDS = ("integrate", "apex", "delete", "fit")
+RAW_KIND_TEXT = {"integrate": "re-integrated", "apex": "another apex", "delete": "peak deleted",
+                 "fit": "peaks fitted"}
 RAW_FIELDS = ("kind", "before", "after", "reason_id", "reason", "detail")
 
 
@@ -524,7 +657,10 @@ def raw_fingerprint(rec):
     A signature counts only while this is unchanged."""
     import hashlib
     import json
-    body = json.dumps(dict((k, rec.get(k)) for k in ("injection", "analyte", "transition") + RAW_FIELDS),
+    # the pairing of a shared edge is attested too, but only a record that has one carries it: a
+    # record without it reads as it always did, so its signatures stay valid
+    keys = ("injection", "analyte", "transition") + RAW_FIELDS + (("shared_with",) if rec.get("shared_with") else ())
+    body = json.dumps(dict((k, rec.get(k)) for k in keys),
                       sort_keys=True)
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
@@ -552,24 +688,26 @@ def raw_open(state, no_effect=None):
     return [r for r in state.get("raw_changes") or [] if not r.get("dropped") and raw_key(r) not in no_effect]
 
 
-def _sign_right(role, sign_as, name, act, signature=None):
+def _sign_right(role, sign_as, name, act, signature=None, what="manual changes"):
     """ValueError when People & Roles gives the person (`name`) no sign right for
     `role`, or when they have no signature on file (`signature` False), as
     the instrument report's records ask; None is not checked."""
     if sign_as is not None and SIGN_RIGHT[role] not in sign_as:
-        raise ValueError("%s has no %s sign right in People & Roles, so does not %s manual changes"
-                         % (name, SIGN_RIGHT[role], act))
+        raise ValueError("%s has no %s sign right in People & Roles, so does not %s %s"
+                         % (name, SIGN_RIGHT[role], act, what))
     if signature is not None and not signature:
-        raise ValueError("%s has no signature on file, so does not %s manual changes" % (name, act))
+        raise ValueError("%s has no signature on file, so does not %s %s" % (name, act, what))
 
 
 def record_raw_edit(state, injection, analyte, transition, kind, before, after, who, when,
-                    qc_type="", quant_transition=None):
-    """An edit made on the Raw Data tab: no reason is asked. The trace's one
-    record is made, or updated (also after an undo); the automatic peak
-    (before) is the first edit's. A real change clears the signatures; the
-    same edit posted again changes nothing. after: the edges, apex, area,
-    the line it is measured on ("baseline"), any levels set by hand and the
+                    qc_type="", quant_transition=None, reason_id="", reason="", detail="", shared_with=""):
+    """An edit made on the Integration Review tab, with the reason (from the lab's list,
+    by id and text) and comment given when it was made; none given leaves the
+    record's as they are. The trace's one record is made, or updated (also
+    after an undo); the automatic peak (before) is the first edit's. A real
+    change clears the signatures, and so does a changed reason or comment
+    (set_raw_reason); the same edit posted again changes nothing else.
+    after: the edges, apex, area, the line it is measured on ("baseline"), any levels set by hand and the
     record's "version" (raw_review.EDIT_VERSION: its baseline is named in
     this version's words); ignored for a delete."""
     if kind not in RAW_KINDS:
@@ -580,6 +718,12 @@ def record_raw_edit(state, injection, analyte, transition, kind, before, after, 
         raise ValueError("%s / %s: the edited peak is missing" % (injection, analyte))
     transition = _transition(transition, quant_transition)
     rec = _raw_find(state, injection, analyte, transition)
+    given = bool(reason_id or reason or detail)
+    if rec is not None and not rec.get("dropped") and rec.get("kind") == kind and rec.get("after") == after \
+            and (shared_with or "") == (rec.get("shared_with") or ""):
+        if given:
+            set_raw_reason(state, rec["id"], reason_id, reason, detail, who, when)
+        return rec
     if rec is None:
         rec = {"id": _raw_new_id(state), "injection": injection, "analyte": analyte,
                "transition": transition, "qc_type": qc_type or "", "kind": kind,
@@ -587,10 +731,12 @@ def record_raw_edit(state, injection, analyte, transition, kind, before, after, 
                "reason_id": "", "reason": "", "detail": "", "analyst": None, "verifier": None}
         state.setdefault("raw_changes", []).append(rec)
         changes = {"kind": [None, kind], "before": [None, before], "after": [None, after]}
+        if shared_with:
+            changes["shared_with"] = [None, shared_with]
     else:
-        if not rec.get("dropped") and rec.get("kind") == kind and rec.get("after") == after:
-            return rec
         changes = {"after": [rec.get("after"), after]}
+        if (shared_with or "") != (rec.get("shared_with") or ""):
+            changes["shared_with"] = [rec.get("shared_with") or None, shared_with or None]
         if rec.get("kind") != kind:
             changes["kind"] = [rec.get("kind"), kind]
         if rec.get("dropped"):
@@ -598,8 +744,12 @@ def record_raw_edit(state, injection, analyte, transition, kind, before, after, 
         if rec.get("before") is None and before is not None:
             rec["before"] = before
         _clear_signatures(rec, changes)
-    rec.update(kind=kind, after=after, by=who, at=when, dropped=None)
-    _log(state, who, when, rec["id"], "edited on the Raw Data tab", changes)
+    # the other analyte whose peak shares an edge moved with this one (a drop line), kept apart
+    # from the analyst's comment
+    rec.update(kind=kind, after=after, by=who, at=when, dropped=None, shared_with=shared_with or "")
+    _log(state, who, when, rec["id"], "edited on the Integration Review tab", changes)
+    if given:
+        set_raw_reason(state, rec["id"], reason_id, reason, detail, who, when)
     return rec
 
 
@@ -612,8 +762,20 @@ def drop_raw_edit(state, injection, analyte, transition, who, when, quant_transi
     changes = {"undone": [None, {"by": who, "at": when}]}
     _clear_signatures(rec, changes)
     rec["dropped"] = {"by": who, "at": when}
-    _log(state, who, when, rec["id"], "undone on the Raw Data tab", changes)
+    _log(state, who, when, rec["id"], "undone on the Integration Review tab", changes)
     return rec
+
+
+def shared_partner(state, injection, analyte):
+    """The analyte whose quantifier peak shares a moved edge with this one
+    in the injection: named so by this trace's open record and naming this
+    analyte back in its own; None otherwise (one side re-edited on its own
+    since, or undone). Undoing one half of a shared edge undoes both."""
+    def named(an):
+        rec = _raw_find(state, injection, an, None)
+        return (rec.get("shared_with") or None) if rec is not None and not rec.get("dropped") else None
+    partner = named(analyte)
+    return partner if partner and named(partner) == analyte else None
 
 
 def set_raw_reason(state, rec_id, reason_id, reason, detail, who, when):
@@ -660,8 +822,11 @@ def initial_raw(state, initials, who, when, name="", no_effect=None, sign_as=Non
 
 
 # history actions that edit a raw change's peak
-_RAW_EDITED = ("edited on the Raw Data tab", "re-integrated")
-_RAW_UNDONE = "undone on the Raw Data tab"
+# a history entry written under the tab's former name still counts as an edit
+# (or an undo): the editors of a change must stay known after a rename
+_FORMER_TAB = "the Raw" + " Data tab"
+_RAW_EDITED = ("edited on the Integration Review tab", "edited on " + _FORMER_TAB, "re-integrated")
+_RAW_UNDONE = ("undone on the Integration Review tab", "undone on " + _FORMER_TAB)
 
 
 def raw_editors(state, rec):
@@ -671,7 +836,7 @@ def raw_editors(state, rec):
     for h in state.get("history") or []:
         if h.get("id") != rec["id"]:
             continue
-        if h.get("action") == _RAW_UNDONE:
+        if h.get("action") in _RAW_UNDONE:
             who = set()
         elif h.get("action") in _RAW_EDITED and h.get("by"):
             who.add(h["by"])
@@ -718,11 +883,11 @@ def _unrecorded(state, overrides):
         try:
             injection, analyte, transition = parse_edit_key(key)
         except ValueError:
-            out.append("%s: an edit has no record; undo it on the Raw Data tab" % key)
+            out.append("%s: an edit has no record; undo it on the Integration Review tab" % key)
             continue
         rec = _raw_find(state, injection, analyte, transition)
         if rec is None or rec.get("dropped"):
-            out.append("%s / %s: an edit has no record; undo it on the Raw Data tab" % (injection, analyte))
+            out.append("%s / %s: an edit has no record; undo it on the Integration Review tab" % (injection, analyte))
     return out
 
 
@@ -747,6 +912,386 @@ def raw_gate(state, phase="submit", no_effect=None, overrides=None):
     return (not out), out
 
 
+# ── the run's processing changes ("Apply to all") ─────────────────────────
+
+# a change of how the compound is processed, not of where its peak is cut:
+# countersigned at release. Moving the edges or changing the line is not;
+# a fit and a change of the compound's smoothing are.
+PROCESSING_MAJOR_KINDS = ("fit", "smoothing")
+PROCESSING_KIND_TEXT = {"integrate": "re-integrated for all injections", "fit": "fitted for all injections",
+                        "smoothing": "smoothed for all injections"}
+PROCESSING_FIELDS = ("analyte", "transition", "kind", "before", "after", "major")
+# a smoothing change is the compound's, every trace in every injection, held
+# apart from its traces' changes; its record keeps "mid", the window the run
+# smoothed over before any smoothing change of the run, and "label", the
+# compound's name, so it is worded as made whatever the method holds later
+SMOOTHING = "smoothing"
+SMOOTHING_TEXT = "Smoothing for %s: %s to %s"
+SMOOTHING_STEPS = ("Low", "Mid", "High")
+
+
+def smoothing_step(points, mid):
+    """The step a window of `points` is from the compound's Mid (`mid`
+    points, 2m + 1): "Mid"; "Low", m - 1; "High", 2m; else "N points"."""
+    if points is None:
+        return SMOOTHING_STEPS[1]
+    if mid:
+        m = (int(mid) - 1) // 2
+        steps = {2 * (m - 1) + 1: SMOOTHING_STEPS[0], int(mid): SMOOTHING_STEPS[1], 4 * m + 1: SMOOTHING_STEPS[2]}
+        if points in steps:
+            return steps[points]
+    return "%d points" % points
+
+
+def smoothing_first_mid(state, analyte):
+    """(found, mid): whether the run's history holds a smoothing change of
+    the compound, and the Mid of the first of them that carries one (None
+    when none does). A change taken out of the file with no record carries
+    no Mid and is passed over; once any change is on record, the stored
+    peaks may show an undone window, so they are never read for Mid."""
+    earlier = [r for r in state.get("processing_changes") or []
+               if r.get("kind") == SMOOTHING and r.get("analyte") == analyte]
+    return bool(earlier), next((r["mid"] for r in earlier if r.get("mid")), None)
+
+
+def smoothing_words(rec, label=None):
+    """"Smoothing for PFOS: Mid to High", by the compound's `label` (else
+    the one the record keeps, else its keyword)."""
+    before = (rec.get("before") or {}).get("points")
+    after = (rec.get("after") or {}).get("points")
+    return SMOOTHING_TEXT % (label or rec.get("label") or rec["analyte"], smoothing_step(before, rec.get("mid")),
+                             smoothing_step(after, rec.get("mid")) if after is not None else "none")
+
+
+def processing_label(rec):
+    """"PFOA quantifier, re-integrated for all injections"; a smoothing
+    change "Smoothing for PFOA: Mid to High"."""
+    if rec.get("kind") == SMOOTHING:
+        return smoothing_words(rec)
+    return "%s %s, %s" % (rec["analyte"], rec.get("transition") or "quantifier",
+                          PROCESSING_KIND_TEXT.get(rec.get("kind"), rec.get("kind") or ""))
+
+
+def processing_rec_key(rec):
+    """The processing key a record names: its trace's, or its compound's
+    smoothing key."""
+    from senaite.pfas.raw_review import processing_key, smoothing_key
+    if rec.get("kind") == SMOOTHING:
+        return smoothing_key(rec["analyte"])
+    return processing_key(rec["analyte"], rec.get("transition"), None)
+
+
+def processing_entry(processing, key):
+    """The run's processing file's entry for a key (a trace's or a smoothing
+    key), or None."""
+    from senaite.pfas.raw_review import parse_smoothing_key
+    analyte = parse_smoothing_key(key)
+    if analyte is not None:
+        return ((processing or {}).get("smoothing") or {}).get(analyte)
+    return ((processing or {}).get("traces") or {}).get(key)
+
+
+def processing_key_text(key, label=None):
+    """A processing key as the person reads it: a trace's key as it is, a
+    smoothing key as "PFOS smoothing", by the compound's `label` (a
+    function of the keyword) where given, never "smoothing:PFOS"."""
+    from senaite.pfas.raw_review import parse_smoothing_key
+    analyte = parse_smoothing_key(key)
+    if analyte is None:
+        return key
+    return "%s smoothing" % ((label(analyte) if label else None) or analyte)
+
+
+def processing_trace_text(key):
+    """A trace's processing key as its trace: "PFNA quantifier", "PFNA
+    413.0 > 169.0"."""
+    analyte, transition = processing_key_trace(key)[:2]
+    return "%s %s" % (analyte, transition or "quantifier")
+
+
+def processing_key_trace(key):
+    """(analyte, transition or None, smoothing) of a processing key; a key
+    that cannot be read is its own analyte."""
+    from senaite.pfas.raw_review import parse_processing_key, parse_smoothing_key
+    analyte = parse_smoothing_key(key)
+    if analyte is not None:
+        return analyte, None, True
+    try:
+        analyte, transition = parse_processing_key(key)
+    except ValueError:
+        analyte, transition = key, None
+    return analyte, transition, False
+
+
+def processing_fingerprint(rec):
+    """What a countersignature on a processing change attests: the change,
+    before and after; for a smoothing change its Mid too, as its words
+    (Low, Mid or High) are read from it. It counts only while this is
+    unchanged."""
+    import hashlib
+    import json
+    fields = PROCESSING_FIELDS + (("mid",) if rec.get("kind") == SMOOTHING else ())
+    body = json.dumps(dict((k, rec.get(k)) for k in fields), sort_keys=True)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def processing_signed(rec):
+    sig = rec.get("verifier")
+    return bool(sig) and sig.get("fp") == processing_fingerprint(rec)
+
+
+def _processing_trace(rec):
+    """What a change replaces: its trace's last change, or, for a smoothing
+    change, the compound's last smoothing change, never a trace's."""
+    return (rec["analyte"], rec.get("transition"), rec.get("kind") == SMOOTHING)
+
+
+def record_processing_change(state, analyte, transition, kind, before, after, major, who, when, skipped=(),
+                             before_method=False, mid=None, label=None):
+    """A change applied to every injection, listed in the run's processing
+    history: `before` the trace's change in force on the run until now
+    (None for none: the automatic peak, or, with `before_method`, a change
+    the method holds, kept as "before_method": True), `after` the change
+    made, `major` whether it is countersigned at release, `skipped` the
+    [injection, why] that kept their automatic peak. `transition` is None
+    for the quantifier. A smoothing change, the compound's, keeps `mid`
+    and `label` (SMOOTHING) and names no transition."""
+    changes = state.setdefault("processing_changes", [])
+    n = max([int(r["id"][1:]) for r in changes if r["id"][1:].isdigit()] or [0]) + 1
+    rec = {"id": "P%d" % n, "analyte": analyte, "transition": transition or None, "kind": kind,
+           "before": before, "after": after, "major": bool(major),
+           "skipped": [list(s) for s in skipped or ()], "by": who, "at": when, "undone": None, "verifier": None}
+    if kind == SMOOTHING:
+        rec.update(transition=None, mid=mid, label=label)
+    if before_method and before is None:
+        rec["before_method"] = True
+    changes.append(rec)
+    _log(state, who, when, rec["id"], "applied to all injections",
+         {"kind": [None, kind], "before": [None, before], "after": [None, after]})
+    return rec
+
+
+def processing_open(state):
+    """The changes in force: of each trace, its last change not undone."""
+    last = {}
+    for rec in state.get("processing_changes") or []:
+        if not rec.get("undone"):
+            last[_processing_trace(rec)] = rec
+    return [r for r in state.get("processing_changes") or [] if last.get(_processing_trace(r)) is r]
+
+
+def undo_processing_change(state, rec_id, who, when):
+    """The change in force undone: its before is in force again. ValueError
+    for a change undone already, or one a later change replaced."""
+    rec = next((r for r in state.get("processing_changes") or [] if r["id"] == rec_id), None)
+    if rec is None:
+        raise ValueError("%s: there is no such processing change" % rec_id)
+    if rec.get("undone"):
+        raise ValueError("%s: the processing change was undone already" % processing_label(rec))
+    if not any(r is rec for r in processing_open(state)):
+        raise ValueError("%s: a later change replaced it; it is not the change in force" % processing_label(rec))
+    rec["undone"] = {"by": who, "at": when}
+    _log(state, who, when, rec["id"], "processing change undone", {"undone": [None, rec["undone"]]})
+    return rec
+
+
+def countersign_processing(state, who, when, name="", sign_as=None, signature=None, method=None):
+    """The verifier countersigns every major change in force at once, the
+    run's own and the method's it applies (`method`, method_held's
+    {key: record}): with the reviewer sign right in People & Roles and a
+    signature on file, and never the person who made one. A change
+    countersigned as it stands is kept; nothing to countersign asks
+    nothing. Returns what was countersigned."""
+    todo = [r for r in processing_open(state) if r.get("major") and not processing_signed(r)]
+    held = [h for h in method_held(method) if h["major"] and not method_held_signed(state, h)]
+    if not todo and not held:
+        return []
+    _sign_right("reviewer", sign_as, name or who, "countersign", signature, "processing changes")
+    own = [processing_label(r) for r in todo if r.get("by") == who]
+    own += [method_held_label(h) for h in held if h["record"].get("by") == who]
+    if own:
+        raise ValueError("a different person countersigns this processing change: %s" % "; ".join(own))
+    for rec in todo:
+        rec["verifier"] = {"userid": who, "name": name or who, "at": when, "fp": processing_fingerprint(rec)}
+    signed = state.setdefault("method_processing_signed", {})
+    for h in held:
+        signed[h["key"]] = {"userid": who, "name": name or who, "at": when, "fp": method_held_fingerprint(h)}
+    _log(state, who, when, "", "processing changes countersigned",
+         {"changes": [None, [r["id"] for r in todo] + [h["key"] for h in held]]})
+    return todo + held
+
+
+# a change the method holds (countersigned from a run as the method's own,
+# method_proposals) that the run applied where its own file holds none, as
+# its stored peaks show it (raw_review.method_applied): listed on the run as
+# the method's processing, and a major one countersigned at release as the
+# run's own. The countersignature is kept in the run's state by the change's
+# key and counts while the record the run applied is the one signed: a run
+# processed again with another record is countersigned again.
+#     "method_processing_signed": {key: {"userid", "name", "at", "fp"}}
+METHOD_KIND_TEXT = {"integrate": "re-integrated by the method's processing",
+                    "fit": "fitted by the method's processing"}
+
+
+def method_held(method):
+    """[{"key", "analyte", "transition", "record", "kind", "major"}] of the
+    method's changes the run applied (`method`, {processing key: record},
+    read from its stored peaks by raw_review.method_applied), by key."""
+    from senaite.pfas.raw_review import parse_processing_key
+    out = []
+    for key in sorted(method or {}):
+        record = method[key] if isinstance(method[key], dict) else {}
+        try:
+            analyte, transition = parse_processing_key(key)
+        except ValueError:
+            analyte, transition = key, None
+        kind = record.get("kind")
+        out.append({"key": key, "analyte": analyte, "transition": transition, "record": record,
+                    "kind": kind, "major": kind in PROCESSING_MAJOR_KINDS})
+    return out
+
+
+def method_held_label(held):
+    """"PFNA quantifier, fitted by the method's processing"."""
+    return "%s %s, %s" % (held["analyte"], held.get("transition") or "quantifier",
+                          METHOD_KIND_TEXT.get(held.get("kind"), "changed by the method's processing"))
+
+
+def method_held_fingerprint(held):
+    """What a countersignature on a method-held change attests: its key and
+    the method's record."""
+    import hashlib
+    import json
+    body = json.dumps({"key": held["key"], "record": held["record"]}, sort_keys=True)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def method_held_signed(state, held):
+    sig = (state.get("method_processing_signed") or {}).get(held["key"])
+    return bool(sig) and sig.get("fp") == method_held_fingerprint(held)
+
+
+# the history's words for a change taken out of the run's processing file
+# that had no record: the file was written and its record never saved
+PROCESSING_ORPHAN_UNDONE = "undone; no record was saved"
+# a change in the file that no record in force shows, and where it is undone
+PROCESSING_UNRECORDED = "%s: a processing change has no record; undo it under Processing changes on the Overview tab"
+# a record in force whose change the run's file does not hold: the record
+# claims a change the run does not apply
+PROCESSING_NOT_IN_FILE = ("%s: the recorded processing change is not in the run's file: undo it under "
+                          "Processing changes on the Overview tab")
+
+
+def processing_in_force(state, key):
+    """The change in force on record for the trace of a processing key, or
+    for the compound of a smoothing key, or None (a key that cannot be
+    read has none)."""
+    from senaite.pfas.raw_review import parse_processing_key, parse_smoothing_key
+    analyte = parse_smoothing_key(key)
+    if analyte is not None:
+        trace = (analyte, None, True)
+    else:
+        try:
+            trace = parse_processing_key(key) + (False,)
+        except ValueError:
+            return None
+    return next((r for r in processing_open(state) if _processing_trace(r) == trace), None)
+
+
+def processing_orphans(state, processing):
+    """The keys of the run's processing file (`processing`, the whole file
+    dict) whose entry is not exactly the change in force on record for its
+    trace (its "after", who and when included): a trace with no record in
+    force, or one whose file holds another change than its record, sorted.
+    Nobody would see or countersign such a change as it is processed. A
+    compound's smoothing change is judged so too, by its smoothing key."""
+    from senaite.pfas.raw_review import smoothing_key
+    traces = (processing or {}).get("traces") or {}
+    entries = [(key, traces[key]) for key in traces]
+    smoothing = (processing or {}).get("smoothing") or {}
+    entries += [(smoothing_key(analyte), smoothing[analyte]) for analyte in smoothing]
+    out = []
+    for key, entry in sorted(entries):
+        rec = processing_in_force(state, key)
+        if rec is None or entry != rec.get("after"):
+            out.append(key)
+    return out
+
+
+def undo_orphan_processing(state, key, who, when, record=None, restored=None):
+    """A change with no record taken out of the run's processing file
+    (`record`, the entry removed; `restored`, the change in force on record
+    put back in its place, or None): listed as a change not recorded and
+    undone, and the history keeps who, when and both."""
+    analyte, transition = processing_key_trace(key)[:2]
+    entry = record if isinstance(record, dict) else {}
+    changes = state.setdefault("processing_changes", [])
+    n = max([int(r["id"][1:]) for r in changes if r["id"][1:].isdigit()] or [0]) + 1
+    rec = {"id": "P%d" % n, "analyte": analyte, "transition": transition, "kind": entry.get("kind"),
+           "before": None, "after": record, "major": entry.get("kind") in PROCESSING_MAJOR_KINDS, "skipped": [],
+           "by": entry.get("by") or "", "at": entry.get("at") or "", "undone": {"by": who, "at": when},
+           "verifier": None, "recorded": False}
+    changes.append(rec)
+    _log(state, who, when, rec["id"], PROCESSING_ORPHAN_UNDONE,
+         {"key": [key, None], "processing": [record, restored]})
+    return rec
+
+
+# stored peaks smoothed by a smoothing change of the run while none is in
+# force on record: the run's file lost it, or the run is not yet processed
+# again after an undo
+SMOOTHING_UNRECORDED_PEAKS = ("%s: the run's stored peaks are smoothed by a change with no record in force; "
+                              "process the run again")
+# stored peaks measured by a run's own processing change of a trace while
+# no record of it is in force: the file lost it with its record, or the run
+# is not yet processed again after an undo
+PROCESSING_UNRECORDED_PEAKS = ("%s: the run's stored peaks show a processing change with no record in force; "
+                               "process the run again")
+
+
+def processing_gate(state, phase, processing, method=None, stored_smoothing=None, label=None,
+                    stored_processing=None):
+    """(ok, [what is missing]): every change in the run's processing file
+    (`processing`, the whole file dict) is its trace's record in force
+    (processing_orphans), as nobody would see or countersign one without,
+    and every record in force has its change in the file, or the record
+    claims a change the run does not apply; at verify, every major change in
+    force carries the verifier's countersignature. An undone change, and
+    a minor one, need nothing. The file is always given ({} for none): a
+    gate that read no file would pass a change nobody recorded. `method`
+    ({key: record}, method_held): at verify, each major change the method
+    holds and the run applies carries the countersignature too.
+    `stored_smoothing` ({keyword: change}, raw_review.smoothing_applied):
+    the smoothing changes the run's stored peaks name; one with no
+    smoothing change in force on record is missing. `label` names a
+    compound for a smoothing change's words (processing_key_text).
+    `stored_processing` ({key: record}, raw_review.processing_applied):
+    the run's own trace changes its stored peaks show; one whose trace has
+    no change in force on record is missing, as for smoothing."""
+    if processing is None:
+        raise ValueError("the processing gate reads the run's processing file: pass {} for none")
+    out = [PROCESSING_UNRECORDED % processing_key_text(key, label) for key in processing_orphans(state, processing)]
+    for rec in processing_open(state):
+        key = processing_rec_key(rec)
+        if processing_entry(processing, key) is None:
+            out.append(PROCESSING_NOT_IN_FILE % processing_key_text(key, label))
+    from senaite.pfas.raw_review import smoothing_key
+    for analyte in sorted(stored_smoothing or {}):
+        if processing_in_force(state, smoothing_key(analyte)) is None:
+            out.append(SMOOTHING_UNRECORDED_PEAKS % processing_key_text(smoothing_key(analyte), label))
+    for key in sorted(stored_processing or {}):
+        if processing_in_force(state, key) is None:
+            out.append(PROCESSING_UNRECORDED_PEAKS % processing_trace_text(key))
+    if phase == "verify":
+        for rec in processing_open(state):
+            if rec.get("major") and not processing_signed(rec):
+                out.append("%s: the verifier's countersignature" % processing_label(rec))
+        for held in method_held(method):
+            if held["major"] and not method_held_signed(state, held):
+                out.append("%s: the verifier's countersignature" % method_held_label(held))
+    return (not out), out
+
+
 def raw_label(rec):
     """"S1 / PFOA quantifier, re-integrated"."""
     return "%s / %s %s, %s" % (rec["injection"], rec["analyte"], rec.get("transition") or "quantifier",
@@ -765,7 +1310,9 @@ def peak_text(peak):
     """A peak as the review reads it: its edges and area, its apex, or
     deleted, then the line it is measured on and any levels set by hand in
     the panel's words (raw_review.line_text): "11.16 to 11.34 min, area
-    181904, perpendicular drop, baseline 4,000 and 4,000". A record with no
+    181904, perpendicular drop, baseline 4,000 and 4,000"; a fit its shape,
+    its peaks and the one reported: "4.10 to 4.50 min, EMG, 2 peaks, peak 1
+    reported" (its area is the worker's, once fitted). A record with no
     version reads its baseline through raw_review.LEGACY_BASELINES ("drop"
     is the flat baseline, never the perpendicular drop)."""
     if not peak:
@@ -779,6 +1326,10 @@ def peak_text(peak):
         parts.append("apex %.2f min" % peak["apex"])
     if peak.get("area") is not None:
         parts.append("area %.0f" % peak["area"])
+    if peak.get("shape"):
+        parts.append(_raw_review().fit_words(peak["shape"], len(peak.get("apexes") or ())))
+        if isinstance(peak.get("pick"), int):
+            parts.append("peak %d reported" % (peak["pick"] + 1))
     if peak.get("baseline"):
         rr = _raw_review()
         baseline = peak["baseline"]
@@ -826,7 +1377,7 @@ def vendor_detections(rows):
     """([{"injection", "analyte", "qc_type"}] flagged manual, captured) from
     rows (injection, analyte, qc_type, flag, derived_from). A row the LIMS
     integrated from raw data (derived_from "raw:...") is not the export's:
-    its manual changes are the Raw Data tab's. A run whose every reported
+    its manual changes are the Integration Review tab's. A run whose every reported
     row the LIMS integrated is captured: nothing in it is the export's to
     flag."""
     raw = [r for r in rows if ("%s" % (r[4] or "")).startswith("raw:")]

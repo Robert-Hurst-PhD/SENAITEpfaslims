@@ -24,6 +24,10 @@ recipients / date) rather than duplicating it (Golden Rule 3).
   Status is COMPUTED (latest revision = current; earlier = superseded) — never
   stored, so the historical entries are never mutated.
 
+An issue is refused while a QC hold applies at that moment
+(qc_hold_refusal): the QC Summary question Approve Release asks, asked
+again by the publish guard and by Send through signature_refusal.
+
 Python 2.7 compatible.
 """
 from __future__ import absolute_import
@@ -38,6 +42,7 @@ from zope.annotation.interfaces import IAnnotations
 from ZODB.POSException import ConflictError
 from senaite.pfas import report_packages
 from senaite.pfas import report_tiers
+from senaite.pfas import sample_method
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.view_helpers import LabTime, publisher_url
 
@@ -157,7 +162,7 @@ def _review_state_at_issue(ar):
             return u"passed"
         outstanding = [i.get("key") for i in review.checklist_status()
                        if not i.get("checked")]
-        # the manual integrations and the Raw Data changes say what they lack
+        # the manual integrations and the Integration Review changes say what they lack
         for ok_need in (review.mi_gate(), review.raw_changes_gate()):
             if not ok_need[0]:
                 outstanding.extend(ok_need[1])
@@ -219,9 +224,10 @@ def record_publication(ar):
         # existed. A guarantee that fails silently is not a guarantee.
         "qc_snapshot": u"pending",
         # Whether the §7.8.4 technical review had actually passed when this was
-        # issued. Publication is NOT blocked on it — that was a deliberate
-        # decision — but an auditor must be able to see that a certificate went
-        # out ahead of its review, rather than having to infer it.
+        # issued. Publication is not blocked on the whole review, only on a
+        # QC hold that applies at issue (qc_hold_refusal, asked by the
+        # publish guard), but an auditor must be able to see that a
+        # certificate went out ahead of its review, rather than infer it.
         "review_state": _review_state_at_issue(ar),
         # the reporting-template revision the certificate was drawn from
         "template_rev": _template_rev(),
@@ -442,7 +448,8 @@ def signature_refusal(ar, userid, stored=True):
     written refuses here, before Send emails anything. The newest
     certificate (a catalogue query) must be sealed,
     or be on its way to a seal: one stored before certificates were sealed
-    is generated again. Its interim mark must be the signature's."""
+    is generated again. Its interim mark must be the signature's. Last, at
+    the moment of issue, no QC hold may apply (qc_hold_refusal)."""
     from senaite.pfas.esig import certificate as esig_certificate
     from senaite.pfas.esig import ledger, signing
     why = esig_certificate.refusal(pending_signature(ar), userid, current_is_interim(ar), signing.utcnow())
@@ -469,7 +476,75 @@ def signature_refusal(ar, userid, stored=True):
     if report is not None and report_packages.never_sealed(report_packages.record(report),
                                                            report_packages.seal_record(report)):
         return report_packages.NOT_SEALED
-    return esig_certificate.mark_refusal(pending_signature(ar), issue_mark(report) if report is not None else None)
+    why = esig_certificate.mark_refusal(pending_signature(ar), issue_mark(report) if report is not None else None)
+    if why:
+        return why
+    return qc_hold_refusal(ar)
+
+
+# an issue refused while the QC Summary gate holds release, with its reason
+QC_HELD = u"The QC Summary of worksheet %s does not pass: %s. Open Data Review, QC Summary."
+# a question that could not be answered: the error is logged, never shown
+QC_UNREAD = (u"The QC Summary could not be read; the error is in the log. "
+             u"Open Data Review, QC Summary.")
+# each worksheet's QC holds, read once a request: one Issue asks each sample
+# several times (the card, Send, the interim grant, the publish guard)
+QC_MEMO_KEY = "senaite.pfas.controlled_pub.qc_holds"
+
+
+def _qc_memo():
+    """{worksheet uid: its qc_hold} kept on this request's annotations; a
+    fresh {} with no request. What qc_hold returned is kept for the rest
+    of the request, a hold it said because the QC Summary could not be
+    computed among it (it fails closed); only an error qc_hold itself
+    raises is not kept, and is asked again."""
+    request = api.get_request()
+    if request is None:
+        return {}
+    annotations = IAnnotations(request)
+    memo = annotations.get(QC_MEMO_KEY)
+    if memo is None:
+        memo = annotations[QC_MEMO_KEY] = {}
+    return memo
+
+
+def _issue_worksheets(ar):
+    """The worksheets of the sample's reported analyses
+    (sample_method.reported_analyses), each once, in order."""
+    out, seen = [], set()
+    for analysis in sample_method.reported_analyses(ar):
+        ws = analysis.getWorksheet()
+        if ws is not None and api.get_uid(ws) not in seen:
+            seen.add(api.get_uid(ws))
+            out.append(ws)
+    return out
+
+
+def qc_hold_refusal(ar):
+    """Why the sample may not be issued for its QC, or None: each worksheet
+    of its reported analyses is asked, at the moment of issue, the QC
+    Summary question Approve Release asks (Data Review's qc_hold), so a
+    hold that applies after release, or after Submit for an interim (a
+    qualifier set to block, say), refuses the issue with the gate's own
+    reason, naming the worksheet and where to act (QC_HELD). A sample on
+    no worksheet has no QC Summary gate. Each worksheet is read once a
+    request (_qc_memo). A question that raises refuses with a fixed text
+    (QC_UNREAD), the error logged."""
+    try:
+        memo = _qc_memo()
+        for ws in _issue_worksheets(ar):
+            uid = api.get_uid(ws)
+            if uid not in memo:
+                memo[uid] = ws.restrictedTraverse(str("@@pfas-data-review")).qc_hold()
+            if memo[uid]:
+                return QC_HELD % (api.get_id(ws), memo[uid].rstrip(u". "))
+    except ConflictError:
+        raise                     # Zope retries the transaction
+    except Exception:                                       # noqa: BLE001
+        logger.exception("controlled-pub: the QC holds of %s were not read",
+                         getattr(ar, "getId", lambda: "?")())
+        return QC_UNREAD
+    return None
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────

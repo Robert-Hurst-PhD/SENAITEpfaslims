@@ -34,14 +34,18 @@ Python 3.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import math
+import warnings
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import numpy as np
-from scipy.optimize import curve_fit
+from scipy.optimize import OptimizeWarning, curve_fit
 from scipy.signal import find_peaks, savgol_filter
 from scipy.special import erfc, erfcx
+from threadpoolctl import threadpool_limits
 
 # each baseline end is the mean of this many raw points just outside the
 # peak, unless the method's Edge points says otherwise
@@ -163,6 +167,21 @@ class Peak:
     # or why it has none
     asymmetry: Optional[float] = None
     asymmetry_note: Optional[str] = None
+    # a change applied to every injection of the trace ("Apply to all"):
+    # the change this peak was measured by, or why this injection could
+    # not take it and kept its automatic peak (raw_run._processed)
+    processing: Optional[dict] = None
+    processing_skipped: Optional[str] = None
+    # a peak separated from its neighbours by a fit (fit_peaks): the fit's
+    # shape, components, baseline, residual, the component reported and its
+    # 95 % interval, so the value can be reproduced
+    fit: Optional[dict] = None
+    # the peak's height above its baseline at the apex, in counts
+    height: Optional[float] = None
+    # the edge a drop baseline shares with a neighbouring peak, in minutes
+    drop_rt: Optional[float] = None
+    # the peak scored under each fitting method (raw_run._fit_scores)
+    fit_scores: Optional[list] = None
 
 
 # ── shapes ──────────────────────────────────────────────────────────────────
@@ -562,7 +581,8 @@ def _measure_from_apex(t, y, ys, apex, lo, hi, settings, exclude):
     if settings.area != "trapezoid":
         area, fit_note = gated_fit(t, y, s, e, apex, settings, area)
     return Peak(area, float(t[apex]), float(t[s]), float(t[e]), float(base[s]), float(base[e]), sn,
-                area_method(settings, refused=fit_note is not None), True, fit_note=fit_note, noise=noise)
+                area_method(settings, refused=fit_note is not None), True, fit_note=fit_note, noise=noise,
+                height=height)
 
 
 def as_candidate(peak, t, y):
@@ -790,7 +810,7 @@ def integrate_between(t, y, start, end, settings, exclude=(), noise=None, levels
     return Peak(area, float(t[apex]), float(t[s]), float(t[e]), float(base[s]), float(base[e]), sn,
                 area_method(settings, manual=True, refused=fit_note is not None), True, fit_note=fit_note,
                 noise=noise, baseline=settings.baseline, levels=got["levels"], valley_share=got["valley_share"],
-                skim_share=got["skim_share"])
+                skim_share=got["skim_share"], height=got["height"])
 
 
 def integrate_summed(t, y, rts, window, settings):
@@ -814,7 +834,7 @@ def integrate_summed(t, y, rts, window, settings):
     seg = slice(s, e + 1)
     area = float(np.trapezoid(np.clip(y[seg] - base[seg], 0, None), t[seg]))
     return Peak(area, float(t[apex]), float(t[s]), float(t[e]), float(base[s]), float(base[e]), sn,
-                "summed", True, noise=noise)
+                "summed", True, noise=noise, height=float(ys[apex] - base[apex]))
 
 
 def integrate_cluster(t, y, rt, window, settings, exclude=(), bound=None):
@@ -865,7 +885,7 @@ def integrate_cluster(t, y, rt, window, settings, exclude=(), bound=None):
     seg = slice(s, e + 1)
     area = float(np.trapezoid(np.clip(y[seg] - base[seg], 0, None), t[seg]))
     return Peak(area, float(t[apex]), float(t[s]), float(t[e]), float(base[s]), float(base[e]), sn,
-                "summed", True, noise=noise)
+                "summed", True, noise=noise, height=float(ys[apex] - base[apex]))
 
 
 def integrate_pair(t, y, rt, partner_rt, window, settings, exclude=()):
@@ -915,5 +935,527 @@ def integrate_pair(t, y, rt, partner_rt, window, settings, exclude=()):
         start, end = mu - 3 * sigma, mu + 3 * sigma + 3 * tau
         out.append(Peak(float(area), float(mode), float(start), float(end),
                         float(np.interp(start, t, base)), float(np.interp(end, t, base)), sn, "pair", True,
-                        noise=noise))
+                        noise=noise, height=height))
     return out[0], out[1]
+
+
+# ── overlapping peaks fitted by hand ────────────────────────────────────────
+# The analyst clicks two or three apexes between two edges; the chosen shape
+# per apex, summed on one straight baseline, is fitted to the raw signal over
+# those edges by iterative least squares (O'Haver, "Curve fitting C"; the
+# pair fit, integrate_pair, generalised to n peaks). The words of each
+# refusal are the add-on's (raw_review), so the card repeats them.
+
+def _review_words():
+    from .addon import load
+    return load("raw_review")
+
+
+FIT_NOT_CONVERGED = _review_words().FIT_NOT_CONVERGED
+FIT_RESIDUAL = _review_words().FIT_RESIDUAL
+FIT_INTERVAL = _review_words().FIT_INTERVAL
+FIT_COUNT = _review_words().FIT_COUNT
+FIT_APART = _review_words().FIT_APART
+FIT_FEW = _review_words().FIT_FEW
+FIT_NO_NOISE = _review_words().FIT_NO_NOISE
+FIT_COLLAPSED = _review_words().FIT_COLLAPSED
+FIT_FEW_REFITS = _review_words().FIT_FEW_REFITS
+FIT_NOT_COMPUTED = _review_words().FIT_NOT_COMPUTED
+FIT_FLOOR = _review_words().FIT_FLOOR
+# the add-on's raw_review.FIT_SHAPES is the same tuple (a lockstep test,
+# test_fit_fixture): the engine stays free of the add-on
+FIT_SHAPES = ("gaussian", "emg")
+# each component's width and tail are bounded as the pair fit bounds them
+FIT_SIGMA = (0.005, 0.2)
+FIT_TAU = (0.002, 0.2)
+# the approximate 95 % interval of a fitted area (the card's preview):
+# area +/- this many standard errors from the fit's covariance
+Z95 = 1.96
+# the reported interval: the middle 95 % of the area over this many refits
+# of the fit with its own residuals resampled, and the share of them that
+# must converge
+FIT_RESAMPLES = 200
+FIT_RESAMPLED_SHARE = 0.9
+# a refit starts at the fit itself: one that has not settled within this
+# many evaluations has not converged
+FIT_REFIT_MAXFEV = 1000
+# a parameter this share of its bounds' span (or of the largest area) from a
+# bound sits on it
+FIT_ON_BOUND = 1e-6
+# the solvers every start of a fit is solved with, the closest fit kept
+FIT_SOLVERS = ("trf", "dogbox")
+# a refit starts this share of the span inside any bound the fit sits on:
+# one started on a bound stops there and narrows the interval
+FIT_INSIDE = 1e-3
+# the fits kept, by their seed and refits: a run processed again reuses them
+FIT_CACHE_SIZE = 512
+_FIT_CACHE = OrderedDict()
+
+
+class FitRefused(ValueError):
+    """A fit that cannot be accepted: it did not converge, or its
+    covariance cannot be read (FIT_NOT_CONVERGED)."""
+
+
+class FitComponent(NamedTuple):
+    """One fitted peak: its area and the area's standard error (the square
+    root of its variance in the fit's covariance: the approximate interval,
+    approx_interval), its centre `mu`, width `sigma` and tail `tau` (None
+    for a Gaussian), its apex and its height above the fitted baseline
+    there, and its resampled 95 % interval [lo, hi] (fit_peaks: the middle
+    95 % of its area over the refits), the interval reported."""
+    area: float
+    se: float
+    mu: float
+    sigma: float
+    tau: Optional[float]
+    apex: float
+    height: float
+    lo: Optional[float] = None
+    hi: Optional[float] = None
+
+
+class FitResult(NamedTuple):
+    """The fit: its shape, the components in the order their apexes were
+    given, the baseline b0 + b1 (t - t0), its residual in % of the signal
+    (residual_pct, for information), the RMS of its residual (the counts
+    the fit leaves, judged against the trace's noise: fit_problem), the
+    span (t0, t1) of the samples it was fitted to, how many resampled
+    refits the interval was read on and the seed they were drawn with."""
+    shape: str
+    components: list
+    b0: float
+    b1: float
+    t0: float
+    residual_pct: float
+    span: tuple
+    residual_rms: float = 0.0
+    resamples: int = 0
+    seed: int = 0
+    # the refits drawn; `resamples` of them converged
+    refits: int = 0
+
+
+def residual_pct(y, yhat):
+    """O'Haver's percent fitting error: 100 x ||y - yhat|| / ||y||, the raw
+    signal against the model with its baseline, over the fitted span; an
+    all-zero signal has none (inf)."""
+    y, yhat = np.asarray(y, dtype=float), np.asarray(yhat, dtype=float)
+    norm = float(np.linalg.norm(y))
+    return 100.0 * float(np.linalg.norm(y - yhat)) / norm if norm > 0 else float("inf")
+
+
+def _component(shape, x, p):
+    return gaussian(x, *p) if shape == "gaussian" else emg(x, *p)
+
+
+def _rows(shape, x, P, peaks):
+    """The fit's model at the samples `x` for each row of parameters `P`
+    (m, k): [m, len(x)], every row in one pass. The same sum as
+    fit_peaks' model: each peak's shape on the line P[:, -2] + P[:, -1]
+    (x - x[0])."""
+    n = 3 if shape == "gaussian" else 4
+    x = np.asarray(x, dtype=float)[None, :]
+    out = P[:, -2:-1] + P[:, -1:] * (x - x[0, 0])
+    for j in range(peaks):
+        area, mu, sigma = P[:, j * n:j * n + 1], P[:, j * n + 1:j * n + 2], P[:, j * n + 2:j * n + 3]
+        if shape == "gaussian":
+            out = out + area / (sigma * math.sqrt(2 * math.pi)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+            continue
+        tau = P[:, j * n + 3:j * n + 4]
+        z = (sigma / tau - (x - mu) / sigma) / math.sqrt(2)
+        lead = erfcx(np.clip(z, 0, None)) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+        # the trailing side's exponent is below zero wherever it is used
+        trail = erfc(z) * np.exp(np.minimum(sigma ** 2 / (2 * tau ** 2) - (x - mu) / tau, 0.0))
+        out = out + area / (2 * tau) * np.where(z < 0, trail, lead)
+    return out
+
+
+def _apex_of(shape, p):
+    """(apex time, height above the baseline) of one fitted component: a
+    Gaussian's centre, an EMG's mode read on a fine grid over its body."""
+    if shape == "gaussian":
+        area, mu, sigma = p
+        return float(mu), float(area / (sigma * math.sqrt(2 * math.pi)))
+    area, mu, sigma, tau = p
+    grid = np.linspace(mu - 3 * sigma, mu + 3 * sigma + 3 * tau, 4001)
+    vals = emg(grid, area, mu, sigma, tau)
+    i = int(np.argmax(vals))
+    return float(grid[i]), float(vals[i])
+
+
+def fit_peaks(t, y, start, end, apexes, shape, settings=None, resamples=None, alone=False):
+    """_fit_peaks, kept by its seed (the samples, the clicks and the shape:
+    fit_seed) and its refits, so a run processed again reuses a fit, or its
+    refusal, rather than making it again; and made on one BLAS thread, as a
+    fit's arrays are too small to share."""
+    resamples = FIT_RESAMPLES if resamples is None else int(resamples)
+    if resamples == 0:
+        # a point estimate, with no interval: made fresh and never kept, so
+        # the fits an analyst applies keep their place in the cache
+        if len(apexes) < (1 if alone else 2) or len(apexes) > 3:
+            raise ValueError(FIT_COUNT)
+        with threadpool_limits(1):
+            return _fit_peaks(*_arrays(t, y), start, end, apexes, shape, 0)
+    # a fit of overlapping peaks is of two or three apexes; `alone` fits the
+    # one peak scored under a fitted shape (raw_run._fit_scores)
+    if len(apexes) < (1 if alone else 2) or len(apexes) > 3:
+        raise ValueError(FIT_COUNT)
+    t, y = _arrays(t, y)
+    s, e = int(np.argmin(abs(t - start))), int(np.argmin(abs(t - end)))
+    key = (fit_seed(t[s:e + 1], y[s:e + 1], apexes, shape, order=True), resamples)
+    if key not in _FIT_CACHE:
+        try:
+            with threadpool_limits(1):
+                _FIT_CACHE[key] = _fit_peaks(t, y, start, end, apexes, shape, resamples)
+        except FitRefused as exc:
+            # its words only: the raised exception would keep the fit's frames alive
+            _FIT_CACHE[key] = FitRefused(str(exc))
+        while len(_FIT_CACHE) > FIT_CACHE_SIZE:
+            _FIT_CACHE.popitem(last=False)
+    _FIT_CACHE.move_to_end(key)
+    got = _FIT_CACHE[key]
+    if isinstance(got, FitRefused):
+        raise FitRefused(str(got))
+    return got._replace(components=list(got.components))
+
+
+def _fit_peaks(t, y, start, end, apexes, shape, resamples):
+    """The chosen shape ("gaussian" or "emg") at each of two or three
+    `apexes`, summed on one straight baseline, fitted by curve_fit to the
+    raw signal over the samples nearest `start` and `end`, both included.
+    Each component starts at its click with the width the gaps allow, its
+    area and the line read by linear least squares (_linear_areas); an EMG
+    is started with a short tail and with one as long as its width, the
+    closer fit kept. Its centre is held to the click plus or minus half the
+    gap to the next click on each side (the outer side as the inner),
+    inside the span; its width in FIT_SIGMA, its tail in FIT_TAU, its area
+    at or above zero. `settings` are not read: the fit is the shape's
+    alone.
+
+    Each component's reported 95 % interval (lo, hi) is resampled: the fit
+    is made again `resamples` times (FIT_RESAMPLES) with its own residuals
+    drawn back onto the fitted model (_resampled_areas), seeded from the
+    trace (fit_seed) so a rerun reports the same interval, and the middle
+    95 % of each area is kept. The covariance's SE stays for the
+    approximate interval (approx_interval).
+
+    ValueError("two or three apexes") for fewer than 2 or more than 3;
+    ValueError for apexes not apart and inside the span, an unknown shape
+    or fewer samples than raw_review.fit_fewest. FitRefused
+    (FIT_NOT_CONVERGED) when curve_fit does not converge, its covariance
+    holds inf or nan (FIT_NOT_CONVERGED); the samples cannot be computed on
+    (FIT_NOT_COMPUTED); a component collapsed (FIT_COLLAPSED: its area at
+    none, or its centre, width or tail on a bound, a tail at its shortest
+    excepted, which is the Gaussian the EMG tends to); or too few refits
+    converge (FIT_FEW_REFITS)."""
+    if shape not in FIT_SHAPES:
+        raise ValueError("the shape is one of %s" % ", ".join(FIT_SHAPES))
+    t, y = _arrays(t, y)
+    s, e = int(np.argmin(abs(t - start))), int(np.argmin(abs(t - end)))
+    tt, yy = t[s:e + 1], y[s:e + 1]
+    clicks = [float(a) for a in apexes]
+    order = sorted(range(len(clicks)), key=lambda k: clicks[k])
+    times = [clicks[k] for k in order]
+    if len(set(times)) != len(times) or not (len(tt) and tt[0] < times[0] and times[-1] < tt[-1]):
+        raise ValueError(FIT_APART)
+    if len(tt) < _review_words().fit_fewest(shape, len(clicks)):
+        raise ValueError(FIT_FEW)
+    t0 = float(tt[0])
+    k = min(3, len(tt) // 2)
+    left, right = float(np.mean(yy[:k])), float(np.mean(yy[-k:]))
+    slope = (right - left) / (float(tt[-1]) - t0)
+    line = left + slope * (tt - t0)
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    if len(times) == 1:
+        # one peak: its width is read from the span, edges lying about 3 sigma out
+        gaps = [0.4 * (float(tt[-1]) - t0)]
+    p0, lower, upper = [], [], []
+    for i, mu in enumerate(times):
+        below = gaps[i - 1] if i > 0 else gaps[0]
+        above = gaps[i] if i < len(gaps) else gaps[-1]
+        lo, hi = max(mu - below / 2.0, t0), min(mu + above / 2.0, float(tt[-1]))
+        sig = float(np.clip(min(below, above) / 2.5, FIT_SIGMA[0], FIT_SIGMA[1]))
+        h = max(float(np.interp(mu, tt, yy - line)), 1.0)
+        area = h * sig * math.sqrt(2 * math.pi)
+        if shape == "gaussian":
+            p0 += [area, mu, sig]
+            lower += [0.0, lo, FIT_SIGMA[0]]
+            upper += [np.inf, hi, FIT_SIGMA[1]]
+        else:
+            tau = float(np.clip(sig / 2.0, FIT_TAU[0], FIT_TAU[1]))
+            p0 += [area, mu, sig, tau]
+            lower += [0.0, lo, FIT_SIGMA[0], FIT_TAU[0]]
+            upper += [np.inf, hi, FIT_SIGMA[1], FIT_TAU[1]]
+    p0 += [left, slope]
+    lower += [-np.inf, -np.inf]
+    upper += [np.inf, np.inf]
+    n = 3 if shape == "gaussian" else 4
+    upper_bounds = np.asarray(upper, dtype=float)
+
+    def model(x, *p):
+        return _rows(shape, x, np.asarray(p, dtype=float)[None, :], len(times))[0]
+
+    def jac(x, *p):
+        # forward differences, every step evaluated in one pass, each step
+        # taken away from an upper bound it would cross
+        p = np.asarray(p, dtype=float)
+        h = np.sqrt(np.finfo(float).eps) * np.maximum(1.0, np.abs(p))
+        h = np.where(p + h > upper_bounds, -h, h)
+        rows = _rows(shape, x, np.vstack([p, p + np.diag(h)]), len(times))
+        return ((rows[1:] - rows[0]) / h[:, None]).T
+    model.jac = jac
+    # an EMG is started twice, with a short tail and with one as long as
+    # its width, and the closer fit kept: a tall peak's tail can otherwise
+    # be taken by its neighbour
+    try:
+        starts = [_linear_areas(shape, tt, yy, p0, len(times))]
+        if shape == "emg":
+            longer = list(p0)
+            for j in range(len(times)):
+                longer[j * n + 3] = float(np.clip(p0[j * n + 2], FIT_TAU[0], FIT_TAU[1]))
+            starts.append(_linear_areas(shape, tt, yy, longer, len(times)))
+    except ValueError:                    # numpy's LinAlgError among them
+        raise FitRefused(FIT_NOT_COMPUTED)
+    # each start is solved twice, by the trust region kept inside the bounds
+    # and by steps that stop on them (dogbox, as the card's preview also
+    # solves it), and the closest fit of all kept: the two paths can settle
+    # in different minima, a shoulder taking the main peak's tail on one
+    p, cov, best = None, None, None
+    for start_values in starts:
+        for method in FIT_SOLVERS:
+            try:
+                q, qcov = _least_squares(model, tt, yy, start_values, (lower, upper), method=method)
+            except ValueError:
+                raise FitRefused(FIT_NOT_COMPUTED)
+            if q is not None and np.all(np.isfinite(qcov)):
+                cost = float(np.sum((yy - model(tt, *q)) ** 2))
+                if best is None or cost < best:
+                    p, cov, best = q, qcov, cost
+    if p is None:
+        raise FitRefused(FIT_NOT_CONVERGED)
+    if collapsed(shape, p, lower, upper, len(times)):
+        raise FitRefused(FIT_COLLAPSED)
+    yhat = model(tt, *p)
+    seed = fit_seed(tt, yy, times, shape)
+    # no resamples: the point estimate alone, its components with no interval
+    areas = (_resampled_areas(model, tt, yhat, yy - yhat, p, (lower, upper), [j * n for j in range(len(times))],
+                              resamples, seed, _inside(p, lower, upper, len(times), shape))
+             if resamples else None)
+    fitted = []
+    for j in range(len(times)):
+        q = [float(v) for v in p[j * n:(j + 1) * n]]
+        apex, height = _apex_of(shape, q)
+        lo, hi = ((float(v) for v in np.percentile(areas[:, j], [2.5, 97.5]))
+                  if areas is not None else (None, None))
+        fitted.append(FitComponent(area=q[0], se=float(math.sqrt(max(cov[j * n, j * n], 0.0))), mu=q[1],
+                                   sigma=q[2], tau=q[3] if shape == "emg" else None, apex=apex, height=height,
+                                   lo=lo, hi=hi))
+    # back in the order the apexes were given: a pick names one of them
+    components = [None] * len(clicks)
+    for j, k in enumerate(order):
+        components[k] = fitted[j]
+    return FitResult(shape=shape, components=components, b0=float(p[-2]), b1=float(p[-1]), t0=t0,
+                     residual_pct=residual_pct(yy, yhat), span=(t0, float(tt[-1])),
+                     residual_rms=float(np.sqrt(np.mean((yy - yhat) ** 2))),
+                     resamples=len(areas) if areas is not None else 0, seed=seed,
+                     refits=resamples)
+
+
+def _on_bound(value, low, high, scale):
+    """Whether `value` sits on `low` or `high` (an infinite bound is never
+    reached), within FIT_ON_BOUND of `scale`."""
+    tol = FIT_ON_BOUND * scale
+    return (np.isfinite(low) and value - low <= tol) or (np.isfinite(high) and high - value <= tol)
+
+
+def collapsed(shape, p, lower, upper, peaks):
+    """Whether a fitted component collapsed: its area at none, or its
+    centre, width or tail on a bound of its own. A tail at its shortest is
+    not a collapse: the EMG has become the Gaussian it tends to."""
+    n = 3 if shape == "gaussian" else 4
+    largest = max([abs(float(p[j * n])) for j in range(peaks)] + [1.0])
+    for j in range(peaks):
+        for k in range(n):
+            i = j * n + k
+            if k == 3 and upper[i] - float(p[i]) > FIT_ON_BOUND * (upper[i] - lower[i]):
+                continue                       # the tail at its shortest, or free
+            scale = largest if k == 0 else upper[i] - lower[i]
+            if _on_bound(float(p[i]), lower[i], upper[i], scale):
+                return True
+    return False
+
+
+def _inside(p, lower, upper, peaks, shape):
+    """`p` moved FIT_INSIDE of its bounds' span (or of the largest area)
+    inside any bound it sits on: a refit started on a bound stops there."""
+    n = 3 if shape == "gaussian" else 4
+    largest = max([abs(float(p[j * n])) for j in range(peaks)] + [1.0])
+    out = np.array(p, dtype=float)
+    for i in range(len(out)):
+        low, high = lower[i], upper[i]
+        if not (np.isfinite(low) or np.isfinite(high)):
+            continue
+        step = FIT_INSIDE * (high - low if np.isfinite(high) and np.isfinite(low) else largest)
+        if np.isfinite(low):
+            out[i] = max(out[i], low + step)
+        if np.isfinite(high):
+            out[i] = min(out[i], high - step)
+    return out
+
+
+def _linear_areas(shape, x, y, p0, peaks):
+    """`p0` with its areas and its line read by linear least squares with
+    each peak's centre, width and tail held: the start a fit is made
+    from, so a tall peak's tail is not first given to its neighbour. An
+    area that reads below zero starts at a small share of the largest."""
+    n = 3 if shape == "gaussian" else 4
+    cols = []
+    for j in range(peaks):
+        # the peak alone at unit area, on no line
+        unit = np.array([[1.0] + list(p0[j * n + 1:(j + 1) * n]) + [0.0, 0.0]])
+        cols.append(_rows(shape, x, unit, 1)[0])
+    cols += [np.ones_like(x), x - x[0]]
+    coef = np.linalg.lstsq(np.column_stack(cols), y, rcond=None)[0]
+    out = list(p0)
+    floor = max(float(np.max(coef[:peaks])), 1.0) * 1e-3
+    for j in range(peaks):
+        out[j * n] = max(float(coef[j]), floor)
+    out[-2], out[-1] = float(coef[-2]), float(coef[-1])
+    return out
+
+
+def _least_squares(model, x, y, p0, bounds, maxfev=40000, **kw):
+    """(parameters, covariance) of curve_fit from `p0` within `bounds`, or
+    (None, None) when it does not converge (its solver reports no
+    convergence within `maxfev` evaluations) or a parameter is not finite;
+    a covariance that cannot be estimated comes back as inf. ValueError
+    when the samples or the start cannot be computed on."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", OptimizeWarning)
+            p, cov = curve_fit(model, x, y, p0=p0, bounds=bounds, maxfev=maxfev,
+                               jac=getattr(model, "jac", None), **kw)
+    except RuntimeError:
+        return None, None
+    return (p, cov) if np.all(np.isfinite(p)) else (None, None)
+
+
+def fit_seed(t, y, apexes, shape, order=False):
+    """The resampling's seed for one fit: read from the samples fitted and
+    what was clicked, so the same trace fitted again draws the same
+    refits and reports the same interval; with `order`, the clicks in the
+    order given too (the components come back in it: the cache's key)."""
+    clicks = [float(a) for a in apexes] if order else sorted(float(a) for a in apexes)
+    digest = hashlib.sha256(np.ascontiguousarray(t, dtype="<f8").tobytes()
+                            + np.ascontiguousarray(y, dtype="<f8").tobytes()
+                            + repr((clicks, shape)).encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "little")
+
+
+def _resampled_areas(model, x, yhat, resid, p, bounds, at, resamples, seed, start=None):
+    """[refit, component] areas of a residual bootstrap: `resamples` times
+    the fit's own residuals, centred and widened for the parameters fitted
+    (sqrt(n / (n - k))), are drawn with replacement onto the fitted model
+    and fitted again from `start` (the fit's parameters moved inside any
+    bound they sit on: _inside), each parameter scaled by the Jacobian. A
+    refit that does not converge, or cannot be computed, is dropped;
+    FitRefused (FIT_FEW_REFITS) when fewer than FIT_RESAMPLED_SHARE of them
+    converge."""
+    rng = np.random.default_rng(seed)
+    resid = (resid - resid.mean()) * math.sqrt(len(resid) / float(len(resid) - len(p)))
+    start = p if start is None else start
+    out = []
+    for _i in range(resamples):
+        try:
+            q, _cov = _least_squares(model, x, yhat + rng.choice(resid, size=len(resid), replace=True), start,
+                                     bounds, FIT_REFIT_MAXFEV, x_scale="jac")
+        except ValueError:
+            q = None
+        if q is not None:
+            out.append([q[k] for k in at])
+    if not out or len(out) < FIT_RESAMPLED_SHARE * resamples:
+        raise FitRefused(FIT_FEW_REFITS)
+    return np.asarray(out, dtype=float)
+
+
+def approx_interval(component):
+    """[low, high] of a component's approximate 95 % interval, area +/- Z95
+    x SE from the fit's covariance: the card's preview, labelled
+    approximate; the interval reported is the resampled one (lo, hi)."""
+    return [component.area - Z95 * component.se, component.area + Z95 * component.se]
+
+
+def noise_multiple(result, noise):
+    """How many times the trace's baseline noise (the sigma its S/N is read
+    against) the fit leaves: the RMS of its residual over the fitted span
+    over `noise`; inf for a residual over no noise, None without a noise."""
+    if noise is None:
+        return None
+    if not noise > 0:
+        return 0.0 if result.residual_rms == 0 else float("inf")
+    return result.residual_rms / float(noise)
+
+
+def fit_problem(result, pick, max_noise_multiple, noise):
+    """Why a fit cannot be reported, or "": no baseline noise to judge it
+    by (FIT_NO_NOISE); a residual RMS over the method's largest multiple of
+    the trace's baseline noise (FIT_RESIDUAL), so a good fit passes at any
+    level; or the picked component's resampled 95 % interval wider than its
+    area, hi - lo > area (FIT_INTERVAL)."""
+    multiple = noise_multiple(result, noise)
+    if multiple is None:
+        return FIT_NO_NOISE
+    if not multiple <= max_noise_multiple:
+        from .addon import load
+        return FIT_RESIDUAL % (load("raw_preview")._above(multiple, max_noise_multiple), max_noise_multiple)
+    comp = result.components[pick]
+    if comp.hi - comp.lo > comp.area:
+        counts = _review_words().counts
+        return FIT_INTERVAL % (counts(comp.lo), counts(comp.hi))
+    return ""
+
+
+def fit_record(result, pick, apexes, noise=None, limit=None):
+    """The fit as a peak's record keeps it, so the value can be reproduced:
+    {"shape", "components": [{"area", "se", "mu", "sigma", "tau"}],
+    "baseline": [b0, b1, t0], "pick", "ci": the picked component's
+    resampled 95 % interval [low, high], "ci_approx": its approximate one
+    (approx_interval), "resamples" (the refits that converged, which the
+    interval was read on), "refits" (those drawn) and "seed",
+    "residual_rms", "noise" (the trace's baseline noise),
+    "noise_multiple" (the one over the other) and "noise_multiple_limit"
+    (the method's largest, in force when it was judged), "apexes" as
+    clicked, "span": [t0, t1]}."""
+    comp = result.components[pick]
+    return {"shape": result.shape,
+            "components": [{"area": c.area, "se": c.se, "mu": c.mu, "sigma": c.sigma, "tau": c.tau}
+                           for c in result.components],
+            "baseline": [result.b0, result.b1, result.t0], "pick": pick, "ci": [comp.lo, comp.hi],
+            "ci_approx": approx_interval(comp), "resamples": result.resamples, "refits": result.refits,
+            "seed": result.seed, "residual_rms": result.residual_rms, "noise": noise,
+            "noise_multiple": noise_multiple(result, noise), "noise_multiple_limit": limit,
+            "apexes": [float(a) for a in apexes], "span": list(result.span)}
+
+
+def fitted_peak(result, pick, apexes, noise=None, limit=None, min_sn=None):
+    """The picked component as a Peak: its area and apex, its edges at
+    mu - 3 sigma and mu + 3 sigma (+ 3 tau for an EMG) with the fitted
+    baseline there, its height over `noise` as its S/N, measured by "fit,
+    <shape>", carrying the fit's record (fit_record, `limit` the method's
+    largest fit residual in force). Under `min_sn`, the engine's detection
+    floor, it is not detected, as the engine reads such a peak: no area,
+    no time, its S/N and the fit's record kept."""
+    c = result.components[pick]
+    start, end = c.mu - 3 * c.sigma, c.mu + 3 * c.sigma + (3 * c.tau if c.tau is not None else 0.0)
+    sn = _sn(c.height, noise) if noise is not None else None
+    record = fit_record(result, pick, apexes, noise, limit)
+    method = "fit, " + result.shape
+    if min_sn is not None and sn is not None and not sn >= min_sn:
+        return dataclasses.replace(
+            _not_detected(method, sn, FIT_FLOOR % min_sn, noise), fit=record)
+
+    def base(x):
+        return result.b0 + result.b1 * (x - result.t0)
+    return Peak(c.area, c.apex, start, end, base(start), base(end), sn, method, True, noise=noise, fit=record,
+                height=float(c.height))

@@ -39,7 +39,7 @@ from .analyte_alias import keyword_for, keyword_of
 from .extraction_log import ExtractionLog
 from .qc_engine import (single_transition_confirm_needed, KIND_OVER_RANGE, qualifiers_deleted, raw_is_deleted,
                         ratio_held,
-                        COELUTION_FLAG, coelution_split)
+                        COELUTION_FLAG, coelution_split, FITTED_FLAG, fitted_estimate)
 from .report import generate_batch_report
 from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
@@ -808,6 +808,13 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             if (result is not None and COELUTION_FLAG not in flags
                     and any(coelution_split(supplied.get(n)) for n in peaks_of if supplied.get(n) is not None)):
                 flags.append(COELUTION_FLAG)
+            # a value from a quantifier peak separated by curve fitting, on
+            # one injection or on all, is an estimate: marked for the QAO's
+            # fitted-estimate qualifier, judged as the co-elution mark is and
+            # apart from it, so a peak both split and fitted carries both
+            if (result is not None and FITTED_FLAG not in flags
+                    and any(fitted_estimate(supplied.get(n)) for n in peaks_of if supplied.get(n) is not None)):
+                flags.append(FITTED_FLAG)
 
             # above the calibration range and reported from no dilution: the
             # bound the certificate prints it above, the highest top among
@@ -1611,7 +1618,9 @@ def run_pipeline(
         from .qc_store import persist_qc_results, persist_calibrations, persist_provenance
         n_qc = persist_qc_results(batch)
         n_cal = persist_calibrations(batch)
-        n_prov = persist_provenance(batch)
+        # a new import kept what it replaced itself (begin_import): only a
+        # processing of the same import keeps its ion-ratio records
+        n_prov = persist_provenance(batch, reprocess=not kept)
         logger.info("Persisted %d QC results, %d calibration curves and %d provenance records",
                     n_qc, n_cal, n_prov)
     except sqlite3.Error as e:

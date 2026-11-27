@@ -23,8 +23,9 @@ still building, one that failed, or a tier that needs a package with no
 package record on the certificate refuses Send, naming the sample and the
 reason; a ready package, a tier of the certificate alone, or a report that
 is not a certificate (a QC Review report), sends. A sample without the
-sender's own signature from Data Review refuses Send with the publish
-guard's reason (controlled_publications.signature_refusal).
+sender's own signature from Data Review, or with a QC hold that applies now,
+refuses Send with the publish guard's reason
+(controlled_publications.signature_refusal).
 
 Delivery record: each e-mail that attached a batch's EDD is recorded on
 that batch's EDD record (edd_publish.record_delivery): the recipients it
@@ -132,8 +133,8 @@ def signature_hold(report, userid):
     by userid for its signature: the publish guard's own question
     (controlled_publications.signature_refusal: the pending signature,
     whether the sender may still sign it, the certificate's seal and its
-    mark), asked of each sample before any email is sent. None when every
-    sample is signed."""
+    mark, then the QC holds at that moment), asked of each sample before
+    any email is sent. None when every sample may go."""
     from senaite.pfas.browser.controlled_publications import signature_refusal
     for uid in report_packages._report_samples(report):
         sample = api.get_object_by_uid(uid, default=None)

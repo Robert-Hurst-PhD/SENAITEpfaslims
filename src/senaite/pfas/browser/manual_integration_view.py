@@ -6,7 +6,7 @@
                                 with a reason, its before / after pages and
                                 the analyst's then a different reviewer's
                                 signature; the page viewer; Stamp. The changes
-                                made on the Raw Data tab are listed, read only:
+                                made on the Integration Review tab are listed, read only:
                                 they are justified in Data Review
     @@pfas-mi-report?which=original|stamped   the report PDF, for the viewer
     @@pfas-mi-reasons           the lab's reason list (managers)
@@ -106,7 +106,7 @@ def save_settings(portal, data):
 # ── a worksheet's records and report ───────────────────────────────────────
 
 def load_state(ws):
-    """The worksheet's records and Raw Data changes."""
+    """The worksheet's records and Integration Review changes."""
     raw = IAnnotations(ws).get(KEY)
     try:
         state = json.loads(raw) if raw else mi.empty_state()
@@ -264,15 +264,20 @@ def evaluate(state, fp, captured):
     return ok, need, server, status
 
 
-def gate_state(ws):
-    """(ok, [missing], state) for the Instrument Report gate of Data Review;
-    a stamped copy that is missing or altered on disk counts as none."""
-    state, _path, fp, captured = current_state(ws)
+def void_lost_stamp(ws, state):
+    """A stamped copy that is missing or altered on disk counts as none."""
     stamped = state.get("stamped") or {}
     if stamped:
         stamped_path = os.path.join(_report_dir(ws), STAMPED_DIR, stamped.get("file") or u"")
         if not os.path.isfile(stamped_path) or file_fp(stamped_path) != stamped.get("fp"):
             state["stamped"] = None
+
+
+def gate_state(ws):
+    """(ok, [missing], state) for the Instrument Report gate of Data Review;
+    a stamped copy that is missing or altered on disk counts as none."""
+    state, _path, fp, captured = current_state(ws)
+    void_lost_stamp(ws, state)
     ok, need, _server, _status = evaluate(state, fp, captured)
     return ok, need, state
 
@@ -319,9 +324,11 @@ def page_count(path):
 class PFASManualIntegrationView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/manual_integration.pt")
+    posted = None
 
     def __call__(self):
         flatten_form(self.request)
+        self.posted = None
         self.error = self.request.form.get("error") or u""
         self.ok = self.request.form.get("ok") or u""
         if self.request.method == "POST":
@@ -337,7 +344,12 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
                 msg = self._act(self.request.form.get("action") or u"")
                 return self._back(ok=msg)
             except (ValueError, KeyError) as exc:
-                return self._back(error=u"%s" % exc)
+                # shown again with what was typed, not redirected to the stored page
+                self.posted = dict(self.request.form)
+                self.error = u"%s" % exc
+                self.ok = u""
+                self.__dict__.pop("_data", None)
+                return self.template()
         return self.template()
 
     # who
@@ -353,6 +365,23 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
     def can_work(self):
         return bool(self._roles() & WORK_ROLES)
 
+    def closed(self):
+        """The worksheet is verified or published: its records are read only,
+        as Data Review's are."""
+        return api.get_review_status(self.context) in ("verified", "published")
+
+    def submitted(self):
+        """The worksheet waits for its reviewer: only the reviewer's
+        signature, a countersignature and the stamp may follow (mi.action_allowed)."""
+        return api.get_review_status(self.context) == "to_be_verified"
+
+    def can_edit(self):
+        return self.can_work() and not self.closed()
+
+    def can_change(self):
+        """Records may be typed into, added to and reopened."""
+        return self.can_edit() and not self.submitted()
+
     def _back(self, ok=u"", error=u""):
         from six.moves.urllib.parse import quote_plus
         q = ("ok=" + quote_plus(ok.encode("utf-8"))) if ok else ("error=" + quote_plus(error.encode("utf-8")))
@@ -363,12 +392,21 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
     def data(self):
         if not hasattr(self, "_data"):
             state, path, fp, captured = current_state(self.context, _who())
-            ok, need, server, scan_status = evaluate(state, fp, captured)
+            void_lost_stamp(self.context, state)
+            _ok, _need, server, scan_status = evaluate(state, fp, captured)
+            # the gates Data Review reads, in force; worded in the phase its
+            # readiness lines are: once submitted, "to verify"
+            dr = self._review()
+            m_ok, m_need = dr.mi_gate()[:2]
+            r_ok, r_need = dr.raw_changes_gate()
+            ok, need = m_ok and r_ok, list(m_need) + list(r_need)
+            phase = dr.readiness_phase()
             reasons = get_settings()["reasons"]
             files = report_files(self.context)
             scan = state.get("heading_scan") or {}
             self._data = {"state": state, "path": path, "fp": fp, "captured": captured,
-                          "ok": ok, "missing": need,
+                          "ok": ok, "missing": need, "phase": phase,
+                          "ready": mi.verify_readiness(phase, ok, need),
                           "files": files, "choose": len(files) > 1,
                           "scan": scan if scan.get("fp") == fp and fp else None,
                           # what was recorded: the pages, or "none" (an attestation)
@@ -382,18 +420,173 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
                           "file": os.path.basename(path) if path else u"",
                           "heading": get_settings().get("heading"),
                           "stamped": (state.get("stamped") or {}).get("file")}
+            if self.posted and "heading_pages" in self.posted:
+                self._data["scan_text"] = self.posted["heading_pages"]
         return self._data
+
+    def _review(self):
+        """Data Review's own view of this worksheet: this page reads the
+        run's edit files through it, so the two pages never keep two rules."""
+        if not hasattr(self, "_review_view"):
+            from senaite.pfas.browser.data_review import PFASDataReviewView
+            self._review_view = PFASDataReviewView(self.context, self.request)
+        return self._review_view
+
+    def _sides_once(self):
+        """Data Review's (vendor rows, raw rows), read once per request."""
+        if not hasattr(self, "_sides_cache"):
+            self._sides_cache = self._review()._sides()
+        return self._sides_cache
+
+    def me(self):
+        return _who()
+
+    def person(self, userid):
+        """A person as the screen names them: the full name on People &
+        Roles, else the id."""
+        if not hasattr(self, "_people"):
+            self._people = {}
+        if userid not in self._people:
+            try:
+                from senaite.pfas.browser import staff
+                self._people[userid] = staff.staff_info(userid).get("fullname") or userid
+            except Exception:                               # noqa: BLE001
+                self._people[userid] = userid
+        return self._people[userid]
+
+    def _panel_names(self):
+        """The names (keywords and their labels) of the analytes the Method x
+        Matrix panel includes for the worksheet's samples; None when no panel
+        can be resolved (nothing then narrows the run's own names)."""
+        from senaite.pfas import compound_library_store, raw_review
+        from senaite.pfas.method_profile_store import get_profile, get_included_analytes
+        from senaite.pfas.report_limits import canonical_matrix
+        portal = api.get_portal()
+        mid = self._review().batch_method()
+        if not mid:
+            return None
+        profile = get_profile(portal, mid) or {}
+        label = raw_review.library_label(compound_library_store.library())
+        names, seen = set(), False
+        for an in self.context.getAnalyses() or []:
+            if getattr(an, "portal_type", u"") == "ReferenceAnalysis":
+                continue                                    # SENAITE's own QC: no sample, no matrix
+            matrix = canonical_matrix(profile, an.getRequest().getSampleTypeTitle())
+            if matrix in (profile.get("supported_matrices") or []):
+                seen = True
+                for kw in get_included_analytes(portal, mid, matrix):
+                    names.update((kw, label(kw)))
+        return names if seen else None
+
+    def run_lists(self):
+        """{"injections", "analytes", "error"}: the names the run's own rows
+        carry, the analytes within the worksheet's Method x Matrix panel: what
+        a record may name. Empty for a viewer who cannot edit."""
+        if not hasattr(self, "_run_lists"):
+            out = {"injections": [], "analytes": [], "error": u""}
+            if self.can_change():
+                injections, analytes = set(), set()
+                try:
+                    vendor, raw = self._sides_once()
+                    for row in list(self._review()._injection_rows()) + list(vendor) + list(raw):
+                        if row.get("injection_name"):
+                            injections.add(row["injection_name"])
+                        if row.get("analyte"):
+                            analytes.add(row["analyte"])
+                    out["injections"] = sorted(injections)
+                    out["analytes"] = mi.scoped(sorted(analytes), self._panel_names())
+                except Exception:                           # noqa: BLE001
+                    logger.warning("run lists unread", exc_info=True)
+                    out["error"] = u"The run's lists could not be read."
+            self._run_lists = out
+        return self._run_lists
+
+    def export_flags(self):
+        """[{"injection", "analyte", "qc_type"}] the instrument export flagged
+        manual, on a run whose reported rows are integrated from raw data:
+        for information only (any other run lists them as its own records)."""
+        try:
+            dr = self._review()
+            if not any((u"%s" % (r.get("derived_from") or u"")).startswith(u"raw:")
+                       for r in dr._injection_rows()):
+                return []
+            vendor = self._sides_once()[0]
+            return mi.vendor_detections([(r.get("injection_name"), r.get("analyte"), r.get("qc_type"),
+                                          r.get("manual_integration"), r.get("derived_from"))
+                                         for r in vendor])[0]
+        except Exception:                                   # noqa: BLE001
+            logger.warning("export flags unread", exc_info=True)
+            return []
+
+    def sign_rights(self):
+        """The sign rights (People & Roles) of the person viewing; none when
+        they cannot edit or their record cannot be read."""
+        if not hasattr(self, "_rights"):
+            self._rights = []
+            if self.can_edit():
+                try:
+                    self._rights = staff_sign_info(_who())["sign_as"]
+                except ValueError:
+                    pass
+        return self._rights
+
+    def can_reopen(self):
+        return any(r in self.sign_rights() for r in SIGN_RIGHT.values())
+
+    def can_confirm_none(self):
+        return SIGN_RIGHT["analyst"] in self.sign_rights() and not self.submitted()
+
+    def sign_buttons(self):
+        """{"analyst", "reviewer", "countersign", "stamp"}: which buttons this
+        person is offered, from their sign rights and what is left to sign.
+        All false for a viewer who cannot edit."""
+        if not hasattr(self, "_sign_buttons"):
+            out = {"analyst": False, "reviewer": False, "countersign": False, "stamp": False}
+            if self.can_edit():
+                state = self.data()["state"]
+                recs = state.get("records") or []
+                who = _who()
+                has = lambda role: SIGN_RIGHT[role] in self.sign_rights()      # noqa: E731
+                out["analyst"] = has("analyst") and not self.submitted() and any(not r.get("analyst") for r in recs)
+                out["reviewer"] = has("reviewer") and any(self._reviewable(r, who) for r in recs)
+                if has("reviewer"):
+                    pending = []
+                    if state.get("none_in_report"):
+                        pending.append(state["none_in_report"])
+                    scan = state.get("heading_scan")
+                    if scan and scan.get("fp") == state.get("report_fp"):
+                        pending.append(dict(scan, userid=scan.get("by")))
+                    pending.extend(dict(v, userid=v.get("by")) for v in (state.get("dismissed") or {}).values())
+                    out["countersign"] = any(not e.get("reviewer") and e.get("userid") != who for e in pending)
+                out["stamp"] = bool(recs) and mi.all_signed(state) and not state.get("stamped")
+            self._sign_buttons = out
+        return self._sign_buttons
+
+    @staticmethod
+    def _reviewable(rec, who):
+        return bool(rec.get("analyst") and not rec.get("reviewer") and rec["analyst"].get("userid") != who)
 
     def records(self):
         out = []
         for r in self.data()["state"].get("records") or []:
             row = dict(r)
+            row["signed"] = bool(r.get("analyst") or r.get("reviewer"))
+            row["locked"] = row["signed"] or self.submitted()
+            rights = self.sign_rights()
+            row["can_tick"] = bool((SIGN_RIGHT["analyst"] in rights and not r.get("analyst") and not self.submitted())
+                                   or (SIGN_RIGHT["reviewer"] in rights and self._reviewable(r, _who())))
+            if self.posted and not row["locked"]:
+                # a refused request shows again what was typed
+                for k in ("reason_id", "detail", "before_page", "after_page"):
+                    key = "%s.%s" % (r["id"], k)
+                    if key in self.posted:
+                        row[k] = self.posted[key]
             row["qc_flag"] = (r.get("qc_type") or u"") in mi.QC_TYPES_FLAGGED
             out.append(row)
         return out
 
     def raw_changes(self):
-        """The open changes made on the Raw Data tab: shown here, given their
+        """The open changes made on the Integration Review tab: shown here, given their
         reason and initials in Data Review."""
         from six.moves.urllib.parse import quote
         from senaite.pfas import compound_library_store, raw_review
@@ -406,7 +599,8 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
                         "transition": r.get("transition") or u"quantifier",
                         "kind": mi.RAW_KIND_TEXT.get(r.get("kind"), r.get("kind") or u""),
                         "before": mi.peak_text(r.get("before")), "after": mi.peak_text(r.get("after")),
-                        "reason": r.get("reason") or u"",
+                        "reason": r.get("reason") or u"", "detail": r.get("detail") or u"",
+                        "shared": (u"Shared edge with %s" % label(r["shared_with"])) if r.get("shared_with") else u"",
                         "analyst": (r.get("analyst") or {}).get("initials") if mi.raw_signed(r, "analyst") else u"",
                         "verifier": (r.get("verifier") or {}).get("name") if mi.raw_signed(r, "verifier") else u"",
                         "href": base + quote(r["injection"].encode("utf-8"), safe="")})
@@ -418,47 +612,29 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
     # actions
     def _act(self, action):
         ws = self.context
+        if not mi.action_allowed(api.get_review_status(ws), action):
+            raise ValueError(mi.refused_text(api.get_review_status(ws)))
         who, when = _who(), _now()
         state, path, fp, captured = current_state(ws, who)
         form = self.request.form
         if action == "save":
-            reasons = dict((r["id"], r) for r in get_settings()["reasons"])
-            heading = mi.parse_pages(form.get("heading_pages"))
-            found = mi.parse_pages(form.get("scan_found"))     # the viewer's own result
-            pages = page_count(path) if path and (heading or any(
-                form.get("%s.%s" % (r["id"], k)) for r in state.get("records") or []
-                for k in ("before_page", "after_page"))) else 0
-            if heading is not None and path:
-                if form.get("scan_fp") and form.get("scan_fp") != fp:
-                    raise ValueError(u"The report changed while the page was open: reload it.")
-                over = [p for p in heading + (found or []) if pages and p > pages]
-                if over:
-                    raise ValueError(u"Heading page %d is not in the report (%d pages)." % (over[0], pages))
-                mi.record_scan(state, fp, heading, who, when, found)
-            for r in state.get("records") or []:
-                fields = {}
-                rid = form.get("%s.reason_id" % r["id"])
-                if rid is not None:
-                    fields["reason_id"] = rid
-                    fields["reason"] = reasons[rid]["text"] if rid in reasons else u""
-                for k in ("detail", "before_page", "after_page"):
-                    if ("%s.%s" % (r["id"], k)) in form:
-                        fields[k] = form.get("%s.%s" % (r["id"], k))
-                for k in ("before_page", "after_page"):
-                    v = fields.get(k)
-                    if v not in (None, u"") and pages and int(v) > pages:
-                        raise ValueError(u"%s: page %s is not in the report (%d pages)" % (r["id"], v, pages))
-                mi.update(state, r["id"], fields, who, when)
-            msg = u"Saved."
+            msg = self._save_rows(state, path, fp, form, who, when)
         elif action == "add":
             inj = (form.get("injection") or u"").strip()
             an = (form.get("analyte") or u"").strip()
             if not inj or not an:
                 raise ValueError(u"Give the injection and the analyte.")
+            lists = self.run_lists()
+            if inj not in lists["injections"] or an not in lists["analytes"]:
+                raise ValueError(u"Choose the injection and the analyte from the run's lists.")
             mi.add(state, inj, an, u"report", (form.get("qc_type") or u"").strip(), who, when)
             msg = u"Added."
         elif action in ("sign_analyst", "sign_reviewer"):
             role = action.split("_")[1]
+            # what was typed is kept first: a refused signature loses nothing
+            if not self.submitted():
+                self._save_rows(state, path, fp, form, who, when)
+                save_state(ws, state)
             # one scalar field per row (sel.<id>): PFAS forms post no lists
             ids = [r["id"] for r in state.get("records") or [] if form.get("sel.%s" % r["id"])]
             if not ids:
@@ -473,6 +649,13 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
             for rid in ids:
                 mi.sign(state, rid, role, who, when, info["fullname"] or who)
             msg = u"Signed %d as %s." % (len(ids), role)
+        elif action == "reopen":
+            from senaite.pfas.browser import staff
+            info = staff.staff_info(who)
+            if not any(r in info["sign_as"] for r in SIGN_RIGHT.values()):
+                raise ValueError(u"%s may not reopen: a sign right is set on People & Roles." % (info["fullname"] or who))
+            mi.reopen(state, form.get("id") or u"", who, when)
+            msg = u"Reopened for editing: the signatures are cleared."
         elif action == "use_report":
             name = form.get("report") or u""
             if name not in report_files(ws):
@@ -511,7 +694,10 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
                    if found is not None else u"Scanned: the report has no text; record the heading pages by hand.")
         elif action == "confirm_none":
             from senaite.pfas.browser import staff
-            mi.confirm_none(state, who, when, staff.staff_info(who)["fullname"] or who)
+            info = staff.staff_info(who)
+            if SIGN_RIGHT["analyst"] not in info["sign_as"]:
+                raise ValueError(u"%s may not confirm: the preparer sign right is set on People & Roles." % (info["fullname"] or who))
+            mi.confirm_none(state, who, when, info["fullname"] or who)
             msg = u"Recorded: no manual integration in the report."
         elif action == "stamp":
             msg = self._stamp(state, path, fp, captured, who, when)
@@ -519,6 +705,41 @@ class PFASManualIntegrationView(ViewHelpers, BrowserView):
             raise ValueError(u"Unknown action.")
         save_state(ws, state)
         return msg
+
+    def _save_rows(self, state, path, fp, form, who, when):
+        """Apply what was typed in the table and the heading field. A signed
+        row is read only until it is reopened."""
+        reasons = dict((r["id"], r) for r in get_settings()["reasons"])
+        heading = mi.parse_pages(form.get("heading_pages"))
+        found = mi.parse_pages(form.get("scan_found"))     # the viewer's own result
+        pages = page_count(path) if path and (heading or any(
+            form.get("%s.%s" % (r["id"], k)) for r in state.get("records") or []
+            for k in ("before_page", "after_page"))) else 0
+        if heading is not None and path:
+            if form.get("scan_fp") and form.get("scan_fp") != fp:
+                raise ValueError(u"The report changed while the page was open: reload it.")
+            over = [p for p in heading + (found or []) if pages and p > pages]
+            if over:
+                raise ValueError(u"Heading page %d is not in the report (%d pages)." % (over[0], pages))
+            mi.record_scan(state, fp, heading, who, when, found)
+        for r in state.get("records") or []:
+            fields = {}
+            rid = form.get("%s.reason_id" % r["id"])
+            if rid is not None:
+                fields["reason_id"] = rid
+                fields["reason"] = reasons[rid]["text"] if rid in reasons else u""
+            for k in ("detail", "before_page", "after_page"):
+                if ("%s.%s" % (r["id"], k)) in form:
+                    fields[k] = form.get("%s.%s" % (r["id"], k))
+            for k in ("before_page", "after_page"):
+                v = fields.get(k)
+                if v not in (None, u"") and pages and int(v) > pages:
+                    raise ValueError(u"%s: page %s is not in the report (%d pages)" % (r["id"], v, pages))
+            if r.get("analyst") or r.get("reviewer"):
+                mi.refuse_signed_change(r, fields)
+                continue
+            mi.update(state, r["id"], fields, who, when)
+        return u"Saved."
 
     def _stamp(self, state, path, fp, captured, who, when):
         ok, need = evaluate(dict(state, stamped={"of": mi.signed_fingerprint(state)}), fp, captured)[:2]

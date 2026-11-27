@@ -22,7 +22,11 @@ or, with no package, for its seal (pending or failed), is not published,
 by Send or by any other path (edd_email.report_refusal, seal_hold).
 SignatureGuard: a sample is not published without the publisher's own
 signature, given on Data Review before the certificate is generated; before
-its run is verified (prepublish) only on an interim signature.
+its run is verified (prepublish) only on an interim signature; nor while a
+QC hold applies at the moment of issue (controlled_publications.qc_hold_refusal).
+A refusal of an issue a workflow action asked for (core's Publish on the
+reports listing) is said in the page's messages (tell_refusal), as Send
+says it.
 WorksheetMethodGuard: an analysis goes on a worksheet only when its
 sample's method is the worksheet's Method (worksheet_samples).
 Python 2.7.
@@ -277,7 +281,8 @@ class SignatureGuard(object):
     """A certificate is issued only with its authoriser's signature: every
     transition that issues one needs the publisher's own pending signature
     on the sample, given on Data Review's Issue certificate card; while the
-    current revision is interim, another interim needs a reason
+    current revision is interim, another interim needs a reason; and no QC
+    hold may apply at the moment of issue, as Approve Release would refuse
     (controlled_publications.signature_refusal, which Send shows)."""
 
     def __init__(self, context):
@@ -298,8 +303,47 @@ class SignatureGuard(object):
             return False
         if why:
             logger.info("SignatureGuard: not published (%s): %s", transition, why)
+            try:
+                tell_refusal(self.context, why)
+            except ConflictError:
+                raise                                       # Zope retries the request
+            except Exception:                               # noqa: BLE001
+                # saying why never changes the verdict
+                logger.warning("SignatureGuard: the refusal was not said", exc_info=True)
             return False
         return True
+
+
+# the request keys core's workflow_action view names the action by: a
+# request carrying one performs a transition; a page drawing its buttons
+# carries none
+WORKFLOW_ACTION_KEYS = ("workflow_action", "workflow_action_id")
+# what tell_refusal has said in this request
+TOLD_KEY = "senaite.pfas.guards.told"
+
+
+def tell_refusal(sample, why):
+    """Say why an issue a workflow action asked for is refused, as Send says
+    it ("<sample id>: why"), in the page's messages: core's Publish on the
+    reports listing says only that nothing was published. Said once a
+    request; nothing is said where no workflow action is asked (a listing
+    drawing its buttons). True when said."""
+    from bika.lims import api
+    request = api.get_request()
+    if request is None or not any(request.get(k) for k in WORKFLOW_ACTION_KEYS):
+        return False
+    from Products.statusmessages.interfaces import IStatusMessage
+    from zope.annotation.interfaces import IAnnotations
+    annotations = IAnnotations(request)
+    told = annotations.get(TOLD_KEY)
+    if told is None:
+        told = annotations[TOLD_KEY] = []
+    text = u"{0}: {1}".format(api.get_id(sample), why)
+    if text in told:
+        return False
+    told.append(text)
+    IStatusMessage(request).add(text, type=u"warning")
+    return True
 
 
 def _request_worksheet(request):

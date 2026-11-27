@@ -671,6 +671,24 @@ class QCResultStore(object):
                 return []
         return [dict(r) for r in rows]
 
+    def raw_runs_done(self, limit):
+        """The latest raw runs the worker imported, newest first, with the
+        size each stored: [{file, batch_id, updated_at, traces,
+        injections}], at most `limit`; [] when none is on record or the
+        store cannot be read. What the worker's throughput is read from
+        (run_progress.observations)."""
+        with self._connect() as conn:
+            try:
+                rows = conn.execute(
+                    "SELECT i.file, i.batch_id, i.updated_at, "
+                    "(SELECT COUNT(*) FROM raw_traces t WHERE t.batch_id=i.batch_id) AS traces, "
+                    "(SELECT COUNT(DISTINCT t.injection) FROM raw_traces t WHERE t.batch_id=i.batch_id) AS injections "
+                    "FROM run_imports i WHERE i.status='imported' AND i.file LIKE '%.rawrun' "
+                    "ORDER BY i.updated_at DESC LIMIT ?", (int(limit),)).fetchall()
+            except sqlite3.Error:
+                return []
+        return [d for d in (dict(r) for r in rows) if d.get("traces")]
+
     def get_qc_for_run(self, run_date, analyte=None, batch_id=None,
                        qc_types=None, statuses=None):
         """QC results for a run date, optionally filtered.

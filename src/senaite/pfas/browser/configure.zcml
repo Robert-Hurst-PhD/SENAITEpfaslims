@@ -376,7 +376,7 @@
       />
 
   <!-- the analyst's route to a compound's expected retention time, from
-       the Raw Data card (POST; analyst or manager, review open) -->
+       the Integration Review card (POST; analyst or manager, review open) -->
   <browser:page
       name="pfas-set-expected-rt"
       for="*"

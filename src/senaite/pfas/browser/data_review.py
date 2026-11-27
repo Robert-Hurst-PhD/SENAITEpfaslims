@@ -63,6 +63,8 @@ ABOVE_RANGE_QC_TYPE = _above_range.QC_TYPE
 from senaite.pfas import no_number as _no_number  # noqa: E402
 from senaite.pfas.injection_identity import KEY as IDENTITY_KEY  # noqa: E402
 from senaite.pfas.review_send_back import KEY as SEND_BACK_KEY  # noqa: E402
+# a method revision as the sign dialog names it: major.sub
+from senaite.pfas.method_revisions import revision_text as _method_revision_text  # noqa: E402
 DEFAULT_DB_PATH       = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
 
@@ -277,6 +279,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             if self.request.form.get("action", "") == "download_report":
                 return self._handle_download_report()
             if not self.can_act():
+                if (self.request.form.get("action", "") in ("raw_edit", "raw_apply_all", "raw_processing_undo")
+                        and self._wants_json()):
+                    self.request.response.setHeader("Content-Type", "application/json; charset=utf-8")
+                    return refuse(self.request, json.dumps({"ok": False, "error": self.RAW_NO_RIGHTS}))
                 return refuse(self.request)
             disable_csrf(self.request)
             return self._handle_post()
@@ -284,6 +290,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return self._comparison_csv()
         if self.request.form.get("raw_card"):
             return self._raw_card_json()
+        if self.request.form.get("raw_status"):
+            return self._raw_status_json()
+        if self.request.form.get("raw_tab"):
+            return self._raw_tab_reply()
         return self.template()
 
     # ── Context resolution ────────────────────────────────────────────────
@@ -443,7 +453,41 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         tab = self.request.form.get("tab", "overview")
         # the Samples tab joined Final Data (each result shows its instrument
         # result and RT): an old link lands there
-        return "final_data" if tab == "samples" else tab
+        if tab == "samples":
+            return "final_data"
+        # a tab the strip does not list is not drawn: its address shows Overview
+        if tab in ("raw", "compare", "instrument_report") and "?tab=" + tab not in [t[0] for t in self.shown_tabs()]:
+            return "overview"
+        return tab
+
+    def _results_mode(self):
+        """Where this worksheet's results come from: the run's own mode when
+        its run record carries one, else the method's (a worksheet with no
+        run yet reads the method's)."""
+        from senaite.pfas import raw_expect
+        return self._run_integration_mode() or raw_expect.mode(self._method_profile())
+
+    def shown_tabs(self):
+        """The strip's tabs as (address, label, title). The tabs that depend
+        on the results mode: Validation lists Integration Review, Instrument
+        Report and Comparison; Instrument software lists Instrument Report
+        only; LIMS integration lists Integration Review only. Integration
+        Review also needs a run that has something to show (raw_tab_shown).
+        Every other tab is always listed."""
+        mode = self._results_mode()
+        tabs = [(u"?tab=overview", u"Overview", u""), (u"?tab=coc", u"Chain of Custody", u""),
+                (u"?tab=traceability", u"Traceability", u""),
+                (u"?tab=extraction", u"Extraction", u"The guided extraction of this worksheet"),
+                (u"?tab=qc_summary", u"Blanks", u""), (u"?tab=calibration", u"Calibration", u""),
+                (u"?tab=spike_qc", u"Spike QC", u"LFSM/LFSMD/LFB/LCS recovery + RPD"),
+                (u"?tab=final_data", u"Final Data", u"")]
+        if mode in (u"vendor", u"validation"):
+            tabs.append((u"?tab=instrument_report", u"Instrument Report", u""))
+        if mode in (u"validation", u"lims") and self.raw_tab_shown():
+            tabs.append((u"?tab=raw", u"Integration Review", u"Each peak this run was integrated, by compound"))
+        if mode == u"validation":
+            tabs.append((u"?tab=compare", u"Comparison", u"The run imported both ways"))
+        return tuple(tabs)
 
     def context_tree(self):
         """Where this run sits: client > chain of custody >
@@ -585,7 +629,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "reintegrated":            u"Re-integrated and listed under Manual changes; the run is being processed again.",
         "apex_chosen":             u"Apex chosen and listed under Manual changes; the run is being processed again.",
         "peak_deleted":            u"Peak deleted and listed under Manual changes; the run is being processed again.",
+        "peaks_fitted":            u"Peaks fitted and listed under Manual changes; the run is being processed again.",
         "edit_reverted":           u"Edit undone; the run is being processed again with the automatic peak.",
+        "processing_applied":      u"Applied to all injections and listed under Processing changes; "
+                                   u"the run is being processed again.",
+        "processing_undone":       u"Processing change undone; the run is being processed again.",
+        "processing_proposed":     u"Proposed for the method: it waits on the method's page for a countersign.",
+        "proposal_refused":        u"Not proposed:",
         "manual_changes_saved":    u"Manual changes saved.",
         "manual_changes_refused":  u"Manual changes:",
         "manual_changes_open":     u"Give each manual change a reason and your initials before submitting:",
@@ -699,7 +749,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             logger.warning("_injection_rows: %s", exc)
             return []
 
-    # ── Raw Data (a run imported from raw data) ─────────────────────
+    # ── Integration Review (a run imported from raw data) ─────────────────────
     def _raw_connect(self):
         """A connection to the QC store, or None without a batch or store."""
         import sqlite3
@@ -731,6 +781,47 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             pass                                            # no raw run stored (no table yet)
         return cache[key]
 
+    def _raw_peaks(self, injection=None, analytes=None, role=None):
+        """This worksheet's stored peaks without their signal
+        (raw_traces.peaks), narrowed by the filters given: what says whether
+        the run shows its edits and changes, which the page polls. Each
+        distinct filter is read once per request."""
+        import sqlite3
+        from senaite.pfas import raw_traces
+        key = (injection, tuple(analytes) if analytes is not None else None, role)
+        cache = self.__dict__.setdefault("_raw_peaks_cache", {})
+        if key in cache:
+            return cache[key]
+        cache[key] = []
+        try:
+            conn = self._raw_connect()
+            if conn is None:
+                return cache[key]
+            try:
+                cache[key] = raw_traces.peaks(conn, self.batch_id(), injection=injection, analytes=analytes,
+                                              role=role)
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass                                            # no raw run stored (no table yet)
+        return cache[key]
+
+    def _raw_trace_index(self, analyte):
+        """The analyte's stored traces as {injection, analyte, transition,
+        role}, none unpacked (raw_traces.listing); [] with no raw run."""
+        import sqlite3
+        from senaite.pfas import raw_traces
+        try:
+            conn = self._raw_connect()
+            if conn is None:
+                return []
+            try:
+                return raw_traces.listing(conn, self.batch_id(), [analyte])
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return []
+
     def raw_available(self):
         import sqlite3
         from senaite.pfas import raw_traces
@@ -745,15 +836,144 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except sqlite3.Error:
             return False
 
-    # the Raw Data tab's overview: every analyte of one injection, or one
+    def _upload_path(self, name):
+        """A file of that name in the instrument upload folder."""
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        return os.path.join(UPLOAD_DIR, name)
+
+    def _raw_file(self, suffix):
+        """The raw run's file of that suffix in the upload folder; "" without
+        a raw run."""
+        stem = self._raw_stem()
+        return self._upload_path(stem + suffix) if stem else u""
+
+    def _raw_stored(self):
+        """(traces, injections) the QC store holds of this run (raw_traces.counts),
+        (0, 0) with none stored, no table yet among them; None when the store
+        is missing or cannot be read (a lock held past sqlite's wait among
+        them): the page says so and tries again, never reads it as no run.
+        Once per request."""
+        if not hasattr(self, "_raw_stored_cache"):
+            import sqlite3
+            from senaite.pfas import raw_traces
+            got = None
+            try:
+                conn = self._raw_connect() if self.batch_id() else None
+                if conn is not None:
+                    try:
+                        got = raw_traces.counts(conn, self.batch_id())
+                    finally:
+                        conn.close()
+                elif not self.batch_id():
+                    got = (0, 0)
+            except sqlite3.Error as exc:
+                if isinstance(exc, sqlite3.OperationalError) and u"no such table" in (u"%s" % exc):
+                    got = (0, 0)
+                else:
+                    logger.warning("raw run: the QC store cannot be read: %s", exc)
+            self._raw_stored_cache = got
+        return self._raw_stored_cache
+
+    def raw_state(self):
+        """The raw run's state (run_progress.state): a first import, edits
+        being processed again, ready, a store that cannot be read, or None.
+        Read from the import log and raw_waiting, as the release gate reads
+        them. Once per request."""
+        if not hasattr(self, "_raw_state_cache"):
+            from senaite.pfas import run_progress
+            stored, stem = self._raw_stored(), self._raw_stem()
+            count = stored[0] if stored is not None else None
+            waiting = bool(stem and count) and bool(self.raw_waiting()[0])
+            queued = self._raw_queued()
+            self._raw_state_cache = run_progress.state(
+                stem, count, self._raw_imports() if stem else [], waiting, arrived=self._raw_arrived(),
+                queued_at=queued.replace(microsecond=0).isoformat() if queued is not None else None)   # a stored UTC stamp
+        return self._raw_state_cache
+
+    def _raw_queued(self):
+        """When the raw run was last queued (a naive UTC datetime): the
+        latest of its run_progress.QUEUE_FILES written; None with none."""
+        from senaite.pfas import run_progress
+        paths = [self._raw_file(s) for s in run_progress.QUEUE_FILES]
+        stamps = [os.path.getmtime(p) for p in paths if p and os.path.exists(p)]
+        return datetime.datetime.utcfromtimestamp(int(max(stamps))) if stamps else None
+
+    def raw_tab_shown(self):
+        """Whether the strip lists Integration Review and its pane draws: the
+        one place that decides. A run being processed keeps it, even before a
+        trace is stored, and a store that cannot be read keeps it to say so
+        (run_progress.TAB_STATES)."""
+        from senaite.pfas import run_progress
+        return self.raw_state() in run_progress.TAB_STATES
+
+    def _raw_injection_count(self):
+        """How many injections the raw run holds: its .rawrun record's; 0
+        when it cannot be read."""
+        return len(self._raw_record().get("injections") or [])
+
+    def _raw_seen(self):
+        """[(injections, traces, seconds)] of the raw runs the worker imported
+        lately (run_progress.observations): each from when its .rawrun was
+        last written or touched to when the import log recorded it done."""
+        from senaite.pfas import run_progress
+        if not self.db_available:
+            return []
+        try:
+            rows = self._store().raw_runs_done(run_progress.SEEN_RUNS)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("raw run: the runs imported cannot be read: %s", exc)
+            return []
+
+        def queued(name):
+            path = self._upload_path(name or u"")
+            if not name or not os.path.exists(path):
+                return None
+            return datetime.datetime.utcfromtimestamp(int(os.path.getmtime(path)))
+        return run_progress.observations(rows, queued)
+
+    def raw_progress(self):
+        """The band while the worker processes the run, or while the store
+        cannot be read: {"state", "first", "text", "note", "poll_ms"}. The
+        text is "Processing run · Started: HH:MM · Est. completion: HH:MM" on
+        the lab's clock (run_progress.band_text), started when the run was
+        last queued (the latest of run_progress.QUEUE_FILES), the estimate from its
+        size and the throughput seen (run_progress.estimate); or the
+        unreadable store's words. None when nothing is processed. Once per
+        request."""
+        if hasattr(self, "_raw_progress_cache"):
+            return self._raw_progress_cache
+        from senaite.pfas import lab_time, run_progress
+        state, got = self.raw_state(), None
+        if state == run_progress.UNREADABLE:
+            got = {"state": state, "first": False, "text": run_progress.UNREADABLE_TEXT, "note": u"",
+                   "poll_ms": run_progress.POLL_MS}
+        elif state in run_progress.PROCESSING:
+            started = self._raw_queued()
+            stored = self._raw_stored() or (0, 0)
+            if stored[0]:
+                injections, traces = stored[1], stored[0]
+            else:
+                injections, traces = self._raw_injection_count(), None
+            done = run_progress.estimate(started, lab_time._utcnow(), injections, traces, self._raw_seen())
+
+            def hm(dt):
+                return lab_time.show(dt, fmt=u"%H:%M") if dt is not None else None
+            got = {"state": state, "first": state == run_progress.FIRST,
+                   "text": run_progress.band_text(hm(started), hm(done)), "note": run_progress.UPDATE_TEXT,
+                   "poll_ms": run_progress.POLL_MS}
+        self._raw_progress_cache = got
+        return got
+
+    # the Integration Review tab's overview: every analyte of one injection, or one
     # analyte across every injection
     RAW_MODES = (u"injection", u"compound")
     # what the page says once an edit is made, by its kind
     RAW_EDIT_DONE = {u"integrate": "reintegrated", u"apex": "apex_chosen", u"delete": "peak_deleted",
-                     u"revert": "edit_reverted"}
+                     u"revert": "edit_reverted", u"fit": "peaks_fitted"}
     # the edit as posted, carried back on the redirect (posted_<field>) so
     # the card opens on it again after a refusal
-    RAW_POSTED = ("transition", "kind", "start", "end", "apex", "baseline", "level_start", "level_end")
+    RAW_POSTED = ("transition", "kind", "start", "end", "apex", "baseline", "level_start", "level_end", "shape",
+                  "apexes", "pick", "alone")
     # a value longer than any edit's field is not carried: the address stays short
     RAW_POSTED_MAX = 64
 
@@ -766,7 +986,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return self._raw_library_cache
 
     def _raw_rows(self):
-        """The result rows the Raw Data tab shows: the raw side, kept apart
+        """The result rows the Integration Review tab shows: the raw side, kept apart
         under Validation, reported under LIMS integration. The worker names
         a row by the compound library's display name and its traces and
         edits by the keyword: each row's analyte is resolved to its keyword
@@ -820,9 +1040,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return self._raw_imports_cache
 
     def _raw_edit_reads(self):
-        """(overrides, traces): the run's edits, and the stored traces that
+        """(overrides, traces): the run's edits, and the stored peaks that
         show what the last processing made of them, the edited and the
-        undone ones, read by injection and analyte. Once per request."""
+        undone ones, read by injection and analyte, their signal not read
+        (_raw_peaks). Once per request."""
         if not hasattr(self, "_raw_edit_reads_cache"):
             from senaite.pfas import raw_edit
             from senaite.pfas.browser import manual_integration_view as miv
@@ -831,7 +1052,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                        if r.get("dropped")]
             traces = []
             for inj, analytes in sorted(raw_edit.edited_reads(overrides, dropped).items()):
-                traces.extend(self._raw_traces(injection=inj, analytes=analytes))
+                traces.extend(self._raw_peaks(injection=inj, analytes=analytes))
             self._raw_edit_reads_cache = (overrides, traces)
         return self._raw_edit_reads_cache
 
@@ -844,25 +1065,204 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return {}
         return raw_review.no_effect(*self._raw_edit_reads())
 
+    def _raw_processing_path(self):
+        """The run's processing changes, kept beside it
+        (<stem>.processing.json); "" without a raw run."""
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        stem = self._raw_stem()
+        return os.path.join(UPLOAD_DIR, stem + u".processing.json") if stem else u""
+
+    def _raw_processing(self):
+        """The run's processing file, the whole dict ({} when there is none);
+        ValueError when it cannot be read (raw_review.read_processing)."""
+        from senaite.pfas import raw_review
+        path = self._raw_processing_path()
+        return raw_review.read_processing(path) if path else {}
+
+    def _raw_processing_reads(self):
+        """(processing, traces): the run's processing file and the stored
+        peaks, of every injection, of each analyte it changes or whose
+        last change was undone, which show whether the run has caught up
+        with it, their signal not read (_raw_peaks). ValueError when the
+        file cannot be read. Once per request."""
+        if not hasattr(self, "_raw_processing_reads_cache"):
+            from senaite.pfas import raw_review
+            from senaite.pfas.browser import manual_integration_view as miv
+            proc = self._raw_processing()
+            analytes = set(raw_review.parse_processing_key(k)[0] for k in (proc.get("traces") or {}))
+            analytes.update(proc.get("smoothing") or {})
+            ws = self._get_worksheet()
+            if ws is not None:
+                analytes.update(r["analyte"] for r in miv.load_state(ws).get("processing_changes") or []
+                                if r.get("undone"))
+            traces = self._raw_peaks(analytes=sorted(analytes)) if analytes else []
+            self._raw_processing_reads_cache = (proc, traces)
+        return self._raw_processing_reads_cache
+
+    def processing_misfits(self):
+        """[(text, the method page's address)] of the processing changes
+        saved on this worksheet's method that their compound can no longer
+        take (method_proposals.misfits): the worker processes the compound
+        without them; and of a saved fit skipped on every injection while
+        the method's fit limit is unset (method_proposals.misfit_lines).
+        One line per compound and reason."""
+        from bika.lims import api
+        from six.moves.urllib.parse import quote
+        from senaite.pfas import method_proposals as mp
+        from senaite.pfas.method_profile_store import raw_profile
+        mid = self.batch_method()
+        if not mid:
+            return []
+        try:
+            found = mp.misfit_lines(raw_profile(api.get_portal(), mid))
+        except Exception:                                   # noqa: BLE001
+            logger.warning("saved processing of %s unread", mid, exc_info=True)
+            return []
+        from senaite.pfas.site_search import pane_for
+        url = u"%s/@@pfas-method-profile-edit?method_id=%s#%s"
+        return [(text, url % (self.portal_url(), quote(mid.encode("utf-8"), safe=""), pane_for(section)))
+                for text, section in found]
+
+    def _method_processing(self):
+        """{keyword: processing entry} of the worksheet's method: the
+        processing changes countersigned from a run as the method's own,
+        which the worker applies where the run's file holds none."""
+        from bika.lims import api
+        from senaite.pfas import method_proposals as mp
+        from senaite.pfas.method_profile_store import raw_profile
+        mid = self.batch_method()
+        profile = raw_profile(api.get_portal(), mid) if mid else {}
+        rows = (profile.get("integration") or {}).get("analytes") or {}
+        # what the worker applies: a change the compound cannot take is left out
+        return dict((kw, mp.fitting_entry(profile, kw)) for kw, row in rows.items()
+                    if isinstance(row, dict) and row.get("processing"))
+
+    def _method_held(self):
+        """{processing key: record} of the method's processing changes this
+        run applied (mi.method_held), read from its stored peaks
+        (raw_review.method_applied over _raw_method_traces): what the
+        worker applied, never the method's entry as it is now, so a removed
+        or replaced entry still lists what the run shows, and a run
+        processed before the method had a change lists none. Only a raw
+        run is processed so; {} without one. Listed under Processing
+        changes, and a major one countersigned at release. ValueError when
+        the run's processing file or its stored peaks cannot be read
+        (_raw_method_traces): the gate refuses. Once per request."""
+        if not hasattr(self, "_method_held_cache"):
+            from senaite.pfas import raw_review
+            held, smoothed, applied = {}, {}, {}
+            if self._raw_stem():
+                traces = self._raw_method_traces()
+                held = raw_review.method_applied(self._raw_processing(), traces)
+                smoothed = raw_review.smoothing_applied(traces)
+                applied = raw_review.processing_applied(traces)
+            self._method_held_cache = held
+            self._stored_smoothing_cache = smoothed
+            self._stored_processing_cache = applied
+        return self._method_held_cache
+
+    def _stored_smoothing(self):
+        """{keyword: change} of the run's smoothing changes its stored peaks
+        name (raw_review.smoothing_applied), read with _method_held: the
+        gate refuses one with no smoothing change in force on record.
+        ValueError as _method_held."""
+        self._method_held()
+        return self._stored_smoothing_cache
+
+    def _stored_processing(self):
+        """{processing key: record} of the run's own trace changes its
+        stored peaks show (raw_review.processing_applied), read with
+        _method_held: the gate refuses one with no change in force on
+        record. ValueError as _method_held."""
+        self._method_held()
+        return self._stored_processing_cache
+
+    # the stored peaks could not be read: the release gate refuses rather
+    # than read them as no change from the method
+    METHOD_UNREAD = (u"The run's stored peaks cannot be read, so the processing the method applied "
+                     u"cannot be listed: %s")
+    NO_PEAKS = u"no peak of this run is stored"
+
+    def _raw_method_traces(self):
+        """The stored traces whose peak may carry a change from the method
+        (raw_traces.method_marked), their signal not read. ValueError
+        (METHOD_UNREAD) when they cannot be judged: the run has no batch,
+        the QC store is missing or cannot be read (a lock held past sqlite's
+        wait among them), or no peak of the run is stored (no table yet, or
+        no row of its batch): a raw run's results come from its stored
+        peaks, so none stored says nothing of what it applied. _raw_gate and
+        the Processing changes line refuse, never pass, on it."""
+        import sqlite3
+        from senaite.pfas import raw_edit, raw_traces
+        unjudged = raw_edit.RawNotJudged
+        try:
+            conn = self._raw_connect()
+        except sqlite3.Error as exc:
+            raise unjudged(self.METHOD_UNREAD % exc)
+        if conn is None:
+            raise unjudged(self.METHOD_UNREAD % (u"the QC store is missing" if self.batch_id()
+                                                 else u"the run has no batch to read its peaks under"))
+        try:
+            if not raw_traces.stored(conn, self.batch_id()):
+                raise unjudged(self._no_peaks_text())
+            return raw_traces.method_marked(conn, self.batch_id())
+        except sqlite3.Error as exc:
+            if isinstance(exc, sqlite3.OperationalError) and u"no such table" in (u"%s" % exc):
+                raise unjudged(self._no_peaks_text())
+            raise unjudged(self.METHOD_UNREAD % exc)
+        finally:
+            conn.close()
+
+    def _no_peaks_text(self):
+        """Why a raw run with no stored peak cannot be judged, by its state
+        in the import log and whether its instrument data have arrived
+        (raw_edit.unprocessed_text): not arrived yet, still being processed,
+        its processing failed (named), or imported with no peak stored."""
+        from senaite.pfas import raw_edit
+        return (raw_edit.unprocessed_text(self._raw_imports(), self._raw_arrived())
+                or self.METHOD_UNREAD % self.NO_PEAKS)
+
+    def _raw_arrived(self):
+        """Whether the raw run's instrument data have arrived: the pull
+        handed over its .rawrun (until then the run awaits its data, and
+        nothing is processed)."""
+        path = self._raw_file(u".rawrun")
+        return bool(path) and os.path.exists(path)
+
     def raw_waiting(self):
-        """(waiting, edits): whether the raw run's edits wait for it to be
-        processed again (raw_edit.waiting: when <stem>.overrides.json was
-        written, the run's import log, and whether each edited or undone
-        trace's stored peak shows it), and how many traces are edited. An
-        import log that cannot be read leaves them waiting. Once per request."""
+        """(waiting, edits): whether the raw run's edits and processing
+        changes wait for it to be processed again (raw_edit.waiting: when
+        <stem>.overrides.json or <stem>.processing.json was last written,
+        the run's import log, and whether each edited or undone trace's
+        stored peak shows it, and each trace a processing change covers
+        shows that change: raw_review.processing_pending), and how many
+        traces are edited. An import log or a processing file that cannot
+        be read leaves them waiting. Once per request."""
         if hasattr(self, "_raw_waiting_cache"):
             return self._raw_waiting_cache
         from senaite.pfas import raw_edit, raw_review
         from senaite.pfas.browser.run_builder import UPLOAD_DIR
         stem = self._raw_stem()
         path = os.path.join(UPLOAD_DIR, stem + u".overrides.json")
-        if not stem or not os.path.exists(path):
+        ppath = self._raw_processing_path()
+        written = [p for p in (path, ppath) if stem and os.path.exists(p)]
+        if not written:
             self._raw_waiting_cache = (False, 0)
             return self._raw_waiting_cache
-        edited_at = datetime.datetime.utcfromtimestamp(int(os.path.getmtime(path))).strftime("%Y-%m-%dT%H:%M:%S")
+        # the later of the two files' times
+        edited_at = datetime.datetime.utcfromtimestamp(
+            max(int(os.path.getmtime(path)) for path in written)).isoformat()   # a stored UTC stamp, whole seconds
         imports = self._raw_imports()
         overrides, traces = self._raw_edit_reads()
         unshown = raw_review.pending(overrides, traces)
+        try:
+            unshown = unshown + raw_review.processing_pending(*self._raw_processing_reads(),
+                                                              method=self._method_processing())
+        except ValueError as exc:
+            # a processing file that cannot be read is never read as none:
+            # the run waits, and the worker refuses it naming why
+            logger.warning("raw run: processing changes unread: %s", exc)
+            imports = None
         if imports is None:
             self._raw_waiting_cache = (True, len(overrides))
         else:
@@ -877,11 +1277,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return raw_edit.submit_refusal(self.raw_waiting()[0], self._raw_imports())
 
     def _raw_failure(self):
-        """The raw run's last processing when it was refused or is being
-        tried again (the import log): {"status", "error", "attempts", "at"};
-        None when it imported or nothing is on record."""
+        """The raw run's last processing when it failed, was refused or is
+        being tried again (the import log): {"status", "error", "attempts",
+        "at"}; None when it imported or nothing is on record."""
         mine = self._raw_imports()
-        if not mine or mine[0].get("status") not in (u"failed", u"retrying"):
+        if not mine or mine[0].get("status") not in (u"failed", u"refused", u"retrying"):
             return None
         return {"status": mine[0]["status"], "error": mine[0].get("error") or u"",
                 "attempts": mine[0].get("attempts") or 0, "at": mine[0].get("updated_at") or u""}
@@ -892,12 +1292,16 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return bool(self.can_act()) and self.ws_state() not in self.CLOSED_STATES
 
     def raw_tab_json(self):
-        """The Raw Data tab's data, safe inside a <script>:
+        """The Integration Review tab's data, safe inside a <script>:
         {"mode": "injection" | "compound", "list": the left column (the
         injections, or the analytes), "selected", "thumbs" (raw_review.thumbs),
         "pending" (edits not yet processed, of the traces read), "failure"
         (_raw_failure), "waiting" and "edited" (raw_waiting: whether the
         batch's edits wait for the run to be processed again; how many),
+        "processing" (raw_progress: the band while the worker processes the
+        run, or the store cannot be read; None once done), "busy" (the
+        traces shown whose processing change waits:
+        raw_review.processing_pending),
         "cal_dropped" (by compound: the calibrators a deleted peak took
         off the selected analyte's curve, when this worksheet's worker failed
         the curve for them: read from its Calibration QC rows), "can_edit", "card_url"
@@ -909,17 +1313,27 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         f = self.request.form
         mode = f.get("mode") if f.get("mode") in self.RAW_MODES else u"injection"
         results = self._raw_rows()
-        injections = raw_review.injections(results)
+        # the method's labelled standards decide a compound's section
+        from senaite.pfas import labelled_standards
+        roles = labelled_standards.roles(self._method_profile())
+        record = self._raw_record().get("injections") or []
+        injections = raw_review.injections(results, record)
         overrides = self._raw_overrides()
         waiting, edited = self.raw_waiting()
         data = {"mode": mode, "injections": injections, "cal_dropped": [], "failure": self._raw_failure(),
                 "waiting": waiting, "edited": edited, "can_edit": self.raw_can_edit(),
+                "processing": self.raw_progress(),
+                "order_warning": raw_review.clock_order_warning(injections),
+                "unit": self.instrument_unit(),
+                "edited_in": raw_review.edited_injections(overrides),
+                "analytes": [a["name"] for a in raw_review.analytes(results, roles)],
+                "sections": [list(pair) for pair in raw_review.SECTIONS],
                 "card_url": self.ws_url() + u"/@@pfas-data-review?raw_card=1"}
         if mode == u"injection":
             listed = injections
             chosen = f.get("injection") or u""
         else:
-            listed = raw_review.analytes(results)
+            listed = raw_review.analytes(results, roles)
             chosen = f.get("analyte") or u""
         names = [i["name"] for i in listed]
         chosen = chosen if chosen in names else (names[0] if names else u"")
@@ -928,26 +1342,51 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             traces = self._raw_traces(injection=chosen)
         elif chosen:
             traces = self._raw_traces(analytes=[chosen])
-            levels = dict((i.get("name"), i.get("level")) for i in self._raw_record().get("injections") or [])
+            levels = dict((i.get("name"), i.get("level")) for i in record)
             data["cal_dropped"] = raw_review.cal_dropped(results, chosen, levels, self.calibration_own_rule_rows())
         data.update(list=listed, selected=chosen,
-                    thumbs=raw_review.thumbs(mode, chosen, traces, results, overrides) if chosen else [],
-                    pending=raw_review.pending(overrides, traces))
+                    thumbs=raw_review.thumbs(mode, chosen, traces, results, overrides, record, roles,
+                                             self._rounding_rule(), self._recovery_places()) if chosen else [],
+                    pending=raw_review.pending(overrides, traces), busy=self._raw_busy(traces))
         return raw_review.page_json(data)
+
+    def _raw_busy(self, traces):
+        """[{injection, analyte, transition}] of `traces` whose stored peak
+        does not yet show the run's processing changes
+        (raw_review.processing_pending), while the run is processed again;
+        [] otherwise, or when its processing file cannot be read."""
+        from senaite.pfas import raw_review, run_progress
+        if self.raw_state() != run_progress.EDITS or not traces:
+            return []
+        try:
+            proc = self._raw_processing()
+        except ValueError:
+            return []
+        return raw_review.processing_pending(proc, traces, method=self._method_processing())
 
     def _raw_card_json(self):
         """GET raw_card=1&injection=&analyte=: one analyte of one injection as
-        the Raw Data dialog draws it (raw_review.card, an edit not yet
+        the Integration Review dialog draws it (raw_review.card, an edit not yet
         processed reading as pending), with "injection", "can_edit", the
         compound's "limits" on a manual change, its "rules" for a manual peak
         (raw_edit.review_rules; "rules_problem" when they cannot be read), the
         "method_baseline" its automatic peak was measured on, each waiting
         edit named in the panel's words (raw_review.name_pending), the
-        "unit" its concentration is in (instrument_unit: the curve's) and
+        "unit" its concentration is in (instrument_unit: the curve's),
         "is_standard" (an isotope standard, whose deletion the client
-        confirms in one step).
+        confirms in one step and whose peak is never fitted) and
+        "check_labels" (peak_limits.CHECK_LABELS, the words of each score check),
+        "smoothing_steps", "smoothing_in_force_points" and "manual_kept" (raw_edit.smoothing_card:
+        the Low, Mid and High half-widths, the change in force and the
+        hand-integrated peaks it leaves), "standard_all_text" (the words an
+        isotope standard's change for all is confirmed with; "" for any other
+        compound), "fit_limit", the method's largest fit residual (None while unset:
+        no fit is allowed), and "fit_preview", the words and counts the
+        card's preview of a fit refuses with (raw_review.fit_preview_words),
+        and "reasons", the lab's reasons a one-injection change is given.
         404 with {"error"} when the run holds no such card."""
         from senaite.pfas import raw_edit, raw_preview, raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
         f = self.request.form
         inj, an = raw_edit.text(f, "injection"), raw_edit.text(f, "analyte")
         resp = self.request.response
@@ -974,25 +1413,164 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                      is_standard=raw_edit.is_standard(rows, inj, an,
                                                       sorted(grid) if isinstance(grid, dict) else ()),
                      limits={"min_manual_change_pct": change, "min_manual_sn": sn},
+                     fit_limit=raw_edit.fit_limit(integration),
+                     fit_preview=raw_review.fit_preview_words(),
                      method_baseline=raw_edit.method_baseline(quant.get("peak"), integration),
-                     unit=self.instrument_unit())
+                     unit=self.instrument_unit(),
+                     reasons=[{"id": r["id"], "text": r["text"]} for r in miv.get_settings()["reasons"]
+                              if r.get("active", True)])
         # the compound's expected time on the method, and the analyst's route
         # to set it from this peak (expected_rt), where a row holds one
         row = (integration.get("analytes") or {}).get(an)
+        found["expected_rt"] = row.get("rt") if isinstance(row, dict) else None
         if isinstance(row, dict) and self.raw_can_edit():
-            found.update(expected_rt=row.get("rt"), set_rt_url=self.ws_url() + u"/@@pfas-set-expected-rt")
+            found["set_rt_url"] = self.ws_url() + u"/@@pfas-set-expected-rt"
+        found["fit_accept_score"] = raw_edit.fit_accept_score(integration, self._portal())
+        # the words of each check the score is made of: one definition, shared with the worker
+        from senaite.pfas import peak_limits
+        found["check_labels"] = dict(peak_limits.CHECK_LABELS)
+        # the method's partner and its peak's edges here: a dragged drop line moves the shared edge of both
+        from senaite.pfas import isomers
+        found["partner"] = raw_edit.partner_of(integration, an, traces, inj, isomers.partners(profile))
         raw_review.name_pending(found, found["method_baseline"])
+        # "Apply to all N injections": the injections holding each trace shown
+        # (the preview's denominator), and the method's mode for the compound
+        # (a pair or summed compound is not offered it)
+        held = self._raw_trace_index(an)
+        for shown in [found["quant"]] + list(found.get("quals") or []):
+            shown["injection_count"] = raw_edit.apply_all_count(held, an, shown["transition"])
+        found["injection_count"] = found["quant"]["injection_count"]
+        # a branched isomer peak is summed, as the worker reads it
+        found["peak_mode"] = raw_edit.peak_mode(integration, an, isomers.branched_peaks(profile))
+        natives = raw_review.natives_of(rows, an, inj)
+        found["standard_all_text"] = (raw_edit.IS_ALL_TEXT % (found["label"], ", ".join(natives) or raw_edit.IS_ALL_NATIVES)
+                                      if natives or found["is_standard"] else u"")
+        # the smoothing stepper: Low, Mid and High from the compound's Mid
+        # (its first smoothing change's, else its stored peaks'), the change
+        # in force, and the hand-integrated peaks a change leaves alone
+        from senaite.pfas import manual_integration as mi
+        state = miv.load_state(self._get_worksheet())
+        held_now = mi.processing_in_force(state, raw_review.smoothing_key(an))
+        found.update(raw_edit.smoothing_card(
+            self._raw_traces(analytes=[an]), self._raw_overrides(), an,
+            first_mid=mi.smoothing_first_mid(state, an)[1],
+            in_force=((held_now or {}).get("after") or {}).get("points")))
+        # the ion ratios: each qualifier's line from the run's ION record,
+        # whether an edit here moves the expected ratio the samples are judged
+        # on, and the method's tolerance the lines are judged by. Both are the
+        # reported side's: a raw side kept apart for the comparison has no
+        # record of its own and judges nothing
+        from senaite.pfas import raw_compare
+        from senaite.pfas.provenance_store import ProvenanceStore
+        record = None
+        reported = not raw_compare.alt_rows(DEFAULT_DB_PATH, self.batch_id(), "raw")
+        try:
+            if reported:
+                record = ProvenanceStore(DEFAULT_DB_PATH).get(self.batch_id(), u"ION|%s|%s" % (inj, found["label"]))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("ion ratio record %s / %s unread: %s", inj, an, exc)
+        ions = raw_review.ion_lines(record, found.get("quals"))
+        sources = [i.get("source") for i in ions]
+        off = raw_review.off_curve(rows, an)
+        feeds, samples = raw_review.feeds_expected(rows, inj, an, integration, off, sources)
+        # "Apply to all" reaches every calibrator, from whichever card it is made
+        feeds_all = raw_review.feeds_expected(rows, None, an, integration, off, sources)[0]
+        found.update(ions=ions, ion_warning={"feeds": feeds and reported, "samples": samples},
+                     ion_warning_all={"feeds": feeds_all and reported, "samples": samples},
+                     ion_tol_pct=raw_review.ion_tolerance(profile))
+        # the qualifier detection floor, as the worker reads it: the compound's
+        # own, else the method's confirmation S/N, else the smallest S/N
+        floor = raw_review.qual_floor(profile, integration, an)
+        found["verdicts"] = raw_review.verdicts(found, integration, found["ion_tol_pct"], floor)
         return json.dumps(found, sort_keys=True)
+
+    RAW_NO_RIGHTS = u"You may not edit this run."
+    REASON_TEXT = u"Choose a reason from the lab's list."
+    COMMENT_TEXT = u"Write a comment on the change."
+
+    def _wants_json(self):
+        """Whether the request asks for JSON (Accept holds application/json)."""
+        return "application/json" in (self.request.getHeader("Accept") or u"")
+
+    def _raw_reply(self, ok, kind=u"", error=u"", notes=(), back=u"", status=200, tab="raw"):
+        """The answer to a raw edit: JSON {"ok", "kind" (the message key),
+        "error", "notes", "waiting"} when the request's Accept holds
+        application/json, else the redirect to the Integration Review tab (or `tab`)
+        with the message (the refusal's text as its detail) and `back`."""
+        if self._wants_json():
+            resp = self.request.response
+            resp.setHeader("Content-Type", "application/json; charset=utf-8")
+            resp.setHeader("Cache-Control", "no-store")
+            resp.setStatus(status)
+            self.__dict__.pop("_raw_waiting_cache", None)
+            self.__dict__.pop("_raw_processing_reads_cache", None)
+            return json.dumps({"ok": bool(ok), "kind": kind, "error": error, "notes": list(notes or ()),
+                               "waiting": bool(self.raw_waiting()[0])}, sort_keys=True)
+        if ok:
+            return self._redirect_with_msg(kind, "ok", tab=tab, extra=back)
+        if kind == "permission_denied":
+            return self._redirect_with_msg(kind, "error")
+        return self._redirect_with_msg(kind or "raw_edit_refused", "error", tab=tab, detail=error or None,
+                                       extra=back)
+
+    def _raw_status_json(self):
+        """GET raw_status=1: {"waiting", "edited", "failure", "pending",
+        "processing"}: the run's edits waiting for it to be processed again,
+        how many traces are edited, its last processing when refused
+        (_raw_failure), the edits not yet shown on a trace
+        (raw_review.pending), and the band while the worker processes the
+        run (raw_progress)."""
+        from senaite.pfas import raw_review
+        resp = self.request.response
+        resp.setHeader("Content-Type", "application/json; charset=utf-8")
+        resp.setHeader("Cache-Control", "no-store")
+        waiting, edited = self.raw_waiting()
+        pending = []
+        if self._get_worksheet() is not None and self._raw_stem():
+            pending = raw_review.pending(*self._raw_edit_reads())
+        return json.dumps({"waiting": bool(waiting), "edited": edited, "failure": self._raw_failure(),
+                           "pending": pending, "processing": self.raw_progress()}, sort_keys=True)
+
+    def _raw_tab_reply(self):
+        """GET raw_tab=1&mode=&injection=|analyte=: raw_tab_json, so the grid
+        refreshes in place; with busy=1, only what says the run is being
+        processed (_raw_busy_json)."""
+        resp = self.request.response
+        resp.setHeader("Content-Type", "application/json; charset=utf-8")
+        resp.setHeader("Cache-Control", "no-store")
+        if self.request.form.get("busy"):
+            return self._raw_busy_json()
+        return self.raw_tab_json()
+
+    def _raw_busy_json(self):
+        """GET raw_tab=1&busy=1&mode=&injection=|analyte=: {"processing"
+        (raw_progress), "pending" (the selection's edits not yet shown,
+        raw_review.pending), "busy" (its traces whose processing change
+        waits, _raw_busy)}: the band and the dimmed cards, the selection's
+        stored peaks read without their signal and no card drawn."""
+        from senaite.pfas import raw_review
+        f = self.request.form
+        mode = f.get("mode") if f.get("mode") in self.RAW_MODES else u"injection"
+        chosen = f.get("injection") if mode == u"injection" else f.get("analyte")
+        traces = []
+        if chosen and self._get_worksheet() is not None and self._raw_stem():
+            traces = (self._raw_peaks(injection=chosen) if mode == u"injection"
+                      else self._raw_peaks(analytes=[chosen]))
+        return json.dumps({"processing": self.raw_progress(),
+                           "pending": raw_review.pending(self._raw_overrides(), traces),
+                           "busy": self._raw_busy(traces)}, sort_keys=True)
 
     def _handle_raw_edit(self):
         """An analyst's edit of one raw trace, its quantifier or a qualifier:
         re-integrate (edges, baseline), another apex (and baseline), delete
-        the peak, or undo the edit. No reason is asked. raw_edit.decide
+        the peak, or undo the edit. raw_edit.decide
         refuses, before anything is written, what the trace or the method's
         limits do not allow. Then the edit is kept beside the run and
         replayed whenever it is processed, listed under Manual changes with
         the automatic peak and the edit (its sample type from the side the tab
-        shows), and the run is processed again. The redirect opens the card
+        shows), and the run is processed again. Every change but an undo
+        is posted with a reason_id from the lab's active list and a comment
+        (detail), refused without them in that order. The redirect opens the card
         again with the edit as posted (posted_<field>, read after a refusal)
         and the method's notes on the edit made (notes, one per line)."""
         from six.moves.urllib.parse import quote
@@ -1001,10 +1579,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         from senaite.pfas.browser import manual_integration_view as miv
         from senaite.pfas.browser.run_builder import UPLOAD_DIR
         if not self.can_act():
-            return self._redirect_with_msg("permission_denied", "error")
+            return self._raw_reply(False, kind="permission_denied", error=self.RAW_NO_RIGHTS, status=403)
         ws = self._get_worksheet()
         if ws is None:
-            return self._redirect_with_msg("no_worksheet", "error")
+            return self._raw_reply(False, kind="no_worksheet", error=self._MSG_TEXTS["no_worksheet"], status=404)
         f = self.request.form
         inj, an = raw_edit.text(f, "injection"), raw_edit.text(f, "analyte")
         mode = f.get("mode") if f.get("mode") in self.RAW_MODES else u"injection"
@@ -1017,50 +1595,437 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         stem = self._raw_stem()
         rawrun = os.path.join(UPLOAD_DIR, stem + u".rawrun")
         if not stem or not os.path.exists(rawrun):
-            return self._redirect_with_msg("raw_edit_refused", "error", tab="raw", extra=back,
-                                           detail=u"This worksheet has no raw run to edit.")
+            return self._raw_reply(False, kind="raw_edit_refused", back=back, status=409,
+                                   error=u"This worksheet has no raw run to edit.")
         path = os.path.join(UPLOAD_DIR, stem + u".overrides.json")
         overrides = raw_review.read_overrides(path)
-        traces = self._raw_traces(injection=inj, analytes=[an]) if inj and an else []
+        state = miv.load_state(ws)
+        # an undo of one half of a shared edge undoes both: the partner both open records name
+        shared = mi.shared_partner(state, inj, an) if raw_edit.text(f, "kind") == u"revert" else None
+        partner = raw_edit.text(f, "partner_analyte") or shared
+        traces = self._raw_traces(injection=inj, analytes=[an] + ([partner] if partner else [])) if inj and an else []
         profile = self._method_profile()
         grid = profile.get("labelled_standards")
-        state = miv.load_state(ws)
         # an undo retried after its first try removed the edit from the run
         # but its record was not saved: the open record lets it complete
-        problem, plan = raw_edit.decide(f, traces, self._raw_rows(), overrides, profile.get("integration") or {},
-                                        labelled=sorted(grid) if isinstance(grid, dict) else (),
-                                        open_changes=[mi.raw_key(r) for r in mi.raw_open(state)])
+        # a dragged drop line moves the edge two peaks share: both edits are planned before either is
+        # written, and written in the one change below (raw_edit.decide_pair)
+        from senaite.pfas import isomers
+        problem, plans = raw_edit.decide_pair(f, traces, self._raw_rows(), overrides, profile.get("integration") or {},
+                                              labelled=sorted(grid) if isinstance(grid, dict) else (),
+                                              open_changes=[mi.raw_key(r) for r in mi.raw_open(state)],
+                                              partners=isomers.partners(profile), shared_with=shared)
+        plan = plans[0] if plans else None
         if problem:
-            return self._redirect_with_msg("raw_edit_refused", "error", tab="raw", detail=problem, extra=back)
+            return self._raw_reply(False, kind="raw_edit_refused", error=problem, back=back, status=422)
+        # a change to one injection is given a reason from the lab's active
+        # list and a comment; an undo asks for neither
+        reason_id, reason, detail = u"", u"", u""
+        if plan["kind"] != u"revert":
+            active = dict((r["id"], r["text"]) for r in miv.get_settings()["reasons"] if r.get("active", True))
+            reason_id = raw_edit.text(f, "reason_id")
+            detail = raw_edit.text(f, "detail")
+            if reason_id not in active:
+                return self._raw_reply(False, kind="raw_edit_refused", error=self.REASON_TEXT, back=back, status=422)
+            if not detail:
+                return self._raw_reply(False, kind="raw_edit_refused", error=self.COMMENT_TEXT, back=back, status=422)
+            reason = active[reason_id]
         who = getSecurityManager().getUser().getId()
         when = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-        inj, an, tr, qt = plan["injection"], plan["analyte"], plan["transition"], plan["quant_transition"]
-        if plan.get("gone"):
-            # the edit is already out of the run: only its record is closed
-            mi.drop_raw_edit(state, inj, an, tr, who, when, quant_transition=qt)
+        if all(each.get("gone") for each in plans):
+            # every edit is already out of the run: only the records are closed
+            for each in plans:
+                mi.drop_raw_edit(state, each["injection"], each["analyte"], each["transition"], who, when,
+                                 quant_transition=each["quant_transition"])
             miv.save_state(ws, state)
             self._audit(ws)
-            return self._redirect_with_msg(self.RAW_EDIT_DONE[plan["kind"]], "ok", tab="raw", extra=back)
-        try:
+            return self._raw_reply(True, kind=self.RAW_EDIT_DONE[plan["kind"]], back=back)
+        # the write is one edit at a time, on the file as it is now: an edit
+        # made meanwhile to another trace is kept (raw_review.update_overrides)
+        def change(current):
             if plan["kind"] == u"revert":
-                overrides = raw_review.clear_edit(overrides, inj, an, tr, qt)[0]
-                mi.drop_raw_edit(state, inj, an, tr, who, when, quant_transition=qt)
+                new = current
+                for each in plans:          # the peak's undo, then its shared partner's: each its own record
+                    if not each.get("gone"):
+                        new = raw_review.clear_edit(new, each["injection"], each["analyte"], each["transition"],
+                                                    each["quant_transition"])[0]
+                    mi.drop_raw_edit(state, each["injection"], each["analyte"], each["transition"], who, when,
+                                     quant_transition=each["quant_transition"])
             else:
-                overrides = raw_review.set_edit(overrides, inj, an, tr, qt, plan["edit"], who, when)
-                mi.record_raw_edit(state, inj, an, tr, plan["kind"], plan["before"], plan["after"], who, when,
-                                   qc_type=plan["qc_type"], quant_transition=qt)
+                new = current
+                for each in plans:          # the peak's edit, then its partner's: each its own record
+                    new = raw_review.set_edit(new, each["injection"], each["analyte"], each["transition"],
+                                              each["quant_transition"], each["edit"], who, when)
+                    mi.record_raw_edit(state, each["injection"], each["analyte"], each["transition"], each["kind"],
+                                       each["before"], each["after"], who, when, qc_type=each["qc_type"],
+                                       quant_transition=each["quant_transition"],
+                                       reason_id=reason_id, reason=reason, detail=detail,
+                                       shared_with=each.get("shared_with") or u"")
+            return new
+        try:
+            raw_review.update_overrides(path, change)
         except ValueError as exc:
-            return self._redirect_with_msg("raw_edit_refused", "error", tab="raw", extra=back,
-                                           detail=exc.args[0] if exc.args else u"")
-        raw_review.write_overrides(path, overrides)
+            return self._raw_reply(False, kind="raw_edit_refused", back=back, status=422,
+                                   error=exc.args[0] if exc.args else u"")
         miv.save_state(ws, state)
         os.utime(rawrun, None)                   # the worker processes the run again
         self._audit(ws)
         # what the method notes of the edit made, never a refusal: the card
         # shows each as a chip, one per line
-        if plan.get("notes"):
-            back += u"&notes=" + q(u"\n".join(plan["notes"]))
-        return self._redirect_with_msg(self.RAW_EDIT_DONE[plan["kind"]], "ok", tab="raw", extra=back)
+        notes = raw_edit.edit_notes(plans)
+        if notes:
+            back += u"&notes=" + q(u"\n".join(notes))
+        return self._raw_reply(True, kind=self.RAW_EDIT_DONE[plan["kind"]], notes=notes, back=back)
+
+    # a change in the run's processing file that no record in force shows
+    UNRECORDED_TEXT = (u"The run's processing file holds a change for %s with no record: undo it under "
+                       u"Processing changes on the Overview tab.")
+    # the file holds another change than the record: it is not undone by its record
+    NOT_IN_FILE_TEXT = (u"The run's processing file holds another change for this trace: undo that one "
+                        u"under Processing changes on the Overview tab.")
+
+    def _handle_raw_apply_all(self):
+        """One trace's change applied to every injection of the run ("Apply
+        to all"): raw_edit.plan_all judges it against every injection
+        before anything is written, refusing what no injection can take
+        and listing those that cannot take it, and why. With preview=1 it
+        answers {"ok", "text" (raw_edit.applies_text, then an isotope
+        standard's confirm naming its natives), "skipped", "manual_kept",
+        "major", "needs_confirm", "natives"} and writes nothing. Otherwise
+        the change becomes the trace's processing for the run (its
+        processing file, written one change at a time), is listed under
+        Processing changes with who, when, before and after, and the run
+        is processed again. No reason or comment is asked: it is
+        processing, not a manual change. With `smoothing` (a window in
+        points) it is the compound's smoothing change instead, every trace
+        in every injection (_raw_smoothing_write)."""
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import raw_edit, raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        if not self.can_act():
+            return self._raw_reply(False, kind="permission_denied", error=self.RAW_NO_RIGHTS, status=403)
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._raw_reply(False, kind="no_worksheet", error=self._MSG_TEXTS["no_worksheet"], status=404)
+        f = self.request.form
+        an = raw_edit.text(f, "analyte")
+        stem = self._raw_stem()
+        rawrun = os.path.join(UPLOAD_DIR, stem + u".rawrun")
+        if not stem or not os.path.exists(rawrun):
+            return self._raw_reply(False, kind="raw_edit_refused", status=409,
+                                   error=u"This worksheet has no raw run to edit.")
+        overrides = self._raw_overrides()
+        traces = self._raw_traces(analytes=[an]) if an else []
+        profile = self._method_profile()
+        grid = profile.get("labelled_standards")
+        labelled = sorted(grid) if isinstance(grid, dict) else ()
+        integration = profile.get("integration") or {}
+        rows = self._raw_rows()
+        # a smoothing change steps from the Mid of the compound's first one on record
+        first_mid = mi.smoothing_first_mid(miv.load_state(ws), an)[1] if an else None
+        # a branched isomer peak is summed, as the worker reads it: no change applies to all of it
+        from senaite.pfas import isomers
+        branched = isomers.branched_peaks(profile)
+        if f.get("preview"):
+            # the confirm an isotope standard asks is part of what the card
+            # says before Apply, never a refusal of the preview
+            problem, plan = raw_edit.plan_all(dict(f, confirm=u"1"), traces, rows, overrides, integration, labelled,
+                                              branched=branched, first_mid=first_mid)
+            if problem:
+                return self._raw_reply(False, kind="raw_edit_refused", error=problem, status=422)
+            unconfirmed = raw_edit.plan_all(dict(f, confirm=u""), traces, rows, overrides, integration, labelled,
+                                            branched=branched, first_mid=first_mid)[0]
+            needs_confirm = bool(unconfirmed)
+            text = raw_edit.applies_text(plan)
+            if needs_confirm:
+                text = text.rstrip(u".") + u". " + unconfirmed
+            resp = self.request.response
+            resp.setHeader("Content-Type", "application/json; charset=utf-8")
+            resp.setHeader("Cache-Control", "no-store")
+            return json.dumps({"ok": True, "text": text, "skipped": plan["skipped"],
+                               "manual_kept": plan["manual_kept"], "major": plan["major"],
+                               "needs_confirm": needs_confirm, "natives": plan["natives"]}, sort_keys=True)
+        problem, plan = raw_edit.plan_all(f, traces, rows, overrides, integration, labelled, branched=branched,
+                                          first_mid=first_mid)
+        if problem:
+            return self._raw_reply(False, kind="raw_edit_refused", error=problem, status=422)
+        who = getSecurityManager().getUser().getId()
+        when = datetime.datetime.utcnow().replace(microsecond=0).isoformat()   # a stored stamp
+        if plan["kind"] == raw_review.SMOOTHING_KIND:
+            return self._raw_smoothing_write(ws, rawrun, plan, rows, who, when)
+        an, tr, qt = plan["analyte"], plan["transition"], plan["quant_transition"]
+        key = raw_review.processing_key(an, tr, qt)
+        state = miv.load_state(ws)
+        # the change before is the one in force on record; the file, read
+        # under the lock, must still hold it: a change there with no record
+        # is undone under Processing changes first, never recorded as before
+        held = mi.processing_in_force(state, key)
+        before = held["after"] if held else None
+        # with none on the run, the method's own change may have been in
+        # force: the list says so, never "automatic" (the file read below
+        # must still hold none)
+        from senaite.pfas import method_proposals as mp
+        by_method = key in ((mp.with_method_processing({}, self._method_processing())[0] or {}).get("traces") or {})
+        made = {}
+
+        def change(current):
+            entry = ((current or {}).get("traces") or {}).get(key)
+            if entry is None and before is not None:
+                raise ValueError(mi.PROCESSING_NOT_IN_FILE % key + u".")
+            if entry != before:
+                raise ValueError(self.UNRECORDED_TEXT % key)
+            new = raw_review.set_processing(current, an, tr, qt, plan["record"], who, when)
+            made["after"] = new["traces"][key]
+            return new
+        try:
+            raw_review.update_processing(self._raw_processing_path(), change)
+        except ValueError as exc:
+            return self._raw_reply(False, kind="raw_edit_refused", status=422,
+                                   error=exc.args[0] if exc.args else u"")
+        mi.record_processing_change(state, an, tr, plan["kind"], before, made["after"], plan["major"],
+                                    who, when, skipped=plan["skipped"], before_method=by_method)
+        miv.save_state(ws, state)
+        os.utime(rawrun, None)                   # the worker processes the run again
+        self._audit(ws)
+        return self._raw_reply(True, kind="processing_applied")
+
+    def _raw_smoothing_write(self, ws, rawrun, plan, rows, who, when):
+        """The compound's smoothing change written to the run's processing
+        file (raw_review.with_smoothing), under its lock, and listed under
+        Processing changes with before and after, a major change
+        countersigned at release; the run is processed again. The file
+        must still hold the smoothing change in force on record, or none: one
+        there with no record is undone under Processing changes first."""
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
+        an = plan["analyte"]
+        key = raw_review.smoothing_key(an)
+        name = mi.processing_key_text(key, lambda kw: raw_review.label_of(rows, kw))
+        state = miv.load_state(ws)
+        held = mi.processing_in_force(state, key)
+        before = held["after"] if held else None
+        # Mid is the window the run smoothed over before its first smoothing
+        # change of the compound: every later change, after an undo too,
+        # keeps the first one's, never the stored peaks', which may show an
+        # undone change
+        found, first = mi.smoothing_first_mid(state, an)
+        mid = first if found else plan.get("mid")
+        record = dict(plan["record"], by=who, at=when)
+        made = {}
+
+        def change(current):
+            entry = ((current or {}).get("smoothing") or {}).get(an)
+            if entry is None and before is not None:
+                raise ValueError(mi.PROCESSING_NOT_IN_FILE % name + u".")
+            if entry != before:
+                raise ValueError(self.UNRECORDED_TEXT % name)
+            new = raw_review.with_smoothing(current, an, record)
+            made["after"] = new["smoothing"][an]
+            return new
+        try:
+            raw_review.update_processing(self._raw_processing_path(), change)
+        except ValueError as exc:
+            return self._raw_reply(False, kind="raw_edit_refused", status=422,
+                                   error=exc.args[0] if exc.args else u"")
+        mi.record_processing_change(state, an, None, plan["kind"], before, made["after"], plan["major"], who, when,
+                                    mid=mid, label=raw_review.label_of(rows, an))
+        miv.save_state(ws, state)
+        os.utime(rawrun, None)                   # the worker processes the run again
+        self._audit(ws)
+        return self._raw_reply(True, kind="processing_applied")
+
+    # the Who of a change the method holds, listed on the run
+    METHOD_WHO = u"The method's processing"
+    # the Before of a run's change made over the method's own
+    METHOD_BEFORE = u"the method's processing"
+
+    # the row menu's line under "Propose for the method"
+    PROPOSE_NOTE = u"Waits on the method's page for a countersign"
+
+    def _proposed_traces(self):
+        """{mp.waiting_key} of the proposals waiting on this worksheet's
+        method: (analyte, transition) of a trace's, apart from a smoothing
+        change's; None when the person may not propose (no
+        manager) or the method is not known."""
+        from senaite.pfas import method_proposals as mp
+        from senaite.pfas.browser.perms import require_manager
+        mid = self.batch_method()
+        if not mid or not require_manager(self.context, self.request):
+            return None
+        try:
+            from bika.lims import api
+            return set(mp.waiting_key(p["analyte"], p.get("transition"), p.get("record"))
+                       for p in mp.pending(mp.load(api.get_portal()), mid))
+        except Exception:                                   # noqa: BLE001
+            logger.warning("method proposals unread", exc_info=True)
+            return None
+
+    @staticmethod
+    def _propose_waiting_text(rec):
+        from senaite.pfas import method_proposals as mp
+        return mp.ALREADY_WAITING % mp.trace_text(rec["analyte"], rec.get("transition"), rec.get("after"))
+
+    def _client_batch_id(self, ws):
+        """The client Batch of the worksheet's samples, else u""."""
+        from senaite.pfas.core_fields import samples_of
+        try:
+            first = next(iter(samples_of(ws)), None)
+            batch = first.getBatch() if first is not None else None
+            return batch.getId() if batch is not None else u""
+        except Exception:                                   # noqa: BLE001
+            return u""
+
+    def _handle_propose_processing(self):
+        """A manager proposes a processing change in force as the method's
+        own setting for its compound and trace: it waits on the method's
+        page, the profile unchanged, until a different manager or QA
+        officer countersigns it (method_profiles). It changes no review
+        record, so a verified run may propose too."""
+        from bika.lims import api
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import method_proposals as mp
+        from senaite.pfas.browser import manual_integration_view as miv
+        from senaite.pfas.browser.perms import require_manager
+        from senaite.pfas.method_profile_store import raw_profile
+        back = u"#dr-processing-changes"
+        if not require_manager(self.context, self.request):
+            return self._redirect_with_msg("permission_denied", "error")
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        rec_id = (self.request.form.get("id") or u"").strip()
+        rec = next((r for r in mi.processing_open(miv.load_state(ws)) if r["id"] == rec_id), None)
+        if rec is None or not rec.get("after"):
+            return self._redirect_with_msg("proposal_refused", "error", detail=self.NOT_IN_FORCE_TEXT, extra=back)
+        portal, mid = api.get_portal(), self.batch_method()
+        why = mp.applies(raw_profile(portal, mid) if mid else {}, rec["analyte"], rec.get("transition"), rec["after"])
+        if why:
+            return self._redirect_with_msg("proposal_refused", "error", detail=why, extra=back)
+        from Products.CMFPlone.utils import safe_unicode
+        # unicode, as the method's page compares it with the person deciding
+        who = safe_unicode(getSecurityManager().getUser().getId() or u"")
+        when = datetime.datetime.utcnow().replace(microsecond=0).isoformat()   # a stored stamp
+        source = {"worksheet": ws.getId(), "batch_id": self._client_batch_id(ws), "change": rec["id"]}
+        try:
+            data = mp.propose(mp.load(portal), mid, rec["analyte"], rec.get("transition"), rec["after"],
+                              source, who, when)
+        except ValueError as exc:
+            return self._redirect_with_msg("proposal_refused", "error", detail=u"%s" % exc, extra=back)
+        mp.save(portal, data)
+        logger.info("%s: processing change %s proposed for %s by %s", ws.getId(), rec["id"], mid, who)
+        return self._redirect_with_msg("processing_proposed", "ok", extra=back)
+
+    NOT_IN_FORCE_TEXT = u"That processing change is not the one in force."
+
+    def _handle_raw_processing_undo(self):
+        """A processing change undone while the worksheet is open (the
+        dispatch refuses a closed one): only the change in force for its
+        trace, whose before is put back in the processing file (or the
+        trace's change removed), and the run is processed again. A change
+        in the file with no record (`key`, its processing key, in place of
+        `id`) is taken out of the file and the history says so
+        (mi.undo_orphan_processing), so the gate can always be cleared from
+        here. From the Processing changes list the page comes back to it."""
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
+        from senaite.pfas.browser.run_builder import UPLOAD_DIR
+        if not self.can_act():
+            return self._raw_reply(False, kind="permission_denied", error=self.RAW_NO_RIGHTS, status=403)
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._raw_reply(False, kind="no_worksheet", error=self._MSG_TEXTS["no_worksheet"], status=404)
+        stem = self._raw_stem()
+        rawrun = os.path.join(UPLOAD_DIR, stem + u".rawrun")
+        if not stem or not os.path.exists(rawrun):
+            return self._raw_reply(False, kind="raw_edit_refused", status=409, tab=None,
+                                   error=u"This worksheet has no raw run to edit.")
+        state = miv.load_state(ws)
+        rec_id = (self.request.form.get("id") or u"").strip()
+        key = (self.request.form.get("key") or u"").strip()
+        if not rec_id and key:
+            return self._undo_orphan_processing(ws, state, key, rawrun)
+        rec = next((r for r in mi.processing_open(state) if r["id"] == rec_id), None)
+        if rec is None:
+            return self._raw_reply(False, kind="raw_edit_refused", status=422, tab=None,
+                                   error=self.NOT_IN_FORCE_TEXT)
+        who = getSecurityManager().getUser().getId()
+        when = datetime.datetime.utcnow().replace(microsecond=0).isoformat()   # a stored stamp
+        an, tr, before = rec["analyte"], rec.get("transition"), rec.get("before")
+        key = raw_review.processing_key(an, tr, None)
+        smoothing = rec.get("kind") == mi.SMOOTHING
+
+        # the file, read under the lock, holds the change on record, or none
+        # (a record claiming a change the run does not apply): another
+        # change there is undone by its key
+        def change(current):
+            entry = mi.processing_entry(current, mi.processing_rec_key(rec))
+            if entry is not None and entry != rec.get("after"):
+                raise ValueError(self.NOT_IN_FILE_TEXT)
+            if smoothing:
+                # the compound's smoothing before it, or none
+                if before:
+                    return raw_review.with_smoothing(current, an, before)
+                if entry is not None:
+                    return raw_review.without_smoothing(current, an)
+                return current or raw_review.processing_dict({})
+            if before:
+                return raw_review.set_processing(current, an, tr, None, before, before.get("by") or who,
+                                                 before.get("at") or when)
+            if entry is not None:
+                return raw_review.clear_processing(current, an, tr, None)
+            return current or raw_review.processing_dict({})
+        try:
+            raw_review.update_processing(self._raw_processing_path(), change)
+        except ValueError as exc:
+            return self._raw_reply(False, kind="raw_edit_refused", status=422, tab=None,
+                                   error=exc.args[0] if exc.args else u"")
+        mi.undo_processing_change(state, rec_id, who, when)
+        miv.save_state(ws, state)
+        os.utime(rawrun, None)                   # the worker processes the run again
+        self._audit(ws)
+        return self._raw_reply(True, kind="processing_undone", tab=None)
+
+    def _undo_orphan_processing(self, ws, state, key, rawrun):
+        """A change in the run's processing file that no record in force
+        shows (mi.processing_orphans) taken out of the file, under its lock,
+        read as it is then, and the trace's change in force on record put
+        back in its place; it stays listed, not recorded and undone, and
+        its history row names who, when and both."""
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
+        who = getSecurityManager().getUser().getId()
+        when = datetime.datetime.utcnow().replace(microsecond=0).isoformat()   # a stored stamp
+        removed = {}
+
+        held = mi.processing_in_force(state, key)
+        restored = held["after"] if held else None
+
+        def change(current):
+            if key not in mi.processing_orphans(state, current):
+                raise ValueError(u"That processing change is not an unrecorded one in the run's file.")
+            traces = dict(current.get("traces") or {})
+            smoothing = dict(current.get("smoothing") or {})
+            # a compound's smoothing by its smoothing key, else a trace's
+            analyte = raw_review.parse_smoothing_key(key)
+            section, name = (smoothing, analyte) if analyte is not None else (traces, key)
+            removed["record"] = section.pop(name)
+            if restored is not None:
+                section[name] = restored
+            return raw_review.processing_dict(traces, smoothing)
+        try:
+            raw_review.update_processing(self._raw_processing_path(), change)
+        except ValueError as exc:
+            return self._raw_reply(False, kind="raw_edit_refused", status=422, tab=None,
+                                   error=exc.args[0] if exc.args else u"")
+        mi.undo_orphan_processing(state, key, who, when, removed["record"], restored)
+        miv.save_state(ws, state)
+        os.utime(rawrun, None)                   # the worker processes the run again
+        self._audit(ws)
+        return self._raw_reply(True, kind="processing_undone", tab=None)
 
     # ── Validation: the run imported both ways, compared ────────────
     def _sides(self):
@@ -1088,8 +2053,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         own when its run record carries one, else the method's."""
         if not self.has_run():
             return u"no_run"
-        from senaite.pfas import raw_expect
-        mode = self._run_integration_mode() or raw_expect.mode(self._method_profile())
+        mode = self._results_mode()
         return {u"validation": u"not_integrated", u"lims": u"no_export"}.get(mode, u"vendor")
 
     def comparison(self):
@@ -2022,33 +2986,29 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return entry.get("code") == J_CODE or (
             entry.get("qc_type") == u"S/N" and u"(J)" in (entry.get("reason") or u""))
 
-    def _respike_qualifiers(self, ws):
-        """The "respike" qualifier (QC Qualifiers) on each result the worker
-        reported from a re-spiked dilution its method qualifies."""
-        from senaite.pfas.qc_qualification import qualifier_for, remarks_text, respike_qualifier_rows
+    def _marked_qualifiers(self, ws):
+        """(rows, holds) for each result the worker marked for a QC
+        Qualifiers entry (a re-spiked dilution, co-eluting peaks split, a
+        fitted estimate), read through the one helper that fails closed
+        (qc_qualification.marked_qualifiers): a result its entry cannot
+        qualify is held by the release gate, with why. Analyses that cannot
+        be read hold the run: no result is known to be unmarked. SENAITE's
+        own reference analyses carry no sample and no worker mark."""
+        from senaite.pfas import qc_qualification as qq
         try:
-            qual = qualifier_for(self._portal(), "respike")
-            items = []
-            for a in (ws.getAnalyses() or []):
-                items.append({"sample_id": a.getRequest().getId(), "analyte": a.getKeyword(),
-                              "remarks": remarks_text(a.getRemarks())})
-        except Exception as exc:                            # noqa: BLE001
-            logger.error("re-spike qualifier: %s", exc)
-            return []
-        return respike_qualifier_rows(items, qual)
-
-    def _coelution_qualifiers(self, ws):
-        """The "coelution" qualifier (QC Qualifiers) on each result the
-        worker measured by the co-eluting pair's fit."""
-        from senaite.pfas.qc_qualification import coelution_qualifier_rows, qualifier_for, remarks_text
-        try:
-            qual = qualifier_for(self._portal(), "coelution")
             items = [{"sample_id": a.getRequest().getId(), "analyte": a.getKeyword(),
-                      "remarks": remarks_text(a.getRemarks())} for a in (ws.getAnalyses() or [])]
+                      "remarks": qq.remarks_text(a.getRemarks())} for a in (ws.getAnalyses() or [])
+                     if getattr(a, "portal_type", u"") != "ReferenceAnalysis"]
         except Exception as exc:                            # noqa: BLE001
-            logger.error("co-elution qualifier: %s", exc)
-            return []
-        return coelution_qualifier_rows(items, qual)
+            logger.error("marked qualifiers: %s", exc)
+            return [], [qq.MARKS_UNREAD]
+
+        def read(kind):
+            return qq.qualifier_for(self._portal(), kind)
+
+        def code_of(kind):
+            return (qq.get_library(self._portal()).get(kind) or {}).get("code")
+        return qq.marked_qualifiers(items, read, code_of)
 
     def _receipt_qualifiers(self, ws):
         """The receipt qualifier (qc_qualification "receipt") on every result
@@ -2199,6 +3159,21 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         except Exception as exc:
             logger.error("_compute_qc_status: %s", exc)
             return False
+
+    # a QC Summary gate that holds with nothing to say
+    QC_HOLDS = u"the QC Summary gate holds release"
+
+    def qc_hold(self):
+        """Why the QC Summary gate holds release now, or u"": the question
+        Approve Release asks of the checklist's QC Summary item
+        (_compute_qc_status), worded as the item gives its reason
+        (_auto_verdict). Issue asks it again at the moment of issue
+        (controlled_publications.qc_hold_refusal), so a hold that applies
+        after release, a qualifier set to block, refuses the issue."""
+        ws = self._get_worksheet()
+        if ws is None or self._compute_qc_status(ws):
+            return u""
+        return self._auto_verdict(ws, "qc_summary", {"checked": False})[1] or self.QC_HOLDS
 
     # ── Public checklist interface ────────────────────────────────────────
 
@@ -2367,6 +3342,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 parts.append(
                     u"required QC not evaluated: {0}".format(
                         u", ".join(missing)))
+            # a marked result its QC Qualifiers entry cannot qualify
+            holds = gate.get("qualifier_holds") or []
+            parts.extend(holds)
             # the run's calibration, approved at review
             from senaite.pfas.run_calibration import gate_reason
             cal_verdict, cal_reason = gate_reason(self.calibration_review())
@@ -2375,7 +3353,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             if failing or run_failed or cal_verdict == "fail":
                 return "fail", u"; ".join(parts)
             if unevaluated or run_unjudged or run_unmapped or gate["unset"] or missing \
-                    or cal_verdict == "blocked":
+                    or cal_verdict == "blocked" or holds:
                 return "blocked", u"; ".join(parts)
             if qualified:
                 # A qualified release is a PASS with something to say, not a
@@ -2453,9 +3431,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         run_flags = [f for f in summary.get("run_flags") or [] if f.get("qc_type") not in by_study]
         unset = self._unset_blank_limits(run_flags)
         run = [f for f in run_flags if f.get("status") in self._GATING and f.get("qc_type") not in unset]
+        # a marked result its QC Qualifiers entry cannot qualify (held)
+        holds = list(summary.get("qualifier_holds") or [])
         return {"failing": failing, "unevaluated": unevaluated,
                 "qualified": qualified, "missing": missing, "run": run, "unset": unset,
-                "by_study": by_study, "released": released}
+                "by_study": by_study, "released": released, "qualifier_holds": holds}
 
     def _released_missing(self):
         """{qc_type: dev_id} the worksheet's closed missing-data deviation
@@ -2500,7 +3480,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         worksheet's missing-data deviation that lists it is closed with
         notes."""
         return bool(gate["failing"] or gate["unevaluated"] or gate["run"]
-                    or gate["unset"] or gate["missing"])
+                    or gate["unset"] or gate["missing"] or gate.get("qualifier_holds"))
 
     def raise_unconfigured_deviation(self, ws):
         """Raise the deviation for the criteria this run's method never set,
@@ -2585,7 +3565,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # enforced here too -- a tick written any other way does not open it
         if not self.mi_gate()[0]:
             return False
-        # the Raw Data changes: each with a reason and the analyst's initials
+        # the Integration Review changes: each with a reason and the analyst's initials
         if not self.raw_changes_gate()[0]:
             return False
         return not self.machine_attested_items()
@@ -2635,37 +3615,124 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return self._mi_gate
 
     def raw_changes_gate(self):
-        """(ok, [missing]) for the changes made on the Raw Data tab: each open
+        """(ok, [missing]) for the changes made on the Integration Review tab: each open
         change has a reason and the analyst's initials; once the worksheet is
         verified, by whatever route, also the verifier's countersignature
         (read when a certificate is issued). A change the run could not apply
         asks nothing; an edit in the run's file with no record is missing.
-        Refused, never opened, on an error."""
+        The run's processing changes too (mi.processing_gate): each in the
+        processing file has a record, and once verified each major one is
+        countersigned. Refused, never opened, on an error (a processing
+        file that cannot be read among them). The phase is _gate_phase's:
+        Approve Release reads the submit gate and gives the countersignature
+        itself."""
         if not hasattr(self, "_raw_gate"):
             ws = self._get_worksheet()
             if ws is None:
                 self._raw_gate = (True, [])
             else:
+                from senaite.pfas import raw_edit
                 try:
-                    from bika.lims import api as _rapi
                     from senaite.pfas import manual_integration as mi
                     from senaite.pfas.browser import manual_integration_view as miv
-                    phase = u"verify" if _rapi.get_review_status(ws) in self.VERIFIED_STATES else u"submit"
+                    phase = self._gate_phase()
                     self._raw_gate = mi.raw_gate(miv.load_state(ws), phase, self._raw_no_effect(),
                                                  self._raw_overrides())
+                    from senaite.pfas import raw_review
+                    proc, method = self._raw_processing(), self._method_held()
+                    smoothed, label = self._stored_smoothing(), raw_review.library_label(self._raw_library())
+                    p_ok, p_need = mi.processing_gate(miv.load_state(ws), phase, proc, method, smoothed, label,
+                                                      stored_processing=self._stored_processing())
+                    self._raw_gate = (self._raw_gate[0] and p_ok, self._raw_gate[1] + p_need)
+                except raw_edit.RawNotJudged as exc:
+                    # the run's peaks cannot say what it applied: its own words
+                    self._raw_gate = (False, [u"%s" % exc])
                 except Exception as exc:                    # noqa: BLE001
                     logger.exception("manual changes gate")
                     self._raw_gate = (False, [u"the manual changes could not be read: %s" % exc])
         return self._raw_gate
 
+    def _gate_phase(self):
+        """The phase the gate in force is read in (mi.phase of ws_state, the
+        worksheet's state as this page reads it: a study worksheet's is its
+        checklist's): raw_changes_gate, which Submit and Approve Release
+        enforce, and the Manual changes and Processing changes lines all
+        read it here."""
+        from senaite.pfas import manual_integration as mi
+        return mi.phase(self.ws_state())
+
+    def readiness_phase(self):
+        """The phase the readiness lines are worded in (mi.readiness_phase
+        of the same state): "verify" from to_be_verified on. Data Review's
+        Manual changes and Processing changes and the Manual integration
+        page all read it here; each judges the gate in force (_gate_phase),
+        so a line never asks what Approve Release itself gives."""
+        from senaite.pfas import manual_integration as mi
+        return mi.readiness_phase(self.ws_state())
+
+    def _ion_verdicts(self):
+        """{change id: ["PFOA: MILK-0027 now fails the ion ratio", ...]}: the
+        ion-ratio verdicts each change's own processing changed
+        (raw_review.ion_verdict_changes, pinned to it), noted on the change
+        in force, Manual or Processing; of a compound's changes processed
+        together, on the last. {} without a worksheet or a store, or when the
+        store cannot be read (the lists are never held up by it). Once per
+        request."""
+        if hasattr(self, "_ion_verdicts_cache"):
+            return self._ion_verdicts_cache
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import raw_review
+        from senaite.pfas.browser import manual_integration_view as miv
+        out = self._ion_verdicts_cache = {}
+        try:
+            ws = self._get_worksheet()
+            if ws is None:
+                return out
+            state = miv.load_state(ws)
+            by = {}
+            for r in mi.raw_open(state) + mi.processing_open(state):
+                if r.get("at"):
+                    by.setdefault(r.get("analyte"), []).append(r)
+            if not by:
+                return out
+            label = raw_review.library_label(self._raw_library())
+            conn = self._raw_connect()
+            if conn is None:
+                return out
+            try:
+                times = raw_review.kept_times(conn, self.batch_id())
+                for a, recs in by.items():
+                    recs = sorted(recs, key=lambda x: x["at"])
+                    for i, r in enumerate(recs):
+                        processed = next((t for t in times if t > r["at"]), None)
+                        if processed is None or (i + 1 < len(recs) and recs[i + 1]["at"] < processed):
+                            continue                # not processed yet, or processed with a later change
+                        texts = raw_review.verdict_texts(label(a), raw_review.ion_verdict_changes(
+                            conn, self.batch_id(), label(a), r["at"]))
+                        if texts:
+                            out[r["id"]] = texts
+            finally:
+                conn.close()
+        except Exception:                                   # noqa: BLE001
+            # never in the way of the change lists: the notes are left out
+            logger.exception("ion ratio verdict changes unread")
+            out.clear()
+        return out
+
     def manual_changes(self):
-        """The Manual changes panel: every change made on the Raw Data tab
+        """The Manual changes panel: every change made on the Integration Review tab
         and not undone, with the active reasons to choose from. A change the
         run could not apply says why ("no_effect") and asks no reason or
-        initials; "initialled" counts those that need them."""
+        initials; "initialled" counts those that need them. A row says which
+        samples changed ion-ratio verdict when the run was processed after
+        it ("verdicts", _ion_verdicts). Once submitted its line judges the
+        release ("ready", mi.verify_readiness in readiness_phase) against
+        the gate in force (_gate_phase), never asking the countersignature
+        Approve Release gives; before, "ready" is None and the line reads
+        the submit gate ("ok", "missing")."""
         ws = self._get_worksheet()
         if ws is None:
-            return {"rows": [], "ok": True, "missing": [], "verify_ok": True, "initialled": 0}
+            return {"rows": [], "ok": True, "missing": [], "verify_ok": True, "initialled": 0, "ready": None}
         from senaite.pfas import manual_integration as mi
         from senaite.pfas.browser import manual_integration_view as miv
         state = miv.load_state(ws)
@@ -2685,22 +3752,196 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             rows.append({"id": r["id"], "injection": r["injection"], "analyte": label(r["analyte"]),
                          "transition": r.get("transition") or u"quantifier",
                          "kind": mi.RAW_KIND_TEXT.get(r.get("kind"), r.get("kind") or u""),
-                         "summary": mi.raw_summary(r), "reason_id": r.get("reason_id") or u"",
+                         "summary": mi.raw_summary(r),
+                         "shared": (u"Shared edge with %s" % label(r["shared_with"])) if r.get("shared_with") else u"",
+                         "reason_id": r.get("reason_id") or u"",
                          "reason": r.get("reason") or u"",
                          "detail": r.get("detail") or u"", "choices": choices,
                          "analyst": r["analyst"] if mi.raw_signed(r, "analyst") else None,
                          "verifier": r["verifier"] if mi.raw_signed(r, "verifier") else None,
                          "no_effect": (u"No effect: " + no_effect[mi.raw_key(r)]
                                        if mi.raw_key(r) in no_effect else u""),
+                         "verdicts": self._ion_verdicts().get(r["id"], []),
                          "href": base + quote(r["injection"].encode("utf-8"), safe="")})
         overrides = self._raw_overrides()
         ok, missing = mi.raw_gate(state, u"submit", no_effect, overrides)
+        v_ok, v_missing = mi.raw_gate(state, u"verify", no_effect, overrides)
+        # the line asks only what the gate in force asks: until release the
+        # countersignature is Approve Release's own to give
+        gate = (v_ok, v_missing) if self._gate_phase() == u"verify" else (ok, missing)
         return {"rows": rows, "ok": ok, "missing": missing,
                 "initialled": len([r for r in rows if not r["no_effect"]]),
-                "verify_ok": mi.raw_gate(state, u"verify", no_effect, overrides)[0]}
+                "verify_ok": v_ok, "ready": mi.verify_readiness(self.readiness_phase(), *gate)}
+
+    # a change in the run's processing file whose record was never saved
+    NOT_RECORDED = u"not recorded"
+    # the Transition of a smoothing change, the compound's
+    ALL_TRANSITIONS = u"all transitions"
+    # a change that cannot be read is listed in these words, never left out
+    UNREADABLE_CHANGE = u"an unreadable change"
+
+    def _processing_words(self, record):
+        """A change as the list words it (raw_review.processing_text), or
+        UNREADABLE_CHANGE for one that cannot be read: an entry taken out
+        of the file by its key may be any shape, and the history keeps it."""
+        from senaite.pfas import raw_review
+        if record is None:
+            return raw_review.processing_text(None)
+        try:
+            return raw_review.processing_text(raw_review.processing_of(record))
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return self.UNREADABLE_CHANGE
+
+    def processing_changes(self):
+        """The Processing changes list beside Manual changes: every change
+        applied to all injections, in the order made, undone ones too, then
+        each change in the run's file with no record ("recorded" False, its
+        "id" its processing key, its Undo taking it out of the file), each
+        {"id", "who" (the person's name), "when" (lab time), "compound",
+        "transition", "before", "after" (raw_review.processing_text),
+        "major", "in_force" (its trace's last change not undone: the one a
+        major change's countersign is asked of), "verifier" (the
+        countersignature that holds, or None), "verdicts" (the samples
+        whose ion-ratio verdict the run's processing after it changed,
+        _ion_verdicts),
+        "undone" ({"who", "when"} or None), "actions" (the row's menu:
+        Undo while the worksheet is open and the change is in force, Open
+        in Integration Review)}; with the gate ("ok", "missing" at submit), whether
+        Verify still countersigns a major change ("verify_ok") and, once
+        submitted, the line judging the release ("ready",
+        mi.verify_readiness in readiness_phase; None before). Then each
+        change the method holds that the run applies (_method_held), read
+        only, its Who METHOD_WHO and "held" its words ("Fitted by the
+        method's processing"; None on the run's own rows), a major one
+        countersigned at release. A processing file that cannot be read is
+        said, never read as none."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return {"rows": [], "ok": True, "missing": [], "verify_ok": True, "ready": None}
+        from six.moves.urllib.parse import quote
+        from senaite.pfas import manual_integration as mi
+        from senaite.pfas import method_proposals as mp
+        from senaite.pfas import raw_review, row_menu
+        from senaite.pfas.browser import manual_integration_view as miv
+        from senaite.pfas.browser import staff
+        state = miv.load_state(ws)
+        label = raw_review.library_label(self._raw_library())
+        in_force = set(r["id"] for r in mi.processing_open(state))
+        edit = self.can_act() and self.ws_state() == u"open"
+        names = {}
+
+        def name(userid):
+            if userid not in names:
+                try:
+                    names[userid] = staff.staff_info(userid).get("fullname") or userid
+                except Exception:                           # noqa: BLE001
+                    names[userid] = userid
+            return names[userid]
+        base = ws.absolute_url() + u"/@@pfas-data-review?tab=raw&mode=compound&analyte="
+        try:
+            proc, unread = self._raw_processing(), None
+        except ValueError as exc:
+            proc, unread = {}, u"%s" % exc
+        rows = []
+        verdicts = self._ion_verdicts()
+        orphans = mi.processing_orphans(state, proc) if not unread else []
+        waiting = self._proposed_traces()
+        for r in state.get("processing_changes") or []:
+            undone = r.get("undone")
+            recorded = r.get("recorded", True)
+            undo = propose = None
+            smoothing = r.get("kind") == mi.SMOOTHING
+            # a change whose file holds another is undone by that one's row
+            if edit and r["id"] in in_force and mi.processing_rec_key(r) not in orphans:
+                undo = (u"Undo", "form", "dr-processing-undo", {"values": {"id": r["id"]}, "danger": True})
+            # a manager proposes the change in force as the method's own,
+            # whatever the worksheet's state: it changes no review record
+            # nor one the method already holds
+            if (waiting is not None and r["id"] in in_force and r.get("after")
+                    and not mp.holds(self._method_profile(), r["analyte"], r.get("transition"), r["after"])):
+                busy = mp.waiting_key(r["analyte"], r.get("transition"), r["after"]) in waiting
+                propose = (u"Propose for the method", "form", "dr-processing-propose",
+                           {"values": {"id": r["id"]},
+                            "off": self._propose_waiting_text(r) if busy else None,
+                            "note": None if busy else self.PROPOSE_NOTE})
+            if smoothing and recorded:
+                # the compound's smoothing, by step: "Mid", then "Smoothing
+                # for PFOS: Mid to High"
+                before = mi.smoothing_step((r.get("before") or {}).get("points"), r.get("mid"))
+                after = mi.smoothing_words(r, label(r["analyte"]))
+            else:
+                before = (self.NOT_RECORDED if not recorded
+                          else self.METHOD_BEFORE if r.get("before") is None and r.get("before_method")
+                          else self._processing_words(r.get("before")))
+                after = self._processing_words(r.get("after"))
+            rows.append({"id": r["id"], "who": name(r.get("by") or u""),
+                         "when": lab_time.show(r.get("at")) if r.get("at") else u"",
+                         "compound": label(r["analyte"]),
+                         "transition": self.ALL_TRANSITIONS if smoothing else r.get("transition") or u"quantifier",
+                         "before": before, "after": after, "major": bool(r.get("major")),
+                         "in_force": r["id"] in in_force, "recorded": recorded, "held": None,
+                         "verifier": r["verifier"] if mi.processing_signed(r) else None,
+                         "verdicts": verdicts.get(r["id"], []),
+                         "undone": ({"who": name(undone.get("by") or u""),
+                                     "when": lab_time.show(undone.get("at")) if undone.get("at") else u""}
+                                    if undone else None),
+                         "actions": row_menu.actions(
+                             undo, propose,
+                             (u"Open in Integration Review", "href", base + quote(r["analyte"].encode("utf-8"), safe="")))})
+        for key in orphans:
+            rec = mi.processing_entry(proc, key)
+            after = self._processing_words(rec)
+            analyte, transition, smoothing = mi.processing_key_trace(key)
+            rec = rec if isinstance(rec, dict) else {}
+            undo = None
+            if edit:
+                undo = (u"Undo", "form", "dr-processing-undo", {"values": {"key": key}, "danger": True})
+            rows.append({"id": key, "who": name(rec.get("by") or u""),
+                         "when": lab_time.show(rec.get("at")) if rec.get("at") else u"",
+                         "compound": label(analyte),
+                         "transition": self.ALL_TRANSITIONS if smoothing else transition or u"quantifier",
+                         "before": self.NOT_RECORDED, "after": after,
+                         "major": rec.get("kind") in mi.PROCESSING_MAJOR_KINDS, "in_force": True,
+                         "recorded": False, "held": None, "verifier": None, "undone": None, "verdicts": [],
+                         "actions": row_menu.actions(
+                             undo, (u"Open in Integration Review", "href", base + quote(analyte.encode("utf-8"), safe="")))})
+        phase = self.readiness_phase()
+        if unread:
+            return {"rows": rows, "ok": False, "missing": [unread], "verify_ok": False,
+                    "ready": mi.verify_readiness(phase, False, [unread])}
+        # the method's own changes the run applies: listed, read-only, as
+        # done by the method's processing; a fit countersigned at release.
+        # Stored peaks that cannot be read are said and refused, never read
+        # as none
+        try:
+            method = self._method_held()
+        except ValueError as exc:
+            held_unread = u"%s" % exc
+            return {"rows": rows, "ok": False, "missing": [held_unread], "verify_ok": False,
+                    "ready": mi.verify_readiness(phase, False, [held_unread])}
+        signed = state.get("method_processing_signed") or {}
+        for h in mi.method_held(method):
+            held_text = mi.METHOD_KIND_TEXT.get(h["kind"], u"")
+            rows.append({"id": u"method:" + h["key"], "who": self.METHOD_WHO, "when": u"",
+                         "compound": label(h["analyte"]), "transition": h["transition"] or u"quantifier",
+                         "before": raw_review.processing_text(None), "after": self._processing_words(h["record"]),
+                         "major": h["major"], "in_force": True, "recorded": True,
+                         "held": held_text[:1].upper() + held_text[1:],
+                         "verifier": signed.get(h["key"]) if mi.method_held_signed(state, h) else None,
+                         "verdicts": [], "undone": None,
+                         "actions": row_menu.actions(
+                             (u"Open in Integration Review", "href", base + quote(h["analyte"].encode("utf-8"), safe="")))})
+        smoothed, applied = self._stored_smoothing(), self._stored_processing()
+        ok, missing = mi.processing_gate(state, u"submit", proc, method, smoothed, label, stored_processing=applied)
+        v_ok, v_missing = mi.processing_gate(state, u"verify", proc, method, smoothed, label,
+                                             stored_processing=applied)
+        # as the Manual changes line: only what the gate in force asks
+        gate = (v_ok, v_missing) if self._gate_phase() == u"verify" else (ok, missing)
+        return {"rows": rows, "ok": ok, "missing": missing,
+                "verify_ok": v_ok, "ready": mi.verify_readiness(phase, *gate)}
 
     def _handle_manual_changes(self):
-        """The analyst gives each Raw Data change a reason from the lab's
+        """The analyst gives each Integration Review change a reason from the lab's
         active list, with any detail, and initials them all at once. A person,
         never a service account, initials."""
         if not self.can_act():
@@ -2751,10 +3992,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         return self._redirect_with_msg("manual_changes_saved", "ok")
 
     def _countersign_raw_changes(self, ws, save=False):
-        """At release the person who approves countersigns every open Raw
-        Data change; refused (the message) without the reviewer sign right
-        in People & Roles, or when they initialled or edited one. u"" when signed
-        or there is none. Unless `save`, the countersign is only tried, on a
+        """At release the person who approves countersigns every open
+        Integration Review change and every major processing change in force, the
+        method's that the run applies among them (_method_held); refused
+        (the message) without the reviewer sign right in People & Roles, or
+        when they initialled or edited one, or made the processing change.
+        u"" when signed or there is none. Unless `save`, the countersign is only tried, on a
         copy: Approve Release saves it once the worksheet is verified, so the
         record names the person who released."""
         import copy
@@ -2762,14 +4005,26 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         from senaite.pfas.browser import manual_integration_view as miv
         state = miv.load_state(ws)
         no_effect = self._raw_no_effect()
-        if not mi.raw_open(state, no_effect):
+        # the major processing changes in force are countersigned with them,
+        # the method's the run applies among them; refused when the run's
+        # stored peaks cannot be read
+        try:
+            method = self._method_held()
+        except ValueError as exc:
+            return u"%s" % exc
+        major = [r for r in mi.processing_open(state) if r.get("major")]
+        major += [h for h in mi.method_held(method) if h["major"]]
+        if not mi.raw_open(state, no_effect) and not major:
             return u""
         who = getSecurityManager().getUser().getId()
+        when = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         work = state if save else copy.deepcopy(state)
         try:
             info = miv.staff_sign_info(who)
-            mi.countersign_raw(work, who, datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"), info["name"],
-                               no_effect, info["sign_as"], info["signature"])
+            if mi.raw_open(work, no_effect):
+                mi.countersign_raw(work, who, when, info["name"],
+                                   no_effect, info["sign_as"], info["signature"])
+            mi.countersign_processing(work, who, when, info["name"], info["sign_as"], info["signature"], method)
         except ValueError as exc:
             return u"%s" % exc
         if save:
@@ -3808,11 +5063,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # a recovery is judged and shown at the method's decimal places; a run
         # that recorded the places its checks judged at is shown at those, so a
         # value never sits beside a verdict reached at other places
-        from senaite.pfas import method_engine, rounding
-        places = method_engine.recovery_decimals(self._method_profile()) if method_id else 0
-        recorded = self._judged_rules(batch_key)
-        if len(recorded) == 1:
-            places = rounding.judged_places(recorded[0])
+        places = self._recovery_places(batch_key, method_id)
         out = self._build_qc_matrix(qc_results, qc_acceptance, run_date, ws=ws, places=places,
                                     rule=self._rounding_rule() if places else None,
                                     row_name=self._qc_row_namer())
@@ -3829,8 +5080,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         out["advisories"] = self._flag_advisories(qc_results)
         # a sample received out of compliance with its method: every result
         # of that sample (receipt_compliance)
-        out["qualifiers"] = (list(out.get("qualifiers") or []) + self._receipt_qualifiers(ws)
-                             + self._respike_qualifiers(ws) + self._coelution_qualifiers(ws))
+        # and each result the worker marked (a re-spiked dilution, peaks
+        # split or fitted) under its entry's code; one its entry cannot
+        # qualify holds the release gate, with why
+        marked, holds = self._marked_qualifiers(ws)
+        out["qualifiers"] = (list(out.get("qualifiers") or []) + self._receipt_qualifiers(ws) + marked)
+        out["qualifier_holds"] = holds
         return out
 
     def _sample_results_for(self, ws, keyword, applies_to=u""):
@@ -4026,14 +5281,11 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     exp    = rec.get("expected_value")
                     recovery = None
                     if qc_type != "MB" and val is not None and exp:
-                        try:
-                            # shown as the checks judge it: the method's
-                            # decimal places for recoveries by its rule
-                            from senaite.pfas.rounding import judged_pct
-                            recovery = judged_pct(float(val) / float(exp) * 100.0,
-                                                  self._rounding_rule(), places)
-                        except (TypeError, ZeroDivisionError):
-                            recovery = None
+                        # shown as the checks judge it: the method's
+                        # decimal places for recoveries by its rule
+                        from senaite.pfas import recovery as _recovery
+                        recovery = _recovery.recovery_pct(
+                            {"value": val, "expected_value": exp}, self._rounding_rule(), places)
 
                     if rec.get("result_status") == "unevaluated":
                         # A criterion the method never configured. Distinct
@@ -4457,6 +5709,20 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if ws_id not in memo:
             memo[ws_id] = self._result_pushes_uncached(ws_id)
         return memo[ws_id]
+
+    def _recovery_places(self, batch_id=None, method_id=None):
+        """The decimal places a recovery is judged and shown at: the method's;
+        a run that recorded the places its checks judged at is shown at
+        those, so a value never sits beside a verdict reached at other
+        places."""
+        from senaite.pfas import method_engine, rounding
+        batch_id = batch_id or self.batch_id()
+        method_id = method_id if method_id is not None else self.batch_method()
+        places = method_engine.recovery_decimals(self._method_profile()) if method_id else 0
+        recorded = self._judged_rules(batch_id)
+        if len(recorded) == 1:
+            places = rounding.judged_places(recorded[0])
+        return places
 
     def _judged_rules(self, batch_id, path=None):
         """The rules ("epa;3;pct1") a run's checks recorded they judged with,
@@ -5421,6 +6687,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             out.append((u"%s %s" % (f["title"], f["text"]),) + fix)
         for label in unmapped:
             out.append((u"No qualifier mapped for %s failures." % label, u"QC Qualifiers", qualifiers))
+        # a marked result its QC Qualifiers entry cannot qualify, each named
+        for text in gate.get("qualifier_holds") or []:
+            out.append((text + u".", u"QC Qualifiers", qualifiers))
         for qt in gate["missing"]:
             out.append((u"%s not run: the method requires it every run." % names.get(qt, qt),
                         u"Worksheet QC", self.extraction_guide_url()))
@@ -5531,6 +6800,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         for f in self.run_level_flags(summary.get("run_flags") or []):
             if f.get("status") not in self._GATING:
                 add(self.NOTE, u"%s %s" % (f["title"], f["text"]))
+        # a processing change saved on the method that its compound can no
+        # longer take: the worker leaves it out, and the run says so
+        for text, url in self.processing_misfits():
+            add(self.NOTE, text, u"Method profile", url)
         nl = self.limits_not_set()
         if nl:
             add(self.NOTE, u"No %s set for %d analytes in %s, so blanks and results cannot be "
@@ -5871,10 +7144,16 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # a lot pending acceptance, on its traceability node
             "approve_lot":              self._handle_lot_review,
             "reject_lot":               self._handle_lot_review,
-            # a raw run's peak edited by hand (the Raw Data tab)
+            # a raw run's peak edited by hand (the Integration Review tab)
             "raw_edit":                 self._handle_raw_edit,
             "raw_pull_again":           self._handle_raw_pull_again,
-            # the Raw Data changes' reasons and the analyst's initials
+            # one trace's change applied to every injection, and its undo
+            "raw_apply_all":            self._handle_raw_apply_all,
+            "raw_processing_undo":      self._handle_raw_processing_undo,
+            # a processing change proposed as the method's own: no review
+            # record changes, so not a record action
+            "propose_processing":       self._handle_propose_processing,
+            # the Integration Review changes' reasons and the analyst's initials
             "save_manual_changes":      self._handle_manual_changes,
             # an injection's identity corrected, or the correction undone
             "correct_identity":         self._handle_correct_identity,
@@ -5890,6 +7169,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # submitted they are read-only. A replayed sign-off overwrote a
             # verified worksheet's signatures so its submission postdated its
             # approval, leaving no trace
+            if action in ("raw_edit", "raw_apply_all", "raw_processing_undo") and self._wants_json():
+                return self._raw_reply(False, kind="record_closed", error=self._MSG_TEXTS["record_closed"],
+                                       status=409)
             return self._redirect_with_msg("record_closed", "error")
         if handler:
             return handler()
@@ -5901,10 +7183,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "check_item", "submit_for_review",
         "upload_instrument_report", "record_spike_level", "request_run", "report_above_range",
         "resolve_no_number", "clear_run_plan", "choose_subtraction_blank", "approve_calibration",
-        "reject_calibration", "approve_lot", "reject_lot", "raw_edit",
+        "reject_calibration", "approve_lot", "reject_lot", "raw_edit", "raw_apply_all", "raw_processing_undo",
         "save_manual_changes", "correct_identity", "revert_identity"))
     CLOSED_STATES = frozenset(("to_be_verified", "verified", "published"))
-    # past release: the Raw Data changes must carry the verifier's countersignature
+    # past release: the Integration Review changes must carry the verifier's countersignature
     VERIFIED_STATES = frozenset(("verified", "published"))
 
     # ── The run's calibration ─────────────────────
@@ -7304,7 +8586,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         unconfirmed = ea.verify_refusal(self._extraction_state())
         if unconfirmed:
             return self._redirect_with_msg("extraction_refused", "error", detail=unconfirmed)
-        # the verifier countersigns the Raw Data changes, and is never the
+        # the verifier countersigns the Integration Review changes, and is never the
         # person who initialled them: tried here, saved once released
         refused = self._countersign_raw_changes(ws)
         if refused:
@@ -7427,7 +8709,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             # shown only: Approve Release reads the record again and refuses there
             logger.warning("approve dialog: the record could not be read", exc_info=True)
         return {"record": record.get("worksheet") or (ws.getId() if ws is not None else u""),
-                "revision": record.get("revision") or u"", "hash_prefix": prefix,
+                "revision": _method_revision_text(record.get("revision")), "hash_prefix": prefix,
                 "meaning_label": signing.meaning_label("reviewer"),
                 "signer_name": signed_in_name(self.context), "action": u"approve_release",
                 "form_id": u"drApproveForm"}

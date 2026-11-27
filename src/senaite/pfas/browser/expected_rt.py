@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """POST @@pfas-set-expected-rt: the analyst's route to a compound's
-expected retention time, from the Raw Data card of a worksheet under review.
+expected retention time, from the Integration Review card of a worksheet under review.
 
     injection, analyte   the card: its quantifier peak's found time (the
                          stored result row's) becomes the compound's

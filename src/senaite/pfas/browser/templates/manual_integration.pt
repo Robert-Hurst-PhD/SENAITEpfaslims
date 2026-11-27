@@ -14,7 +14,8 @@
        tal:attributes="href string:${context/absolute_url}/@@pfas-data-review?tab=instrument_report">Data Review</a>
   </tal:r>
 
-  <div metal:fill-slot="content" tal:define="d view/data; recs view/records; work view/can_work;
+  <div metal:fill-slot="content" tal:define="d view/data; recs view/records; work view/can_edit; edit view/can_change; sb view/sign_buttons;
+                                            rm context/@@pfas-row-menu;
                                             wsurl context/absolute_url">
   <div class="page-body">
 
@@ -24,22 +25,17 @@
     <p class="form-note">Justify, sign, then stamp each manual integration. <tal:h define="hid string:manual-integration"><metal:b use-macro="context/@@pfas-macros/macros/help" /></tal:h></p>
 
     <ul class="bench-alerts">
-      <li tal:attributes="class python:'bench-ok' if d['ok'] else 'bench-bad'">
-        <strong tal:content="python:'Ready for release' if d['ok'] else 'Not ready'">Not ready</strong>
+      <li tal:condition="d/ready" tal:attributes="class python:'bench-ok' if d['ready']['ok'] else 'bench-bad'">
+        <strong tal:content="python:d['ready']['text']">Ready</strong></li>
+      <li tal:condition="not:d/ready" tal:attributes="class python:'bench-ok' if d['ok'] else 'bench-bad'">
+        <strong tal:content="python:('Ready to %s' if d['ok'] else 'Not ready to %s') % d['phase']">Not ready to submit</strong>
         <span tal:condition="not:d/ok" tal:content="python:'; '.join(d['missing'])">what is missing</span></li>
       <li tal:attributes="class python:'bench-ok' if d['captured'] else 'bench-warn'">
         <strong tal:content="python:'Captured by the export' if d['captured'] else 'Not captured by the export'">Captured</strong>
         <span tal:condition="not:d/captured">: add them, or confirm none.</span></li>
       <li tal:condition="d/none" tal:attributes="class python:'bench-ok' if d['none'].get('reviewer') else 'bench-warn'">
         <strong>None in the report</strong>
-        <span tal:content="python:'confirmed by %s' % d['none']['name'] + ('; countersigned by %s' % d['none']['reviewer']['name'] if d['none'].get('reviewer') else '')">confirmed</span>
-        <form method="post" class="mi-inline" tal:condition="python:work and not d['none'].get('reviewer')"
-              tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
-          <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
-          <input type="hidden" name="action" value="countersign" />
-          <input type="hidden" name="kind" value="none" />
-          <button type="submit" class="btn-sm btn-secondary">Countersign</button>
-        </form></li>
+        <span tal:content="python:'confirmed by %s' % view.person(d['none']['userid']) + ('; countersigned by %s' % view.person(d['none']['reviewer']['userid']) if d['none'].get('reviewer') else '')">confirmed</span></li>
       <li tal:attributes="class python:'bench-ok' if d['file'] else 'bench-warn'">
         <strong>Report</strong>
         <span tal:content="python:d['file'] or ('choose the report under review' if d['choose'] else 'no PDF uploaded: Data Review, Instrument Report')">report.pdf</span>
@@ -52,7 +48,7 @@
         <span tal:content="python:{'scanned': 'heading on pages %s' % (', '.join('%d' % p for p in d['server'] or []) or 'none'),
                                    'no text': 'no text in the report: record the heading pages by hand',
                                    'not scanned': 'not scanned yet'}.get(d['scan_status'], '')">pages</span>
-        <form method="post" class="mi-inline" tal:condition="work"
+        <form method="post" class="mi-inline" tal:condition="edit"
               tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
           <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
           <input type="hidden" name="action" value="scan" />
@@ -61,7 +57,7 @@
         </form></li>
     </ul>
 
-    <form method="post" class="mi-add" tal:condition="python:work and d['choose']"
+    <form method="post" class="mi-add" tal:condition="python:edit and d['choose']"
           tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
       <input type="hidden" name="action" value="use_report" />
@@ -79,28 +75,38 @@
                    <th class="num">Before page</th><th class="num">After page</th>
                    <th>Analyst</th><th>Reviewer</th></tr></thead>
         <tbody>
-          <tr tal:repeat="r recs" tal:attributes="class python:'mi-qc' if r['qc_flag'] else None; data-mi r/id">
-            <td><input type="checkbox" value="1" tal:attributes="name string:sel.${r/id}" /></td>
+          <tr tal:repeat="r recs"
+              tal:attributes="class python:'mi-qc' if r['qc_flag'] else None; data-mi r/id;
+                              data-row-actions python:rm.actions(
+                                  (u'Edit', 'form', 'mi-reopen', {'values': {'id': r['id']}, 'danger': True,
+                                   'confirm': u'Editing clears the signatures on this record. Go on?'}) if r['signed'] and edit and view.can_reopen() else None)">
+            <td><input type="checkbox" value="1" tal:condition="r/can_tick"
+                       tal:attributes="name string:sel.${r/id}" /></td>
             <td><strong tal:content="r/injection">S-1</strong>
                 <span class="badge badge-warning" tal:condition="r/qc_flag"
                       tal:content="string:QC ${r/qc_type}" title="Never to make QC pass">QC</span>
                 <div class="cf-hint" tal:content="python:{'export': 'from the export', 'report': 'added from the report'}.get(r['source'], r['source'])">source</div></td>
             <td class="mi-analyte" tal:content="r/analyte">PFOA</td>
-            <td><select tal:attributes="name string:${r/id}.reason_id">
+            <td tal:condition="r/locked">
+                <span tal:content="python:r['reason'] or 'not given'">reason</span>
+                <div class="cf-hint" tal:condition="r/detail" tal:content="r/detail"></div></td>
+            <td class="num" tal:condition="r/locked" tal:content="python:r['before_page'] or ''">2</td>
+            <td class="num" tal:condition="r/locked" tal:content="python:r['after_page'] or ''">3</td>
+            <td tal:condition="not:r/locked"><select tal:attributes="name string:${r/id}.reason_id">
                   <option value="">Choose a reason</option>
                   <option tal:repeat="o d/reasons" tal:content="o/text"
                           tal:attributes="value o/id; selected python:'selected' if o['id'] == r.get('reason_id') else None">reason</option>
                 </select>
                 <input type="text" placeholder="Detail (optional)"
                        tal:attributes="name string:${r/id}.detail; value r/detail" /></td>
-            <td class="num"><input type="number" min="1" class="mi-page" data-which="before"
+            <td class="num" tal:condition="not:r/locked"><input type="number" min="1" class="mi-page" data-which="before"
                        tal:attributes="name string:${r/id}.before_page; value r/before_page" /></td>
-            <td class="num"><input type="number" min="1" class="mi-page" data-which="after"
+            <td class="num" tal:condition="not:r/locked"><input type="number" min="1" class="mi-page" data-which="after"
                        tal:attributes="name string:${r/id}.after_page; value r/after_page" /></td>
-            <td tal:define="s r/analyst"><tal:s condition="s"><span tal:content="s/name">AN1</span>
+            <td tal:define="s r/analyst"><tal:s condition="s"><span tal:content="python:view.person(s['userid'])">AN1</span>
                 <div class="cf-hint" tal:content="python:view.lab_at(s['at'], s['at'][:16].replace('T', ' '))">date</div></tal:s>
                 <span class="cf-hint" tal:condition="not:s">not signed</span></td>
-            <td tal:define="s r/reviewer"><tal:s condition="s"><span tal:content="s/name">AN2</span>
+            <td tal:define="s r/reviewer"><tal:s condition="s"><span tal:content="python:view.person(s['userid'])">AN2</span>
                 <div class="cf-hint" tal:content="python:view.lab_at(s['at'], s['at'][:16].replace('T', ' '))">date</div></tal:s>
                 <span class="cf-hint" tal:condition="not:s">not signed</span></td>
           </tr>
@@ -112,37 +118,65 @@
         <label for="mi-heading-pages" tal:content="string:Pages headed &quot;${d/heading}&quot;">Pages headed</label>
         <input type="text" id="mi-heading-pages" name="heading_pages" placeholder="e.g. 2, 3, 5, or none"
                tal:attributes="value d/scan_text;
-                               readonly python:None if work else 'readonly'" />
+                               readonly python:None if edit else 'readonly'" />
         <input type="hidden" name="scan_fp" tal:attributes="value d/fp" />
         <input type="hidden" name="scan_found" id="mi-scan-found" value="" />
-        <span class="cf-hint" tal:content="python:('recorded by %s' % d['scan']['by'] + ('; countersigned by %s' % d['scan']['reviewer']['name'] if d['scan'].get('reviewer') else '')) if d['scan'] else 'not recorded'"></span>
-        <button type="submit" name="action" value="countersign" class="btn-sm btn-secondary"
-                tal:condition="python:work and d['scan'] and not d['scan'].get('reviewer')"
+        <span class="cf-hint" tal:content="python:('recorded by %s' % view.person(d['scan']['by']) + ('; countersigned by %s' % view.person(d['scan']['reviewer']['userid']) if d['scan'].get('reviewer') else '')) if d['scan'] else 'not recorded'"></span>
+        <button type="submit" name="action" value="countersign" class="btn btn-secondary"
+                tal:condition="python:work and sb['countersign'] and d['scan'] and not d['scan'].get('reviewer') and d['scan'].get('by') != view.me()"
                 onclick="this.form.kind.value='scan'">Countersign</button>
-        <input type="hidden" name="kind" value="" />
       </div>
+      <input type="hidden" name="kind" value="" />
 
       <div class="pfas-action-bar" tal:condition="work">
-        <button type="submit" name="action" value="save" class="btn btn-primary" tal:condition="python:recs or d['file']">Save</button>
-        <button type="submit" name="action" value="sign_analyst" class="btn btn-secondary" tal:condition="recs">Sign ticked as analyst</button>
-        <button type="submit" name="action" value="sign_reviewer" class="btn btn-secondary" tal:condition="recs">Sign ticked as reviewer</button>
-        <button type="submit" name="action" value="stamp" class="btn btn-secondary" tal:condition="recs">Stamp report</button>
+        <button type="submit" name="action" value="save" class="btn btn-primary"
+                tal:condition="python:edit and (d['file'] or [r for r in recs if not r['locked']])">Save</button>
+        <button type="submit" name="action" value="sign_analyst" class="btn btn-secondary" tal:condition="sb/analyst">Sign ticked as analyst</button>
+        <button type="submit" name="action" value="sign_reviewer" class="btn btn-secondary" tal:condition="sb/reviewer">Sign ticked as reviewer</button>
+        <button type="submit" name="action" value="countersign" class="btn btn-secondary" onclick="this.form.kind.value='none'"
+                tal:condition="python:sb['countersign'] and d['none'] and not d['none'].get('reviewer') and d['none'].get('userid') != view.me()">Countersign: none in the report</button>
+        <button type="submit" name="action" value="stamp" class="btn btn-secondary" tal:condition="sb/stamp">Stamp report</button>
         <button type="submit" name="action" value="confirm_none" class="btn btn-secondary"
-                tal:condition="python:not recs and not d['captured']">Confirm: none in the report</button>
+                tal:condition="python:not recs and not d['captured'] and view.can_confirm_none()">Confirm: none in the report</button>
       </div>
     </form>
 
-    <form method="post" class="mi-add" tal:condition="work" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+    <form method="post" id="mi-reopen" tal:condition="edit" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
-      <input type="hidden" name="action" value="add" />
-      <input type="text" name="injection" placeholder="Injection" />
-      <input type="text" name="analyte" placeholder="Analyte (any compound)" />
-      <input type="text" name="qc_type" placeholder="QC type (if QC)" />
-      <button type="submit" class="btn-sm btn-secondary">+ Add from the report</button>
+      <input type="hidden" name="action" value="reopen" />
+      <input type="hidden" name="id" value="" />
     </form>
 
+    <tal:add condition="edit">
+    <form method="post" class="mi-add" tal:define="lists view/run_lists" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <input type="hidden" name="action" value="add" />
+      <select name="injection" aria-label="Injection">
+        <option value="">Injection</option>
+        <option tal:repeat="n lists/injections" tal:content="n" tal:attributes="value n">S-1</option>
+      </select>
+      <select name="analyte" aria-label="Analyte">
+        <option value="">Analyte</option>
+        <option tal:repeat="n lists/analytes" tal:content="n" tal:attributes="value n">PFOA</option>
+      </select>
+      <input type="text" name="qc_type" placeholder="QC type (if QC)" />
+      <button type="submit" class="btn-sm btn-secondary">+ Add from the report</button>
+      <span class="cf-hint" tal:condition="lists/error" tal:content="lists/error"></span>
+    </form>
+    </tal:add>
+
+    <section class="bench-block" id="mi-export-flags" tal:define="flags view/export_flags" tal:condition="flags">
+      <h2 class="bench-h">Flagged manual in the export</h2>
+      <table class="pfas-table" data-col-resize="manual-integration-flags">
+        <thead><tr><th>Injection</th><th>Analyte</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="f flags"><td tal:content="f/injection">S-1</td><td tal:content="f/analyte">PFOA</td></tr>
+        </tbody>
+      </table>
+    </section>
+
     <section class="bench-block" id="mi-raw-changes" tal:define="raw view/raw_changes" tal:condition="raw">
-      <h2 class="bench-h">Edited on the Raw Data tab</h2>
+      <h2 class="bench-h">Edited on the Integration Review tab</h2>
       <table class="pfas-table" data-col-resize="manual-integration-raw">
         <thead><tr><th>Injection</th><th>Analyte</th><th>Transition</th><th>Change</th>
                    <th>Automatic</th><th>Now</th><th>Reason</th><th>Initials</th><th>Countersigned</th></tr></thead>
@@ -154,7 +188,8 @@
             <td tal:content="r/kind">re-integrated</td>
             <td tal:content="r/before">4.10 to 4.40 min</td>
             <td tal:content="r/after">4.10 to 4.25 min</td>
-            <td tal:content="python:r['reason'] or 'not given'">reason</td>
+            <td><span tal:replace="python:(r['reason'] + (': ' + r['detail'] if r['detail'] else '')) if r['reason'] else 'not given'">reason</span>
+              <div class="cf-hint" tal:condition="python:r.get('shared')" tal:content="r/shared"></div></td>
             <td tal:content="python:r['analyst'] or 'not initialled'">AN1</td>
             <td tal:content="python:r['verifier'] or 'not countersigned'">AN2</td>
           </tr>
@@ -170,7 +205,7 @@
         <input type="hidden" name="action" value="dismiss" />
         <input type="hidden" name="page" tal:attributes="value p" />
         <strong tal:content="string:Page ${p}">Page 4</strong>
-        <tal:w condition="work">
+        <tal:w condition="edit">
           <input type="text" name="dismiss_reason" size="50" placeholder="Why it is not one" />
           <button type="submit" class="btn-sm btn-secondary">Dismiss</button>
         </tal:w>
@@ -178,14 +213,14 @@
       <ul class="bench-alerts" tal:condition="d/dismissed">
         <li class="bench-ok" tal:repeat="x d/dismissed">
           <strong tal:content="python:'Page %d' % x[0]">Page 4</strong>:
-          <span tal:content="python:'%s (%s%s)' % (x[1]['reason'], x[1]['by'], ('; countersigned by %s' % x[1]['reviewer']['name']) if x[1].get('reviewer') else '')">index page</span>
-          <form method="post" class="mi-inline" tal:condition="python:work and not x[1].get('reviewer')"
+          <span tal:content="python:'%s (%s%s)' % (x[1]['reason'], view.person(x[1]['by']), ('; countersigned by %s' % view.person(x[1]['reviewer']['userid'])) if x[1].get('reviewer') else '')">index page</span>
+          <form method="post" class="mi-inline" tal:condition="python:work and sb['countersign'] and not x[1].get('reviewer') and x[1].get('by') != view.me()"
                 tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
             <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
             <input type="hidden" name="action" value="countersign" />
             <input type="hidden" name="kind" value="dismissal" />
             <input type="hidden" name="page" tal:attributes="value python:x[0]" />
-            <button type="submit" class="btn-sm btn-secondary">Countersign</button>
+            <button type="submit" class="btn btn-secondary">Countersign</button>
           </form></li>
       </ul>
     </section>
@@ -208,7 +243,7 @@
         <tbody>
           <tr tal:repeat="h hist">
             <td tal:content="python:view.lab_at(h['at'], h['at'][:16].replace('T', ' '))">2026-10-05</td>
-            <td tal:content="h/by">AN1</td>
+            <td tal:content="python:view.person(h['by'])">AN1</td>
             <td tal:content="h/id">mi-1</td>
             <td tal:content="h/action">edited</td>
             <td><div tal:repeat="c python:sorted((h.get('changes') or {}).items())"

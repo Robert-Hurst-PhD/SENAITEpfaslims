@@ -42,6 +42,8 @@ from senaite.pfas.browser.reagents import _save_reagent, STATUS_OPENED
 from senaite.pfas.browser.formutil import flatten_form, json_list
 from senaite.pfas.browser.queue_list import QueueList
 from senaite.pfas.document_templates import script_json
+# a method revision as the sign dialog names it: major.sub
+from senaite.pfas.method_revisions import revision_text as _revision_text
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_guide")
 
@@ -399,11 +401,12 @@ class PFASExtractionGuideView(QueueList, ViewHelpers, BrowserView):
         if not has_plan(sess):
             return u""
         rev, _fp = revision_of(sess)
-        return (u"r%s" % rev) if rev is not None else u"not issued"
+        return (u"r" + _revision_text(rev)) if rev is not None else u"not issued"
 
     def _take_plan(self, method_id):
         """The plan a new session starts with: the method's stages now and
-        the revision in force (unissued changes are marked)."""
+        the revision in force, by its major.sub label (unissued changes are
+        marked)."""
         from senaite.pfas.stage_plan import take
         portal = self._portal()
         profile = get_profile(portal, method_id) if method_id else {}
@@ -413,7 +416,7 @@ class PFASExtractionGuideView(QueueList, ViewHelpers, BrowserView):
             from senaite.pfas.qc.rules import method_toggles
             fp = mr.fingerprint(profile, method_toggles(profile, method_id))
             st = mr.status(mr.records(portal, method_id), mr.fingerprints(profile, method_toggles(profile, method_id)))
-            rev = st.get("rev") if not st.get("unissued") else None
+            rev = st.get("label") if not st.get("unissued") else None
         except Exception as exc:                            # noqa: BLE001
             logger.warning("plan revision for %s: %s", method_id, exc)
         return take(profile, method_id, rev, fp, _utcnow())
@@ -521,7 +524,7 @@ class PFASExtractionGuideView(QueueList, ViewHelpers, BrowserView):
             logger.warning("finalise dialog: the record of %s could not be read",
                            getattr(b, "getId", lambda: u"?")(), exc_info=True)
         return {"record": record.get("worksheet") or (b.getId() if b is not None else u""),
-                "revision": record.get("revision") or u"", "hash_prefix": prefix,
+                "revision": _revision_text(record.get("revision")), "hash_prefix": prefix,
                 "meaning_label": signing.meaning_label("preparer"),
                 "signer_name": signed_in_name(self.context), "action": u"finalize",
                 "form_id": u"egFinalizeForm"}
