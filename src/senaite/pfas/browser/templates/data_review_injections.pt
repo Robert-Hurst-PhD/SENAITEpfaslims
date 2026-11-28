@@ -1,9 +1,19 @@
 <metal:m define-macro="injections">
       <!-- the run's injections and what each was judged as: a row's menu
-           corrects its identity (a reason each, the run judged again) -->
-      <section class="pfas-card dr-card" id="dr-injections"
-               tal:define="inj view/identity_injections; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons" tal:condition="inj">
-        <h3 class="dr-card-title">Injections</h3>
+           corrects its identity (a reason each, the run judged again). A
+           section that opens and closes: open on the Instrument Report tab;
+           above the cards on Integration Review, closed until opened, the
+           choice remembered (data-fold-store); its summary line says how
+           many and how many were corrected, and when a correction waits -->
+      <details class="pfas-sec dr-card" id="dr-injections" data-sec="injections"
+               tal:define="inj view/identity_injections; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons;
+                           fold view/injections_in_raw_tab" tal:condition="inj"
+               tal:attributes="open python:None if fold else 'open';
+                               data-fold-store python:'pfas.raw.injections.open' if fold else None">
+        <summary><span class="pfas-sec-t">Injections</span><span class="pfas-sec-s"
+            tal:content="view/injections_summary">18 injections &#183; 2 corrected</span><span class="pfas-tag is-warn"
+            tal:condition="view/identity_pending">Waiting for the run</span></summary>
+        <div class="pfas-sec-b">
         <ul class="bench-alerts" tal:condition="view/identity_pending">
           <li class="bench-bad" tal:content="view/IDENTITY_PENDING">Pending</li>
         </ul>
@@ -21,7 +31,8 @@
             <td class="is-right num" tal:content="i/compounds">32</td>
           </tr></tbody>
         </table>
-      </section>
+        </div>
+      </details>
       <template id="dr-identity-form" tal:condition="python:view.identity_injections() and not view.identity_closed()"
                 data-title="Correct identity">
         <form method="post" class="dr-identity-form" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">

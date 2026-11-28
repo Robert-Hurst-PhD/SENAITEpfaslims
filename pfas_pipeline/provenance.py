@@ -570,6 +570,66 @@ def record_run(batch, rows, profile, matrix):
 
 # ── the final sample values ──────────────────────────────────────────────────
 
+def _instrument_chain(src):
+    """(terms, steps, value) of one row's concentration as the instrument
+    gives it: the LIMS's own working from the raw data when it calculated it
+    (raw_terms), then c₀, the value; the start of every RESULT record."""
+    raw = getattr(src, "raw_calculated_conc", None) if src is not None else None
+    conc = reported_conc(src) if src is not None else None
+    if raw is None and conc is not None:
+        raw = conc
+    raw_t, raw_s = raw_terms(src) if src is not None else ([], [])
+    terms = list(raw_t) + [term("c₀", "concentration this LIMS calculated from the raw data" if raw_t
+                                else "concentration the instrument reported", raw,
+                                getattr(src, "conc_units", "") if src is not None else "", src_row(src, "calc_conc"))]
+    steps = list(raw_s) + [{"label": "as calculated" if raw_t else "as imported", "expression": "c₀", "value": raw}]
+    return terms, steps, raw
+
+
+def _factor_chain(src, method, analyte, sample_injection, value):
+    """(terms, steps, value) of the factors a row's reading is taken through
+    to the sample basis: the salt (counter-ion) factor, then the matrix /
+    per-sample factor; the last step's value is the row's reported
+    concentration (reported_conc), the number its row shows."""
+    terms, steps = [], []
+    if src is None:
+        return terms, steps, value
+    if getattr(src, "salt_factor", None):
+        terms.append(term("f_salt", "salt (counter-ion) factor", src.salt_factor, "",
+                          src_profile(method, "salt_factors.%s" % analyte)))
+        value = value * src.salt_factor if value is not None else None
+        steps.append({"label": "salt correction", "expression": "c₀ × f_salt", "value": value})
+    elif getattr(src, "salt_basis", None) == "acid":
+        terms.append(term("f_salt", "salt factor not applied: the calibration standards are stated as acid",
+                          None, "", src_profile(method, "salt_factors.%s" % analyte)))
+    if getattr(src, "matrix_factor", None):
+        terms.append(term("f_m", "matrix / per-sample factor (sample amount and final volume)", src.matrix_factor,
+                          "", src_extraction("samples[%s]" % sample_injection)))
+        value = value * src.matrix_factor if value is not None else None
+        steps.append({"label": "to the sample basis", "expression": "× f_m", "value": reported_conc(src)})
+    return terms, steps, value
+
+
+def record_part(batch, injection, row, method="", analyte="", sample_injection=""):
+    """The RESULT record of one isomer peak of a summed analyte (lr-PFOS):
+    its own working as a plain analyte's (_instrument_chain, then the
+    factors to the sample basis, _factor_chain, and the method's linked
+    response ratio when it has one), ending on the number its row shows
+    (reported_conc); keyed by the peak's own name. The summed analyte's
+    record adds the peaks."""
+    terms, steps, value = _instrument_chain(row)
+    f_t, f_s, value = _factor_chain(row, method, analyte or row.compound_name.split("-", 1)[-1],
+                                    sample_injection or injection, value)
+    lrr_t, lrr_s = linked_terms(row)
+    terms, steps = terms + f_t, steps + f_s + lrr_s
+    shown = reported_conc(row)
+    value = shown if shown is not None else value
+    return record(batch, "RESULT", injection, row.compound_name, value,
+                  " → ".join(st["expression"] for st in steps), terms,
+                  getattr(row, "conc_units", "") or "", "detected" if value is not None else "",
+                  steps=steps, rule={"part_of": row.compound_name.split("-", 1)[-1]})
+
+
 def record_summary(batch, profile=None):
     """One RESULT record per summary row: the chain from the imported
     concentration to the reported value and its qualifier."""
@@ -596,6 +656,9 @@ def record_summary(batch, profile=None):
                 total += v or 0.0
                 terms.append(term("c%s" % chr(0x2081 + i), "%s as the instrument reported it" % pr.compound_name, v,
                                   getattr(pr, "conc_units", "") or "", src_row(pr, "calc_conc")))
+                # each peak's own working, opened from its row
+                record_part(batch, getattr(pr, "injection_name", None) or s.source_injection or s.sample_injection, pr,
+                            method, s.analyte, s.sample_injection)
             steps.append({"label": "isomers summed under %s" % s.analyte,
                           "expression": " + ".join("c%s" % chr(0x2081 + i) for i in range(len(parts))), "value": total})
         raw = getattr(src, "raw_calculated_conc", None) if src is not None else None
@@ -603,27 +666,12 @@ def record_summary(batch, profile=None):
         if raw is None and conc is not None:
             raw = conc
         if not parts:
-            raw_t, raw_s = raw_terms(src) if src is not None else ([], [])
-            terms.extend(raw_t)
-            steps.extend(raw_s)
-            terms.append(term("c₀", "concentration this LIMS calculated from the raw data" if raw_t
-                              else "concentration the instrument reported", raw,
-                              getattr(src, "conc_units", "") if src is not None else "", src_row(src, "calc_conc")))
-            steps.append({"label": "as calculated" if raw_t else "as imported", "expression": "c₀", "value": raw})
-        value = raw
-        if src is not None and getattr(src, "salt_factor", None):
-            terms.append(term("f_salt", "salt (counter-ion) factor", src.salt_factor, "",
-                              src_profile(method, "salt_factors.%s" % s.analyte)))
-            value = value * src.salt_factor if value is not None else None
-            steps.append({"label": "salt correction", "expression": "c₀ × f_salt", "value": value})
-        elif src is not None and getattr(src, "salt_basis", None) == "acid":
-            terms.append(term("f_salt", "salt factor not applied: the calibration standards are stated as acid",
-                              None, "", src_profile(method, "salt_factors.%s" % s.analyte)))
-        if src is not None and getattr(src, "matrix_factor", None):
-            terms.append(term("f_m", "matrix / per-sample factor (sample amount and final volume)", src.matrix_factor,
-                              "", src_extraction("samples[%s]" % s.sample_injection)))
-            value = value * src.matrix_factor if value is not None else None
-            steps.append({"label": "to the sample basis", "expression": "× f_m", "value": conc})
+            chain_t, chain_s, raw = _instrument_chain(src)
+            terms.extend(chain_t)
+            steps.extend(chain_s)
+        f_t, f_s, value = _factor_chain(src, method, s.analyte, s.sample_injection, raw)
+        terms.extend(f_t)
+        steps.extend(f_s)
         if src is not None:
             # how it was quantified: the method's linked response ratio
             lrr_t, lrr_s = linked_terms(src)

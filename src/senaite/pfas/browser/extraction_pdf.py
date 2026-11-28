@@ -270,6 +270,7 @@ def batch_record_pdf_bytes(worksheet, request, names=None, mono=False):
     from senaite.pfas import document_templates as dt
     from senaite.pfas import report_documents
     from senaite.pfas.browser.data_review import _CHECKLIST_ITEMS
+    from senaite.pfas.injection_identity import RESULT_SIGNOFF_LABELS
     from senaite.pfas.browser.report_designs import designed_pdf
     portal = api.get_portal()
     store = dt.load(portal)
@@ -287,7 +288,7 @@ def batch_record_pdf_bytes(worksheet, request, names=None, mono=False):
         rows, fields = _signatures(portal, worksheet, record, inputs["session"])
         from senaite.pfas import stage_plan
         data = report_documents.batch_record_data(
-            record, inputs["data"], review_order=[k for k, _l, _a in _CHECKLIST_ITEMS],
+            record, inputs["data"], review_order=[k for k, _l, _a in _CHECKLIST_ITEMS] + sorted(RESULT_SIGNOFF_LABELS),
             people=_reviewers(portal, (record.get("parts") or {}).get("review")), signatures=rows,
             loaded_found=_loaded_found(portal, (record.get("parts") or {}).get("loaded")),
             lots_found=_stage_lots_found(portal, inputs["session"]),

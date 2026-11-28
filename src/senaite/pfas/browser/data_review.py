@@ -135,6 +135,18 @@ _CHECKLIST_ITEMS = [
     ("final_data",        u"Final Data Summary",            False),
     ("instrument_report", u"Instrument Report",             False),
 ]
+# manual sign-offs asked only when their rows exist: the reported results
+# Final Data leaves to the Blanks tab and to Spike QC; each is signed as Final
+# Data is, and release waits on each one asked (key, the rows it covers; its
+# name is injection_identity.RESULT_SIGNOFF_LABELS)
+from senaite.pfas.injection_identity import RESULT_SIGNOFF_LABELS as _RESULT_LABELS  # noqa: E402
+_RESULT_SIGNOFFS = [
+    ("blank_results",     "final_data_blanks"),
+    ("duplicate_results", "final_data_duplicates"),
+]
+# said on a result sign-off whose rows could not be read: it is asked, held
+# and cannot be signed until they can (a failed read never opens release)
+RESULT_ROWS_UNREAD = u"The {0} could not be read ({1}): release waits until they can."
 
 
 # A non-human actor attests differently from a person, and the difference has to
@@ -272,6 +284,17 @@ class PFASDataReviewInjectionsMacrosView(BrowserView):
     Integration Review tab of a run that has no Instrument Report."""
 
     _template = ViewPageTemplateFile("templates/data_review_injections.pt")
+
+    @property
+    def macros(self):
+        return self._template.macros
+
+
+class PFASDataReviewResultsMacrosView(BrowserView):
+    """The result rows Final Data leaves to another tab: the blanks' on the
+    Blanks tab, the duplicates' on Spike QC."""
+
+    _template = ViewPageTemplateFile("templates/data_review_results.pt")
 
     @property
     def macros(self):
@@ -474,8 +497,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
     def injections_in_raw_tab(self):
         """The Injections card (what each injection was judged as, the row
         menu that corrects it) belongs to the Instrument Report tab; a run
-        that tab is not listed for keeps it at the foot of Integration
-        Review. One card, never both."""
+        that tab is not listed for keeps it on Integration Review, above the
+        cards, closed until opened. One card, never both."""
         return (self.active_tab() == "raw"
                 and "?tab=instrument_report" not in [t[0] for t in self.shown_tabs()])
 
@@ -580,6 +603,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         "permission_denied":       u"Permission denied.",
         "no_worksheet":            u"No worksheet found.",
         "invalid_item":            u"Invalid checklist item.",
+        "result_rows_unread":      u"These results could not be read, so they cannot be signed off yet.",
         "mi_not_ready":            u"Cannot mark the instrument report reviewed: the manual integrations are not complete.",
         "coc_not_received":        u"Cannot mark CoC as reviewed: not every sample's chain of custody has "
                                    u"been received by the laboratory (Chain of Custody, Receive).",
@@ -1342,7 +1366,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         from senaite.pfas import labelled_standards
         roles = labelled_standards.roles(self._method_profile())
         record = self._raw_record().get("injections") or []
-        injections = raw_review.injections(results, record)
+        injections = raw_review.injections(results, record, roles)
         overrides = self._raw_overrides()
         waiting, edited = self.raw_waiting()
         data = {"mode": mode, "injections": injections, "cal_dropped": [], "failure": self._raw_failure(),
@@ -2214,7 +2238,8 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # is exactly the to_be_verified and verified worksheets this page exists
         # to review. Found by loading the page against a real worksheet in each
         # state rather than only the one that happened to have QC rows.
-        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": [], "groups": [], "factor": None}
+        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": [], "groups": [], "factor": None,
+                 "dup_groups": []}
         if not self.db_available:
             return empty
         ws = self._get_worksheet()
@@ -2268,8 +2293,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         fix = None
         if mf and [t for t in self._SAMPLE_BASIS_SPIKES if t in wanted]:
             fix = {"text": said, "label": u"Matrices", "url": mf["url"]}
+        # the duplicates' RPD columns, drawn with the same cells, for the
+        # Duplicates section beside the duplicates' own results
+        dups = qc_cells.with_equations(qc_cells.tables(summary.get("columns") or [], summary.get("rows") or [],
+                                                       keep=qc_cells.is_duplicate)["groups"])
         return {"rows": rows, "groups": groups, "types": spike_types,
-                "specs": specs, "pending_spikes": self.pending_spike_levels(), "factor": fix}
+                "specs": specs, "pending_spikes": self.pending_spike_levels(), "factor": fix,
+                "dup_groups": dups}
 
     def pending_spike_levels(self):
         """Spiked injections whose spike level nobody has recorded.
@@ -3259,7 +3289,57 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 item["verdict"] = "pass" if item.get("checked") else "pending"
                 item["reason"] = u""
             result.append(item)
+        # the results Final Data leaves to another tab, signed there; none
+        # asked when the worksheet has none of them
+        for key in self.result_signoffs_asked():
+            label = _RESULT_LABELS[key]
+            item = dict(items.get(key) or {"label": label, "checked": False, "checked_by": None,
+                                           "checked_at": None, "notes": u"", "checked_by_kind": None})
+            item.update(key=key, label=label, auto=False)
+            unread = self.result_signoffs_unread().get(key)
+            if unread:
+                # rows that could not be read: held, whatever was signed
+                item.update(checked=False, verdict="blocked", reason=unread)
+            else:
+                item["verdict"], item["reason"] = ("pass" if item.get("checked") else "pending"), u""
+            result.append(item)
         return result
+
+    def result_signoffs_unread(self):
+        """{key: why} of the result sign-offs whose rows could not be read
+        (RESULT_ROWS_UNREAD): each is asked and held."""
+        if "_signoffs_unread" not in self.__dict__:
+            out = {}
+            for key, rows in _RESULT_SIGNOFFS:
+                label = _RESULT_LABELS[key]
+                try:
+                    getattr(self, rows)()
+                    err = self.__dict__.get("_final_error")
+                except Exception as exc:                    # noqa: BLE001
+                    err = u"%s" % exc
+                if err:
+                    logger.warning("result sign-off %s: %s", key, err)
+                    out[key] = RESULT_ROWS_UNREAD.format(label.lower(), err)
+            self._signoffs_unread = out
+        return self._signoffs_unread
+
+    def result_signoffs_asked(self):
+        """The result sign-offs this worksheet asks (_RESULT_SIGNOFFS): each
+        whose rows exist, and each whose rows could not be read (it fails
+        closed: asked and held), in order."""
+        unread = self.result_signoffs_unread()
+        out = []
+        for key, rows in _RESULT_SIGNOFFS:
+            if key in unread:
+                out.append(key)
+                continue
+            if getattr(self, rows)():
+                out.append(key)
+        return out
+
+    def item_checked(self, key):
+        """Whether the checklist's item `key` is signed."""
+        return bool([i for i in self.checklist_status() if i.get("key") == key and i.get("checked")])
 
     def _auto_verdict(self, ws, key, item):
         """(verdict, reason) for an automatic gate.
@@ -5916,10 +5996,13 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             logger.warning("_batch_ars: %s", exc)
             return []
 
-    def get_final_data(self):
+    def get_final_data(self, every=False):
         """Per-sample per-analyte results. Primary source: analyses assigned
         to the worksheet; fallback: analyses of the batch's samples (the
-        chain is often batch-linked before worksheet assignment)."""
+        chain is often batch-linked before worksheet assignment). Final Data
+        lists the field samples (their dilutions and retests too); `every`
+        keeps the blanks and duplicates as well (final_data.kind_of: each
+        row's "kind"), which the Blanks and Spike QC tabs show."""
         ws = self._get_worksheet()
         if not ws:
             return []
@@ -5966,10 +6049,14 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     # its field QC (FRB, TB, FD) as the worker reads it,
                     # for the type icon beside the sample
                     field_qc = u""
+                    of = u""
                     try:
                         from senaite.pfas.coc_records import WORKER_FIELD_QC
                         fld = ar.getField("FieldQCType")
                         field_qc = WORKER_FIELD_QC.get((fld.get(ar) if fld else u"") or u"", u"")
+                        # the sample a field duplicate or blank was taken with
+                        of_fld = ar.getField("FieldQCOf")
+                        of = (of_fld.get(ar) if of_fld else u"") or u""
                     except Exception:                       # noqa: BLE001
                         pass
                     ar_map[ar_uid] = {
@@ -5977,6 +6064,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                         "client_sample_id": client_sid,
                         "sample_type": sample_type,
                         "field_qc": field_qc,
+                        "field_qc_of": of,
                         "analyses": [],
                     }
 
@@ -6035,6 +6123,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     "review_state": state,
                     "reported":     reported,
                     "dilution":     dilution,
+                    "portal_type":  getattr(analysis, "portal_type", u"") or u"",
                 })
             except Exception as exc:
                 logger.error("get_final_data analysis loop: %s", exc)
@@ -6055,7 +6144,15 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 ps = final_data.parts(inj.get(ar_data["sample_id"]) or [], a["analyte"], a.get("title"))
                 instrument, instrument_parts = final_data.text(ps)
                 rt, rt_parts = final_data.rt_text(ps)
+                kind = final_data.kind_of(ar_data.get("field_qc"), a.get("portal_type"))
                 rows.append({
+                    # what the row is: Final Data lists the samples
+                    "kind":             kind,
+                    "duplicate_of":     (ar_data["sample_id"] if a.get("portal_type") == u"DuplicateAnalysis"
+                                         else ar_data.get("field_qc_of") or u""),
+                    # an isomer sum's lr- and br- peaks, the rows under it,
+                    # each opening its own record
+                    "children":         final_data.children(ps),
                     # the value in the number column, an isomer sum's parts
                     # on the muted line under it
                     "instrument":       instrument,
@@ -6064,7 +6161,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                     "rt_parts":         rt_parts,
                     # the injection a request to the preparer names
                     "injection":        next((p["injection"] for p in ps if p.get("injection")), u""),
-                    "instrument_prov":  ps[0].get("prov") if len(ps) == 1 else None,
+                    "instrument_prov":  ps[0].get("prov") if len(ps) == 1 else final_data.sum_key(ps),
                     # the reported result's own record
                     "result_prov":      final_data.result_key(ps, a["analyte"]),
                     "sample_id":        ar_data["sample_id"],
@@ -6092,7 +6189,43 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 })
         # a sample withheld for re-extraction stays listed, greyed
         rows = self._withheld_rows(rows, inj)
+        rows = rows if every else [r for r in rows if r.get("kind", final_data.SAMPLE) == final_data.SAMPLE]
         return self._beyond_common_codes(rows, qc_cells)
+
+    def final_data_views(self, rows):
+        """Final Data's groups for both views of Group by, injection first
+        (as the rows always stood), then analyte; each says which it is
+        ("by")."""
+        out = []
+        for by in (u"injection", u"analyte"):
+            out.extend(dict(g, by=by) for g in self.final_data_groups(rows, by))
+        return out
+
+    def final_data_groups(self, rows, by):
+        """Final Data's rows under each injection or each analyte
+        (final_data.groups), the analytes in their natural order."""
+        from senaite.pfas import final_data, raw_review
+        return final_data.groups(rows, by, raw_review.sort_key)
+
+    def _final_rows_of(self, kind):
+        if "_final_every" not in self.__dict__:
+            try:
+                self._final_every = self.get_final_data(every=True)
+            except Exception as exc:                        # noqa: BLE001
+                # said, never read as "none": the result sign-offs fail closed
+                logger.warning("final data rows: %s", exc)
+                self._final_every, self._final_error = [], u"%s" % exc
+        return [r for r in self._final_every if r.get("kind") == kind]
+
+    def final_data_blanks(self):
+        """The field and lab blanks' reported results, which Final Data
+        leaves to the Blanks tab, labelled by kind (type_code)."""
+        return self._final_rows_of(u"blank")
+
+    def final_data_duplicates(self):
+        """The duplicates' reported results, which Final Data leaves to the
+        Spike QC tab, each naming the sample it duplicates."""
+        return self._final_rows_of(u"duplicate")
 
     def _beyond_common_codes(self, rows, qc_cells):
         """A code every result carries is stated once above the table
@@ -7615,9 +7748,10 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             else:
                 r["reextract_url"] = ask.get(sid, u"")
         for sid in sorted(k for k in held if k and k not in seen):
+            kind = self._withheld_kind(held[sid])
             for part in inj.get(sid) or [{}]:
                 value = part.get("result")
-                rows.append({"sample_id": sid, "analyte": part.get("analyte") or u"", "title": u"",
+                rows.append({"kind": kind, "sample_id": sid, "analyte": part.get("analyte") or u"", "title": u"",
                              "client_sample_id": held[sid].get("client_sid") or u"", "sample_type": u"",
                              "instrument": (u"%.4g" % value) if isinstance(value, (int, float)) else u"",
                              "instrument_parts": u"", "rt": u"", "rt_parts": u"",
@@ -7627,6 +7761,21 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                              "qc_cell": None, "review_state": u"", "reported": u"", "state": u"",
                              "withheld": True})
         return rows
+
+    def _withheld_kind(self, member):
+        """What a withheld sample's rows are (final_data.kind_of), from its
+        sample's field QC: a withheld field blank or duplicate leaves Final
+        Data as the others do; a sample that cannot be read is a sample."""
+        from senaite.pfas import final_data
+        try:
+            from bika.lims import api
+            from senaite.pfas.coc_records import WORKER_FIELD_QC
+            ar = api.get_object_by_uid(member.get("sample_uid"), None) if member.get("sample_uid") else None
+            fld = ar.getField("FieldQCType") if ar is not None else None
+            return final_data.kind_of(WORKER_FIELD_QC.get((fld.get(ar) if fld else u"") or u"", u""))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("withheld sample kind: %s", exc)
+            return final_data.SAMPLE
 
     # ── An injection's identity, corrected at review ─────────────────
     # (injection_identity: the overlay, its refusals and its requeue)
@@ -7766,6 +7915,15 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         offered = ii.offered_roles(self._method_profile())
         return json.dumps(dict((cur, dict((t, ii.rejudged(cur, t)) for t in offered if t != cur))
                                for cur in ii.CORRECTABLE), sort_keys=True)
+
+    def injections_summary(self):
+        """The Injections card's one line: "18 injections · 2 corrected",
+        the corrections left out when there are none."""
+        rows = self.identity_injections() or []
+        n = len(rows)
+        text = u"%d injection%s" % (n, u"" if n == 1 else u"s")
+        corrected = len([r for r in rows if r.get("entry")])
+        return text + (u" \u00b7 %d corrected" % corrected if corrected else u"")
 
     def identity_injections(self):
         """The run's injections, in run order, as the Injections table lists
@@ -8414,8 +8572,12 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             return self._redirect_with_msg("no_worksheet", "error")
         item_key = self.request.form.get("item_key", "")
         manual_keys = {"coc", "final_data", "instrument_report"}
-        if item_key not in manual_keys:
+        if item_key not in manual_keys and item_key not in self.result_signoffs_asked():
             return self._redirect_with_msg("invalid_item", "error")
+        if item_key in self.result_signoffs_unread():
+            return self._redirect_with_msg("result_rows_unread", "error",
+                                           tab=self.request.form.get("tab", "overview"),
+                                           detail=self.result_signoffs_unread()[item_key])
         # ISO 17025 §10: where a sample's method sets a holding time, the
         # receipt's "within holding time" must be Yes before CoC can pass.
         # The answer is necessary and NOT sufficient -- a measured breach
@@ -8483,6 +8645,9 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 "automated_proposal_recorded", "ok",
                 tab=self.request.form.get("tab", "overview"))
 
+        if item_key in _RESULT_LABELS:
+            # the stored item names itself, as the batch record prints it
+            item["label"] = _RESULT_LABELS[item_key]
         item["checked"]         = True
         item["checked_by"]      = user.getId()
         item["checked_by_kind"] = u"human"

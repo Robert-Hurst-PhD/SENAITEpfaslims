@@ -374,6 +374,15 @@ def is_spike(column):
     return column.split(" ")[0] in SPIKE
 
 
+# Data Review's Spike QC tab, its Duplicates section: the sample duplicate's
+# and the field duplicate's RPD columns
+DUPLICATE = ("Dup", "FD")
+
+
+def is_duplicate(column):
+    return column.split(" ")[0] in DUPLICATE
+
+
 def tables(columns, rows, keep=None):
     """What a page draws from the QC Summary's cells: the columns `keep`
     selects (every one when None), the analytes with a cell in them, the

@@ -1538,12 +1538,20 @@ def run_pipeline(
         _prov_profile = _gp(method_id) if method_id else None
         _prov.record_summary(batch, _prov_profile)
         _prov.record_file(batch, csv_path.name, import_profile)
-        _prov.record_identity(batch, identity_applied)
-        _prov.record_amendments(batch, amendments_applied)
     except Exception as exc:                                # noqa: BLE001
         logger.exception("value provenance of the summary could not be recorded for %s", batch.batch_id)
         batch.unconfigured.append({"qc_type": "Provenance", "analyte": "", "method_id": method_id,
                                    "reason": "the final values' provenance could not be recorded (%s)" % exc})
+    # what the run was judged with (the identity corrections and extraction
+    # corrections applied): written on their own, so a value's chain that
+    # cannot be recorded never leaves Data Review waiting for the run
+    try:
+        _prov.record_identity(batch, identity_applied)
+        _prov.record_amendments(batch, amendments_applied)
+    except Exception as exc:                                # noqa: BLE001
+        logger.exception("the corrections applied could not be recorded for %s", batch.batch_id)
+        batch.unconfigured.append({"qc_type": "Provenance", "analyte": "", "method_id": method_id,
+                                   "reason": "the corrections applied could not be recorded (%s)" % exc})
 
     # a check standard a reviewer corrected the identity of that gave no
     # verdict (no expected concentration) is never left silently unjudged

@@ -4759,11 +4759,19 @@
                       "not-detected": "Not detected", "pass": "Passed" };
   var STATUS_COLOUR = { "fail": "fail", "warn": "warn", "edit": "warn", "waiting": "info",
                         "not-detected": "neutral", "pass": "ok" };
+  /* a card shown as failed: its state, or a failed check, with a peak integrated. A card with no
+     peak integrated (the server's not_integrated) carries the warning instead, whatever its checks */
+  function failedThumb(th) {
+    return !th.not_integrated && (th.state === "fail" || !!(th.failed && th.failed.length));
+  }
+  function warnedThumb(th) {
+    return !failedThumb(th) && (th.state === "warn" || (!!th.not_integrated && (th.state === "fail" || !!(th.failed && th.failed.length))));
+  }
   function thumbStatus(th, pending) {
     if (th.state === "missing") { return null; }
     var waits = th.edit === "pending" || !!pending, icon;
-    if (th.state === "fail" || (th.failed && th.failed.length)) { icon = "fail"; }
-    else if (th.state === "warn") { icon = "warn"; }
+    if (failedThumb(th)) { icon = "fail"; }
+    else if (warnedThumb(th)) { icon = "warn"; }
     else if (isManual(th) && (th.edit !== "pending" || th.auto)) { icon = "edit"; }
     else if (waits) { icon = "waiting"; }
     else if (th.state === "nd") { icon = "not-detected"; }
@@ -4845,9 +4853,25 @@
     }).join("");
   }
 
-  function listHref(mode, name) {
+  /* the section chosen above the grid rides in every link the page draws, so it holds from one
+     injection or mode to the next */
+  var linkSection = "";
+  function sectionQuery(section) {
+    var key = section === undefined ? linkSection : section;
+    return key && key !== "all" ? "&amp;section=" + encodeURIComponent(key) : "";
+  }
+  function listHref(mode, name, section) {
     return "?tab=raw&amp;mode=" + mode + "&amp;" + (mode === "compound" ? "analyte" : "injection") + "=" +
-           encodeURIComponent(name);
+           encodeURIComponent(name) + sectionQuery(section);
+  }
+  function modeHref(mode, section) { return "?tab=raw&amp;mode=" + mode + sectionQuery(section); }
+  /* the address with section= set to `key`, or without it for All */
+  function withSection(search, key) {
+    var kept = String(search || "").replace(/^\?/, "").split("&").filter(function (kv) {
+      return kv && kv.split("=")[0] !== "section";
+    });
+    if (key && key !== "all") { kept.push("section=" + encodeURIComponent(key)); }
+    return kept.length ? "?" + kept.join("&") : "";
   }
 
   /* one entry of the list down the left: a button to its page, its type
@@ -4871,9 +4895,17 @@
     var cur = i.name === selected ? ' aria-current="true"' : "", f = failMark(i);
     var tip = f ? ' aria-describedby="' + f.id + '"' + (f.tip ? ' data-pfas-tip="' + esc(f.tip) + '"' : "") : "";
     if (mode !== "injection") {
+      /* a compound whose only failed rows had no peak integrated carries the warning */
+      var warnMark = !f && i.warned ? statusIcon({ icon: "warn", label: STATUS_WORD.warn, colour: STATUS_COLOUR.warn }) : "";
       return '<a class="btn-sm btn-secondary" href="' + listHref(mode, i.name) + '"' + cur + tip + ">" + esc(i.label || i.name) +
-             '<span class="raw-type">' + (f ? '<span class="raw-li-fail">' + f.mark + "</span>" : "") + "</span></a>" + (f ? f.desc : "");
+             '<span class="raw-type">' + (f ? '<span class="raw-li-fail">' + f.mark + "</span>" : warnMark) + "</span></a>" + (f ? f.desc : "");
     }
+    /* the injection's full name heads the row's tooltip, its failed checks after it: a long name
+       is cut short on screen */
+    /* the injection's full name heads the row's tooltip, its failed checks after it, else the
+       compounds it warns of for having no peak (warned_checks) */
+    var full = String(i.name == null ? "" : i.name), why = f && f.tip ? f.tip : (i.warned_checks || []).join(" \u00b7 ");
+    tip = (f ? ' aria-describedby="' + f.id + '"' : "") + ' data-pfas-tip="' + esc(why ? full + " \u00b7 " + why : full) + '"';
     var st = status || (f ? { icon: "fail", label: "Failed", colour: "fail" } : { icon: "pass", label: "Passed", colour: "ok" });
     var mark = st.icon === "fail" && f ? f.mark : statusIcon(st), T = typeof window !== "undefined" && window.PFAS && window.PFAS.components;
     var type = T && T.type && i.type ? T.type.cell(i.type, i.type) : "";
@@ -4895,8 +4927,8 @@
     var out = { failed: 0, warn: 0, manual: 0, nd: 0 };
     (thumbs || []).forEach(function (th) {
       if (th.state === "missing") { return; }
-      if (th.state === "fail" || (th.failed && th.failed.length)) { out.failed += 1; }
-      if (th.state === "warn") { out.warn += 1; }
+      if (failedThumb(th)) { out.failed += 1; }
+      if (warnedThumb(th)) { out.warn += 1; }
       if (isManual(th)) { out.manual += 1; }
       if (th.state === "nd" || th.qualifier === "N.D.") { out.nd += 1; }
     });
@@ -4924,22 +4956,41 @@
     return '<h3 class="raw-section-head" tabindex="-1">' + esc(sec.title) + " \u00b7 " + sec.items.length +
            '<span class="raw-section-sum">' + sectionSummary(sectionCounts(sec.items)) + "</span></h3>";
   }
-  /* a button to each section, above the grid, with how many it holds and an icon for what needs a look */
-  function jumpHtml(secs) {
-    return '<nav class="raw-jumps" aria-label="Sections">' + secs.map(function (sec) {
-      var c = sectionCounts(sec.items);
-      return '<button type="button" class="btn-sm btn-secondary raw-jump" data-target="raw-sec-' + esc(sec.key) + '">' + esc(sec.title) +
-             ' <span class="raw-jump-n">' + sec.items.length + "</span>" +
-             COUNT_WORDS.filter(function (row) { return row[0] !== "nd" && c[row[0]] > 0; }).map(countIcon).join("") + "</button>";
-    }).join("") + "</nav>";
+  /* the section choice above the grid: All, then each section with how many it holds and an icon
+     for what needs a look. A choice shows that section's cards alone (segmented: Left and Right
+     move it); `chosen` is the section shown, "" for All */
+  function jumpHtml(secs, chosen) {
+    var total = 0;
+    secs.forEach(function (sec) { total += sec.items.length; });
+    var item = function (key, title, n, marks) {
+      var on = key === (chosen || "all");
+      return '<button type="button" class="pfas-seg-item raw-jump" data-value="' + esc(key) + '" aria-pressed="' + (on ? "true" : "false") + '">' +
+             esc(title) + ' <span class="raw-jump-n">' + n + "</span>" + marks + "</button>";
+    };
+    return '<div class="pfas-seg pfas-seg-sm is-fit raw-jumps" role="group" aria-label="Show section">' + item("all", "All", total, "") +
+           secs.map(function (sec) {
+             var c = sectionCounts(sec.items);
+             return item(sec.key, sec.title, sec.items.length,
+                         COUNT_WORDS.filter(function (row) { return row[0] !== "nd" && c[row[0]] > 0; }).map(countIcon).join(""));
+           }).join("") + "</div>";
+  }
+  /* the section chosen, when the grid holds it after Show; else "" (All) */
+  function chosenSection(data, secs) {
+    var key = data && data.section;
+    return key && (secs || []).some(function (sec) { return sec.key === key; }) ? key : "";
   }
   function thumbButton(data, th, pendingKeys, busyKeys) {
     var name = data.mode === "compound" ? th.injection : shown(th), key = th.injection + "|" + th.analyte;
     var busy = !!(busyKeys && busyKeys[key]);
     var cls = "raw-thumb" + (knownState(th.state) ? " is-" + th.state : "") + (th.deleted ? " is-deleted" : "") + (busy ? " is-busy" : "");
     var pending = !!pendingKeys[key], status = thumbStatus(th, pending);
+    /* the name is cut short on the card: in full as its tooltip on hover and focus, and as its
+       accessible name with the status after it */
+    var full = String(name == null ? "" : name);
+    var label = [full, status ? status.label : "", busy ? "being processed" : ""].filter(Boolean).join(", ");
     return '<button type="button" class="' + cls + '" data-injection="' + esc(th.injection) + '" data-analyte="' +
-           esc(th.analyte) + '"' + (th.state === "missing" ? ' disabled="disabled"' : "") + ">" +
+           esc(th.analyte) + '" data-pfas-tip="' + esc(full) + '" aria-label="' + esc(label) + '"' +
+           (th.state === "missing" ? ' disabled="disabled"' : "") + ">" +
            thumbSvg(th, { pending: pending }) + '<span class="raw-thumb-head"><span class="raw-thumb-name">' + esc(name) +
            "</span>" + (status ? '<span class="raw-thumb-status">' + statusIcon(status) + "</span>" : "") + "</span>" +
            (busy ? '<span class="raw-thumb-busy">Being processed</span>' : "") + "</button>";
@@ -4990,8 +5041,8 @@
     var name = function (th) { return String(mode === "compound" ? th.injection : shown(th)); };
     var rank = function (th) {
       if (sort !== "action") { return 0; }
-      if (th.state === "fail" || (th.failed && th.failed.length)) { return 0; }
-      if (th.state === "warn") { return 1; }
+      if (failedThumb(th)) { return 0; }
+      if (warnedThumb(th)) { return 1; }
       return isActionThumb(th, pendingKeys) ? 2 : 3;
     };
     return (thumbs || []).map(function (th, i) { return { th: th, i: i }; }).sort(function (a, b) {
@@ -5041,10 +5092,15 @@
 
   /* the grid in its sections, the jump buttons above them; Show and Sort from data.filter; a
      section with nothing left after Show is not drawn */
-  function displayedSections(data) {
+  function shownSections(data) {
     var f = data.filter || filterRead(null), pendingKeys = pendingKeysOf(data);
     var shownThumbs = orderThumbs(filterThumbs(data.thumbs, f.show, pendingKeys), f.sort, data.mode, pendingKeys);
     return sectionsOf(shownThumbs, data.sections);
+  }
+  /* the sections the grid draws: after Show, the one section chosen above it alone */
+  function displayedSections(data) {
+    var secs = shownSections(data), key = chosenSection(data, secs);
+    return key ? secs.filter(function (sec) { return sec.key === key; }) : secs;
   }
   /* the thumbnails as the overview shows them: sections in order, each by Sort, after Show; what Previous
      and Next step through. A run still on its first processing shows ghosts, none to open. */
@@ -5054,15 +5110,43 @@
     displayedSections(data).forEach(function (sec) { out = out.concat(sec.items); });
     return out;
   }
-  function sectionsHtml(data) {
-    if (data.processing && data.processing.first) { return ghostSectionsHtml(data.sections); }
+  /* the cards of the sections displayed, each under its heading */
+  function sectionCardsHtml(data) {
     var pendingKeys = pendingKeysOf(data), busyKeys = busyKeysOf(data);
-    var secs = displayedSections(data);
-    return (secs.length > 1 ? jumpHtml(secs) : "") + secs.map(function (sec) {
+    return displayedSections(data).map(function (sec) {
       return '<section class="raw-section" id="raw-sec-' + esc(sec.key) + '" data-section="' + esc(sec.key) + '">' + sectionHead(sec) +
              '<div class="raw-thumbs">' + sec.items.map(function (th) { return thumbButton(data, th, pendingKeys, busyKeys); }).join("") +
              "</div></section>";
     }).join("");
+  }
+  /* the section choice (from every section Show leaves, so it stays while one is chosen), then the cards */
+  function sectionsHtml(data) {
+    if (data.processing && data.processing.first) { return ghostSectionsHtml(data.sections); }
+    var all = shownSections(data), cards = sectionCardsHtml(data);
+    if (!cards) { return ""; }
+    return (all.length > 1 ? jumpHtml(all, chosenSection(data, all)) : "") + '<div class="raw-section-list">' + cards + "</div>";
+  }
+
+  function modeSegHtml(mode) {
+    return '<nav class="pfas-seg pfas-seg-sm" aria-label="View">' +
+           [["compound", "By compound"], ["injection", "By injection"]].map(function (m) {
+             return '<a class="pfas-seg-item' + (m[0] === mode ? ' is-on" aria-current="page"' : '"') +
+                    ' href="' + modeHref(m[0]) + '">' + m[1] + "</a>";
+           }).join("") + "</nav>";
+  }
+  /* a section chosen above the grid: only its cards show, the address and every link keep it,
+     and the focus stays on the choice */
+  function chooseSection(root, data, key) {
+    data.section = key === "all" ? "" : key;
+    linkSection = data.section;
+    try { history.replaceState(null, "", window.location.pathname + withSection(window.location.search, key) + window.location.hash); }
+    catch (e) { /* the address stays */ }
+    var list = root.querySelector(".raw-section-list");
+    if (list) { list.innerHTML = sectionCardsHtml(data); }
+    Array.prototype.forEach.call(root.querySelectorAll("a[href]"), function (a) {
+      var href = a.getAttribute("href");
+      if (/^\?tab=raw&/.test(href)) { a.setAttribute("href", withSection(href, key)); }
+    });
   }
 
   function render(root, data) {
@@ -5071,11 +5155,9 @@
     if (note) { h += '<p class="raw-banner ' + note.cls + '" role="status">' + esc(note.text) + "</p>"; }
     h += '<div class="raw-band">' + processingBand(data.processing) + "</div>";
     data.filter = data.filter || filterLoad();
-    h += '<div class="raw-viewbar"><nav class="pfas-seg pfas-seg-sm" aria-label="View">' +
-         [["compound", "By compound"], ["injection", "By injection"]].map(function (m) {
-           return '<a class="pfas-seg-item' + (m[0] === mode ? ' is-on" aria-current="page"' : '"') +
-                  ' href="?tab=raw&amp;mode=' + m[0] + '">' + m[1] + "</a>";
-         }).join("") + "</nav>" + filterButtonHtml(data.filter) + "</div>";
+    if (data.section == null && typeof window !== "undefined" && window.location) { data.section = params(window.location.search).section || ""; }
+    linkSection = data.section && data.section !== "all" ? data.section : "";
+    h += '<div class="raw-viewbar">' + modeSegHtml(mode) + filterButtonHtml(data.filter) + "</div>";
     h += '<div class="raw-split' + (mode === "injection" && compactList() ? " is-compact" : "") + '"><div class="raw-side">' +
          (mode === "injection" ? '<label class="pfas-switch raw-compact"><input type="checkbox" data-role="compact"' +
            (compactList() ? ' checked="checked"' : "") + '><span class="pfas-switch-track"></span> Compact list</label>' : "") +
@@ -5109,6 +5191,12 @@
       window.addEventListener("resize", showMore);
     }
     showMore();
+    root.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") { return; }
+      var seg = e.target.closest && e.target.closest(".raw-jumps");
+      var on = seg && seg.querySelector('.raw-jump[aria-pressed="true"]');
+      if (on) { chooseSection(root, data, on.getAttribute("data-value") || "all"); showMore(); }
+    });
     root.addEventListener("click", function (e) {
       if (e.target.closest("button.raw-more")) {
         host.scrollBy({ top: Math.round(hostView(host, window).height * 0.85), behavior: "smooth" });
@@ -5133,10 +5221,8 @@
       }
       var jump = e.target.closest("button.raw-jump");
       if (jump) {
-        var sec = doc.getElementById(jump.getAttribute("data-target"));
-        if (sec && sec.scrollIntoView) { sec.scrollIntoView({ block: "start", behavior: "smooth" }); }
-        var head = sec && sec.querySelector(".raw-section-head");
-        if (head && head.focus) { head.focus(); }
+        chooseSection(root, data, jump.getAttribute("data-value") || "all");
+        showMore();
         return;
       }
       var b = e.target.closest("button.raw-thumb");
@@ -5248,7 +5334,7 @@
               integrationText: integrationText, signedChange: signedChange, pendingEdges: pendingEdges,
               refusedEdit: refusedEdit, neighbour: neighbour, pageStep: pageStep, edgeLevel: edgeLevel, classicBase: classicBase, adaptiveBase: adaptiveBase,
               previewPeak: previewPeak, apexPreview: apexPreview, snOf: snOf, snapIndex: snapIndex, dragTarget: dragTarget,
-              editPayload: editPayload, thumbSvg: thumbSvg, thumbStatus: thumbStatus, filterThumbs: filterThumbs, orderThumbs: orderThumbs, filterButtonHtml: filterButtonHtml, filterLabel: filterLabel, filterMenuItems: filterMenuItems, filterRead: filterRead, FILTER_KEY: FILTER_KEY, moreBelow: moreBelow, scrollHost: scrollHost, hostView: hostView, sectionCounts: sectionCounts, sectionsOf: sectionsOf, sectionsHtml: sectionsHtml, displayedThumbs: displayedThumbs, stepFrom: stepFrom, jumpHtml: jumpHtml, injectionStatus: injectionStatus, listHtml: listHtml, worstStatus: worstStatus, chartView: chartView, areaChangePct: areaChangePct, editProblem: editProblem,
+              editPayload: editPayload, thumbSvg: thumbSvg, thumbStatus: thumbStatus, filterThumbs: filterThumbs, orderThumbs: orderThumbs, filterButtonHtml: filterButtonHtml, filterLabel: filterLabel, filterMenuItems: filterMenuItems, filterRead: filterRead, FILTER_KEY: FILTER_KEY, moreBelow: moreBelow, scrollHost: scrollHost, hostView: hostView, sectionCounts: sectionCounts, sectionsOf: sectionsOf, sectionsHtml: sectionsHtml, withSection: withSection, listHref: listHref, modeHref: modeHref, chosenSection: chosenSection, displayedThumbs: displayedThumbs, stepFrom: stepFrom, jumpHtml: jumpHtml, injectionStatus: injectionStatus, listHtml: listHtml, worstStatus: worstStatus, chartView: chartView, areaChangePct: areaChangePct, editProblem: editProblem,
               commentProblem: commentProblem, edgeTolerance: edgeTolerance, judge: judge, pyFixed: pyFixed, pyG: pyG, shortError: shortError,
               banner: banner, failedRun: failedRun, processingBand: processingBand, ghostSectionsHtml: ghostSectionsHtml, busyKeysOf: busyKeysOf,
               thumbButton: thumbButton, lineStep: lineStep, PAGE_POLL_MS: PAGE_POLL_MS, openTarget: openTarget, withoutOpen: withoutOpen, postedEdit: postedEdit, dragIndex: dragIndex,

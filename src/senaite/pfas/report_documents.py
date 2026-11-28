@@ -320,7 +320,8 @@ def _review_rows(checklist, order=(), people=None):
     for k in keys:
         it = items[k] if isinstance(items[k], dict) else {}
         checked = bool(it.get("checked"))
-        rows.append({"item": _s(it.get("label") or k), "state": _item_state(it),
+        from senaite.pfas.injection_identity import RESULT_SIGNOFF_LABELS
+        rows.append({"item": _s(it.get("label") or RESULT_SIGNOFF_LABELS.get(k) or k), "state": _item_state(it),
                      "by": who(it.get("checked_by") if checked else it.get("proposed_by")),
                      "at": _at(it.get("checked_at") if checked else it.get("proposed_at"))})
     for label, key, done, undone in (("Submitted", "submitted", "Submitted", "Not submitted"),

@@ -6093,11 +6093,20 @@
   }
   /* a section (details.pfas-sec) opened by its summary: the segments it
      held closed were measured at no width, so their markers are placed again
-     (toggle does not bubble: one listener per section) */
+     (toggle does not bubble: one listener per section). One that names a
+     data-fold-store opens as the browser last left it ("1" open, "0"
+     closed; nothing kept: as drawn) and remembers each toggle; storage that
+     is missing or refuses only forgets. */
   function initSection(d) {
     if (d.__pfas) { return; }
     d.__pfas = true;
-    d.addEventListener("toggle", function () { if (d.open) { placeAll(d); } });
+    var key = d.getAttribute("data-fold-store");
+    var kept = key ? storeGet(key) : null;
+    if (kept === "1" || kept === "0") { d.open = kept === "1"; }
+    d.addEventListener("toggle", function () {
+      if (d.open) { placeAll(d); }
+      if (key) { storeSet(key, d.open ? "1" : "0"); }
+    });
   }
   if (doc.readyState === "loading") { doc.addEventListener("DOMContentLoaded", function () { init(); }); } else { init(); }
   function placeAll(root) {

@@ -375,6 +375,12 @@
       permission="zope2.View"
       />
   <browser:page
+      name="pfas-data-review-results-macros"
+      for="*"
+      class=".data_review.PFASDataReviewResultsMacrosView"
+      permission="zope2.View"
+      />
+  <browser:page
       name="pfas-data-review"
       for="*"
       class=".data_review.PFASDataReviewView"

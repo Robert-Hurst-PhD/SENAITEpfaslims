@@ -33,9 +33,14 @@
 .raw-section-sum { display:inline-flex; flex-wrap:wrap; gap:var(--sp-2) var(--sp-3); font-weight:var(--fw-body);
                    letter-spacing:0; text-transform:none; color:var(--text-muted); }
 .raw-section-count { display:inline-flex; align-items:center; gap:var(--sp-1); }
-.raw-jumps { display:flex; flex-wrap:wrap; gap:var(--sp-2); margin:0 0 var(--sp-3); }
+.raw-jumps { margin:0 0 var(--sp-3); }
 .raw-jump { display:inline-flex; align-items:center; gap:var(--sp-1); }
 .raw-jump-n { color:var(--text-muted); font-variant-numeric:tabular-nums; }
+/* on the chosen fill the count takes the choice's own text colour (--on-accent), AA as its words are */
+.raw-jump[aria-pressed="true"] .raw-jump-n { color:inherit; }
+/* and so do its count icons: on the fill their shape says failed, warning or edited, the colour
+   the fill's own text token (the --ico-* colours fade on it, in dark most) */
+.raw-jump[aria-pressed="true"] svg.pfas-icon, .raw-jump[aria-pressed="true"] svg.pfas-icon .pfas-icon-mark { color:var(--on-accent); }
 .raw-list-head { margin:var(--sp-2) 0 0; font-size:var(--fs-xs); font-weight:var(--fw-strong); letter-spacing:.06em;
                  text-transform:uppercase; color:var(--text-muted); }
 

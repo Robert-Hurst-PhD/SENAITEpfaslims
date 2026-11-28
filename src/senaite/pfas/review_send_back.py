@@ -57,6 +57,8 @@ NOT_SUBMITTED = "Only a worksheet waiting for verification is sent back."
 # the checklist items by their labels, for the history
 ITEM_LABELS = {"coc": "Chain of Custody", "final_data": "Final Data Summary",
                "instrument_report": "Instrument Report"}
+from senaite.pfas.injection_identity import RESULT_SIGNOFF_LABELS as _RESULT_LABELS  # noqa: E402
+ITEM_LABELS.update(_RESULT_LABELS)
 
 
 def _text(value):

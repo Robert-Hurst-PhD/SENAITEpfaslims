@@ -93,16 +93,66 @@ def label_of(rows, analyte):
     return analyte
 
 
-def failed_checks(result_rows, injection):
+def not_integrated(row):
+    """Whether no peak was integrated for the row: it names its response and
+    the response is empty or nought (a deleted peak, once the run is processed
+    again, reads so). A row that does not name a response at all is read as
+    integrated. The row alone decides, so the card and the lists agree."""
+    row = row or {}
+    return "response" in row and (row["response"] is None or row["response"] == 0)
+
+
+# where a compound with no peak is a warning rather than a failure: a native
+# analyte in a field sample or a blank (their dilutions and retests too). A
+# compound that must be present -- an internal standard, a surrogate, a spiked
+# QC's native, a calibrator or a check standard -- with no peak stays a failure
+WARN_GROUPS = ("samples", "blanks")
+
+
+def warns_not_integrated(row, roles=None, section=None):
+    """Whether the review tab shows a failed row as a warning: it failed its
+    checks, no peak was integrated (not_integrated), it is a native analyte
+    (`section`, else section_of with the method's `roles`) and its injection
+    is a field sample or a blank (WARN_GROUPS). The one rule for the card,
+    the section counts, Sort and the injection and compound lists; what the
+    row passed, and every QC gate, is unchanged."""
+    row = row or {}
+    if row.get("passed") != 0 or not not_integrated(row):
+        return False
+    from senaite.pfas import sample_type_icons as sti
+    if sti.group_of(row.get("qc_type") or u"") not in WARN_GROUPS:
+        return False
+    return (section or section_of(row.get("analyte"), roles, row)) == "analyte"
+
+
+def _failed(row, roles=None):
+    """A row the review tab shows as failed: it failed its checks and is no
+    warning (warns_not_integrated)."""
+    return row.get("passed") == 0 and not warns_not_integrated(row, roles)
+
+
+NO_PEAK = u"No peak integrated"
+
+
+def failed_checks(result_rows, injection, roles=None):
     """The checks an injection failed, each read as words: "Ion ratio: PFHxS".
     The check is the one the flag's tag names (qc_qualification.INJECTION_FLAG_TAGS,
-    and (REC) as Recovery); a flag with no known tag is given as its own text."""
+    and (REC) as Recovery); a flag with no known tag is given as its own text.
+    A row shown as a warning (warns_not_integrated) is not one of them."""
     out = []
     for r in result_rows or []:
-        if r.get("injection_name") == injection and r.get("passed") == 0:
+        if r.get("injection_name") == injection and _failed(r, roles):
             label = r.get("label") or r.get("analyte") or u""
             out.extend(u"%s: %s" % (check, label) for check in _checks(r))
     return out
+
+
+def warned_checks(result_rows, injection, roles=None):
+    """Why an injection carries the warning for a compound with no peak:
+    "No peak integrated: PFOA", one a row (warns_not_integrated)."""
+    return [u"%s: %s" % (NO_PEAK, r.get("label") or r.get("analyte") or u"")
+            for r in result_rows or []
+            if r.get("injection_name") == injection and warns_not_integrated(r, roles)]
 
 
 def _checks(row):
@@ -116,10 +166,12 @@ def _checks(row):
     return found or [flag.strip() or u"Failed"]
 
 
-def injections(result_rows, record_injections=None):
+def injections(result_rows, record_injections=None, roles=None):
     """The run's injections in the order they were acquired (ties and a
     missing time by position in the run's record). Each carries its 1-based
-    "position" in the record, its "acquired" time and the checks it "failed"."""
+    "position" in the record, its "acquired" time, the checks it "failed"
+    and the compounds it warns of for having no peak ("warned_checks"),
+    `roles` (the method's labelled standards) saying which are analytes."""
     out, seen = [], {}
     for r in result_rows or []:
         name = r.get("injection_name")
@@ -127,15 +179,16 @@ def injections(result_rows, record_injections=None):
             seen[name] = {"name": name, "type": r.get("qc_type") or u"", "flagged": 0, "warned": 0,
                           "acquired": u"", "position": len(out) + 1}
             out.append(seen[name])
-        if r.get("passed") == 0:
+        if _failed(r, roles):
             seen[name]["flagged"] += 1
-        elif r.get("flag"):
+        elif r.get("flag") or r.get("passed") == 0:
             seen[name]["warned"] += 1
     for n, rec in enumerate(record_injections or [], 1):
         if rec.get("name") in seen:
             seen[rec["name"]].update(position=n, acquired=rec.get("acquired") or u"")
     for i in out:
-        i["failed"] = failed_checks(result_rows, i["name"])
+        i["failed"] = failed_checks(result_rows, i["name"], roles)
+        i["warned_checks"] = warned_checks(result_rows, i["name"], roles)
     return sorted(out, key=lambda i: (0 if i["acquired"] else 1, (i["acquired"] or u"")[:19], i["position"]))
 
 
@@ -189,19 +242,22 @@ def _sectioned(items, key):
 
 def analytes(result_rows, roles=None):
     """The run's analytes in the overview's order (analytes, surrogates, internal
-    standards; each in natural order), each with how many of its rows failed:
-    the list by compound. "name" is the analyte (its keyword, on keyed rows),
-    "label" what the list shows, "section" the section it is under."""
+    standards; each in natural order), each with how many of its rows failed
+    and how many failed with no peak integrated ("warned", a warning on the
+    list): the list by compound. "name" is the analyte (its keyword, on keyed
+    rows), "label" what the list shows, "section" the section it is under."""
     out, seen = [], {}
     for r in result_rows or []:
         name = r.get("analyte")
         if name not in seen:
-            seen[name] = {"name": name, "label": r.get("label") or name, "flagged": 0, "failed": [],
+            seen[name] = {"name": name, "label": r.get("label") or name, "flagged": 0, "warned": 0, "failed": [],
                           "section": section_of(name, roles, r)}
             out.append(seen[name])
-        if r.get("passed") == 0:
+        if _failed(r, roles):
             seen[name]["flagged"] += 1
             seen[name]["failed"].extend(u"%s: %s" % (c, r.get("injection_name") or u"") for c in _checks(r))
+        elif r.get("passed") == 0:
+            seen[name]["warned"] += 1
     return _sectioned(out, lambda a: a["label"])
 
 
@@ -1071,6 +1127,10 @@ def _thumb(injection, analyte, qc_type, r, q, overrides, label=None, section=u"a
               edit=_edit_of_trace(overrides, q, q["transition"]), deleted=deleted,
               state_text=state_text(state, deleted),
               peak=dict((k, peak.get(k)) for k in PEAK_EDGES))
+    if warns_not_integrated(dict(r, qc_type=r.get("qc_type") or qc_type), section=section):
+        # no peak integrated in a field sample's or blank's analyte: the card
+        # warns (the rule the lists use too)
+        th["not_integrated"] = True
     if peak.get("manual") and peak.get("auto"):
         th["auto"] = dict((k, peak["auto"].get(k)) for k in PEAK_EDGES)
     return th

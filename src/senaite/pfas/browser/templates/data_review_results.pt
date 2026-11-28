@@ -1,0 +1,45 @@
+<metal:m define-macro="moved_results">
+        <!-- result rows Final Data leaves to another tab (fb: a blank's or a
+             duplicate's rows, from get_final_data(every=True)): the sample,
+             its kind by its type icon and code (a lab duplicate as Dup), the
+             sample a duplicate or blank was taken with, the analyte, the
+             qualifier and the reported result, which opens its record as on
+             Final Data -->
+        <table class="pfas-table dr-moved" data-col-resize="data-review-moved-results">
+          <thead><tr><th>Sample ID</th><th>Kind</th><th>Taken with</th><th>Analyte</th><th>Qualifier</th>
+            <th class="is-right num">Result</th><th>Unit</th></tr></thead>
+          <tbody><tr tal:repeat="r fb">
+            <td><tal:s tal:replace="r/sample_id">FRB-1</tal:s><span class="pfas-tag" tal:condition="r/withheld|nothing"
+                      title="Withheld for re-extraction: not reported">Withheld</span></td>
+            <td tal:define="code python:r.get('type_code') or (u'Dup' if r.get('kind') == 'duplicate' else u'')"><tal:k
+                  tal:condition="code" tal:replace="structure python:ti.cell(code, code)">FRB</tal:k></td>
+            <td tal:content="python:r.get('duplicate_of') or u'—'">S-1</td>
+            <td class="qv-analyte" tal:content="r/analyte">PFOA</td>
+            <td tal:content="python:u' '.join(x for x in (r.get('rule_code'), r.get('qualifier'), r.get('qc_codes')) if x) or u'—'">J</td>
+            <td class="is-right num" tal:attributes="data-prov r/result_prov|nothing;
+                                role python:'button' if r.get('result_prov') else None;
+                                tabindex python:0 if r.get('result_prov') else None"
+                tal:content="python:r.get('result') or u'—'">0.21</td>
+            <td tal:content="python:r.get('unit') or u'—'">ng/L</td>
+          </tr></tbody>
+        </table>
+</metal:m>
+
+<metal:m define-macro="results_signoff">
+      <!-- the manual sign-off of a tab's reported results (so_key: the
+           checklist item; so_tab: the tab to return to; so_what: the words
+           after "Mark"), with typed initials; drawn once for Final Data,
+           the Blanks tab's blank results and Spike QC's duplicates -->
+      <div class="dr-signoff" tal:condition="python:not view.item_checked(so_key) and view.can_act()">
+          <form method="post"
+                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+            <input type="hidden" name="action" value="check_item"/>
+            <input type="hidden" name="item_key" tal:attributes="value so_key"/>
+            <input type="hidden" name="tab" tal:attributes="value so_tab"/>
+            <label>Initials
+            <input type="text" name="initials" required="required" maxlength="6" class="dr-signoff-initials"
+                   tal:attributes="aria-label string:Initials, ${so_what}"/></label>
+            <button class="btn btn-action" type="submit" tal:content="string:Mark ${so_what} Reviewed">Mark Final Data Reviewed</button>
+          </form>
+      </div>
+</metal:m>

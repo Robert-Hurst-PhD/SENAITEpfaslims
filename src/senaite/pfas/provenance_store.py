@@ -16,6 +16,8 @@ import logging
 import os
 import sqlite3
 
+from senaite.pfas.sqlite_rows import as_dicts
+
 logger = logging.getLogger("senaite.pfas.provenance_store")
 
 DEFAULT_DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
@@ -131,8 +133,10 @@ class ProvenanceStore(object):
         try:
             if not conn.execute("SELECT name FROM sqlite_master WHERE name='value_provenance'").fetchone():
                 return out
-            for row in conn.execute("SELECT injection, value_text FROM value_provenance "
-                                    "WHERE batch_id=? AND kind='ID'", (batch_id,)):
+            # through sqlite_rows: this module's literals are unicode, which a
+            # Python 2 sqlite3.Row refuses as a key
+            for row in as_dicts(conn.execute("SELECT injection, value_text FROM value_provenance "
+                                             "WHERE batch_id=? AND kind='ID'", (batch_id,))):
                 out[row["injection"] or ""] = row["value_text"] or ""
         finally:
             conn.close()
@@ -147,8 +151,8 @@ class ProvenanceStore(object):
         try:
             if not conn.execute("SELECT name FROM sqlite_master WHERE name='value_provenance'").fetchone():
                 return out
-            out = sorted(row["value_text"] for row in conn.execute(
-                "SELECT value_text FROM value_provenance WHERE batch_id=? AND kind='EA'", (batch_id,)))
+            out = sorted(row["value_text"] for row in as_dicts(conn.execute(
+                "SELECT value_text FROM value_provenance WHERE batch_id=? AND kind='EA'", (batch_id,))))
         finally:
             conn.close()
         return out

@@ -55,9 +55,16 @@
     .dr-identity-lines { margin:0; padding-left:var(--sp-5); }
     .dr-ask-choose { flex-basis:100%; margin:0; font-weight:var(--fw-strong); }
     .fd-note { font-size:var(--fs-xs); color:var(--s-secondary); }
-    /* an isomer sum's parts: a muted line under the value, joined to its row */
+    /* an isomer sum's parts: rows of their own under it, joined and indented;
+       a group's heading row above its rows */
     tr.fd-has-parts td { border-bottom-color:transparent; }
-    tr.fd-parts td { padding-top:0; color:var(--text-muted); font-size:var(--fs-sm); }
+    tr.fd-child td { padding-top:0; color:var(--text-muted); }
+    tr.fd-child .fd-child-name { padding-left:var(--sp-5); }
+    tr.fd-group th { text-align:left; background:var(--s-light); }
+    .dr-final tbody[hidden] { display:none; }
+    .dr-signoff { margin-top:16px; }
+    .dr-signoff-initials { width:74px; padding:4px 6px; font-size:var(--fs-sm); border:1px solid var(--s-border);
+                           border-radius:4px; text-transform:uppercase; margin-right:6px; }
     .dr-common { margin:0 0 var(--sp-3); }
     .dr-old { text-decoration:line-through; color:var(--s-danger-dk); }
     .fd-qual { font-weight:var(--fw-strong); cursor:help; border-bottom:1px dotted var(--line-strong); }
@@ -1493,6 +1500,17 @@
 
       </tal:qcs>
 
+      <!-- the field and lab blanks' reported results, which Final Data
+           leaves to this tab: each labelled by its kind -->
+      <section class="pfas-card dr-card" id="dr-field-blanks"
+               tal:define="fb view/final_data_blanks; ti context/@@pfas-type-icons" tal:condition="fb">
+        <h3 class="dr-card-title">Blank results</h3>
+        <metal:t use-macro="context/@@pfas-data-review-results-macros/macros/moved_results" />
+        <tal:so tal:define="so_key string:blank_results; so_tab string:qc_summary; so_what string:Blank Results">
+          <metal:t use-macro="context/@@pfas-data-review-results-macros/macros/results_signoff" />
+        </tal:so>
+      </section>
+
       <!-- the method blank results are compared with / subtracted from
            : the batch's default; changed here with a reason -->
       <section class="bench-block" tal:define="mbs view/method_blank_members"
@@ -1601,7 +1619,7 @@
         </div>
 
         <div class="dr-empty"
-             tal:condition="python:not page['groups'] and not page['pending_spikes']">
+             tal:condition="python:not page['groups'] and not page['pending_spikes'] and not view.final_data_duplicates()">
           No spike QC results for this worksheet yet.
         </div>
         <p class="dr-verdict" tal:define="fx page/factor|nothing" tal:condition="fx">
@@ -1618,6 +1636,22 @@
             <metal:m use-macro="context/@@pfas-macros/macros/qc_values" />
           </tal:m></tal:g>
         </tal:has>
+        <!-- the duplicates, which Final Data leaves to this tab: each
+             duplicate's results naming the sample it duplicates, then the
+             RPD of each pair, in the same cells as the spikes, and their
+             sign-off -->
+        <section class="pfas-card dr-card" id="dr-duplicates"
+                 tal:define="fb view/final_data_duplicates; ti context/@@pfas-type-icons; dg page/dup_groups|nothing"
+                 tal:condition="python:fb or dg">
+          <h3 class="dr-card-title">Duplicates</h3>
+          <tal:r tal:condition="fb"><metal:t use-macro="context/@@pfas-data-review-results-macros/macros/moved_results" />
+            <tal:so tal:define="so_key string:duplicate_results; so_tab string:spike_qc; so_what string:Duplicate Results">
+              <metal:t use-macro="context/@@pfas-data-review-results-macros/macros/results_signoff" />
+            </tal:so></tal:r>
+          <tal:g tal:repeat="qv_group dg"><tal:m tal:define="qv_method view/batch_method">
+            <metal:m use-macro="context/@@pfas-macros/macros/qc_values" />
+          </tal:m></tal:g>
+        </section>
       </tal:sq>
     </div><!-- /spike_qc -->
 
@@ -1652,13 +1686,24 @@
       <tal:fd tal:define="rows view/get_final_data;
                           asks python:bool(view.can_act() and view.request_targets())">
         <!-- When empty, say WHY (which link in the chain has no data) -->
-        <div class="dr-msg error" tal:condition="python:not rows and view.final_data_diagnosis()"
+        <div class="dr-msg error" tal:condition="python:not rows and not view.result_signoffs_asked() and view.final_data_diagnosis()"
              tal:content="view/final_data_diagnosis">diagnosis</div>
         <tal:has_rows tal:condition="rows|nothing">
           <!-- a qualifier every result carries is said once above the table;
                a row shows a chip only for the codes beyond it -->
           <p class="dr-common" tal:define="common python:view.common_codes_line(rows)"
              tal:condition="common" tal:content="common">All results carry H</p>
+          <!-- Group by: the rows under each injection (as they always stood)
+               or under each analyte in its natural order; one row markup
+               for both, the choice remembered (data-view-store) -->
+          <div class="pfas-pill-row dr-fd-group">
+            <span class="pfas-muted" id="dr-fd-group-l">Group by</span>
+            <div class="pfas-seg pfas-seg-sm is-fit" role="group" aria-labelledby="dr-fd-group-l"
+                 data-view-switch="fd-group" data-view-store="pfas_final_group">
+              <button type="button" class="pfas-seg-item" data-value="injection" aria-pressed="true">Injection</button>
+              <button type="button" class="pfas-seg-item" data-value="analyte" aria-pressed="false">Analyte</button>
+            </div>
+          </div>
           <div class="table-wrap" tal:define="meanings view/qualifier_meanings; iu view/instrument_unit; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons">
             <table class="pfas-table dr-final" data-col-resize="data-review-dr-final">
               <thead>
@@ -1672,12 +1717,14 @@
                   <th class="is-right num">RT (min)</th>
                 </tr>
               </thead>
-              <tbody>
-                <tal:row tal:repeat="row rows">
+              <tbody tal:repeat="g python:view.final_data_views(rows)" data-view-of="fd-group"
+                     tal:attributes="data-view g/by; hidden python:None if g['by'] == 'injection' else 'hidden'">
+                <tr class="fd-group"><th colspan="7" scope="rowgroup" tal:content="g/title">S1</th></tr>
+                <tal:row tal:repeat="row g/rows">
                   <!-- the value in its number column; an isomer sum's parts
-                       on the muted line under it (tr.fd-parts); the row's
+                       on rows of their own under it (tr.fd-child); the row's
                        menu asks the preparer about its injection (dr-ask) -->
-                  <tr tal:define="parted python:bool(row.get('instrument_parts') or row.get('rt_parts'))"
+                  <tr tal:define="parted python:bool(row.get('children'))"
                       tal:attributes="class python:u' '.join(c for c in ({'review': u'is-review'}.get(row.get('state')), u'fd-has-parts' if parted else None, 'is-archived' if row.get('withheld') else None) if c) or None;
                                       data-ask-injection python:view.ask_target(row.get('injection')) if asks and not row.get('withheld') else None;
                                       data-row-actions python:rm.actions((u'Ask the preparer\u2026', 'event', 'dr-ask',
@@ -1717,10 +1764,19 @@
                         tal:content="python:row.get('instrument') or (u'' if parted else u'\u2014')">0.42</td>
                     <td class="is-right num" tal:content="python:row.get('rt') or (u'' if parted else u'\u2014')">7.82</td>
                   </tr>
-                  <tr class="fd-parts" tal:condition="python:row.get('instrument_parts') or row.get('rt_parts')">
-                    <td colspan="5"></td>
-                    <td class="is-right num" tal:content="row/instrument_parts|nothing">lr 4.896 · br 1.224</td>
-                    <td class="is-right num" tal:content="row/rt_parts|nothing">lr 8.10 · br 7.95</td>
+                  <!-- an isomer sum's lr- and br- peaks: rows of their own under it,
+                       indented, each opening its own working; the sum's
+                       value opens the working that adds them -->
+                  <tr class="fd-child" tal:repeat="ch row/children|nothing">
+                    <td></td>
+                    <td class="qv-analyte fd-child-name" tal:content="ch/analyte">lr-PFOS</td>
+                    <td></td><td class="is-right num">&#8212;</td><td></td>
+                    <td class="is-right num" tal:attributes="data-prov ch/prov|nothing;
+                                        role python:'button' if ch.get('prov') else None;
+                                        tabindex python:0 if ch.get('prov') else None;
+                                        aria-label python:u'%s, how it was calculated' % ch['analyte'] if ch.get('prov') else None"
+                        tal:content="python:ch.get('instrument') or u'\u2014'">4.896</td>
+                    <td class="is-right num" tal:content="python:ch.get('rt') or u'\u2014'">8.10</td>
                   </tr>
                 </tal:row>
               </tbody>
@@ -1737,7 +1793,10 @@
           </div>
         </tal:has_rows>
         <tal:no_rows tal:condition="not:rows|nothing">
-          <p class="dr-empty">No results found for this worksheet.</p>
+          <!-- a worksheet whose only samples are field blanks or duplicates:
+               where their results are, not a broken chain -->
+          <p class="dr-empty" tal:condition="not:view/result_signoffs_asked">No results found for this worksheet.</p>
+          <p class="dr-empty" tal:condition="view/result_signoffs_asked">No field sample results on this worksheet: its blank results are on the Blanks tab and its duplicates on Spike QC.</p>
         </tal:no_rows>
 
         <!-- what was asked of the preparer from a row's Ask the preparer… -->
@@ -1901,20 +1960,9 @@
       </tal:fd>
 
       <!-- Mark reviewed -->
-      <div style="margin-top:16px;">
-        <tal:fd_check
-            tal:condition="python:not [i for i in view.checklist_status() if i['key']=='final_data' and i['checked']] and view.can_act()">
-          <form method="post"
-                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
-            <input type="hidden" name="action" value="check_item"/>
-            <input type="hidden" name="item_key" value="final_data"/>
-            <input type="hidden" name="tab" value="final_data"/>
-            <label>Initials
-            <input type="text" name="initials" required="required" maxlength="6" aria-label="Initials, final data review" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/></label>
-            <button class="btn btn-action" type="submit">Mark Final Data Reviewed</button>
-          </form>
-        </tal:fd_check>
-      </div>
+      <tal:so tal:define="so_key string:final_data; so_tab string:final_data; so_what string:Final Data">
+        <metal:t use-macro="context/@@pfas-data-review-results-macros/macros/results_signoff" />
+      </tal:so>
 
     </div><!-- /final_data -->
 
@@ -1923,6 +1971,11 @@
          tal:condition="python: view.active_tab() == 'raw' and view.raw_tab_shown()">
       <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/raw_data.css?v=${context/@@pfas-macros/asset_version}" />
       <script type="application/json" id="raw-data-json" tal:content="structure view/raw_tab_json">{}</script>
+      <!-- a run with no Instrument Report tab keeps the Injections card here, the same macro,
+           above the cards and closed until opened -->
+      <tal:inj tal:condition="view/injections_in_raw_tab">
+        <metal:m use-macro="context/@@pfas-data-review-injections-macros/macros/injections" />
+      </tal:inj>
       <div id="raw-data"></div>
       <!-- asked over the open card when its change is not applied: Previous, Next, Escape -->
       <div class="pfas-modal is-top" id="raw-leave">
@@ -1956,10 +2009,6 @@
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_fit.js?v=${context/@@pfas-macros/asset_version}"></script>
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_data.js?v=${context/@@pfas-macros/asset_version}"></script>
-      <!-- a run with no Instrument Report tab keeps the Injections card here, the same macro -->
-      <tal:inj tal:condition="view/injections_in_raw_tab">
-        <metal:m use-macro="context/@@pfas-data-review-injections-macros/macros/injections" />
-      </tal:inj>
     </div><!-- /raw -->
 
     <!-- ══════ COMPARISON TAB (Validation: the run imported both ways) ═══ -->

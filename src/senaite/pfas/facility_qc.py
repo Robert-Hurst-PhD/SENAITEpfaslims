@@ -1417,7 +1417,8 @@ def _named_logs(table, unit_id, limit):
     with _connect() as conn:
         rows = conn.execute(sql, (unit_id, limit) if unit_id else (limit,)).fetchall()
     names = dict((u["id"], u["name"]) for u in list_units(active_only=False))
-    return [dict(r, unit_name=names.get(r["unit_id"])) for r in rows]
+    from senaite.pfas.sqlite_rows import as_dicts
+    return [dict(r, unit_name=names.get(r["unit_id"])) for r in as_dicts(rows)]
 
 
 def list_waste_logs(unit_id=None, limit=30):

@@ -357,7 +357,8 @@ class PFASQCReviewReportView(ViewHelpers, BrowserView):
 
     def final_data(self):
         review = self._review()
-        return review.get_final_data() if review else []
+        # the report prints every result row as before, blanks and duplicates too
+        return review.get_final_data(every=True) if review else []
 
     def coc(self):
         review = self._review()

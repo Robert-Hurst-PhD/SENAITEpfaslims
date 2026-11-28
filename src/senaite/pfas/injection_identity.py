@@ -77,9 +77,13 @@ WORKER = {SAMPLE: (SAMPLE, ""), CCV: (CCV, "standard"), CCV_LOW: (CCV, "low"),
 # the run template's tokens that are offered when the template holds them
 TEMPLATE_ROLES = (ICV, CCB)
 # the checklist sign-offs a correction judges again: the results (Final
-# Data Summary) and the run's injections (Instrument Report). Chain of
-# Custody is not judged again; the automatic items recompute themselves.
-AFFECTED_SIGNOFFS = ("final_data", "instrument_report")
+# Data Summary, and the blank and duplicate results signed on their own tabs)
+# and the run's injections (Instrument Report). Chain of Custody is not
+# judged again; the automatic items recompute themselves.
+AFFECTED_SIGNOFFS = ("final_data", "instrument_report", "blank_results", "duplicate_results")
+# the names of the result sign-offs asked only when their rows exist (Data
+# Review's Blanks and Spike QC tabs), as every record prints them
+RESULT_SIGNOFF_LABELS = {"blank_results": u"Blank Results", "duplicate_results": u"Duplicate Results"}
 # the People & Roles sign right a confirmation needs
 REVIEWER = "reviewer"
 
