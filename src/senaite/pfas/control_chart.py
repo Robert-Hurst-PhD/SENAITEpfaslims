@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Levey-Jennings control charts, with the Westgard rules as an optional view
+"""Levey-Jennings control charts, with the Westgard rules shown as notes,
 written here because the one maintained SPC package is GPLv3.
 
     points = [{"id": <qc_results id>, "value": float, ...}, ...]   oldest first
@@ -9,7 +9,9 @@ written here because the one maintained SPC package is GPLv3.
 * lj_warnings(points, L)  one warning per point beyond +/-2 SD, marked as
                           beyond the +/-3 SD control limit when it is
 * westgard(points, L)     the multi-rule set (1-2s, 1-3s, 2-2s, R-4s, 4-1s,
-                          10x) for the Westgard view
+                          10x), always evaluated; its findings are notes,
+                          never a gate
+* drawn_limits(values)    the lines drawn: standing, or provisional below 20
 * active(warnings, dismissed)  warnings not dismissed
 * ready(L)                the limits stand: drawn and judged only from
                           BASELINE_N results; fewer, and the chart says so
@@ -33,12 +35,13 @@ import math
 
 BASELINE_N = 20
 MIN_POINTS = 5
+PROVISIONAL_MIN = 2
 
 
-def limits(values, n_baseline=BASELINE_N):
+def limits(values, n_baseline=BASELINE_N, min_points=MIN_POINTS):
     valid = [float(v) for v in values
              if v is not None and not (math.isinf(v) or math.isnan(v))]
-    if len(valid) < MIN_POINTS:
+    if len(valid) < min_points:
         return None
     base = valid[:n_baseline]
     n = len(base)
@@ -53,16 +56,71 @@ def limits(values, n_baseline=BASELINE_N):
     return out
 
 
+def baseline(values, n=BASELINE_N):
+    """(used, excluded): the indices of the first `n` in-control results of a
+    series, oldest first, and the indices left out of them.
+
+    The rule: fit the mean and SD to the first `n` results; every result of
+    that baseline lying more than 3 SD from the fit is left out (and stays
+    out); refit to the first `n` results that remain; repeat until none lies
+    beyond 3 SD (at most ten rounds). A result later in the series than the
+    baseline is never examined, so once `n` in-control results exist the
+    baseline, and the limits from it, are fixed. Results without a number
+    are skipped."""
+    idx = [i for i, v in enumerate(values)
+           if v is not None and not (math.isinf(v) or math.isnan(v))]
+    excluded = set()
+    used = []
+    for _round in range(10):
+        used = [i for i in idx if i not in excluded][:n]
+        if len(used) < 2:
+            break
+        vals = [float(values[i]) for i in used]
+        mean = sum(vals) / len(vals)
+        sd = (sum((x - mean) ** 2 for x in vals) / (len(vals) - 1)) ** 0.5
+        if sd == 0.0:
+            break
+        beyond = [i for i in used if abs(float(values[i]) - mean) > 3.0 * sd]
+        if not beyond:
+            break
+        excluded.update(beyond)
+    return used, sorted(excluded)
+
+
+def drawn_limits(values):
+    """The lines the chart draws, from the baseline of the whole series (not
+    of what is on screen): the first BASELINE_N in-control results by
+    acquisition time, results beyond 3 SD of the fit left out (`baseline`).
+    Once BASELINE_N exist the limits are fixed. While there are fewer they
+    are PROVISIONAL ("provisional": True, "n_baseline" the count so far,
+    recomputed with each new result), and fewer than PROVISIONAL_MIN results
+    draw none. Nothing is judged against a provisional line."""
+    used, excluded = baseline(values)
+    lim = limits([values[i] for i in used], min_points=PROVISIONAL_MIN)
+    if lim is None:
+        return None
+    if not ready(lim):
+        lim["provisional"] = True
+    return lim
+
+
 def _sigmas(points, lim):
     mean, sd = lim["mean"], lim["sd"]
     return [(p["value"] - mean) / sd if sd else 0.0 for p in points]
 
 
 def _warning(points, indices, rule, message, severity):
-    first = points[indices[-1]]
-    return {"key": u"%s:%s" % (first.get("id"), rule), "rule": rule,
+    last = points[indices[-1]]
+    first = points[indices[0]]
+    # a rule over several results is dismissed as that run of results: its
+    # dismissal names the first as well, so it hides only this finding and
+    # not another of the same rule ending on the same point
+    many = len(indices) > 1
+    dismiss_rule = u"%s@%s" % (rule, first.get("id")) if many else rule
+    return {"key": u"%s:%s" % (last.get("id"), dismiss_rule), "rule": rule, "dismiss_rule": dismiss_rule,
+            "legacy_key": u"%s:%s" % (last.get("id"), rule),
             "message": message, "severity": severity,
-            "indices": list(indices), "point_id": first.get("id")}
+            "indices": list(indices), "point_id": last.get("id")}
 
 
 def lj_warnings(points, lim):
@@ -119,7 +177,13 @@ def westgard(points, lim):
 def active(warnings, dismissed_keys):
     """The warnings still standing (not dismissed)."""
     dismissed_keys = set(dismissed_keys or ())
-    return [w for w in warnings if w["key"] not in dismissed_keys]
+    return [w for w in warnings if not is_dismissed(w, dismissed_keys)]
+
+
+def is_dismissed(w, dismissed_keys):
+    """A finding is dismissed under its own key, or (a run of results) under
+    the key an older dismissal gave it: the last result and the rule."""
+    return w["key"] in dismissed_keys or w.get("legacy_key", w["key"]) in dismissed_keys
 
 
 def ready(lim):
@@ -133,8 +197,6 @@ def ready(lim):
 # a count reads as a word up to twelve, then in digits
 _COUNT_WORDS = (u"None", u"One", u"Two", u"Three", u"Four", u"Five", u"Six", u"Seven",
                 u"Eight", u"Nine", u"Ten", u"Eleven", u"Twelve")
-_MONTHS = (u"Jan", u"Feb", u"Mar", u"Apr", u"May", u"Jun", u"Jul", u"Aug", u"Sep",
-           u"Oct", u"Nov", u"Dec")
 MINUS = u"\u2212"
 # the rules that judge one value against one limit, and that limit in SD
 _ONE_VALUE = {u"3SD": 3, u"1-3s": 3, u"2SD": 2, u"1-2s": 2}
@@ -151,14 +213,15 @@ def _counted(n, noun, capital=True):
 
 
 def day_month(iso):
-    """"2026-10-03" reads "3 Oct"; anything else reads ""."""
+    """A day as the site writes dates, YYYY-MM-DD ("2026-10-03"); anything
+    else reads ""."""
     try:
-        _y, m, d = (iso or u"")[:10].split(u"-")
-        if not 1 <= int(d) <= 31:
-            return u""
-        return u"%d %s" % (int(d), _MONTHS[int(m) - 1]) if 1 <= int(m) <= 12 else u""
+        y, m, d = (iso or u"")[:10].split(u"-")
+        if len(y) == 4 and 1 <= int(m) <= 12 and 1 <= int(d) <= 31:
+            return u"%s-%02d-%02d" % (y, int(m), int(d))
     except (ValueError, IndexError):
-        return u""
+        pass
+    return u""
 
 
 def rule_label(rule):
@@ -319,7 +382,20 @@ def axis_window(judged, fallback=None):
     return (min(w[0] for w in wins), max(w[1] for w in wins))
 
 
-POINT_COLUMNS = (u"date", u"run", u"injection", u"analyte", u"value", u"unit", u"verdict", u"rule")
+POINT_COLUMNS = (u"date", u"run", u"injection", u"analyte", u"value", u"unit", u"verdict", u"rule",
+                 u"kind", u"average", u"minus_2s", u"plus_2s", u"minus_3s", u"plus_3s", u"limits")
+
+
+def _limit_cells(d):
+    """The Average and sigma limits in force, as the chart draws them, and
+    whether they stand or are provisional (with the counts)."""
+    lim = d.get("drawn") if d.get("chart_type") != u"threshold" else None
+    if not lim:
+        return dict((k, u"") for k in (u"average", u"minus_2s", u"plus_2s", u"minus_3s", u"plus_3s", u"limits"))
+    return {u"average": lim["mean"], u"minus_2s": lim["lcl_2"], u"plus_2s": lim["ucl_2"],
+            u"minus_3s": lim["lcl_3"], u"plus_3s": lim["ucl_3"],
+            u"limits": (u"provisional (%d of %d)" % (lim["n_baseline"], BASELINE_N)
+                        if lim.get("provisional") else u"standing")}
 
 
 def _verdict(d, i, sev):
@@ -331,7 +407,12 @@ def _verdict(d, i, sev):
     elif d.get("too_few_points"):
         base = u"not judged"
     else:
-        base = sev or u"in control"
+        dis = (d.get("point_dismissed") or [])[i:i + 1]
+        dis = dis[0] if dis else []
+        # a dismissed finding is still a flag that was reviewed: never "in control"
+        base = sev or (u"flagged \u00b7 dismissed" if dis else u"in control")
+        if sev and dis:
+            base = u"%s \u00b7 another finding dismissed" % sev
     status = (d.get("point_status") or [])[i:i + 1]
     status = status[0] if status else u"active"
     if status not in (u"", u"active"):
@@ -348,6 +429,7 @@ def point_rows(d):
         seq = d.get(key) or []
         return seq[i] if i < len(seq) else default
     out = []
+    cells = _limit_cells(d)
     for i, v in enumerate(d.get("values") or []):
         sev = at("point_severity", i)
         # a non-detect has no value (the store's null), never a measured 0
@@ -356,7 +438,11 @@ def point_rows(d):
                     u"injection": at("injections", i), u"analyte": d.get("analyte") or u"",
                     u"value": None if nd else v, u"unit": d.get("unit") or u"",
                     u"verdict": _verdict(d, i, sev),
-                    u"rule": u"; ".join(at("point_rules", i, []))})
+                    u"rule": u"; ".join(at("point_rules", i, []) + [u"%s (dismissed)" % l for l in at("point_dismissed", i, [])]),
+                    u"kind": at("point_kinds", i, u""), u"average": cells[u"average"],
+                    u"minus_2s": cells[u"minus_2s"], u"plus_2s": cells[u"plus_2s"],
+                    u"minus_3s": cells[u"minus_3s"], u"plus_3s": cells[u"plus_3s"],
+                    u"limits": cells[u"limits"]})
     return out
 
 

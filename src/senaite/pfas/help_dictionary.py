@@ -1184,8 +1184,8 @@ ENTRIES = [
     {"id": "peak-asymmetry", "term": "Peak asymmetry",
      "text": "Every peak integrated from raw data is measured for its asymmetry factor: the "
              "width of its back half over its front half at 10 % of its height above its "
-             "baseline (EPA 537.1 v2.0 §9.3.9). Control Charts, QC type Peak asymmetry, follows "
-             "each analyte's factor at every run's mid-level calibrator, with the mean and the "
+             "baseline (EPA 537.1 v2.0 §9.3.9). Control Charts, the QC kind Peak asymmetry, follows "
+             "each analyte's factor at every run's mid-level calibrator, with the average and the "
              "2 and 3 SD limits of every control chart. It is tracked, not reviewed: no run is "
              "held for it. An initial demonstration of capability takes the factors of the "
              "first two eluting analytes from a reviewed run's mid-level calibrator, or typed "

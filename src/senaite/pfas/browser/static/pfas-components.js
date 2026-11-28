@@ -6127,6 +6127,12 @@
     if (!spec.codes[key]) { key = key.replace(/-/g, " ").split(/\s+/)[0]; }
     return spec.codes[key] || null;
   }
+  /* the code as the map reads it: upper case, a level suffix dropped */
+  function typeKey(code) {
+    var key = String(code == null ? "" : code).trim().toUpperCase(), spec = typeSpec();
+    if (spec && spec.codes[key]) { return key; }
+    return key.replace(/-/g, " ").split(/\s+/)[0];
+  }
   function typeLabel(code, sub) {
     var spec = typeSpec(), g = typeGroup(code), text = String(code == null ? "" : code).trim();
     if (!g) { return text; }
@@ -6138,9 +6144,15 @@
     var spec = typeSpec(), g = typeGroup(code), name;
     if (!g) { return ""; }
     name = na ? spec.words[g] + ": " + spec.na : typeLabel(code, sub);
-    return '<svg class="pfas-type is-' + g.replace("_", "-") + (na ? " is-na" : "") + '" viewBox="0 0 24 24" focusable="false" ' +
+    var ck = !na && g === "checks" && spec.colours ? spec.colours[typeKey(code)] : "";
+    return '<svg class="pfas-type is-' + g.replace("_", "-") + (ck ? " is-" + ck : "") + (na ? " is-na" : "") + '" viewBox="0 0 24 24" focusable="false" ' +
            (hidden ? 'aria-hidden="true"' : 'role="img" aria-label="' + esc(name) + '"') +
-           '><title>' + esc(name) + '</title>' + spec.drawings[g] + '</svg>';
+           '><title>' + esc(name) + '</title>' + typeDrawing(code, g) + '</svg>';
+  }
+  /* a kind's own drawing (spec.kinds), else its group's */
+  function typeDrawing(code, g) {
+    var spec = typeSpec(), kind = spec.kind_of ? spec.kind_of[typeKey(code)] : null;
+    return (kind && spec.kinds && spec.kinds[kind]) || spec.drawings[g];
   }
   function typeCell(code, words) {
     words = words == null ? String(code == null ? "" : code) : String(words);

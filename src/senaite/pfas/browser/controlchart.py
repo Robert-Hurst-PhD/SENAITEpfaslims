@@ -16,7 +16,6 @@ qc_level      : calibration level or spike (optional; omit = all levels)
 analyst       : filter by analyst name (optional)
 instrument_id : filter by instrument ID (optional)
 limit         : number of data points; default 20, max 300
-show_history  : 1 = include superseded results for analyst review
 format        : json = return raw JSON instead of HTML
 export        : points = the plotted points as CSV, with the page's filters
 """
@@ -34,6 +33,7 @@ from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.qc_lists import StoreListsMixin
 from senaite.pfas.browser.perms import refuse
 from senaite.pfas.browser.view_helpers import LabTime, MethodNames
+from senaite.pfas import sample_type_icons as sti
 from senaite.pfas.document_templates import script_json
 from plone.memoize.instance import memoize
 
@@ -42,6 +42,10 @@ logger = logging.getLogger("senaite.pfas.browser.controlchart")
 DEFAULT_DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 300
+# the whole series is read for its limits: no run count reaches this
+SERIES_MAX = 1000000
+# the rule names the Levey-Jennings view recorded dismissals under
+LEGACY_RULES = {"3SD": "1-3s", "2SD": "1-2s"}
 
 QC_TYPE_TARGETS = {
     # a check standard is charted as its recovery (calculated / expected):
@@ -142,6 +146,9 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
     def __call__(self):
         flatten_form(self.request)
         req = self.request
+        if req.get("REQUEST_METHOD", "GET") != "POST":
+            # the blank history helpers read a single ?qc_type=
+            req.form["qc_type"] = self.selected_qc_type()
         if req.get("REQUEST_METHOD", "GET") == "POST":
             return self._handle_post()
         if req.form.get("export") == "points":
@@ -159,17 +166,47 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         # request.form is the correct place to read query-string parameters.
         return self.request.form.get("method", "")
 
-    def selected_qc_type(self):
-        """The QC type asked for, else the first with results (CCV when the
-        store holds it): the page opens on a chart, not an empty pane."""
-        asked = self.request.form.get("qc_type", "")
-        if asked or "qc_type" in self.request.form:
-            return asked
-        types = self.qc_types() if self.db_available else []
-        return "CCV" if "CCV" in types else (types[0] if types else "")
+    def selected_qc_types(self):
+        """The QC kinds ticked: one checkbox field each (`qt.<kind>`); an old
+        link's single `qc_type` is one tick; Clear (`qt_none`) is none; with
+        no choice at all, CCV when the store holds it, else the first kind:
+        the page opens on a chart, not an empty pane."""
+        if not hasattr(self, "_sel_kinds"):
+            f = self.request.form
+            have = self.qc_types() if self.db_available else []
+            have = list(have) + ([ASYMMETRY] if self.db_available and ASYMMETRY not in have else [])
+            picked = [k for k in have if f.get(u"qt.%s" % k)]
+            if not picked and f.get("qc_type"):
+                picked = [f.get("qc_type")]
+            elif not picked and ("qt_none" in f or "qc_type" in f):
+                picked = []
+            elif not picked:
+                picked = ["CCV"] if "CCV" in have else (have[:1] if have else [])
+            # peak asymmetry is its own chart: alone, or not at all
+            if ASYMMETRY in picked and len(picked) > 1:
+                picked = [ASYMMETRY]
+            self._sel_kinds = picked
+        return self._sel_kinds
 
-    def selected_chart_type_override(self):
-        return self.request.form.get("chart_type_override", "")
+    def selected_qc_type(self):
+        """The first kind ticked (what the single-kind helpers read)."""
+        kinds = self.selected_qc_types()
+        return kinds[0] if kinds else ""
+
+    def qc_kinds_available(self):
+        """Every kind that can be ticked: the method's results carry them."""
+        return list(self.qc_types()) + ([ASYMMETRY] if self.db_available else [])
+
+    def _selection_groups(self):
+        """{analyte: [stored names]} over every kind ticked."""
+        merged = {}
+        for k in self.selected_qc_types():
+            for a, names in self._analyte_groups(k).items():
+                merged[a] = sorted(set(merged.get(a, [])) | set(names))
+        return merged
+
+    def selection_analytes(self):
+        return sorted(self._selection_groups())
 
     def selected_analytes(self):
         """The analytes on the chart: one checkbox field each (`an.<name>`;
@@ -178,14 +215,29 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         Westgard rules belong to one analyte, so only one gets them."""
         if not hasattr(self, "_sel_analytes"):
             f = self.request.form
-            have = self.analytes(self.selected_qc_type()) if self.db_available else []
+            have = self.selection_analytes() if self.db_available else []
             picked = [a for a in have if f.get(u"an.%s" % a)]
+            # Clear, then apply: nothing is picked, and the page says so
+            if not picked and f.get("an_none"):
+                self._sel_analytes = []
+                return self._sel_analytes
             if not picked and self.request.get("analyte", ""):
                 picked = [self._chart_name(self.request.get("analyte", ""))]
             if not picked and have:
                 picked = [have[0]]
             self._sel_analytes = picked
         return self._sel_analytes
+
+    def analyte_button_label(self, picked, available, all_word=u"All analytes"):
+        """What a pick-list button shows: the picked names ("10:2FTS, PFOS
+        +2"), "All analytes" or "None picked"."""
+        if not picked:
+            return u"None picked"
+        if available and len(picked) == len(available) and len(picked) > 2:
+            return all_word
+        if len(picked) <= 2:
+            return u", ".join(picked)
+        return u"%s +%d" % (u", ".join(picked[:2]), len(picked) - 2)
 
     def selected_analyte(self):
         sel = self.selected_analytes()
@@ -196,7 +248,7 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
 
     # ── Peak asymmetry: each raw run's mid-level calibrator ──
     def asymmetry_mode(self):
-        return self.selected_qc_type() == ASYMMETRY
+        return self.selected_qc_types() == [ASYMMETRY]
 
     def asymmetry_label(self):
         return ASYMMETRY_LABEL
@@ -215,22 +267,25 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
                     try:
                         rows = at.load_rows(conn, method=self.selected_method() or None,
                                             instrument=self.selected_instrument(),
-                                            analyst=self.selected_analyst(),
+                                            analyst=None,
                                             date_from=self.selected_date_from() or None,
                                             date_to=self.selected_date_to() or None)
                     finally:
                         conn.close()
                     hidden = self._study_hidden()
-                    self._asym_points = at.trend([r for r in rows if r["batch_id"] not in hidden])
+                    pts = at.trend([r for r in rows if r["batch_id"] not in hidden])
+                    who = self.selected_analyst()
+                    self._asym_points = [p for p in pts if p["analyst"] in who] if who else pts
                 except Exception as e:                          # noqa: BLE001
                     logger.error("peak asymmetry: %s", e)
         return self._asym_points
 
-    def _asymmetry_series(self, analyte):
-        """The newest `limit` factors of one analyte, oldest first."""
+    def _asymmetry_series(self, analyte, whole=False):
+        """One analyte's factors, oldest first: the newest `limit` of them, or
+        the whole series (what its limits stand on)."""
         names = set(self._analyte_groups(ASYMMETRY).get(analyte) or [analyte])
         pts = [p for p in self._asymmetry_points() if p["analyte"] in names]
-        return pts[-self.selected_limit():]
+        return pts if whole else pts[-self.selected_limit():]
 
     def _asymmetry_chart_dict(self):
         """One analyte's factors as a control chart: the mean and the +/- 2 SD
@@ -238,21 +293,28 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         on BASELINE_N in-control results as on every chart (control_chart).
         A point beyond a limit is marked; nothing is reviewed or held."""
         from senaite.pfas import control_chart as cc, idc
-        analyte, limit, history = self.selected_analyte(), self.selected_limit(), self.show_history()
+        analyte, limit = self.selected_analyte(), self.selected_limit()
         units = QC_TYPE_UNITS[ASYMMETRY]
-        pts = self._asymmetry_series(analyte) if analyte else []
-        if not pts:
-            return self._empty_chart(analyte, ASYMMETRY, u"", units, limit, history)
-        # judged as shown, to the places the card and the IDC show
-        points = [{"id": u"%s/%s" % (p["batch_id"], p["injection"]), "value": round(p["factor"], idc.SHOWN_PLACES),
-                   "date": p["run_date"][:10]} for p in pts]
-        lim = cc.limits([p["value"] for p in points])
-        if not cc.ready(lim):
-            lim = None
-        flags = cc.lj_warnings(points, lim)
+        whole = self._asymmetry_series(analyte, whole=True) if analyte else []
+        if not whole:
+            return self._empty_chart(analyte, ASYMMETRY, u"", units, limit)
+        # judged to the places the card and the IDC show; the limits stand on
+        # the whole series (the first BASELINE_N in-control results), Runs
+        # shown only trims what is drawn
+        every = [{"id": u"%s/%s" % (p["batch_id"], p["injection"]), "value": round(p["factor"], idc.SHOWN_PLACES),
+                  "date": p["run_date"][:10]} for p in whole]
+        offset = max(0, len(whole) - limit)
+        pts, points = whole[offset:], every[offset:]
+        drawn = cc.drawn_limits([p["value"] for p in every])
+        lim = drawn if cc.ready(drawn) else None
+        flags = []
+        for w in cc.lj_warnings(every, lim):
+            if w["indices"][-1] >= offset:
+                w["indices"] = [i - offset for i in w["indices"] if i >= offset]
+                flags.append(w)
         severity, rule_lines = cc.point_marks(points, flags, lim)
         labels = [u"%s %s" % (p["run_date"][:10], p["batch_id"]) for p in pts]
-        return dict(self._empty_chart(analyte, ASYMMETRY, u"", units, limit, history), **{
+        return dict(self._empty_chart(analyte, ASYMMETRY, u"", units, limit), **{
             "qc_type_label": ASYMMETRY_LABEL, "method": self.selected_method() or u"",
             "labels": labels, "values": [p["value"] for p in points],
             "batch_ids": [p["batch_id"] for p in pts], "flags": [u"" for _p in pts],
@@ -262,7 +324,9 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             "point_status": [u"active" for _p in pts], "point_nd": [False for _p in pts],
             "prov_keys": [u"" for _p in pts], "overlay": self.overlay_series(labels),
             "overlays": self.overlays_series(labels), "show": self.show(),
-            "chart_type": "levey_jennings", "limits": lim, "window": None,
+            "chart_type": "levey_jennings", "limits": lim, "drawn": drawn, "window": None,
+            "type_group": None, "qc_types": [ASYMMETRY], "left_off": [], "limit_lines": self.limit_lines(),
+            "point_kinds": [ASYMMETRY for _p in pts], "point_groups": [None for _p in pts],
             "too_few_points": lim is None, "baseline_n": cc.BASELINE_N,
             "insight": cc.insight_title(points, flags, noun=u"run", lim=lim),
             "has_rejects": u"reject" in severity, "has_warnings": any(severity),
@@ -274,7 +338,11 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         analyte's mean and SD are its own."""
         if not self.is_stacked():
             return "null"
-        qc_type = self.selected_qc_type()
+        # the same kinds as the one-analyte chart: blanks and kinds of
+        # another measure are left off (kind_plan), every other ticked kind drawn
+        used, left_off, left_why, _thr = self.kind_plan()
+        qc_type = used[0] if used else self.selected_qc_type()
+        many = len(used) > 1
         cells, nds, keys = {}, set(), set()
         if self.asymmetry_mode():
             from senaite.pfas import idc
@@ -284,46 +352,56 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
                     keys.add(k)
                     cells[(a, k)] = round(p["factor"], idc.SHOWN_PLACES)
         for a in ([] if self.asymmetry_mode() else self.selected_analytes()):
-            try:
-                rows = self._store().get_chart_data(
-                    self._spellings(a), qc_type, qc_level=self.selected_level() or None,
-                    method=self.selected_method() or None, analyst=self.selected_analyst(),
-                    instrument_id=self.selected_instrument(), limit=self.selected_limit(),
-                    include_superseded=self.show_history(),
-                    date_from=self.selected_date_from() or None,
-                    date_to=self.selected_date_to() or None,
-                    exclude_batches=self._study_hidden())
-            except Exception as e:                          # noqa: BLE001
-                logger.error("stack get_chart_data %s: %s", a, e)
-                rows = []
-            for r in rows:
-                v, nd = chart_value(qc_type, r)
-                if v is None:
-                    continue
-                k = (str(r.get("run_date", ""))[:10], str(r.get("batch_id", "")))
-                keys.add(k)
-                cells[(a, k)] = self._r(v)
-                if nd:
-                    nds.add((a, k))
+            for kind in used:
+                try:
+                    rows = self._store().get_chart_data(
+                        self._spellings(a), kind,
+                        qc_level=(self.selected_level() or ("Recovery" if kind == "LFSMD" else None)),
+                        method=self.selected_method() or None, analyst=self.selected_analyst(),
+                        instrument_id=self.selected_instrument(), limit=self.selected_limit(),
+                        date_from=self.selected_date_from() or None,
+                        date_to=self.selected_date_to() or None,
+                        exclude_batches=self._study_hidden())
+                except Exception as e:                      # noqa: BLE001
+                    logger.error("stack get_chart_data %s: %s", a, e)
+                    rows = []
+                for r in rows:
+                    v, nd = chart_value(kind, r)
+                    if v is None:
+                        continue
+                    k = (str(r.get("run_date", ""))[:10], str(r.get("batch_id", ""))) + ((kind,) if many else ())
+                    keys.add(k)
+                    cells[(a, k)] = self._r(v)
+                    if nd:
+                        nds.add((a, k))
         order = sorted(keys)
         return script_json({
             "lot_markers": self._lot_markers([k[1] for k in order]),
-            "overlay": self.overlay_series([u"%s %s" % k for k in order]),
-            "labels": [u"%s %s" % k for k in order],
+            "overlay": self.overlay_series([u" ".join(k) for k in order]),
+            "labels": [u" ".join(k) for k in order],
             "series": [{"analyte": a, "values": [cells.get((a, k)) for k in order],
                         "nd": [(a, k) in nds for k in order]}
                        for a in self.selected_analytes()],
             "units": QC_TYPE_UNITS.get(qc_type, ""),
-            "qc_type": self.qc_type_label(qc_type)})
+            "qc_types": used, "left_off": left_off,
+            "qc_type": u", ".join(self.qc_type_label(k) for k in used)})
 
     def selected_level(self):
-        return self.request.get("qc_level", "")
+        # a level belongs to one kind
+        return self.request.get("qc_level", "") if len(self.selected_qc_types()) == 1 else ""
+
+    def limit_lines(self):
+        """The Average and sigma lines show unless the switch is off; the
+        switch posts with a marker so off can be told from not asked."""
+        f = self.request.form
+        return bool(f.get("limit_lines")) or not f.get("limit_lines_form")
 
     # ── Blanks mode: Blank History's features on the chart page ──
     def blanks_mode(self):
         """A blank kind is selected: the page adds what rose, the lots that
         differ, the compare-two form and lot-change markers on the chart."""
-        return bool(self.db_available and self.selected_qc_type() in BLANK_TYPES)
+        return bool(self.db_available and len(self.selected_qc_types()) == 1
+                    and self.selected_qc_type() in BLANK_TYPES)
 
     @memoize
     def blank_view(self):
@@ -359,8 +437,26 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
                     lots[b] = []
         return bh.lot_markers(list(batch_ids), lots)
 
+    def selected_analysts(self):
+        """The analysts ticked: one checkbox field each (`as.<name>`); an old
+        link's single `analyst` is one tick; none ticked is every analyst."""
+        if not hasattr(self, "_sel_analysts"):
+            f = self.request.form
+            have = self.analysts() if self.db_available else []
+            picked = [a for a in have if f.get(u"as.%s" % a)]
+            if not picked and f.get("analyst"):
+                picked = [f.get("analyst")]
+            self._sel_analysts = picked
+        return self._sel_analysts
+
     def selected_analyst(self):
-        return self.request.get("analyst", "") or None
+        """What the store filters on: the analysts ticked, None for every
+        analyst (none ticked, or all of them)."""
+        picked = self.selected_analysts()
+        have = self.analysts() if self.db_available else []
+        if not picked or (have and set(picked) >= set(have)):
+            return None
+        return picked
 
     def selected_instrument(self):
         return self.request.get("instrument_id", "") or None
@@ -385,9 +481,6 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             return min(max(v, 1), MAX_LIMIT)
         except (TypeError, ValueError):
             return DEFAULT_LIMIT
-
-    def show_history(self):
-        return self.request.get("show_history", "0") == "1"
 
     # ── Store accessors (template helpers) ───────────────────────────────
 
@@ -441,7 +534,7 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         if not self.db_available:
             return ["CCV", "LCS", "MB", "LFSM", "LFSMD", "IS"]
         try:
-            return self._store().get_qc_types() or ["CCV", "LCS", "MB", "LFSM", "IS"]
+            return self._store().get_qc_types(self.selected_method() or None) or ["CCV", "LCS", "MB", "LFSM", "IS"]
         except Exception as e:
             logger.error("qc_types: %s", e)
             return []
@@ -491,7 +584,7 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
     def _spellings(self, analyte):
         """Every name the selected QC type's results of `analyte` are stored
         under, for the store's chart queries."""
-        return self._analyte_groups(self.selected_qc_type()).get(analyte) or [analyte]
+        return self._selection_groups().get(analyte) or [analyte]
 
     def analytes(self, qc_type=None):
         return sorted(self._analyte_groups(qc_type))
@@ -634,13 +727,86 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         except (TypeError, ValueError):
             return "{}"
 
-    def westgard_violations(self):
-        """The warnings still standing (the active view's, not dismissed)."""
-        return self._cached_chart_dict().get("westgard", [])
+    def show_notes(self):
+        """The Westgard notes panel: one analyte's Levey-Jennings chart whose
+        limits stand (the rules judge nothing against a provisional line)."""
+        d = self._cached_chart_dict()
+        return bool(not self.is_stacked() and not self.asymmetry_mode()
+                    and d.get("chart_type") == "levey_jennings" and d.get("limits"))
 
-    def selected_view_mode(self):
-        """'lj' (Levey-Jennings, the default) or 'westgard'."""
-        return "westgard" if self.request.form.get("view_mode") == "westgard" else "lj"
+    @staticmethod
+    def rule_label(rule):
+        from senaite.pfas import control_chart as cc
+        return cc.rule_label(rule)
+
+    @staticmethod
+    def note_line(v, data):
+        """A note in one line: date, injection (else worksheet) and value."""
+        value = u"%s %s" % (v.get("value"), data.get("unit") or u"")
+        return u" \u00b7 ".join([x for x in (v.get("date"), v.get("injection") or v.get("batch_id"),
+                                             value.strip()) if x])
+
+    def filter_summary(self):
+        """The page's filters in one line, for the printed chart."""
+        d = self._cached_chart_dict()
+        bits = [u"Method: %s" % (self.method_name(self.selected_method()) if self.selected_method() else u"all methods"),
+                u"QC kinds: %s" % u", ".join(self.selected_qc_types() or [u"none"]),
+                u"Analytes: %s" % u", ".join(self.selected_analytes() or [u"none"])]
+        for label, val in ((u"Analysts", u", ".join(self.selected_analysts())), (u"Instrument", self.selected_instrument()),
+                           (u"From", self.selected_date_from()), (u"To", self.selected_date_to())):
+            if val:
+                bits.append(u"%s: %s" % (label, val))
+        bits.append(u"Runs shown: %s" % self.selected_limit())
+        return u" \u00b7 ".join(bits) if d is not None else u""
+
+    def analyst_filter_label(self, picked, available):
+        """"All analysts" when none or all are ticked, else the names."""
+        if not picked or (available and set(picked) >= set(available)):
+            return u"All analysts"
+        return self.analyte_button_label(picked, available)
+
+    def kind_name(self, kind):
+        return ASYMMETRY_LABEL if kind == ASYMMETRY else kind
+
+    @staticmethod
+    def type_icon(kind):
+        """A kind's own symbol; an empty slot of the same width for a kind
+        none holds (IS, peak asymmetry), so the labels line up."""
+        return sti.svg(kind, hidden=True) or u'<span class="pfas-type-slot" aria-hidden="true"></span>'
+
+    def kinds_label(self):
+        """The kinds on the chart, in words."""
+        used = self.kind_plan()[0]
+        return u", ".join(self.qc_type_label(k) for k in used)
+
+    def left_off_note(self):
+        """Kinds ticked but not on the chart, and why."""
+        d = self._cached_chart_dict()
+        left, why = d.get("left_off") or [], d.get("left_off_why") or {}
+        out = []
+        blanks = [k for k in left if why.get(k) == "blanks"]
+        other = [k for k in left if why.get(k) == "measure"]
+        if blanks:
+            out.append(u"%s: blanks have their own threshold chart; untick the other kinds to see them."
+                       % u", ".join(blanks))
+        if other:
+            out.append(u"%s: not the same measure as the kinds charted; chart %s on its own to see it."
+                       % (u", ".join(other), u"it" if len(other) == 1 else u"them"))
+        return u" ".join(out)
+
+    def few_points_note(self):
+        """The line under a chart whose limits do not yet stand."""
+        d = self._cached_chart_dict()
+        drawn, n = d.get("drawn"), d.get("n_points", 0)
+        if drawn:
+            return (u"Provisional limits from the %d in-control results of the series so far; "
+                    u"they are fixed at %d." % (drawn["n_baseline"], d["baseline_n"]))
+        return u"Limits need at least 2 results; %d shown." % n
+
+    def westgard_violations(self):
+        """The Westgard notes still standing (not dismissed): information
+        only, nothing reads them as a gate."""
+        return self._cached_chart_dict().get("westgard", [])
 
     def can_review(self):
         """Dismiss a warning / remove a point: managers and QC reviewers."""
@@ -707,7 +873,7 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         from senaite.pfas import control_chart as cc
         d = self._cached_chart_dict()
         name = u"control-chart-%s-%s.csv" % tuple(
-            re.sub(r"[^A-Za-z0-9_-]", "_", x or u"none") for x in (d.get("analyte"), d.get("qc_type")))
+            re.sub(r"[^A-Za-z0-9_-]", "_", x or u"none") for x in (d.get("analyte"), u"-".join(d.get("qc_types") or [d.get("qc_type")])))
         resp = self.request.response
         resp.setHeader("Content-Type", "text/csv; charset=utf-8")
         resp.setHeader("Content-Disposition", 'attachment; filename="%s"' % name)
@@ -738,39 +904,39 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
 
     # ── Chart data builder ───────────────────────────────────────────────
 
-    def _chart_rows(self, analyte, qc_type, limit, filters):
-        """The newest `limit` results the chart can draw, with the removed
-        ones among them: a removed point, or a row with no value to chart,
-        never shortens the chart (the fetch grows by what it set aside)."""
-        store = self._store()
-        extra = 0
-        for _round in range(10):
-            rows = store.get_chart_data(self._spellings(analyte), qc_type, limit=limit + extra, **filters)
-            if len(rows) < limit + extra:
-                return rows                      # the store holds no more
-            try:
-                removed = set(n["result_id"] for n in store.get_annotations([r.get("id") for r in rows])
-                              if n["action"] == "excluded")
-            except Exception as e:                          # noqa: BLE001
-                # the chart is drawn without removals, never blanked
-                logger.warning("chart removals %s %s unread: %s", analyte, qc_type, e)
-                return rows
-            short = sum(1 for r in rows if r.get("id") in removed or chart_value(qc_type, r)[0] is None)
-            if short <= extra:
-                return rows
-            extra = short
-        return rows
+    @staticmethod
+    def _measure(kind):
+        """What a kind's charted value is: kinds whose unit is a recovery
+        pool together; any other kind is a measure of its own (a duplicate's
+        RPD, an internal standard's response)."""
+        return "recovery" if QC_TYPE_UNITS.get(kind) == "Recovery (%)" else kind
 
-    def _recorded(self, analyte, qc_type, filters):
-        """How many results the store holds under the page's filters that
-        the chart can draw, the removed ones left out; None when it cannot
-        say."""
+    def kind_plan(self, kinds=None):
+        """(used, left_off, why, is_threshold) for the ticked kinds: a
+        threshold chart when every kind is a blank kind; otherwise the
+        recovery kinds pooled (else the first kind alone). Blanks, and kinds
+        of another measure, are left off with the reason."""
+        kinds = self.selected_qc_types() if kinds is None else kinds
+        thr = [k for k in kinds if self._is_threshold_kind(k)]
+        if kinds and len(thr) == len(kinds):
+            return list(kinds), [], {}, True
+        non = [k for k in kinds if k not in thr]
+        rec = [k for k in non if self._measure(k) == "recovery"]
+        used = rec or non[:1]
+        why = dict((k, "blanks") for k in thr)
+        for k in non:
+            if k not in used:
+                why[k] = "measure"
+        return used, [k for k in kinds if k in why], why, False
+
+    @staticmethod
+    def _is_threshold_kind(kind):
+        """A blank kind: charted against its threshold, never as a recovery."""
         try:
-            return self._store().count_chart_data(self._spellings(analyte), qc_type,
-                                                  drawn=drawn_kind(qc_type), **filters)
-        except Exception as e:                              # noqa: BLE001
-            logger.warning("chart count %s %s: %s", analyte, qc_type, e)
-            return None
+            from senaite.pfas.qc.rules import get_store as _get_rules_store
+            return bool(_get_rules_store().is_threshold_chart(kind))
+        except Exception:                                   # noqa: BLE001
+            return kind in ("MB", "MxB", "LRB")
 
     def _study_hidden(self):
         """Worksheets of studies not opted into the charts."""
@@ -788,44 +954,65 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
     def _build_chart_dict(self):
         if self.asymmetry_mode():
             return self._asymmetry_chart_dict()
+        kinds       = self.selected_qc_types()
         qc_type     = self.selected_qc_type()
         analyte     = self.selected_analyte()
         method      = self.selected_method() or None
         qc_level    = self.selected_level() or None
-        analyst     = self.selected_analyst()
+        analyst     = self.selected_analyst()           # a list, or None for every analyst
         instrument  = self.selected_instrument()
         limit       = self.selected_limit()
-        history     = self.show_history()
         date_from   = self.selected_date_from() or None
         date_to     = self.selected_date_to() or None
+        # the chart type follows the QC kinds (kind_plan): a threshold chart
+        # when every kind ticked is a blank kind; otherwise the recovery
+        # kinds, pooled. Blanks, and kinds of another measure, are left off
+        # and the chart says so.
+        used, left_off, left_why, is_threshold = self.kind_plan(kinds)
+        qc_type     = used[0] if used else qc_type
         units       = QC_TYPE_UNITS.get(qc_type, "")
         target      = QC_TYPE_TARGETS.get(qc_type)
 
         if not self.db_available or not analyte or not qc_type:
             return self._empty_chart(analyte, qc_type, qc_level or "",
-                                     units, limit, history)
+                                     units, limit)
 
         filters = dict(qc_level=qc_level, method=method, analyst=analyst,
-                       instrument_id=instrument, include_superseded=history,
+                       instrument_id=instrument,
                        date_from=date_from, date_to=date_to,
                        exclude_batches=self._study_hidden())
+        store = self._store()
         try:
-            rows = self._chart_rows(analyte, qc_type, limit, filters)
+            rows = []
+            for k in used:
+                kf = dict(filters)
+                if k == "LFSMD" and not qc_level:
+                    # an LFSMD stores an RPD and a recovery per duplicate: the
+                    # chart is its recovery unless a level is chosen
+                    kf["qc_level"] = "Recovery"
+                rows.extend(dict(r, _kind=k) for r in store.get_chart_data(
+                    self._spellings(analyte), k, limit=SERIES_MAX, **kf))
         except Exception as e:
             logger.error("get_chart_data: %s", e)
             return self._empty_chart(analyte, qc_type, qc_level or "",
-                                     units, limit, history)
+                                     units, limit)
+        # the whole series in acquisition order, every kind together: the run
+        # date, then when each was acquired (a check standard's qc_level is
+        # "<injection>|<acquired>"), then the row
+        rows.sort(key=lambda r: (str(r.get("run_date", "")), (r.get("qc_level") or "").partition("|")[2],
+                                 r.get("id") or 0))
 
         if not rows:
             return self._empty_chart(analyte, qc_type, qc_level or "",
-                                     units, limit, history)
+                                     units, limit)
 
         points = []
         for r in rows:
-            fv, nd = chart_value(qc_type, r)
+            fv, nd = chart_value(r["_kind"], r)
             if fv is None:
                 continue
             points.append({
+                "kind":          r["_kind"],
                 "nd":            nd,
                 "id":            r.get("id"),
                 "date":          str(r.get("run_date", ""))[:10],
@@ -844,58 +1031,61 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
                 "window":        (r.get("limit_low"), r.get("limit_high")),
             })
 
-        # Check if this QC type uses a threshold chart (blanks) vs L-J
-        chart_type_override = self.selected_chart_type_override()
-        try:
-            from senaite.pfas.qc.rules import get_store as _get_rules_store
-            is_threshold_auto = _get_rules_store().is_threshold_chart(qc_type)
-            threshold_val = _get_rules_store().get_qc_type_rules(qc_type).get(
-                "threshold"
-            )
-        except Exception:
-            is_threshold_auto = qc_type in ("MB", "MxB", "LRB")
-            threshold_val = None
-
-        if chart_type_override == "threshold":
-            is_threshold = True
-        elif chart_type_override == "levey_jennings":
-            is_threshold = False
-        else:
-            is_threshold = is_threshold_auto
+        threshold_val = None
+        if is_threshold:
+            try:
+                from senaite.pfas.qc.rules import get_store as _get_rules_store
+                threshold_val = _get_rules_store().get_qc_type_rules(qc_type).get("threshold")
+            except Exception:                               # noqa: BLE001
+                threshold_val = None
 
         # Control-chart review: removed points are off the chart and out of
         # the mean / SD; dismissed warnings are set aside with who and why.
         from senaite.pfas import control_chart as cc
         try:
-            notes = self._store().get_annotations([p["id"] for p in points])
+            notes = store.get_annotations([p["id"] for p in points])
         except Exception as e:                              # noqa: BLE001
             logger.error("chart annotations: %s", e)
             notes = []
         excluded = dict((n["result_id"], n) for n in notes if n["action"] == "excluded")
-        dismissed = dict(("%s:%s" % (n["result_id"], n["rule"]), n)
+        # a dismissal made under the former Levey-Jennings view's rule names
+        # stands for the Westgard rule that now says the same thing
+        dismissed = dict(("%s:%s" % (n["result_id"], LEGACY_RULES.get(n["rule"], n["rule"])), n)
                          for n in notes if n["action"] == "dismissed")
         removed = [dict(p, note=excluded[p["id"]]) for p in points if p["id"] in excluded]
-        points = [p for p in points if p["id"] not in excluded]
+        series = [p for p in points if p["id"] not in excluded]
+        removed.sort(key=lambda p: (str(p["note"].get("at") or ""), p["id"] or 0), reverse=True)
+        removed_shown = removed if self.request.form.get("removed_all") else removed[:REMOVED_SHOWN]
+        # Runs shown only says how many of the series are drawn: the limits
+        # and the rules stand on the whole series
+        offset = max(0, len(series) - limit)
+        points = series[offset:]
 
-        view_mode = self.selected_view_mode()
         if is_threshold:
-            limits = None
+            limits = drawn = None
             all_warnings = []
         else:
-            limits = cc.limits([p["value"] for p in points])
-            # limits stand on BASELINE_N in-control results: on fewer, none is
-            # drawn and no point is judged against a provisional one
-            if not cc.ready(limits):
-                limits = None
-            all_warnings = (cc.westgard if view_mode == "westgard" else cc.lj_warnings)(
-                points, limits)
+            drawn = cc.drawn_limits([p["value"] for p in series])
+            # limits stand on BASELINE_N in-control results of the series; on
+            # fewer the lines drawn are provisional and no point is judged
+            # against them. The Westgard set is always evaluated, over the
+            # whole series; its findings are notes
+            limits = drawn if cc.ready(drawn) else None
+            all_warnings = []
+            for w in cc.westgard(series, limits):
+                if w["indices"][-1] < offset:
+                    continue                        # ends before the first point drawn
+                w["indices"] = [i - offset for i in w["indices"] if i >= offset]
+                all_warnings.append(w)
         for w in all_warnings:
             w["date"] = points[w["indices"][-1]]["date"]
             w["batch_id"] = points[w["indices"][-1]]["batch_id"]
             w["value"] = self._r(points[w["indices"][-1]]["value"])
+            w["injection"] = points[w["indices"][-1]]["injection"]
         violations = cc.active(all_warnings, dismissed)
-        dismissed_list = [dict(w, note=dismissed[w["key"]]) for w in all_warnings
-                          if w["key"] in dismissed]
+        dismissed_list = [dict(w, note=dismissed[w["key"] if w["key"] in dismissed else w["legacy_key"]],
+                               stored_rule=dismissed[w["key"] if w["key"] in dismissed else w["legacy_key"]]["rule"])
+                          for w in all_warnings if cc.is_dismissed(w, dismissed)]
 
         # each point's mark and the rules its tooltip leads with; a threshold
         # chart judges a point above its threshold
@@ -904,6 +1094,11 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             severity, rule_lines = cc.threshold_marks(points, threshold)
         else:
             severity, rule_lines = cc.point_marks(points, violations, limits)
+        # a point whose finding was dismissed says so, never "in control"
+        point_dismissed = [[] for _p in points]
+        for w in dismissed_list:
+            for i in w["indices"]:
+                point_dismissed[i].append(cc.rule_line(w, points[i].get("value"), limits))
         too_few = not is_threshold and limits is None
         window = recorded = None
         if too_few:
@@ -915,11 +1110,12 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
                 methods = set(p["method"] for p in points if p["method"])
                 fallback = self.qc_window(qc_type, method or (methods.pop() if len(methods) == 1 else None))
             window = cc.axis_window(judged, fallback)
-            recorded = self._recorded(analyte, qc_type, filters)
+            recorded = len(series)
 
         labels, values, batch_ids, flags = [], [], [], []
         analysts_list, instruments_list = [], []
         point_status, point_nd, prov_keys = [], [], []
+        point_kinds = [p["kind"] for p in points]
 
         for i, p in enumerate(points):
             # one run per label: several runs share a date
@@ -936,7 +1132,13 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
         return {
             "analyte":        analyte,
             "qc_type":        qc_type,
-            "qc_type_label":  self.qc_type_label(qc_type),
+            "qc_types":       used,
+            "qc_type_label":  u", ".join(self.qc_type_label(k) for k in used),
+            "left_off":       left_off,
+            "left_off_why":   left_why,
+            "point_dismissed": point_dismissed,
+            "point_kinds":    point_kinds,
+            "point_groups":   [sti.group_of(k) for k in point_kinds],
             "method":         method or "",
             "qc_level":       qc_level or "",
             "units":          units,
@@ -958,6 +1160,11 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             "overlays":       self.overlays_series(labels),
             "show":           self.show(),
             "limits":         limits,
+            "drawn":          drawn,
+            # each point is its QC type's icon (sample_type_icons), drawn in
+            # the flag colour when a rule flags it
+            "type_group":     sti.group_of(qc_type),
+            "limit_lines":    self.limit_lines(),
             "target":         target,
             "threshold":      threshold,
             "chart_type":     "threshold" if is_threshold else "levey_jennings",
@@ -968,17 +1175,18 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             # the store holds more than the chart shows: the line says how many
             "more_recorded":  bool(recorded and recorded > len(points)),
             "window":         list(window) if window else None,
-            "insight":        cc.insight_title(points, violations, noun=qc_type, lim=limits,
+            "insight":        cc.insight_title(points, violations,
+                                               noun=qc_type if len(used) == 1 else u"QC result", lim=limits,
                                                chart="threshold" if is_threshold else "levey_jennings",
                                                threshold=threshold, dismissed=len(dismissed_list),
                                                recorded=recorded),
             "westgard":       violations,
             "dismissed":      dismissed_list,
+            # the newest removals first, so a point removed today can be restored
             "removed":        [{"id": p["id"], "date": p["date"], "batch_id": p["batch_id"],
                                 "value": self._r(p["value"]), "note": p["note"]}
-                               for p in removed[:REMOVED_SHOWN]],
-            "removed_more":   max(0, len(removed) - REMOVED_SHOWN),
-            "view_mode":      view_mode,
+                               for p in removed_shown],
+            "removed_more":   len(removed) - len(removed_shown),
             "has_rejects":    any(v["severity"] == "reject" for v in violations),
             "has_warnings":   any(v["severity"] == "warning" for v in violations),
             "n_points":       len(points),
@@ -986,11 +1194,10 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             # says so whenever one is on the chart
             "demo_points":    sum(1 for b in batch_ids if b.startswith("DEMO-")),
             "limit":          limit,
-            "show_history":   history,
         }
 
     @staticmethod
-    def _empty_chart(analyte, qc_type, qc_level, units, limit, history):
+    def _empty_chart(analyte, qc_type, qc_level, units, limit):
         return {
             "analyte": analyte, "qc_type": qc_type,
             "qc_level": qc_level, "units": units,
@@ -1000,10 +1207,11 @@ class PFASControlChartView(StoreListsMixin, BrowserView, LabTime, MethodNames):
             "point_status": [], "unit": chart_unit(qc_type), "too_few_points": False,
             "window": None, "recorded": None, "more_recorded": False, "insight": u"",
             "limits": None, "target": None,
-            "westgard": [], "dismissed": [], "removed": [], "removed_more": 0, "view_mode": "lj",
+            "westgard": [], "dismissed": [], "removed": [], "removed_more": 0,
             "has_rejects": False,
             "has_warnings": False, "n_points": 0,
-            "limit": limit, "show_history": history,
+            "limit": limit, "qc_types": [qc_type] if qc_type else [], "left_off": [],
+            "point_kinds": [], "point_groups": [], "limit_lines": True, "qc_type_label": u"",
         }
 
     @staticmethod

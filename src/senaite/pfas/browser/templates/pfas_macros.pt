@@ -63,19 +63,21 @@
        label, on one line joined by an arrow; the pair never splits. Define dr_id (the ids are <dr_id>-from and
        <dr_id>-to), dr_from_name and dr_to_name (the posted names), dr_from
        and dr_to (the values); optional: dr_min, dr_max (the bounds),
-       dr_from_title, dr_to_title, dr_submit (True: a change submits the
+       dr_from_title, dr_to_title, dr_compact (True: no visible From and To labels, the
+       boxes carry aria-labels, for a filter row), dr_submit (True: a change submits the
        form). The caller wraps it in the Date range field. -->
   <tal:defs tal:condition="nothing"><div class="pfas-date-range" metal:define-macro="date_range"
-     tal:define="dr_min dr_min|nothing; dr_max dr_max|nothing; dr_submit dr_submit|nothing">
-    <div class="pfas-date-part"><label tal:attributes="for string:${dr_id}-from">From</label>
+     tal:define="dr_min dr_min|nothing; dr_max dr_max|nothing; dr_submit dr_submit|nothing; dr_compact dr_compact|nothing"
+     tal:attributes="class python:'pfas-date-range is-compact' if dr_compact else 'pfas-date-range'">
+    <div class="pfas-date-part"><label tal:condition="not:dr_compact" tal:attributes="for string:${dr_id}-from">From</label>
       <input type="date" class="pfas-input"
-             tal:attributes="id string:${dr_id}-from; name dr_from_name; value dr_from; min dr_min; max dr_max;
+             tal:attributes="aria-label python:'From' if dr_compact else None; id string:${dr_id}-from; name dr_from_name; value dr_from; min dr_min; max dr_max;
                              title dr_from_title|nothing;
                              onchange python:'this.form.submit()' if dr_submit else None" /></div>
     <span class="pfas-date-arrow" aria-hidden="true">&#8594;</span>
-    <div class="pfas-date-part"><label tal:attributes="for string:${dr_id}-to">To</label>
+    <div class="pfas-date-part"><label tal:condition="not:dr_compact" tal:attributes="for string:${dr_id}-to">To</label>
       <input type="date" class="pfas-input"
-             tal:attributes="id string:${dr_id}-to; name dr_to_name; value dr_to; min dr_min; max dr_max;
+             tal:attributes="aria-label python:'To' if dr_compact else None; id string:${dr_id}-to; name dr_to_name; value dr_to; min dr_min; max dr_max;
                              title dr_to_title|nothing;
                              onchange python:'this.form.submit()' if dr_submit else None" /></div>
   </div></tal:defs>

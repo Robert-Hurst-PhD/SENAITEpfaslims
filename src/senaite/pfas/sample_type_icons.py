@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
-"""One icon per group of sample types, the same wherever a type is named.
+"""One icon per KIND of QC injection, the same wherever a type is named.
 
-A type belongs to one of five groups, each drawn once: Samples, Spiked,
-Blanks, Checks and Calibration, and Not judged for an injection a reviewer
-took out of the run. The exact type, and a level where it matters, is the
-word beside the icon, never a second drawing. The icon is a line drawing on
-the sidebar's 24 grid with one filled accent; it takes its group's colour
-token (--type-<group>) and draws in currentColor only, so a forced-colours
-screen draws it in CanvasText. No group is drawn as a circle: circles are the
-limit box states.
+A type belongs to one of five groups, Samples, Spiked, Blanks, Checks and
+Calibration, and Not judged for an injection a reviewer took out of the run.
+Each KIND has its own drawing (KIND_DRAWINGS: Sample, Dup, FD, LFSM, LFSMD,
+LFB, MB, FRB, TB, CCB, CAL, ICV, CCV; CODE_KIND maps the aliases); a group
+named alone (the Applies to row) is drawn as its representative kind. The
+word beside the icon is the exact type and a level, and the icon's accessible
+name. A drawing is a line drawing on the sidebar's 24 grid with one filled
+accent; its colour says how the engine judges it, from a token
+(--type-<group>; a CCV olive --type-ccv, an ICV and a calibration cobalt), and
+it draws in currentColor only, so a forced-colours screen draws it in
+CanvasText. No drawing is a circle: circles are the limit box states.
 
     group_of(code)              -> "samples" | ... | None
+    kind_of(code)               -> "CCV" | ... | None (a group named alone)
     label(code, sub=None)       -> "Spiked: LFSM"
     svg(code, sub=None, na=False, hidden=False)  one icon
     cell(code, words=None)      an icon and its words, for a table cell
@@ -49,30 +53,97 @@ _CODES = {
 CODE_GROUP = dict((c, g) for g, codes in _CODES.items() for c in codes)
 
 # The drawings, 24 x 24, a 1.5 line (the class sets it) and one accent
-# (class pfas-type-a, filled). Inner markup only: svg() wraps it.
+# (class pfas-type-a, filled). Inner markup only: svg() wraps it. The shape
+# says what the thing is made from (a square for a sample, a vessel for a
+# blank, brackets for a check, axes for a calibration); a plus says it was
+# spiked with a known amount; a second square behind says it is a repeat of
+# another sample; a ground line or an arrow says it went to the field. No
+# drawing is a circle: circles are the limit box states.
+
+
+def _n(v):
+    return ("%.4f" % v).rstrip("0").rstrip(".")
+
+
+def _rr(x, y, w, h, r):
+    """A rounded rectangle as one path."""
+    f = _n
+    return ("M%s %sH%sA%s %s 0 0 1 %s %sV%sA%s %s 0 0 1 %s %sH%sA%s %s 0 0 1 %s %sV%sA%s %s 0 0 1 %s %sZ"
+            % (f(x + r), f(y), f(x + w - r), f(r), f(r), f(x + w), f(y + r), f(y + h - r), f(r), f(r),
+               f(x + w - r), f(y + h), f(x + r), f(r), f(r), f(x), f(y + h - r), f(y + r), f(r), f(r),
+               f(x + r), f(y)))
+
+
+def _drawing(outline, accent):
+    return '<path d="%s"/><path class="pfas-type-a" d="%s"/>' % (outline, accent)
+
+
+_SQUARE = _rr(3.75, 3.75, 16.5, 16.5, 3.5)
+_PLUS = "M10.9 7.75h2.2v3.15h3.15v2.2H13.1v3.15h-2.2V13.1H7.75v-2.2h3.15Z"
+_VESSEL = "M3.75 4.75h16.5l-2.6 14.5H6.35Z"
+_FLOOR = "M6.6 16.6h10.8l-.45 2.65H7.05Z"
+_SMALL_VESSEL = "M4.25 2.75h15.5l-2.3 12.75H6.55Z"
+_SMALL_FLOOR = "M6.75 13.25h10.5l-.4 2.25H7.15Z"
+_GROUND = "M3 20.25h18M7 20.25l-1.75 2.25M12 20.25l-1.75 2.25M17 20.25l-1.75 2.25"
+_BRACKETS = "M8 3.75H4.25v16.5H8M16 3.75h3.75v16.5H16"
+_CHECK_BAR = _rr(9.5, 8, 5, 8, 1)
+# a repeat: the second square behind, drawn open where the first covers it
+_BEHIND = "M7 7V6A3 3 0 0 1 10 3H18A3 3 0 0 1 21 6V14A3 3 0 0 1 18 17H17"
+_BEHIND_FD = "M7 5.75V5.5A3 3 0 0 1 10 2.5H16.5A3 3 0 0 1 19.5 5.5V12A3 3 0 0 1 16.5 15H16"
+
+# One drawing per KIND of QC injection (what the engine judges it as)
+KIND_DRAWINGS = {
+    "SAMPLE": _drawing(_SQUARE, _rr(8.5, 8.5, 7, 7, 1.5)),
+    "DUP": _drawing(_BEHIND + _rr(3, 7, 14, 14, 3), _rr(7, 11, 6, 6, 1.3)),
+    "FD": _drawing(_BEHIND_FD + _rr(3.5, 5.75, 12.5, 12.5, 3) + _GROUND, _rr(7.25, 9.5, 5, 5, 1.1)),
+    "LFSM": _drawing(_SQUARE, _PLUS),
+    "LFSMD": _drawing(_BEHIND + _rr(3, 7, 14, 14, 3),
+                      "M9.1 10.25h1.8v2.85h2.85v1.8H10.9v2.85H9.1v-2.85H6.25v-1.8H9.1Z"),
+    "LFB": _drawing(_VESSEL, "M10.9 7.5h2.2v2.85h2.85v2.2H13.1v2.85h-2.2v-2.85H8.05v-2.2h2.85Z"),
+    "MB": _drawing(_VESSEL, _FLOOR),
+    "FRB": _drawing(_SMALL_VESSEL + _GROUND, _SMALL_FLOOR),
+    "TB": _drawing(_SMALL_VESSEL + "M4 20.25h14.5M15.75 17.75l2.75 2.5-2.75 2.5", _SMALL_FLOOR),
+    "CCB": _drawing(_BRACKETS + "M8.6 7.25h6.8l-1.05 9.5H9.65Z", "M9.3 14.25h5.4l-.28 2.5H9.58Z"),
+    "CAL": _drawing("M3.75 3.75v16.5h16.5",
+                    _rr(7, 13.5, 3, 4.5, .6) + _rr(11.5, 10, 3, 8, .6) + _rr(16, 6, 3, 12, .6)),
+    "ICV": _drawing(_BRACKETS, _CHECK_BAR),
+    "CCV": _drawing(_BRACKETS, _CHECK_BAR),   # the same brackets: the colour tells a CCV from an ICV
+}
+# a code's kind: its aliases draw the kind they stand for (QCS is the ICV and
+# CCC the CCV, EPA 537.1's names; a dilution is a sample; a field, solvent or
+# generic blank draws as the method blank)
+CODE_KIND = {
+    "SAMPLE": "SAMPLE", "DILUTION": "SAMPLE", "DUP": "DUP", "FD": "FD",
+    "LFSM": "LFSM", "LFSMD": "LFSMD", "LFB": "LFB", "LCS": "LFB",
+    "MB": "MB", "LRB": "MB", "MXB": "MB", "FB": "MB", "SOLVENT_BLANK": "MB", "SOLVENT": "MB", "BLANK": "MB",
+    "FRB": "FRB", "TB": "TB", "CCB": "CCB",
+    "CAL": "CAL", "CALIBRATION": "CAL", "CALIBRATOR": "CAL",
+    "ICV": "ICV", "QCS": "ICV", "CCV": "CCV", "CCC": "CCV", "CCV_LOW": "CCV",
+}
+
+# A group's own drawing (the Applies to row, a group named alone): its
+# representative kind
 DRAWINGS = {
-    # a rounded square holding a solid core: the sample itself
-    "samples": ('<rect x="3.75" y="3.75" width="16.5" height="16.5" rx="3.5"/>'
-                '<rect class="pfas-type-a" x="8.5" y="8.5" width="7" height="7" rx="1.5"/>'),
-    # a hexagon holding a plus: something added in a known amount
-    "spiked": ('<path d="M12 2.75 20.25 7.5v9L12 21.25 3.75 16.5v-9Z"/>'
-               '<path class="pfas-type-a" d="M10.9 7.75h2.2v3.15h3.15v2.2H13.1v3.15h-2.2V13.1H7.75v-2.2h3.15Z"/>'),
-    # an empty vessel with only its floor drawn in: nothing should be found
-    "blanks": ('<path d="M3.75 4.75h16.5l-2.6 14.5H6.35Z"/>'
-               '<path class="pfas-type-a" d="M6.6 16.6h10.8l-.45 2.65H7.05Z"/>'),
-    # brackets round a solid bar: a standard that brackets the run
-    "checks": ('<path d="M8 3.75H4.25v16.5H8"/><path d="M16 3.75h3.75v16.5H16"/>'
-               '<rect class="pfas-type-a" x="9.5" y="8" width="5" height="8" rx="1"/>'),
-    # axes holding three rising bars: the calibration levels
-    "calibration": ('<path d="M3.75 3.75v16.5h16.5"/>'
-                    '<rect class="pfas-type-a" x="7" y="13.5" width="3" height="4.5" rx=".6"/>'
-                    '<rect class="pfas-type-a" x="11.5" y="10" width="3" height="8" rx=".6"/>'
-                    '<rect class="pfas-type-a" x="16" y="6" width="3" height="12" rx=".6"/>'),
+    "samples": KIND_DRAWINGS["SAMPLE"],
+    "spiked": KIND_DRAWINGS["LFSM"],
+    "blanks": KIND_DRAWINGS["MB"],
+    "checks": KIND_DRAWINGS["ICV"],
+    "calibration": KIND_DRAWINGS["CAL"],
     # a short bar: no role in the run
     "not_judged": '<rect class="pfas-type-a" x="5" y="10.75" width="14" height="2.5" rx="1.25"/>',
 }
 
 NA = "does not apply"
+
+# Within the checks group the colour follows the code: a CCV (and its
+# aliases) is olive (--type-ccv), an ICV keeps the calibration cobalt.
+CODE_COLOUR = {"CCV": "ccv", "CCC": "ccv", "CCV_LOW": "ccv", "ICV": "icv", "QCS": "icv"}
+
+
+def colour_key(code):
+    """"ccv" or "icv" for a check standard's code, else None (the group's own
+    colour)."""
+    return CODE_COLOUR.get(_key(code))
 
 
 def _text(value):
@@ -98,6 +169,21 @@ def _key(code):
         return text
     head = text.replace("-", " ").split()[0]
     return head if head in CODE_GROUP else text.replace(" ", "_")
+
+
+def kind_of(code):
+    """The kind whose own drawing a code takes, or None (a group named alone,
+    a code no kind holds): the group's drawing is used."""
+    text = _text(code).strip()
+    if text in WORDS:
+        return None
+    return CODE_KIND.get(_key(text))
+
+
+def drawing_of(code):
+    """The markup a code is drawn with: its kind's, else its group's."""
+    k = kind_of(code)
+    return KIND_DRAWINGS[k] if k else DRAWINGS[group_of(code)]
 
 
 def group_of(code):
@@ -133,8 +219,10 @@ def svg(code, sub=None, na=False, hidden=False):
     if na:
         name = "%s: %s" % (WORDS[g], NA)
     attrs = 'aria-hidden="true"' if hidden else 'role="img" aria-label="%s"' % _esc(name)
-    return ('<svg class="pfas-type is-%s%s" viewBox="0 0 24 24" focusable="false" %s><title>%s</title>%s</svg>'
-            % (g.replace("_", "-"), " is-na" if na else "", attrs, _esc(name), DRAWINGS[g]))
+    ck = colour_key(code) if g == "checks" and not na else None
+    return ('<svg class="pfas-type is-%s%s%s" viewBox="0 0 24 24" focusable="false" %s><title>%s</title>%s</svg>'
+            % (g.replace("_", "-"), " is-" + ck if ck else "", " is-na" if na else "", attrs, _esc(name),
+               drawing_of(code)))
 
 
 def cell(code, words=None):
@@ -296,5 +384,6 @@ def row(rule_key, profile, off=False):
 def spec():
     """The drawings and the code map as JSON, for pfas-components.js."""
     # "</" never closes the script element it is written into
-    return json.dumps({"drawings": DRAWINGS, "words": WORDS, "codes": CODE_GROUP, "na": NA},
+    return json.dumps({"drawings": DRAWINGS, "kinds": KIND_DRAWINGS, "kind_of": CODE_KIND, "words": WORDS, "codes": CODE_GROUP, "na": NA,
+                       "colours": CODE_COLOUR},
                       sort_keys=True, separators=(",", ":")).replace("</", "<\\/")

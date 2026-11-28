@@ -506,18 +506,19 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
         roles = dict((m.get("injection"), m.get("role")) for m in extraction_batch.load(b))
         rows, counters = [], {}
 
-        def add(name, typ, desc):
-            rows.append({"vial": len(rows) + 1, "name": name, "type": typ, "description": desc})
+        def add(name, typ, desc, role=u""):
+            # `role` is the row's own kind: its type column draws that kind's symbol
+            rows.append({"vial": len(rows) + 1, "name": name, "type": typ, "description": desc, "role": role})
 
         def add_qc(code):
             counters[code] = counters.get(code, 0) + 1
             name, desc = self._qc_injection(code, initials, u"", run_date, counters[code], std, method_code)
-            add(name, self.qc_injection_type(code), desc)
+            add(name, self.qc_injection_type(code), desc, code.upper())
 
         for tok in run_plan.opening([], include_cal, self._profile(method_id)):
             if tok == "CAL":
                 for name, typ, desc in self._cal_rows(method_id, run_date, initials, std):
-                    add(name, typ, desc)
+                    add(name, typ, desc, u"CAL")
             else:
                 add_qc(tok)
         n = 0
@@ -526,7 +527,8 @@ class PFASRunBuilderView(ViewHelpers, BrowserView):
             what = (u"dilution 1 in %s of %s" % (r["fold"], r["injection"]) if r["kind"] == u"dilution"
                     else u"re-injection of %s" % r["injection"])
             add(r["new_injection"], self.qc_injection_type(role.upper()) if role != u"Sample" else "Sample",
-                u"%s · %s · %s" % (initials, what, run_date.isoformat()))
+                u"%s · %s · %s" % (initials, what, run_date.isoformat()),
+                u"Dilution" if r["kind"] == u"dilution" else role)
             n += 1
             if n % max(1, int(ccv or 1)) == 0:
                 add_qc(bracket)

@@ -85,6 +85,8 @@
 .pfas-date-range { display: inline-flex; flex-wrap: nowrap; align-items: flex-end; gap: var(--sp-2); max-width: 100%; }
 .pfas-date-range .pfas-date-text.is-date { width: calc(10ch + 24px); min-width: 0; padding-inline: var(--sp-1); }
 .pfas-date-range .pfas-date-text::placeholder { font-size: var(--fs-sm); }   /* the whole of YYYY-MM-DD shows in its box */
+/* a range in a filter row: no sub-label row, so its boxes sit level with the other filters and the arrow centres on them */
+.pfas-date-range.is-compact { align-items: center; }
 .pfas-date-arrow { display: inline-flex; align-items: center; height: var(--ctl-h); color: var(--text-muted); }
 .pfas-date-part { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
 .pfas-date-part > label { font-size: var(--fs-sm); color: var(--text); font-weight: var(--fw-body); }
@@ -758,6 +760,9 @@ svg.pfas-type.is-spiked { color: var(--type-spiked); }
 svg.pfas-type.is-blanks { color: var(--type-blanks); }
 svg.pfas-type.is-checks { color: var(--type-checks); }
 svg.pfas-type.is-calibration { color: var(--type-calibration); }
+/* within the checks group the colour follows the code */
+svg.pfas-type.is-icv { color: var(--type-calibration); }
+svg.pfas-type.is-ccv { color: var(--type-ccv); }
 svg.pfas-type.is-not-judged { color: var(--type-none); }
 svg.pfas-type.is-na { color: var(--type-na); }
 .pfas-type-cell { display: inline-flex; align-items: center; gap: var(--sp-1); white-space: nowrap; }

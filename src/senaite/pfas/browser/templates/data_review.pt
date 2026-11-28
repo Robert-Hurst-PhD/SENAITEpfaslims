@@ -1956,6 +1956,10 @@
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_fit.js?v=${context/@@pfas-macros/asset_version}"></script>
       <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/raw_data.js?v=${context/@@pfas-macros/asset_version}"></script>
+      <!-- a run with no Instrument Report tab keeps the Injections card here, the same macro -->
+      <tal:inj tal:condition="view/injections_in_raw_tab">
+        <metal:m use-macro="context/@@pfas-data-review-injections-macros/macros/injections" />
+      </tal:inj>
     </div><!-- /raw -->
 
     <!-- ══════ COMPARISON TAB (Validation: the run imported both ways) ═══ -->
@@ -2044,143 +2048,7 @@
         </div>
       </tal:raw>
 
-      <!-- the run's injections and what each was judged as: a row's menu
-           corrects its identity (a reason each, the run judged again) -->
-      <section class="pfas-card dr-card" id="dr-injections"
-               tal:define="inj view/identity_injections; rm context/@@pfas-row-menu; ti context/@@pfas-type-icons" tal:condition="inj">
-        <h3 class="dr-card-title">Injections</h3>
-        <ul class="bench-alerts" tal:condition="view/identity_pending">
-          <li class="bench-bad" tal:content="view/IDENTITY_PENDING">Pending</li>
-        </ul>
-        <table class="pfas-table dr-injections" data-col-resize="data-review-injections">
-          <thead><tr><th>Injection</th><th>Judged as</th><th>Sample</th><th class="is-right num">Compounds</th></tr></thead>
-          <tbody><tr tal:repeat="i inj"
-                     tal:attributes="data-identity-injection i/injection; data-identity-role i/role;
-                                     data-identity-label i/role_label; data-row-actions i/actions">
-            <td tal:content="i/injection">FDA_CCV_261027_01</td>
-            <td><tal:r tal:replace="structure python:ti.cell(i['role'], i['role_label'])">CCV</tal:r><span tal:condition="i/marker"
-                  tal:attributes="class python:'pfas-tag is-warn' if i['marker']['waiting'] else 'pfas-tag';
-                                  title i/marker/title"
-                  tal:content="i/marker/text">Corrected</span></td>
-            <td tal:content="python:i['sample_id'] or u'\u2014'">S-1</td>
-            <td class="is-right num" tal:content="i/compounds">32</td>
-          </tr></tbody>
-        </table>
-      </section>
-      <template id="dr-identity-form" tal:condition="python:view.identity_injections() and not view.identity_closed()"
-                data-title="Correct identity">
-        <form method="post" class="dr-identity-form" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
-          <input tal:replace="structure context/@@authenticator/authenticator" />
-          <input type="hidden" name="action" value="correct_identity" />
-          <input type="hidden" name="injection" value="" />
-          <input type="hidden" name="to" value="" />
-          <div class="pfas-form-field is-full is-spaced">
-            <label>Judged now as</label>
-            <strong class="dr-identity-current">CCV</strong>
-          </div>
-          <div class="pfas-form-field is-full is-spaced">
-            <label>Correct to</label>
-            <div class="pfas-seg pfas-seg-sm is-fit dr-identity-roles" role="group" aria-label="Correct to"
-                 tal:define="ti context/@@pfas-type-icons">
-              <button type="button" class="pfas-seg-item" aria-pressed="false" tal:repeat="o view/identity_offered"
-                      tal:attributes="data-value o/code" tal:content="structure python:ti.cell(o['code'], o['label'])">CCV</button>
-            </div>
-          </div>
-          <div class="pfas-form-field is-full is-spaced">
-            <label for="dr-identity-reason">Reason</label>
-            <textarea id="dr-identity-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
-          </div>
-          <div class="pfas-form-field is-full is-spaced dr-identity-what" hidden="hidden">
-            <label>What will be judged again</label>
-            <ul class="dr-identity-lines"></ul>
-          </div>
-          <div class="form-actions is-end">
-            <button type="button" class="btn btn-secondary" data-identity-cancel="1">Cancel</button>
-            <button type="submit" class="btn btn-primary" disabled="disabled">Correct identity</button>
-          </div>
-        </form>
-      </template>
-      <template id="dr-identity-undo-form" tal:condition="python:view.identity_injections() and not view.identity_closed()"
-                data-title="Undo the correction">
-        <form method="post" class="dr-identity-form" tal:attributes="action string:${view/ws_url}/@@pfas-data-review">
-          <input tal:replace="structure context/@@authenticator/authenticator" />
-          <input type="hidden" name="action" value="revert_identity" />
-          <input type="hidden" name="injection" value="" />
-          <div class="pfas-form-field is-full is-spaced">
-            <label>Judged now as</label>
-            <strong class="dr-identity-current">CCV</strong>
-          </div>
-          <div class="pfas-form-field is-full is-spaced">
-            <label for="dr-identity-undo-reason">Reason</label>
-            <textarea id="dr-identity-undo-reason" name="reason" rows="3" class="pfas-textarea" required="required"></textarea>
-          </div>
-          <div class="pfas-form-field is-full is-spaced">
-            <label>What follows</label>
-            <ul class="dr-identity-lines">
-              <li tal:repeat="t view/identity_undo_lines" tal:content="t">Judged again as the run says.</li>
-            </ul>
-          </div>
-          <div class="form-actions is-end">
-            <button type="button" class="btn btn-secondary" data-identity-cancel="1">Cancel</button>
-            <button type="submit" class="btn btn-danger">Undo the correction</button>
-          </div>
-        </form>
-      </template>
-      <script type="application/json" id="dr-identity-what"
-              tal:condition="python:view.identity_injections() and not view.identity_closed()"
-              tal:content="structure view/identity_what_json">{}</script>
-      <script tal:condition="python:view.identity_injections() and not view.identity_closed()">
-      /* a row's Correct identity… (the menu's event "dr-identity") or Undo
-         the correction… ("dr-identity-undo") opens its form in the centred
-         dialog: the injection, what it is judged as now, the roles the
-         method offers but that one, a required reason and, for the role
-         chosen, what will be judged again */
-      (function () {
-        var forms = {'dr-identity': 'dr-identity-form', 'dr-identity-undo': 'dr-identity-undo-form'};
-        var what = {};
-        try { what = JSON.parse(document.getElementById('dr-identity-what').textContent || '{}'); } catch (e) { what = {}; }
-        document.addEventListener('pfas:row-action', function (e) {
-          var row = e.detail ? e.detail.row : null;
-          var C = window.PFAS && window.PFAS.components;
-          var tpl = row && forms[e.detail.name] ? document.getElementById(forms[e.detail.name]) : null;
-          if (!tpl || !C || !C.drawer) return;
-          var form = tpl.content.firstElementChild.cloneNode(true);
-          var inj = row.getAttribute('data-identity-injection') || '';
-          var cur = row.getAttribute('data-identity-role') || '';
-          form.querySelector('input[name="injection"]').value = inj;
-          var label = row.getAttribute('data-identity-label') || cur, now = form.querySelector('.dr-identity-current');
-          if (C.type) { now.innerHTML = C.type.cell(cur, label); } else { now.textContent = label; }
-          var seg = form.querySelector('.dr-identity-roles'), submit = form.querySelector('button[type="submit"]');
-          var reason = form.querySelector('textarea[name="reason"]');
-          if (seg) {
-            var to = form.querySelector('input[name="to"]'), box = form.querySelector('.dr-identity-what');
-            var lines = form.querySelector('.dr-identity-lines');
-            Array.prototype.forEach.call(seg.querySelectorAll('.pfas-seg-item'), function (b) {
-              if (b.getAttribute('data-value') === cur) b.parentNode.removeChild(b);
-            });
-            var ready = function () { submit.disabled = !(to.value && reason.value.replace(/\s+/g, '')); };
-            seg.addEventListener('click', function (ev) {
-              var b = ev.target.closest('.pfas-seg-item');
-              if (!b) return;
-              to.value = b.getAttribute('data-value') || '';
-              lines.textContent = '';
-              ((what[cur] || {})[to.value] || []).forEach(function (t) {
-                var li = document.createElement('li'); li.textContent = t; lines.appendChild(li);
-              });
-              box.hidden = !lines.childNodes.length;
-              ready();
-            });
-            reason.addEventListener('input', ready);
-          }
-          Array.prototype.forEach.call(form.querySelectorAll('[data-identity-cancel]'), function (b) {
-            b.addEventListener('click', function () { C.drawer.close(); });
-          });
-          C.drawer.open(tpl.getAttribute('data-title') + ': ' + inj, form,
-                        { cls: 'is-dialog', opener: row, focus: seg ? seg.querySelector('.pfas-seg-item') : reason });
-          if (seg && C.seg) C.seg(seg);
-        });
-      })();
-      </script>
+      <metal:m use-macro="context/@@pfas-data-review-injections-macros/macros/injections" />
 
       <!-- existing files -->
       <tal:files tal:define="files view/get_instrument_reports">

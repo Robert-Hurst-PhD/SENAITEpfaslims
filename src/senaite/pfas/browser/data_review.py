@@ -267,6 +267,17 @@ def _run_order(rows):
     """Injection rows in the order the run acquired them."""
     return sorted(rows or [], key=lambda r: (r.get("acquired_at") or u"", r.get("id") or 0))
 
+class PFASDataReviewInjectionsMacrosView(BrowserView):
+    """The Injections card, shared by the Instrument Report tab and the
+    Integration Review tab of a run that has no Instrument Report."""
+
+    _template = ViewPageTemplateFile("templates/data_review_injections.pt")
+
+    @property
+    def macros(self):
+        return self._template.macros
+
+
 class PFASDataReviewView(ViewHelpers, BrowserView):
 
     template = ViewPageTemplateFile("templates/data_review.pt")
@@ -459,6 +470,20 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         if tab in ("raw", "compare", "instrument_report") and "?tab=" + tab not in [t[0] for t in self.shown_tabs()]:
             return "overview"
         return tab
+
+    def injections_in_raw_tab(self):
+        """The Injections card (what each injection was judged as, the row
+        menu that corrects it) belongs to the Instrument Report tab; a run
+        that tab is not listed for keeps it at the foot of Integration
+        Review. One card, never both."""
+        return (self.active_tab() == "raw"
+                and "?tab=instrument_report" not in [t[0] for t in self.shown_tabs()])
+
+    def _identity_tab(self):
+        """The tab a correction came from, to return to it: a tab the strip
+        lists, else the Instrument Report as before."""
+        tab = self.request.form.get("tab", "")
+        return tab if "?tab=" + tab in [t[0] for t in self.shown_tabs()] else "instrument_report"
 
     def _results_mode(self):
         """Where this worksheet's results come from: the run's own mode when
@@ -7860,7 +7885,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
                 can_requeue=can_requeue, filed=self._identity_filed(ws))
             done = "identity_corrected"
         if problem:
-            return self._redirect_with_msg("identity_refused", "error", tab="instrument_report",
+            return self._redirect_with_msg("identity_refused", "error", tab=self._identity_tab(),
                                            detail=problem)
         if _entry is not None and _entry.get("retract"):
             # the results filed on its sample are retracted with the
@@ -7871,7 +7896,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
             except ir.RetractRefused as exc:
                 import transaction
                 transaction.abort()
-                return self._redirect_with_msg("identity_refused", "error", tab="instrument_report",
+                return self._redirect_with_msg("identity_refused", "error", tab=self._identity_tab(),
                                                detail=exc.args[0] if exc.args else u"")
         # the sign-offs over what is judged again are cleared, to be made
         # again once it is; kept on the entry and in the trail
@@ -7887,7 +7912,7 @@ class PFASDataReviewView(ViewHelpers, BrowserView):
         # the worker reads the corrections from the run manifest only once
         # they are committed
         after_commit.run_once("identity-requeue:" + ws.getId(), ii.requeue, upload_dir, stem, files)
-        return self._redirect_with_msg(done, "ok", tab="instrument_report")
+        return self._redirect_with_msg(done, "ok", tab=self._identity_tab())
 
     def _identity_retract(self, ws, entry, ir):
         """Retract the results the worker filed for the entry's injection

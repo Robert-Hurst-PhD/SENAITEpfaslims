@@ -131,6 +131,9 @@
   --type-blanks:      #4e5d78;
   --type-checks:      #1d5fa6;
   --type-calibration: #1d5fa6;
+  /* a CCV is drawn in olive beside the checks' cobalt (an ICV keeps cobalt with the calibration):
+     6.0:1 on #f3f6f5 */
+  --type-ccv:         #4f6512;
   --type-none:        var(--s-body);
   --type-na:          #b9bfc8;
   /* icon colours (icons.py): the meanings above at text strength, so an
@@ -329,7 +332,7 @@ html[data-theme="dark"] {
   --s-warn-lt: #3d2d12; --s-warn-bd: #6a4a1a; --s-warn-text: #f2c77a;
   --s-manual-fill: rgba(232, 163, 61, .22);
   --s-danger-lt: #3f1f18; --s-danger-bd: #6e3328; --s-danger-dk: #f4a08c;
-  --type-samples: #aea7f5; --type-spiked: #e8a2d6; --type-blanks: #a9b6cc; --type-checks: #8bbcf0; --type-calibration: #8bbcf0; --type-na: #4f5866;
+  --type-samples: #aea7f5; --type-spiked: #e8a2d6; --type-blanks: #a9b6cc; --type-checks: #8bbcf0; --type-calibration: #8bbcf0; --type-ccv: #bcd27a; --type-na: #4f5866;
   --tier-c1: #5f9bd0; --tier-c2: #a583d8; --tier-c3: #5f9a90; --tier-c4: #d59a3f; --tier-c5: #94a3b3;
   --series-1: #3dbb8f; --series-2: #5f9bd0; --series-3: #a583d8; --series-4: #5f9a90; --series-5: #7fc0e3; --series-6: #94a3b3;
   --surface-raised: #1c2825; --on-accent: #0f1a18; --on-frame: #e6efec; --on-frame-muted: rgba(230,239,236,.70);

@@ -369,6 +369,12 @@
 
   <!-- PFAS Data Review — analyst checklist for batch release sign-off -->
   <browser:page
+      name="pfas-data-review-injections-macros"
+      for="*"
+      class=".data_review.PFASDataReviewInjectionsMacrosView"
+      permission="zope2.View"
+      />
+  <browser:page
       name="pfas-data-review"
       for="*"
       class=".data_review.PFASDataReviewView"

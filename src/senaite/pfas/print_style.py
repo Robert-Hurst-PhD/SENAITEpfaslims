@@ -330,6 +330,7 @@ PALETTE = {
     "tier-c5": "#6c7a89",
     "type-blanks": "#4e5d78",
     "type-calibration": "#1d5fa6",
+    "type-ccv": "#4f6512",
     "type-checks": "#1d5fa6",
     "type-na": "#b9bfc8",
     "type-samples": "#4a3fb3",

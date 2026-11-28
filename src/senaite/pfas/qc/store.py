@@ -426,8 +426,10 @@ class QCResultStore(object):
             sql += " AND r.method=?"
             params.append(method)
         if analyst is not None:
-            sql += " AND (r.analyst=? OR b.analyst=?)"
-            params.extend([analyst, analyst])
+            names = [analyst] if isinstance(analyst, (str, type(u""))) else list(analyst)
+            marks = ",".join("?" * len(names))
+            sql += " AND (r.analyst IN (%s) OR b.analyst IN (%s))" % (marks, marks)
+            params.extend(names + names)
         if instrument_id is not None:
             sql += " AND r.instrument_id=?"
             params.append(instrument_id)
@@ -477,12 +479,15 @@ class QCResultStore(object):
         with self._connect() as conn:
             return [r[0] for r in conn.execute(sql, params).fetchall()]
 
-    def get_qc_types(self):
+    def get_qc_types(self, method=None):
+        """The QC kinds the results carry, of one method when given."""
+        sql = "SELECT DISTINCT qc_type FROM qc_results WHERE result_status='active'"
+        params = []
+        if method:
+            sql += " AND method=?"
+            params.append(method)
         with self._connect() as conn:
-            return [r[0] for r in conn.execute(
-                "SELECT DISTINCT qc_type FROM qc_results "
-                "WHERE result_status='active' ORDER BY qc_type"
-            ).fetchall()]
+            return [r[0] for r in conn.execute(sql + " ORDER BY qc_type", params).fetchall()]
 
     def get_level_options(self, qc_type=None, analyte=None, method=None):
         """[(value, label)]: the QC level filter's options (level_options)."""

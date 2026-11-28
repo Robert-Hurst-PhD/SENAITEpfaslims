@@ -35,7 +35,7 @@
   /* the strips under the main chart: one small chart per reading */
   api.drawStrips = function (holder, labels, overlays, westgard, axisX) {
     if (!holder || !overlays || !overlays.length) { return; }
-    var shade = shaded(westgard), bad = tok("--s-danger-lt");
+    var shade = shaded(westgard), bad = tok("--s-info-lt");
     overlays.forEach(function (ov, n) {
       var box = document.createElement("div");
       box.className = "chart-strip";
